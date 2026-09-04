@@ -1,0 +1,42 @@
+# 环境变量（含 JWT_SECRET、数据库密码等敏感信息）
+.env
+.env.*
+!.env.example
+
+# 数据卷 / 本地数据
+/data/
+
+# 日志
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# 系统
+.DS_Store
+Thumbs.db
+
+# 构建版本计数器（每次构建自动 +1,不入库）
+.build-version*
+
+# 后端依赖（如后续引入 build 产物）
+__pycache__/
+*.pyc
+node_modules/
+dist/
+build/
+.playwright-mcp/
+
+# 构建产物（两个构建脚本输出到 deploy/）
+deploy/smartbook-*.apk
+deploy/smartbook-*.aab
+deploy/smartbook-*.sha256
+deploy/smartbook-server-*.tar
+
+# 仓库根下的本地实测截图/UI 转储/临时目录（含微信聊天与服务器凭据，禁止入库）
+/*.png
+/*.xml
+.tmp-msg/
+.zcode/
