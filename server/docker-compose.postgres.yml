@@ -1,0 +1,26 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: smartbook
+      POSTGRES_USER: smartbook
+      POSTGRES_PASSWORD: smartbook
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U smartbook -d smartbook"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  smartbook-cloud:
+    environment:
+      DATABASE_URL: postgresql+psycopg://smartbook:smartbook@db:5432/smartbook
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

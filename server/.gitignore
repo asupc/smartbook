@@ -1,0 +1,29 @@
+.DS_Store
+.docs/
+.env
+.env.local
+.venv/
+__pycache__/
+*.pyc
+.mypy_cache/
+.ruff_cache/
+
+frontend/node_modules/
+frontend/apps/web/node_modules/
+frontend/apps/web/dist/
+node_modules/
+**/node_modules/
+/data/
+
+*.log
+*.db
+*.db.bak*
+*.db-wal
+*.db-shm
+*.tsbuildinfo
+
+# Vite 构建缓存(Vite 预构建依赖缓存目录,不入库)
+**/.vite/
+
+# Claude Code 本地工作区(含 git worktree,绝不入库)
+.claude/

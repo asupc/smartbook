@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- 方案 A：闪电票据 —— 每一笔支付都有小票，闪电代表自动记账 -->
+  <defs>
+    <linearGradient id="bgA" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1D2C50"/>
+      <stop offset="1" stop-color="#0E1830"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="116" fill="url(#bgA)"/>
+  <!-- 票据主体 -->
+  <rect x="150" y="118" width="212" height="276" rx="18" fill="#FFFFFF"/>
+  <!-- 顶部打孔撕边 -->
+  <circle cx="188" cy="152" r="9" fill="#0E1830" opacity=".85"/>
+  <circle cx="233" cy="152" r="9" fill="#0E1830" opacity=".85"/>
+  <circle cx="279" cy="152" r="9" fill="#0E1830" opacity=".85"/>
+  <circle cx="324" cy="152" r="9" fill="#0E1830" opacity=".85"/>
+  <!-- 账单行 -->
+  <line x1="166" y1="196" x2="346" y2="196" stroke="#D6DEEA" stroke-width="14" stroke-linecap="round"/>
+  <line x1="166" y1="230" x2="306" y2="230" stroke="#D6DEEA" stroke-width="14" stroke-linecap="round"/>
+  <line x1="166" y1="264" x2="346" y2="264" stroke="#F3C94F" stroke-width="14" stroke-linecap="round"/>
+  <!-- 闪电：自动入账 -->
+  <path d="M308 240 L264 306 L294 306 L276 362 L338 288 L306 288 Z"
+        fill="#FFC94D" stroke="#E8A500" stroke-width="6" stroke-linejoin="round"/>
+</svg>

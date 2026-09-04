@@ -1,0 +1,25 @@
+name: flutter_cloud_sync_supabase
+description: Supabase provider for flutter_cloud_sync
+version: 0.1.0
+publish_to: none
+homepage: https://github.com/TNT-Likely/BeeCount
+repository: https://github.com/TNT-Likely/BeeCount/tree/main/packages/flutter_cloud_sync_supabase
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+  flutter: '>=3.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_cloud_sync:
+    path: ../flutter_cloud_sync
+  supabase_flutter: ^2.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^2.0.0
+
+flutter:
+  # This package is a Flutter plugin

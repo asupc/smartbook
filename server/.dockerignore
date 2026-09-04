@@ -1,0 +1,18 @@
+# 本地开发机构建镜像时,Windows 端的依赖/产物绝不能进构建上下文:
+#  - node_modules 是 pnpm 符号链接 + Windows 产物,盖进 Linux 容器会破坏
+#    `pnpm install` 后 `COPY frontend` 选出的 node_modules,导致 vite/tsc 稀奇古怪的失败
+#  - .venv / __pycache__ / *.db 同理,只应来自镜像内 install
+# 注意:frontend/packages/*(三个 workspace 包源码)必打,不可排除。
+**/node_modules
+frontend/apps/web/dist
+frontend/apps/web/.vite
+.venv
+__pycache__
+**/*.pyc
+**/*.pyo
+*.db
+*.log
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.run_cache

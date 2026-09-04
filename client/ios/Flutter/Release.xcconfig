@@ -1,0 +1,5 @@
+// App display name and bundle id for release
+APP_DISPLAY_NAME=智记
+PRODUCT_BUNDLE_IDENTIFIER=com.smartbook.zhi
+#include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"
+#include "Generated.xcconfig"

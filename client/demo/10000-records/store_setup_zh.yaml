@@ -1,0 +1,708 @@
+# SmartBook 配置（测试 / 截图用）
+# 语言 / 货币：简体中文 / CNY
+# 导出时间：2026-06-11T11:05:25
+
+version: 1
+exported_at: "2026-06-11T11:05:25"
+
+# ----- 账本(3 个,第一本是默认账本,CSV 数据导入到它)-----
+ledgers:
+  items:
+    - name: "默认账本"
+      currency: "CNY"
+      type: "personal"
+    - name: "差旅报销"
+      currency: "CNY"
+      type: "personal"
+    - name: "家庭账本"
+      currency: "CNY"
+      type: "shared"
+
+# ----- 账户(5 个)-----
+accounts:
+  items:
+    - name: "招商信用卡"
+      type: "credit_card"
+      currency: "CNY"
+      initial_balance: 0.0
+    - name: "微信"
+      type: "cash"
+      currency: "CNY"
+      initial_balance: 0.0
+    - name: "支付宝"
+      type: "cash"
+      currency: "CNY"
+      initial_balance: 0.0
+    - name: "工商银行卡"
+      type: "bank_card"
+      currency: "CNY"
+      initial_balance: 0.0
+    - name: "现金"
+      type: "cash"
+      currency: "CNY"
+      initial_balance: 0.0
+
+# ----- 分类(45 支出一级 + 25 支出二级 + 14 收入一级 + 4 收入二级)-----
+categories:
+  items:
+    - name: "餐饮"
+      kind: "expense"
+      sort_order: 0
+      level: 1
+      icon: "restaurant"
+      icon_type: "material"
+    - name: "交通"
+      kind: "expense"
+      sort_order: 1
+      level: 1
+      icon: "directions_car"
+      icon_type: "material"
+    - name: "购物"
+      kind: "expense"
+      sort_order: 2
+      level: 1
+      icon: "shopping_cart"
+      icon_type: "material"
+    - name: "娱乐"
+      kind: "expense"
+      sort_order: 3
+      level: 1
+      icon: "movie"
+      icon_type: "material"
+    - name: "居家"
+      kind: "expense"
+      sort_order: 4
+      level: 1
+      icon: "home"
+      icon_type: "material"
+    - name: "家庭"
+      kind: "expense"
+      sort_order: 5
+      level: 1
+      icon: "family_restroom"
+      icon_type: "material"
+    - name: "通讯"
+      kind: "expense"
+      sort_order: 6
+      level: 1
+      icon: "phone"
+      icon_type: "material"
+    - name: "水电"
+      kind: "expense"
+      sort_order: 7
+      level: 1
+      icon: "flash_on"
+      icon_type: "material"
+    - name: "住房"
+      kind: "expense"
+      sort_order: 8
+      level: 1
+      icon: "home_work"
+      icon_type: "material"
+    - name: "医疗"
+      kind: "expense"
+      sort_order: 9
+      level: 1
+      icon: "local_hospital"
+      icon_type: "material"
+    - name: "教育"
+      kind: "expense"
+      sort_order: 10
+      level: 1
+      icon: "school"
+      icon_type: "material"
+    - name: "宠物"
+      kind: "expense"
+      sort_order: 11
+      level: 1
+      icon: "pets"
+      icon_type: "material"
+    - name: "运动"
+      kind: "expense"
+      sort_order: 12
+      level: 1
+      icon: "fitness_center"
+      icon_type: "material"
+    - name: "数码"
+      kind: "expense"
+      sort_order: 13
+      level: 1
+      icon: "smartphone"
+      icon_type: "material"
+    - name: "旅行"
+      kind: "expense"
+      sort_order: 14
+      level: 1
+      icon: "flight"
+      icon_type: "material"
+    - name: "烟酒"
+      kind: "expense"
+      sort_order: 15
+      level: 1
+      icon: "local_bar"
+      icon_type: "material"
+    - name: "母婴"
+      kind: "expense"
+      sort_order: 16
+      level: 1
+      icon: "child_care"
+      icon_type: "material"
+    - name: "美容"
+      kind: "expense"
+      sort_order: 17
+      level: 1
+      icon: "face"
+      icon_type: "material"
+    - name: "维修"
+      kind: "expense"
+      sort_order: 18
+      level: 1
+      icon: "handyman"
+      icon_type: "material"
+    - name: "社交"
+      kind: "expense"
+      sort_order: 19
+      level: 1
+      icon: "group"
+      icon_type: "material"
+    - name: "学习"
+      kind: "expense"
+      sort_order: 20
+      level: 1
+      icon: "school"
+      icon_type: "material"
+    - name: "汽车"
+      kind: "expense"
+      sort_order: 21
+      level: 1
+      icon: "directions_car"
+      icon_type: "material"
+    - name: "打车"
+      kind: "expense"
+      sort_order: 22
+      level: 1
+      icon: "local_taxi"
+      icon_type: "material"
+    - name: "地铁"
+      kind: "expense"
+      sort_order: 23
+      level: 1
+      icon: "directions_subway"
+      icon_type: "material"
+    - name: "外卖"
+      kind: "expense"
+      sort_order: 24
+      level: 1
+      icon: "delivery_dining"
+      icon_type: "material"
+    - name: "物业"
+      kind: "expense"
+      sort_order: 25
+      level: 1
+      icon: "apartment"
+      icon_type: "material"
+    - name: "停车"
+      kind: "expense"
+      sort_order: 26
+      level: 1
+      icon: "local_parking"
+      icon_type: "material"
+    - name: "捐赠"
+      kind: "expense"
+      sort_order: 27
+      level: 1
+      icon: "volunteer_activism"
+      icon_type: "material"
+    - name: "送礼"
+      kind: "expense"
+      sort_order: 28
+      level: 1
+      icon: "card_giftcard"
+      icon_type: "material"
+    - name: "纳税"
+      kind: "expense"
+      sort_order: 29
+      level: 1
+      icon: "receipt_long"
+      icon_type: "material"
+    - name: "饮料"
+      kind: "expense"
+      sort_order: 30
+      level: 1
+      icon: "local_cafe"
+      icon_type: "material"
+    - name: "服装"
+      kind: "expense"
+      sort_order: 31
+      level: 1
+      icon: "checkroom"
+      icon_type: "material"
+    - name: "零食"
+      kind: "expense"
+      sort_order: 32
+      level: 1
+      icon: "fastfood"
+      icon_type: "material"
+    - name: "发红包"
+      kind: "expense"
+      sort_order: 33
+      level: 1
+      icon: "wallet"
+      icon_type: "material"
+    - name: "水果"
+      kind: "expense"
+      sort_order: 34
+      level: 1
+      icon: "eco"
+      icon_type: "material"
+    - name: "游戏"
+      kind: "expense"
+      sort_order: 35
+      level: 1
+      icon: "sports_esports"
+      icon_type: "material"
+    - name: "书"
+      kind: "expense"
+      sort_order: 36
+      level: 1
+      icon: "menu_book"
+      icon_type: "material"
+    - name: "爱人"
+      kind: "expense"
+      sort_order: 37
+      level: 1
+      icon: "favorite"
+      icon_type: "material"
+    - name: "装修"
+      kind: "expense"
+      sort_order: 38
+      level: 1
+      icon: "home_repair_service"
+      icon_type: "material"
+    - name: "日用品"
+      kind: "expense"
+      sort_order: 39
+      level: 1
+      icon: "local_laundry_service"
+      icon_type: "material"
+    - name: "彩票"
+      kind: "expense"
+      sort_order: 40
+      level: 1
+      icon: "confirmation_number"
+      icon_type: "material"
+    - name: "股票"
+      kind: "expense"
+      sort_order: 41
+      level: 1
+      icon: "trending_up"
+      icon_type: "material"
+    - name: "社保"
+      kind: "expense"
+      sort_order: 42
+      level: 1
+      icon: "security"
+      icon_type: "material"
+    - name: "快递"
+      kind: "expense"
+      sort_order: 43
+      level: 1
+      icon: "local_shipping"
+      icon_type: "material"
+    - name: "工作"
+      kind: "expense"
+      sort_order: 44
+      level: 1
+      icon: "work_outline"
+      icon_type: "material"
+    - name: "早餐"
+      kind: "expense"
+      sort_order: 0
+      level: 2
+      parent_name: "餐饮"
+      icon: "free_breakfast"
+      icon_type: "material"
+    - name: "午餐"
+      kind: "expense"
+      sort_order: 1
+      level: 2
+      parent_name: "餐饮"
+      icon: "lunch_dining"
+      icon_type: "material"
+    - name: "晚餐"
+      kind: "expense"
+      sort_order: 2
+      level: 2
+      parent_name: "餐饮"
+      icon: "dinner_dining"
+      icon_type: "material"
+    - name: "夜宵"
+      kind: "expense"
+      sort_order: 3
+      level: 2
+      parent_name: "餐饮"
+      icon: "nightlife"
+      icon_type: "material"
+    - name: "公交"
+      kind: "expense"
+      sort_order: 4
+      level: 2
+      parent_name: "交通"
+      icon: "directions_bus"
+      icon_type: "material"
+    - name: "高铁"
+      kind: "expense"
+      sort_order: 5
+      level: 2
+      parent_name: "交通"
+      icon: "train"
+      icon_type: "material"
+    - name: "长途车"
+      kind: "expense"
+      sort_order: 6
+      level: 2
+      parent_name: "交通"
+      icon: "airport_shuttle"
+      icon_type: "material"
+    - name: "鞋子"
+      kind: "expense"
+      sort_order: 7
+      level: 2
+      parent_name: "购物"
+      icon: "ice_skating"
+      icon_type: "material"
+    - name: "家具"
+      kind: "expense"
+      sort_order: 8
+      level: 2
+      parent_name: "购物"
+      icon: "chair"
+      icon_type: "material"
+    - name: "家电"
+      kind: "expense"
+      sort_order: 9
+      level: 2
+      parent_name: "购物"
+      icon: "kitchen"
+      icon_type: "material"
+    - name: "电影"
+      kind: "expense"
+      sort_order: 10
+      level: 2
+      parent_name: "娱乐"
+      icon: "theaters"
+      icon_type: "material"
+    - name: "KTV"
+      kind: "expense"
+      sort_order: 11
+      level: 2
+      parent_name: "娱乐"
+      icon: "mic"
+      icon_type: "material"
+    - name: "演唱会"
+      kind: "expense"
+      sort_order: 12
+      level: 2
+      parent_name: "娱乐"
+      icon: "music_note"
+      icon_type: "material"
+    - name: "门诊"
+      kind: "expense"
+      sort_order: 13
+      level: 2
+      parent_name: "医疗"
+      icon: "medical_services"
+      icon_type: "material"
+    - name: "药品"
+      kind: "expense"
+      sort_order: 14
+      level: 2
+      parent_name: "医疗"
+      icon: "medication"
+      icon_type: "material"
+    - name: "体检"
+      kind: "expense"
+      sort_order: 15
+      level: 2
+      parent_name: "医疗"
+      icon: "monitor_heart"
+      icon_type: "material"
+    - name: "培训"
+      kind: "expense"
+      sort_order: 16
+      level: 2
+      parent_name: "教育"
+      icon: "model_training"
+      icon_type: "material"
+    - name: "在线课程"
+      kind: "expense"
+      sort_order: 17
+      level: 2
+      parent_name: "教育"
+      icon: "ondemand_video"
+      icon_type: "material"
+    - name: "教材"
+      kind: "expense"
+      sort_order: 18
+      level: 2
+      parent_name: "教育"
+      icon: "auto_stories"
+      icon_type: "material"
+    - name: "机票"
+      kind: "expense"
+      sort_order: 19
+      level: 2
+      parent_name: "旅行"
+      icon: "flight_takeoff"
+      icon_type: "material"
+    - name: "酒店"
+      kind: "expense"
+      sort_order: 20
+      level: 2
+      parent_name: "旅行"
+      icon: "hotel"
+      icon_type: "material"
+    - name: "门票"
+      kind: "expense"
+      sort_order: 21
+      level: 2
+      parent_name: "旅行"
+      icon: "confirmation_number"
+      icon_type: "material"
+    - name: "配件"
+      kind: "expense"
+      sort_order: 22
+      level: 2
+      parent_name: "数码"
+      icon: "cable"
+      icon_type: "material"
+    - name: "手机"
+      kind: "expense"
+      sort_order: 23
+      level: 2
+      parent_name: "数码"
+      icon: "phone_iphone"
+      icon_type: "material"
+    - name: "电脑"
+      kind: "expense"
+      sort_order: 24
+      level: 2
+      parent_name: "数码"
+      icon: "laptop"
+      icon_type: "material"
+    - name: "工资"
+      kind: "income"
+      sort_order: 0
+      level: 1
+      icon: "work"
+      icon_type: "material"
+    - name: "理财"
+      kind: "income"
+      sort_order: 1
+      level: 1
+      icon: "account_balance"
+      icon_type: "material"
+    - name: "收红包"
+      kind: "income"
+      sort_order: 2
+      level: 1
+      icon: "wallet"
+      icon_type: "material"
+    - name: "奖金"
+      kind: "income"
+      sort_order: 3
+      level: 1
+      icon: "emoji_events"
+      icon_type: "material"
+    - name: "报销"
+      kind: "income"
+      sort_order: 4
+      level: 1
+      icon: "receipt"
+      icon_type: "material"
+    - name: "兼职"
+      kind: "income"
+      sort_order: 5
+      level: 1
+      icon: "schedule"
+      icon_type: "material"
+    - name: "收礼"
+      kind: "income"
+      sort_order: 6
+      level: 1
+      icon: "card_giftcard"
+      icon_type: "material"
+    - name: "利息"
+      kind: "income"
+      sort_order: 7
+      level: 1
+      icon: "monetization_on"
+      icon_type: "material"
+    - name: "退款"
+      kind: "income"
+      sort_order: 8
+      level: 1
+      icon: "undo"
+      icon_type: "material"
+    - name: "投资收益"
+      kind: "income"
+      sort_order: 9
+      level: 1
+      icon: "trending_up"
+      icon_type: "material"
+    - name: "二手转卖"
+      kind: "income"
+      sort_order: 10
+      level: 1
+      icon: "sell"
+      icon_type: "material"
+    - name: "社会保障"
+      kind: "income"
+      sort_order: 11
+      level: 1
+      icon: "health_and_safety"
+      icon_type: "material"
+    - name: "退税退费"
+      kind: "income"
+      sort_order: 12
+      level: 1
+      icon: "receipt_long"
+      icon_type: "material"
+    - name: "公积金"
+      kind: "income"
+      sort_order: 13
+      level: 1
+      icon: "account_balance_wallet"
+      icon_type: "material"
+    - name: "基本工资"
+      kind: "income"
+      sort_order: 0
+      level: 2
+      parent_name: "工资"
+      icon: "payments"
+      icon_type: "material"
+    - name: "加班费"
+      kind: "income"
+      sort_order: 1
+      level: 2
+      parent_name: "工资"
+      icon: "more_time"
+      icon_type: "material"
+    - name: "股息"
+      kind: "income"
+      sort_order: 2
+      level: 2
+      parent_name: "投资收益"
+      icon: "savings"
+      icon_type: "material"
+    - name: "基金分红"
+      kind: "income"
+      sort_order: 3
+      level: 2
+      parent_name: "投资收益"
+      icon: "pie_chart"
+      icon_type: "material"
+
+# ----- 标签(24 个,含 Material 调色板颜色)-----
+tags:
+  items:
+    - name: "美团"
+      color: "#FF5722"
+    - name: "饿了么"
+      color: "#2196F3"
+    - name: "淘宝"
+      color: "#FF9800"
+    - name: "京东"
+      color: "#F44336"
+    - name: "拼多多"
+      color: "#E91E63"
+    - name: "星巴克"
+      color: "#009688"
+    - name: "瑞幸咖啡"
+      color: "#795548"
+    - name: "麦当劳"
+      color: "#FFC107"
+    - name: "肯德基"
+      color: "#D32F2F"
+    - name: "盒马"
+      color: "#00BCD4"
+    - name: "山姆"
+      color: "#3F51B5"
+    - name: "Costco"
+      color: "#673AB7"
+    - name: "出差"
+      color: "#607D8B"
+    - name: "旅行"
+      color: "#00E676"
+    - name: "聚餐"
+      color: "#FF4081"
+    - name: "网购"
+      color: "#536DFE"
+    - name: "日常"
+      color: "#8BC34A"
+    - name: "报销"
+      color: "#9C27B0"
+    - name: "可退款"
+      color: "#CDDC39"
+    - name: "已退款"
+      color: "#4CAF50"
+    - name: "语音记账"
+      color: "#FF9800"
+    - name: "图片记账"
+      color: "#4CAF50"
+    - name: "拍照记账"
+      color: "#2196F3"
+    - name: "AI记账"
+      color: "#9C27B0"
+
+# ----- 预算(2 个总预算 + 8 个分类预算)-----
+budgets:
+  items:
+    - ledger_name: "默认账本"
+      type: "total"
+      amount: 8000.0
+      start_day: 1
+    - ledger_name: "差旅报销"
+      type: "total"
+      amount: 3000.0
+      start_day: 1
+    - ledger_name: "默认账本"
+      type: "category"
+      amount: 1500.0
+      start_day: 1
+      category_name: "餐饮"
+    - ledger_name: "默认账本"
+      type: "category"
+      amount: 1200.0
+      start_day: 1
+      category_name: "购物"
+    - ledger_name: "默认账本"
+      type: "category"
+      amount: 600.0
+      start_day: 1
+      category_name: "交通"
+    - ledger_name: "默认账本"
+      type: "category"
+      amount: 500.0
+      start_day: 1
+      category_name: "娱乐"
+    - ledger_name: "默认账本"
+      type: "category"
+      amount: 400.0
+      start_day: 1
+      category_name: "水电"
+    - ledger_name: "默认账本"
+      type: "category"
+      amount: 200.0
+      start_day: 1
+      category_name: "通讯"
+    - ledger_name: "默认账本"
+      type: "category"
+      amount: 800.0
+      start_day: 1
+      category_name: "外卖"
+    - ledger_name: "默认账本"
+      type: "category"
+      amount: 200.0
+      start_day: 1
+      category_name: "饮料"

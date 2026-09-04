@@ -1,0 +1,1016 @@
+// BillCreationService 契约测试。
+//
+// 锁死:
+// - AI 分类完全匹配 / 模糊匹配 / 规则匹配的优先级
+// - 「其他」分类兜底,无「其他」时使用最后一个
+// - 账户完全 / 模糊 / 类型映射匹配,以及同账本币种过滤
+// - 转账场景的双账户匹配 + 同账户去重
+// - 类型推断:BillType 显式 > category 含转账字样 > 默认 expense
+// - amount 无效直接返回 null
+// - 默认账户币种校验
+
+import 'package:drift/native.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'package:smartbook/ai/core/bill_info.dart';
+import 'package:smartbook/data/db.dart';
+import 'package:smartbook/data/repositories/local/local_repository.dart';
+import 'package:smartbook/services/billing/bill_creation_service.dart';
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  late BeeDatabase db;
+  late LocalRepository repo;
+  late BillCreationService service;
+  late int ledgerId;
+
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    db = BeeDatabase.forTesting(NativeDatabase.memory());
+    repo = LocalRepository(db);
+    service = BillCreationService(repo);
+    ledgerId = await repo.createLedger(name: 'test', currency: 'CNY');
+  });
+
+  tearDown(() async {
+    await db.close();
+  });
+
+  // ============================================================
+  // amount 校验
+  // ============================================================
+
+  group('amount 校验', () {
+    test('amount=null → 返回 null', () async {
+      final txId = await service.createFromBill(
+        bill: BillInfo(time: DateTime(2026, 5, 26)),
+        ledgerId: ledgerId,
+      );
+      expect(txId, isNull);
+    });
+
+    test('amount=0 → 返回 null', () async {
+      final txId = await service.createFromBill(
+        bill: BillInfo(amount: 0, time: DateTime(2026, 5, 26)),
+        ledgerId: ledgerId,
+      );
+      expect(txId, isNull);
+    });
+
+    test('amount 绝对值入库,正负只影响 type', () async {
+      await repo.createCategory(name: '餐饮', kind: 'expense');
+      final txId = await service.createFromBill(
+        bill: BillInfo(
+          amount: -30, // 负值
+          time: DateTime(2026, 5, 26),
+          category: '餐饮',
+          type: BillType.expense,
+        ),
+        ledgerId: ledgerId,
+      );
+      expect(txId, isNotNull);
+      final tx = await repo.getTransactionById(txId!);
+      expect(tx?.amount, 30); // abs
+      expect(tx?.type, 'expense');
+    });
+  });
+
+  // ============================================================
+  // 类型推断
+  // ============================================================
+
+  group('类型推断 _resolveType', () {
+    setUp(() async {
+      await repo.createCategory(name: '餐饮', kind: 'expense');
+      await repo.createCategory(name: '工资', kind: 'income');
+      await repo.createCategory(name: '转账', kind: 'expense');
+    });
+
+    test('显式 BillType.expense → expense', () async {
+      final txId = await service.createFromBill(
+        bill: BillInfo(
+          amount: -30,
+          time: DateTime(2026, 5, 26),
+          type: BillType.expense,
+        ),
+        ledgerId: ledgerId,
+      );
+      final tx = await repo.getTransactionById(txId!);
+      expect(tx?.type, 'expense');
+    });
+
+    test('显式 BillType.income → income', () async {
+      final txId = await service.createFromBill(
+        bill: BillInfo(
+          amount: 5000,
+          time: DateTime(2026, 5, 26),
+          type: BillType.income,
+        ),
+        ledgerId: ledgerId,
+      );
+      final tx = await repo.getTransactionById(txId!);
+      expect(tx?.type, 'income');
+    });
+
+    test('显式 BillType.transfer → transfer', () async {
+      final txId = await service.createFromBill(
+        bill: BillInfo(
+          amount: 800,
+          time: DateTime(2026, 5, 26),
+          type: BillType.transfer,
+        ),
+        ledgerId: ledgerId,
+      );
+      final tx = await repo.getTransactionById(txId!);
+      expect(tx?.type, 'transfer');
+    });
+
+    test('type=null + category="转账" → transfer', () async {
+      final txId = await service.createFromBill(
+        bill: BillInfo(
+          amount: 800,
+          time: DateTime(2026, 5, 26),
+          category: '转账',
+        ),
+        ledgerId: ledgerId,
+      );
+      final tx = await repo.getTransactionById(txId!);
+      expect(tx?.type, 'transfer');
+    });
+
+    test('type=null + category="轉帳"(繁体) → transfer', () async {
+      final txId = await service.createFromBill(
+        bill: BillInfo(
+          amount: 800,
+          time: DateTime(2026, 5, 26),
+          category: '轉帳',
+        ),
+        ledgerId: ledgerId,
+      );
+      final tx = await repo.getTransactionById(txId!);
+      expect(tx?.type, 'transfer');
+    });
+
+    test('type=null + 无 category → 默认 expense', () async {
+      final txId = await service.createFromBill(
+        bill: BillInfo(amount: -30, time: DateTime(2026, 5, 26)),
+        ledgerId: ledgerId,
+      );
+      final tx = await repo.getTransactionById(txId!);
+      expect(tx?.type, 'expense');
+    });
+  });
+
+  // ============================================================
+  // 分类匹配
+  // ============================================================
+
+  group('分类匹配', () {
+    test('AI 分类名完全相等 → 直接命中', () async {
+      await repo.createCategory(name: '餐饮', kind: 'expense');
+      await repo.createCategory(name: '咖啡', kind: 'expense');
+      final txId = await service.createFromBill(
+        bill: BillInfo(
+          amount: -30,
+          time: DateTime(2026, 5, 26),
+          category: '咖啡',
+          type: BillType.expense,
+        ),
+        ledgerId: ledgerId,
+      );
+      final tx = await repo.getTransactionById(txId!);
+      final cat = await repo.getCategoryById(tx!.categoryId!);
+      expect(cat?.name, '咖啡');
+    });
+
+    test('AI 分类名被本地分类包含(模糊) → 命中', () async {
+      // 本地有「餐饮美食」,AI 给「餐饮」,模糊匹配应命中
+      await repo.createCategory(name: '餐饮美食', kind: 'expense');
+      await repo.createCategory(name: '其他', kind: 'expense');
+      final txId = await service.createFromBill(
+        bill: BillInfo(
+          amount: -30,
+          time: DateTime(2026, 5, 26),
+          category: '餐饮',
+          type: BillType.expense,
+        ),
+        ledgerId: ledgerId,
+      );
+      final tx = await repo.getTransactionById(txId!);
+      final cat = await repo.getCategoryById(tx!.categoryId!);
+      expect(cat?.name, '餐饮美食');
+    });
+
+    test('AI 分类名都不匹配 → 兜底「其他」', () async {
+      await repo.createCategory(name: '餐饮', kind: 'expense');
+      await repo.createCategory(name: '其他', kind: 'expense');
+      final txId = await service.createFromBill(
+        bill: BillInfo(
+          amount: -30,
+          time: DateTime(2026, 5, 26),
+          category: '完全没有这个分类',
+          type: BillType.expense,
+        ),
+        ledgerId: ledgerId,
+      );
+      final tx = await repo.getTransactionById(txId!);
+      final cat = await repo.getCategoryById(tx!.categoryId!);
+      expect(cat?.name, '其他');
+    });
+
+    test('「其它」也作为兜底候选(全角)', () async {
+      await repo.createCategory(name: '餐饮', kind: 'expense');
+      await repo.createCategory(name: '其它', kind: 'expense');
+      final txId = await service.createFromBill(
+        bill: BillInfo(
+          amount: -30,
+          time: DateTime(2026, 5, 26),
+          category: '无',
+          type: BillType.expense,
+        ),
+        ledgerId: ledgerId,
+      );
+      final tx = await repo.getTransactionById(txId!);
+      final cat = await repo.getCategoryById(tx!.categoryId!);
+      expect(cat?.name, '其它');
+    });
+
+    test('无「其他」时使用最后一个分类作为兜底', () async {
+      await repo.createCategory(name: '餐饮', kind: 'expense', sortOrder: 1);
+      await repo.createCategory(name: '购物', kind: 'expense', sortOrder: 2);
+      await repo.createCategory(name: '娱乐', kind: 'expense', sortOrder: 3);
+      final txId = await service.createFromBill(
+        bill: BillInfo(
+          amount: -30,
+          time: DateTime(2026, 5, 26),
+          category: '完全没有',
+          type: BillType.expense,
+        ),
+        ledgerId: ledgerId,
+      );
+      final tx = await repo.getTransactionById(txId!);
+      // 应使用 sortOrder 最大的那个(列表 last)
+      final cat = await repo.getCategoryById(tx!.categoryId!);
+      expect(cat?.name, '娱乐');
+    });
+  });
+
+  // ============================================================
+  // 账户匹配
+  // ============================================================
+
+  group('账户匹配', () {
+    setUp(() async {
+      await repo.createCategory(name: '餐饮', kind: 'expense');
+      // 关闭账户功能默认 = 启用
+      SharedPreferences.setMockInitialValues({'account_feature_enabled': true});
+    });
+
+    test('AI 账户名完全相等 → 命中', () async {
+      final acc = await repo.createAccount(
+        ledgerId: ledgerId,
+        name: '支付宝',
+        currency: 'CNY',
+      );
+      final txId = await service.createFromBill(
+        bill: BillInfo(
+          amount: -30,
+          time: DateTime(2026, 5, 26),
+          category: '餐饮',
+          account: '支付宝',
+          type: BillType.expense,
+        ),
+        ledgerId: ledgerId,
+      );
+      final tx = await repo.getTransactionById(txId!);
+      expect(tx?.accountId, acc);
+    });
+
+    test('AI 账户名模糊匹配(account 名是 AI 名的超集)', () async {
+      // 本地账户名 "招行卡",AI 给 "招行" → account.contains(ai) ⇒ 命中
+      final acc = await repo.createAccount(
+        ledgerId: ledgerId,
+        name: '招行卡',
+        currency: 'CNY',
+      );
+      final txId = await service.createFromBill(
+        bill: BillInfo(
+          amount: -30,
+          time: DateTime(2026, 5, 26),
+          category: '餐饮',
+          account: '招行',
+          type: BillType.expense,
+        ),
+        ledgerId: ledgerId,
+      );
+      final tx = await repo.getTransactionById(txId!);
+      expect(tx?.accountId, acc);
+    });
+
+    test('AI 账户名模糊匹配(AI 名是 account 名的超集)', () async {
+      // 本地账户名 "建行",AI 给 "建行储蓄卡" → ai.contains(account) ⇒ 命中
+      final acc = await repo.createAccount(
+        ledgerId: ledgerId,
+        name: '建行',
+        currency: 'CNY',
+      );
+      final txId = await service.createFromBill(
+        bill: BillInfo(
+          amount: -30,
+          time: DateTime(2026, 5, 26),
+          category: '餐饮',
+          account: '建行储蓄卡',
+          type: BillType.expense,
+        ),
+        ledgerId: ledgerId,
+      );
+      final tx = await repo.getTransactionById(txId!);
+      expect(tx?.accountId, acc);
+    });
+
+    test('账户类型映射:余额宝 → 支付宝', () async {
+      final acc = await repo.createAccount(
+        ledgerId: ledgerId,
+        name: '支付宝',
+        currency: 'CNY',
+      );
+      final txId = await service.createFromBill(
+        bill: BillInfo(
+          amount: -30,
+          time: DateTime(2026, 5, 26),
+          category: '餐饮',
+          account: '余额宝',
+          type: BillType.expense,
+        ),
+        ledgerId: ledgerId,
+      );
+      final tx = await repo.getTransactionById(txId!);
+      expect(tx?.accountId, acc);
+    });
+
+    test('账户类型映射:零钱通 → 微信', () async {
+      final acc = await repo.createAccount(
+        ledgerId: ledgerId,
+        name: '微信钱包',
+        currency: 'CNY',
+      );
+      final txId = await service.createFromBill(
+        bill: BillInfo(
+          amount: -30,
+          time: DateTime(2026, 5, 26),
+          category: '餐饮',
+          account: '零钱通',
+          type: BillType.expense,
+        ),
+        ledgerId: ledgerId,
+      );
+      final tx = await repo.getTransactionById(txId!);
+      expect(tx?.accountId, acc);
+    });
+
+    test('账户功能关闭 → 不匹配', () async {
+      SharedPreferences.setMockInitialValues(
+          {'account_feature_enabled': false});
+      await repo.createAccount(
+        ledgerId: ledgerId,
+        name: '支付宝',
+        currency: 'CNY',
+      );
+      final txId = await service.createFromBill(
+        bill: BillInfo(
+          amount: -30,
+          time: DateTime(2026, 5, 26),
+          category: '餐饮',
+          account: '支付宝',
+          type: BillType.expense,
+        ),
+        ledgerId: ledgerId,
+      );
+      final tx = await repo.getTransactionById(txId!);
+      expect(tx?.accountId, isNull);
+    });
+  });
+
+  // ============================================================
+  // 转账场景
+  // ============================================================
+
+  group('转账场景', () {
+    test('双账户都匹配 → from / to 分别落库', () async {
+      await repo.createCategory(name: '转账', kind: 'expense');
+      final fromAcc = await repo.createAccount(
+        ledgerId: ledgerId,
+        name: '建行',
+        currency: 'CNY',
+      );
+      final toAcc = await repo.createAccount(
+        ledgerId: ledgerId,
+        name: '微信零钱',
+        currency: 'CNY',
+      );
+
+      final txId = await service.createFromBill(
+        bill: BillInfo(
+          amount: 800,
+          time: DateTime(2026, 5, 26),
+          category: '转账',
+          type: BillType.transfer,
+          fromAccount: '建行',
+          toAccount: '微信零钱',
+        ),
+        ledgerId: ledgerId,
+      );
+      final tx = await repo.getTransactionById(txId!);
+      expect(tx?.type, 'transfer');
+      expect(tx?.accountId, fromAcc);
+      expect(tx?.toAccountId, toAcc);
+    });
+
+    test('from 和 to 匹配到同一账户 → toAccountId 置空', () async {
+      await repo.createCategory(name: '转账', kind: 'expense');
+      final acc = await repo.createAccount(
+        ledgerId: ledgerId,
+        name: '支付宝',
+        currency: 'CNY',
+      );
+      final txId = await service.createFromBill(
+        bill: BillInfo(
+          amount: 800,
+          time: DateTime(2026, 5, 26),
+          category: '转账',
+          type: BillType.transfer,
+          fromAccount: '支付宝',
+          toAccount: '支付宝',
+        ),
+        ledgerId: ledgerId,
+      );
+      final tx = await repo.getTransactionById(txId!);
+      expect(tx?.accountId, acc);
+      expect(tx?.toAccountId, isNull);
+    });
+
+    test('转账场景 fromAccount 缺失,fallback 到 account', () async {
+      await repo.createCategory(name: '转账', kind: 'expense');
+      final acc = await repo.createAccount(
+        ledgerId: ledgerId,
+        name: '建行',
+        currency: 'CNY',
+      );
+      final txId = await service.createFromBill(
+        bill: BillInfo(
+          amount: 800,
+          time: DateTime(2026, 5, 26),
+          category: '转账',
+          type: BillType.transfer,
+          account: '建行', // 没填 fromAccount,用 account 兜底
+        ),
+        ledgerId: ledgerId,
+      );
+      final tx = await repo.getTransactionById(txId!);
+      expect(tx?.accountId, acc);
+    });
+  });
+
+  // ============================================================
+  // 默认账户
+  // ============================================================
+
+  group('默认账户', () {
+    test('AI 未指定账户 + 已设默认账户(同币种) → 用默认', () async {
+      await repo.createCategory(name: '餐饮', kind: 'expense');
+      final defaultAcc = await repo.createAccount(
+        ledgerId: ledgerId,
+        name: '默认支出账户',
+        currency: 'CNY',
+      );
+      SharedPreferences.setMockInitialValues({
+        'account_feature_enabled': true,
+        'default_expense_account_id': defaultAcc,
+      });
+
+      final txId = await service.createFromBill(
+        bill: BillInfo(
+          amount: -30,
+          time: DateTime(2026, 5, 26),
+          category: '餐饮',
+          type: BillType.expense,
+        ),
+        ledgerId: ledgerId,
+      );
+      final tx = await repo.getTransactionById(txId!);
+      expect(tx?.accountId, defaultAcc);
+    });
+
+    test('默认账户币种不匹配 → 不使用', () async {
+      await repo.createCategory(name: '餐饮', kind: 'expense');
+      final usdAcc = await repo.createAccount(
+        ledgerId: ledgerId,
+        name: 'USD 账户',
+        currency: 'USD',
+      );
+      SharedPreferences.setMockInitialValues({
+        'account_feature_enabled': true,
+        'default_expense_account_id': usdAcc,
+      });
+
+      final txId = await service.createFromBill(
+        bill: BillInfo(
+          amount: -30,
+          time: DateTime(2026, 5, 26),
+          category: '餐饮',
+          type: BillType.expense,
+        ),
+        ledgerId: ledgerId, // CNY 账本
+      );
+      final tx = await repo.getTransactionById(txId!);
+      expect(tx?.accountId, isNull);
+    });
+
+    test('收入和支出的默认账户分开走', () async {
+      await repo.createCategory(name: '工资', kind: 'income');
+      final incomeAcc = await repo.createAccount(
+        ledgerId: ledgerId,
+        name: '工资卡',
+        currency: 'CNY',
+      );
+      final expenseAcc = await repo.createAccount(
+        ledgerId: ledgerId,
+        name: '日常支出卡',
+        currency: 'CNY',
+      );
+      SharedPreferences.setMockInitialValues({
+        'account_feature_enabled': true,
+        'default_income_account_id': incomeAcc,
+        'default_expense_account_id': expenseAcc,
+      });
+
+      final txId = await service.createFromBill(
+        bill: BillInfo(
+          amount: 5000,
+          time: DateTime(2026, 5, 26),
+          category: '工资',
+          type: BillType.income,
+        ),
+        ledgerId: ledgerId,
+      );
+      final tx = await repo.getTransactionById(txId!);
+      expect(tx?.accountId, incomeAcc);
+    });
+  });
+
+  // ============================================================
+  // 标签关联
+  // ============================================================
+
+  group('标签自动添加', () {
+    test('billingTypes 自定义标签都不传 → 不挂标签', () async {
+      await repo.createCategory(name: '餐饮', kind: 'expense');
+      final txId = await service.createFromBill(
+        bill: BillInfo(
+          amount: -30,
+          time: DateTime(2026, 5, 26),
+          category: '餐饮',
+          type: BillType.expense,
+        ),
+        ledgerId: ledgerId,
+      );
+      final tags = await repo.getTagsForTransaction(txId!);
+      expect(tags, isEmpty);
+    });
+
+    test('customTagNames 传入 → 创建并关联', () async {
+      await repo.createCategory(name: '餐饮', kind: 'expense');
+      final txId = await service.createFromBill(
+        bill: BillInfo(
+          amount: -30,
+          time: DateTime(2026, 5, 26),
+          category: '餐饮',
+          type: BillType.expense,
+        ),
+        ledgerId: ledgerId,
+        customTagNames: const ['朋友聚餐', '商务'],
+      );
+      final tags = await repo.getTagsForTransaction(txId!);
+      expect(tags.map((t) => t.name).toSet(),
+          containsAll({'朋友聚餐', '商务'}));
+    });
+
+    test('BillInfo.tags 也会被作为标签挂上', () async {
+      await repo.createCategory(name: '餐饮', kind: 'expense');
+      final txId = await service.createFromBill(
+        bill: BillInfo(
+          amount: -30,
+          time: DateTime(2026, 5, 26),
+          category: '餐饮',
+          type: BillType.expense,
+          tags: const ['出差'],
+        ),
+        ledgerId: ledgerId,
+      );
+      final tags = await repo.getTagsForTransaction(txId!);
+      expect(tags.map((t) => t.name), contains('出差'));
+    });
+
+    test('autoAddTags=false → 即使有 customTagNames 也不挂', () async {
+      await repo.createCategory(name: '餐饮', kind: 'expense');
+      final txId = await service.createFromBill(
+        bill: BillInfo(
+          amount: -30,
+          time: DateTime(2026, 5, 26),
+          category: '餐饮',
+          type: BillType.expense,
+        ),
+        ledgerId: ledgerId,
+        customTagNames: const ['朋友聚餐'],
+        autoAddTags: false,
+      );
+      final tags = await repo.getTagsForTransaction(txId!);
+      expect(tags, isEmpty);
+    });
+  });
+
+  // ============================================================
+  // 智能记账多币种(.docs/multi-currency-ai)
+  // ============================================================
+
+  group('交易币种', () {
+    test('回归锁:AI 没给币种 → currencyCode = 账本本位币', () async {
+      await repo.createCategory(name: '餐饮', kind: 'expense');
+      final txId = await service.createFromBill(
+        bill: BillInfo(
+          amount: -30,
+          time: DateTime(2026, 5, 26),
+          category: '餐饮',
+          type: BillType.expense,
+        ),
+        ledgerId: ledgerId,
+      );
+      final tx = await repo.getTransactionById(txId!);
+      expect(tx?.currencyCode, 'CNY');
+      expect(tx?.nativeAmount, 30);
+    });
+
+    test('AI 给外币 + 有同币种账户 → 命中该账户,币种为外币', () async {
+      await repo.createCategory(name: '餐饮', kind: 'expense');
+      final usdAcc = await repo.createAccount(
+        ledgerId: ledgerId,
+        name: 'Chase',
+        currency: 'USD',
+      );
+      final txId = await service.createFromBill(
+        bill: BillInfo(
+          amount: -45,
+          time: DateTime(2026, 5, 26),
+          category: '餐饮',
+          account: 'Chase',
+          currency: 'USD',
+          type: BillType.expense,
+        ),
+        ledgerId: ledgerId,
+      );
+      final tx = await repo.getTransactionById(txId!);
+      expect(tx?.accountId, usdAcc);
+      expect(tx?.currencyCode, 'USD');
+      expect(tx?.amount, 45); // 原币金额原样保存
+    });
+
+    test('AI 给外币但账本只有本位币账户 → 不挂账户,币种仍是外币(Q3)', () async {
+      await repo.createCategory(name: '餐饮', kind: 'expense');
+      await repo.createAccount(
+        ledgerId: ledgerId,
+        name: '招行',
+        currency: 'CNY',
+      );
+      final txId = await service.createFromBill(
+        bill: BillInfo(
+          amount: -1200,
+          time: DateTime(2026, 5, 26),
+          category: '餐饮',
+          currency: 'JPY',
+          type: BillType.expense,
+        ),
+        ledgerId: ledgerId,
+      );
+      final tx = await repo.getTransactionById(txId!);
+      expect(tx?.accountId, isNull);
+      expect(tx?.currencyCode, 'JPY');
+    });
+
+    test('账户与币种冲突 → 币种优先,不硬塞币种不符的账户(A2)', () async {
+      // 「用招行付了 45 美元」:招行是 CNY 账户。把 45 记成 45 元是比
+      // 「没匹配到账户」严重得多的错,所以宁可不挂账户。
+      await repo.createCategory(name: '餐饮', kind: 'expense');
+      await repo.createAccount(
+        ledgerId: ledgerId,
+        name: '招行',
+        currency: 'CNY',
+      );
+      final txId = await service.createFromBill(
+        bill: BillInfo(
+          amount: -45,
+          time: DateTime(2026, 5, 26),
+          category: '餐饮',
+          account: '招行',
+          currency: 'USD',
+          type: BillType.expense,
+        ),
+        ledgerId: ledgerId,
+      );
+      final tx = await repo.getTransactionById(txId!);
+      expect(tx?.currencyCode, 'USD');
+      expect(tx?.accountId, isNull);
+    });
+
+    test('AI 只给外币账户没给币种 → 币种随账户(L7)', () async {
+      await repo.createCategory(name: '餐饮', kind: 'expense');
+      final usdAcc = await repo.createAccount(
+        ledgerId: ledgerId,
+        name: 'Chase',
+        currency: 'USD',
+      );
+      final txId = await service.createFromBill(
+        bill: BillInfo(
+          amount: -45,
+          time: DateTime(2026, 5, 26),
+          category: '餐饮',
+          account: 'Chase',
+          type: BillType.expense,
+        ),
+        ledgerId: ledgerId,
+      );
+      final tx = await repo.getTransactionById(txId!);
+      expect(tx?.accountId, usdAcc);
+      expect(tx?.currencyCode, 'USD');
+    });
+
+    test('记外币时本位币的默认账户不适用', () async {
+      await repo.createCategory(name: '餐饮', kind: 'expense');
+      final cnyAcc = await repo.createAccount(
+        ledgerId: ledgerId,
+        name: '招行',
+        currency: 'CNY',
+      );
+      SharedPreferences.setMockInitialValues({
+        'default_expense_account_id': cnyAcc,
+      });
+      final txId = await service.createFromBill(
+        bill: BillInfo(
+          amount: -45,
+          time: DateTime(2026, 5, 26),
+          category: '餐饮',
+          currency: 'USD',
+          type: BillType.expense,
+        ),
+        ledgerId: ledgerId,
+      );
+      final tx = await repo.getTransactionById(txId!);
+      expect(tx?.accountId, isNull);
+      expect(tx?.currencyCode, 'USD');
+    });
+
+    test('缺汇率不阻断:仍落库,nativeAmount 退化成 amount(A5 + L11 可捞回)',
+        () async {
+      await repo.createCategory(name: '餐饮', kind: 'expense');
+      final txId = await service.createFromBill(
+        bill: BillInfo(
+          amount: -1200,
+          time: DateTime(2026, 5, 26),
+          category: '餐饮',
+          currency: 'JPY',
+          type: BillType.expense,
+        ),
+        ledgerId: ledgerId,
+      );
+      expect(txId, isNotNull);
+      final tx = await repo.getTransactionById(txId!);
+      expect(tx?.currencyCode, 'JPY');
+      expect(tx?.nativeAmount, tx?.amount); // 命中 L11 检测条件
+      expect(await repo.countUnconvertedForeignTx(ledgerId), 1);
+    });
+  });
+
+  group('跨币种转账守卫', () {
+    // 手动路径(transfer_form)会 toast 报错 + 重置转入账户;AI 无人值守,
+    // 退化成「匹配不到转入账户」。绝不能落一笔 from=CNY / to=USD 的转账。
+    test('转入账户与转出账户币种不同 → 不挂转入账户', () async {
+      final cny = await repo.createAccount(
+        ledgerId: ledgerId,
+        name: '建行',
+        currency: 'CNY',
+      );
+      await repo.createAccount(
+        ledgerId: ledgerId,
+        name: 'Chase',
+        currency: 'USD',
+      );
+      final txId = await service.createFromBill(
+        bill: BillInfo(
+          amount: 800,
+          time: DateTime(2026, 5, 26),
+          type: BillType.transfer,
+          fromAccount: '建行',
+          toAccount: 'Chase',
+        ),
+        ledgerId: ledgerId,
+      );
+      final tx = await repo.getTransactionById(txId!);
+      expect(tx?.accountId, cny);
+      expect(tx?.toAccountId, isNull, reason: '跨币种转账不能成立');
+      expect(tx?.currencyCode, 'CNY');
+    });
+
+    test('转出账户没匹配上 + AI 没给币种 → 转入账户也不能是外币账户', () async {
+      // 上一轮修守卫时漏掉的分支:from 没匹配上时池若不兜 ledgerBase 就全币种
+      // 开放,于是这笔按 CNY 落库、却挂了个 USD 转入账户 —— 账户余额读原币
+      // amount,800 会当成 800 美元加到 USD 账户上。
+      await repo.createAccount(
+        ledgerId: ledgerId,
+        name: 'Chase',
+        currency: 'USD',
+      );
+      final txId = await service.createFromBill(
+        bill: BillInfo(
+          amount: 800,
+          time: DateTime(2026, 5, 26),
+          type: BillType.transfer,
+          fromAccount: '不存在的账户',
+          toAccount: 'Chase',
+        ),
+        ledgerId: ledgerId,
+      );
+      final tx = await repo.getTransactionById(txId!);
+      expect(tx?.currencyCode, 'CNY');
+      expect(tx?.toAccountId, isNull,
+          reason: 'CNY 的转账不能挂 USD 转入账户');
+    });
+
+    test('同币种转账照常双端命中(回归锁)', () async {
+      final from = await repo.createAccount(
+        ledgerId: ledgerId,
+        name: '建行',
+        currency: 'CNY',
+      );
+      final to = await repo.createAccount(
+        ledgerId: ledgerId,
+        name: '零钱包',
+        currency: 'CNY',
+      );
+      final txId = await service.createFromBill(
+        bill: BillInfo(
+          amount: 800,
+          time: DateTime(2026, 5, 26),
+          type: BillType.transfer,
+          fromAccount: '建行',
+          toAccount: '零钱包',
+        ),
+        ledgerId: ledgerId,
+      );
+      final tx = await repo.getTransactionById(txId!);
+      expect(tx?.accountId, from);
+      expect(tx?.toAccountId, to);
+    });
+
+    test('外币账户之间的同币种转账成立', () async {
+      final from = await repo.createAccount(
+        ledgerId: ledgerId,
+        name: 'Chase',
+        currency: 'USD',
+      );
+      final to = await repo.createAccount(
+        ledgerId: ledgerId,
+        name: 'PayPal',
+        currency: 'USD',
+      );
+      final txId = await service.createFromBill(
+        bill: BillInfo(
+          amount: 100,
+          time: DateTime(2026, 5, 26),
+          type: BillType.transfer,
+          fromAccount: 'Chase',
+          toAccount: 'PayPal',
+        ),
+        ledgerId: ledgerId,
+      );
+      final tx = await repo.getTransactionById(txId!);
+      expect(tx?.accountId, from);
+      expect(tx?.toAccountId, to);
+      expect(tx?.currencyCode, 'USD');
+    });
+  });
+
+  group('汇率预拉回调(A6)', () {
+    test('外币 → ensureRate 被调用一次,参数是该币种', () async {
+      await repo.createCategory(name: '餐饮', kind: 'expense');
+      final calls = <String>[];
+      final svc = BillCreationService(repo, ensureRate: (code) async {
+        calls.add(code);
+        return true;
+      });
+      await svc.createFromBill(
+        bill: BillInfo(
+          amount: -1200,
+          time: DateTime(2026, 5, 26),
+          category: '餐饮',
+          currency: 'JPY',
+          type: BillType.expense,
+        ),
+        ledgerId: ledgerId,
+      );
+      expect(calls, ['JPY']);
+    });
+
+    test('本地已有该币种汇率 → 不再拉(否则每笔外币都打一次 force 请求)',
+        () async {
+      await repo.createCategory(name: '餐饮', kind: 'expense');
+      await repo.upsertAutoRates(
+        base: 'CNY',
+        rateDate: '2026-05-26',
+        rates: const {'JPY': '0.048'},
+        source: 'test',
+        fetchedAt: DateTime.utc(2026, 5, 26),
+      );
+      final calls = <String>[];
+      final svc = BillCreationService(repo, ensureRate: (code) async {
+        calls.add(code);
+        return true;
+      });
+      final txId = await svc.createFromBill(
+        bill: BillInfo(
+          amount: -1200,
+          time: DateTime(2026, 5, 26),
+          category: '餐饮',
+          currency: 'JPY',
+          type: BillType.expense,
+        ),
+        ledgerId: ledgerId,
+      );
+      expect(calls, isEmpty);
+      // 本地汇率照常参与折算(1200 × 0.048 = 57.6)
+      final tx = await repo.getTransactionById(txId!);
+      expect(tx?.nativeAmount, closeTo(57.6, 0.001));
+    });
+
+    test('手动 override 也算本地已有', () async {
+      await repo.createCategory(name: '餐饮', kind: 'expense');
+      await repo.setOverride(base: 'CNY', quote: 'JPY', rate: '0.05');
+      final calls = <String>[];
+      final svc = BillCreationService(repo, ensureRate: (code) async {
+        calls.add(code);
+        return true;
+      });
+      await svc.createFromBill(
+        bill: BillInfo(
+          amount: -1000,
+          time: DateTime(2026, 5, 26),
+          category: '餐饮',
+          currency: 'JPY',
+          type: BillType.expense,
+        ),
+        ledgerId: ledgerId,
+      );
+      expect(calls, isEmpty);
+    });
+
+    test('本位币 → 不调用(单币种用户不会因此多一次网络请求)', () async {
+      await repo.createCategory(name: '餐饮', kind: 'expense');
+      final calls = <String>[];
+      final svc = BillCreationService(repo, ensureRate: (code) async {
+        calls.add(code);
+        return true;
+      });
+      await svc.createFromBill(
+        bill: BillInfo(
+          amount: -30,
+          time: DateTime(2026, 5, 26),
+          category: '餐饮',
+          type: BillType.expense,
+        ),
+        ledgerId: ledgerId,
+      );
+      expect(calls, isEmpty);
+    });
+
+    test('ensureRate 抛异常 → 吞掉,交易照常落库(不能因为拉汇率失败丢账)',
+        () async {
+      await repo.createCategory(name: '餐饮', kind: 'expense');
+      final svc = BillCreationService(repo, ensureRate: (_) async {
+        throw Exception('network down');
+      });
+      final txId = await svc.createFromBill(
+        bill: BillInfo(
+          amount: -1200,
+          time: DateTime(2026, 5, 26),
+          category: '餐饮',
+          currency: 'JPY',
+          type: BillType.expense,
+        ),
+        ledgerId: ledgerId,
+      );
+      expect(txId, isNotNull);
+      final tx = await repo.getTransactionById(txId!);
+      expect(tx?.currencyCode, 'JPY');
+    });
+  });
+}

@@ -1,0 +1,74 @@
+# Uncomment this line to define a global platform for your project
+# 历史:之前为 MLKit 锁 15.5,v3.2.1 删 OCR 后没了硬要求,保留 15.5 是因为
+# AppIntents 系列 API 仍要 iOS 16+(弱链接 + 条件编译运行时回退)。
+platform :ios, '15.5'
+
+# CocoaPods analytics sends network stats synchronously affecting flutter build latency.
+ENV['COCOAPODS_DISABLE_STATS'] = 'true'
+
+project 'Runner', {
+  'Debug' => :debug,
+  'Profile' => :release,
+  'Release' => :release,
+}
+
+def flutter_root
+  generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
+  unless File.exist?(generated_xcode_build_settings_path)
+    raise "#{generated_xcode_build_settings_path} must exist. If you're running pod install manually, make sure flutter pub get is executed first"
+  end
+
+  File.foreach(generated_xcode_build_settings_path) do |line|
+    matches = line.match(/FLUTTER_ROOT\=(.*)/)
+    return matches[1].strip if matches
+  end
+  raise "FLUTTER_ROOT not found in #{generated_xcode_build_settings_path}. Try deleting Generated.xcconfig, then run flutter pub get"
+end
+
+require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
+
+flutter_ios_podfile_setup
+
+target 'Runner' do
+  use_frameworks!
+  use_modular_headers!
+
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+
+  target 'RunnerTests' do
+    inherit! :search_paths
+  end
+end
+
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    flutter_additional_ios_build_settings(target)
+
+    target.build_configurations.each do |config|
+      # permission_handler 权限配置
+      # 只启用需要的权限，避免 App Store 审核时被拒
+      config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= [
+        '$(inherited)',
+        ## dart: PermissionGroup.camera
+        'PERMISSION_CAMERA=1',
+        ## dart: PermissionGroup.microphone
+        'PERMISSION_MICROPHONE=1',
+        ## dart: PermissionGroup.photos
+        'PERMISSION_PHOTOS=1',
+        ## dart: PermissionGroup.notification
+        'PERMISSION_NOTIFICATIONS=1',
+      ]
+
+      # 针对sqlite3等C库禁用常见警告
+      if target.name == 'sqlite3'
+        config.build_settings['GCC_WARN_64_TO_32_BIT_CONVERSION'] = 'NO'
+        config.build_settings['CLANG_WARN_COMMA'] = 'NO'
+        config.build_settings['CLANG_WARN_UNREACHABLE_CODE'] = 'NO'
+        config.build_settings['GCC_WARN_ABOUT_DEPRECATED_FUNCTIONS'] = 'NO'
+      end
+
+      # 为所有第三方库禁用某些不重要的警告
+      config.build_settings['GCC_WARN_INHIBIT_ALL_WARNINGS'] = 'YES'
+    end
+  end
+end

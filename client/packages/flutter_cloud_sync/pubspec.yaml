@@ -1,0 +1,39 @@
+name: flutter_cloud_sync
+description: A modular cloud sync framework for Flutter with pluggable backend providers
+version: 0.1.0
+publish_to: none
+homepage: https://github.com/TNT-Likely/BeeCount
+repository: https://github.com/TNT-Likely/BeeCount/tree/main/packages/flutter_cloud_sync
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+  flutter: '>=3.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  crypto: ^3.0.3
+  device_info_plus: ^11.1.0
+  package_info_plus: ^8.1.2
+  http: ^1.2.2
+  meta: ^1.9.0
+  shared_preferences: ^2.2.2
+  web_socket_channel: ^3.0.1
+  flutter_cloud_sync_supabase:
+    path: ../flutter_cloud_sync_supabase
+  flutter_cloud_sync_webdav:
+    path: ../flutter_cloud_sync_webdav
+  flutter_cloud_sync_icloud:
+    path: ../flutter_cloud_sync_icloud
+  flutter_cloud_sync_s3:
+    path: ../flutter_cloud_sync_s3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^2.0.0
+  mockito: ^5.4.0
+  build_runner: ^2.4.0
+
+flutter:
+  # This package is a pure Dart package

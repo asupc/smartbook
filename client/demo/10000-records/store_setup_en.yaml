@@ -1,0 +1,708 @@
+# SmartBook 配置（测试 / 截图用）
+# 语言 / 货币：English / USD
+# 导出时间：2026-06-11T11:05:25
+
+version: 1
+exported_at: "2026-06-11T11:05:25"
+
+# ----- 账本(3 个,第一本是默认账本,CSV 数据导入到它)-----
+ledgers:
+  items:
+    - name: "Default"
+      currency: "USD"
+      type: "personal"
+    - name: "Business Travel"
+      currency: "USD"
+      type: "personal"
+    - name: "Family"
+      currency: "USD"
+      type: "shared"
+
+# ----- 账户(5 个)-----
+accounts:
+  items:
+    - name: "Chase Credit"
+      type: "credit_card"
+      currency: "USD"
+      initial_balance: 0.0
+    - name: "Apple Pay"
+      type: "cash"
+      currency: "USD"
+      initial_balance: 0.0
+    - name: "PayPal"
+      type: "cash"
+      currency: "USD"
+      initial_balance: 0.0
+    - name: "BoA Checking"
+      type: "bank_card"
+      currency: "USD"
+      initial_balance: 0.0
+    - name: "Cash"
+      type: "cash"
+      currency: "USD"
+      initial_balance: 0.0
+
+# ----- 分类(45 支出一级 + 25 支出二级 + 14 收入一级 + 4 收入二级)-----
+categories:
+  items:
+    - name: "Dining"
+      kind: "expense"
+      sort_order: 0
+      level: 1
+      icon: "restaurant"
+      icon_type: "material"
+    - name: "Transport"
+      kind: "expense"
+      sort_order: 1
+      level: 1
+      icon: "directions_car"
+      icon_type: "material"
+    - name: "Shopping"
+      kind: "expense"
+      sort_order: 2
+      level: 1
+      icon: "shopping_cart"
+      icon_type: "material"
+    - name: "Entertainment"
+      kind: "expense"
+      sort_order: 3
+      level: 1
+      icon: "movie"
+      icon_type: "material"
+    - name: "Home"
+      kind: "expense"
+      sort_order: 4
+      level: 1
+      icon: "home"
+      icon_type: "material"
+    - name: "Family"
+      kind: "expense"
+      sort_order: 5
+      level: 1
+      icon: "family_restroom"
+      icon_type: "material"
+    - name: "Communication"
+      kind: "expense"
+      sort_order: 6
+      level: 1
+      icon: "phone"
+      icon_type: "material"
+    - name: "Utilities"
+      kind: "expense"
+      sort_order: 7
+      level: 1
+      icon: "flash_on"
+      icon_type: "material"
+    - name: "Housing"
+      kind: "expense"
+      sort_order: 8
+      level: 1
+      icon: "home_work"
+      icon_type: "material"
+    - name: "Medical"
+      kind: "expense"
+      sort_order: 9
+      level: 1
+      icon: "local_hospital"
+      icon_type: "material"
+    - name: "Education"
+      kind: "expense"
+      sort_order: 10
+      level: 1
+      icon: "school"
+      icon_type: "material"
+    - name: "Pets"
+      kind: "expense"
+      sort_order: 11
+      level: 1
+      icon: "pets"
+      icon_type: "material"
+    - name: "Sports"
+      kind: "expense"
+      sort_order: 12
+      level: 1
+      icon: "fitness_center"
+      icon_type: "material"
+    - name: "Digital"
+      kind: "expense"
+      sort_order: 13
+      level: 1
+      icon: "smartphone"
+      icon_type: "material"
+    - name: "Travel"
+      kind: "expense"
+      sort_order: 14
+      level: 1
+      icon: "flight"
+      icon_type: "material"
+    - name: "Alcohol & Tobacco"
+      kind: "expense"
+      sort_order: 15
+      level: 1
+      icon: "local_bar"
+      icon_type: "material"
+    - name: "Baby Care"
+      kind: "expense"
+      sort_order: 16
+      level: 1
+      icon: "child_care"
+      icon_type: "material"
+    - name: "Beauty"
+      kind: "expense"
+      sort_order: 17
+      level: 1
+      icon: "face"
+      icon_type: "material"
+    - name: "Repair"
+      kind: "expense"
+      sort_order: 18
+      level: 1
+      icon: "handyman"
+      icon_type: "material"
+    - name: "Social"
+      kind: "expense"
+      sort_order: 19
+      level: 1
+      icon: "group"
+      icon_type: "material"
+    - name: "Learning"
+      kind: "expense"
+      sort_order: 20
+      level: 1
+      icon: "school"
+      icon_type: "material"
+    - name: "Car"
+      kind: "expense"
+      sort_order: 21
+      level: 1
+      icon: "directions_car"
+      icon_type: "material"
+    - name: "Taxi"
+      kind: "expense"
+      sort_order: 22
+      level: 1
+      icon: "local_taxi"
+      icon_type: "material"
+    - name: "Subway"
+      kind: "expense"
+      sort_order: 23
+      level: 1
+      icon: "directions_subway"
+      icon_type: "material"
+    - name: "Delivery"
+      kind: "expense"
+      sort_order: 24
+      level: 1
+      icon: "delivery_dining"
+      icon_type: "material"
+    - name: "Property"
+      kind: "expense"
+      sort_order: 25
+      level: 1
+      icon: "apartment"
+      icon_type: "material"
+    - name: "Parking"
+      kind: "expense"
+      sort_order: 26
+      level: 1
+      icon: "local_parking"
+      icon_type: "material"
+    - name: "Donation"
+      kind: "expense"
+      sort_order: 27
+      level: 1
+      icon: "volunteer_activism"
+      icon_type: "material"
+    - name: "Give Gift"
+      kind: "expense"
+      sort_order: 28
+      level: 1
+      icon: "card_giftcard"
+      icon_type: "material"
+    - name: "Tax"
+      kind: "expense"
+      sort_order: 29
+      level: 1
+      icon: "receipt_long"
+      icon_type: "material"
+    - name: "Beverage"
+      kind: "expense"
+      sort_order: 30
+      level: 1
+      icon: "local_cafe"
+      icon_type: "material"
+    - name: "Clothing"
+      kind: "expense"
+      sort_order: 31
+      level: 1
+      icon: "checkroom"
+      icon_type: "material"
+    - name: "Snacks"
+      kind: "expense"
+      sort_order: 32
+      level: 1
+      icon: "fastfood"
+      icon_type: "material"
+    - name: "Send Red Packet"
+      kind: "expense"
+      sort_order: 33
+      level: 1
+      icon: "wallet"
+      icon_type: "material"
+    - name: "Fruit"
+      kind: "expense"
+      sort_order: 34
+      level: 1
+      icon: "eco"
+      icon_type: "material"
+    - name: "Game"
+      kind: "expense"
+      sort_order: 35
+      level: 1
+      icon: "sports_esports"
+      icon_type: "material"
+    - name: "Book"
+      kind: "expense"
+      sort_order: 36
+      level: 1
+      icon: "menu_book"
+      icon_type: "material"
+    - name: "Lover"
+      kind: "expense"
+      sort_order: 37
+      level: 1
+      icon: "favorite"
+      icon_type: "material"
+    - name: "Decoration"
+      kind: "expense"
+      sort_order: 38
+      level: 1
+      icon: "home_repair_service"
+      icon_type: "material"
+    - name: "Daily Goods"
+      kind: "expense"
+      sort_order: 39
+      level: 1
+      icon: "local_laundry_service"
+      icon_type: "material"
+    - name: "Lottery"
+      kind: "expense"
+      sort_order: 40
+      level: 1
+      icon: "confirmation_number"
+      icon_type: "material"
+    - name: "Stock"
+      kind: "expense"
+      sort_order: 41
+      level: 1
+      icon: "trending_up"
+      icon_type: "material"
+    - name: "Social Security"
+      kind: "expense"
+      sort_order: 42
+      level: 1
+      icon: "security"
+      icon_type: "material"
+    - name: "Express"
+      kind: "expense"
+      sort_order: 43
+      level: 1
+      icon: "local_shipping"
+      icon_type: "material"
+    - name: "Work"
+      kind: "expense"
+      sort_order: 44
+      level: 1
+      icon: "work_outline"
+      icon_type: "material"
+    - name: "Breakfast"
+      kind: "expense"
+      sort_order: 0
+      level: 2
+      parent_name: "Dining"
+      icon: "free_breakfast"
+      icon_type: "material"
+    - name: "Lunch"
+      kind: "expense"
+      sort_order: 1
+      level: 2
+      parent_name: "Dining"
+      icon: "lunch_dining"
+      icon_type: "material"
+    - name: "Dinner"
+      kind: "expense"
+      sort_order: 2
+      level: 2
+      parent_name: "Dining"
+      icon: "dinner_dining"
+      icon_type: "material"
+    - name: "Late Night"
+      kind: "expense"
+      sort_order: 3
+      level: 2
+      parent_name: "Dining"
+      icon: "nightlife"
+      icon_type: "material"
+    - name: "Bus"
+      kind: "expense"
+      sort_order: 4
+      level: 2
+      parent_name: "Transport"
+      icon: "directions_bus"
+      icon_type: "material"
+    - name: "Train"
+      kind: "expense"
+      sort_order: 5
+      level: 2
+      parent_name: "Transport"
+      icon: "train"
+      icon_type: "material"
+    - name: "Coach"
+      kind: "expense"
+      sort_order: 6
+      level: 2
+      parent_name: "Transport"
+      icon: "airport_shuttle"
+      icon_type: "material"
+    - name: "Shoes"
+      kind: "expense"
+      sort_order: 7
+      level: 2
+      parent_name: "Shopping"
+      icon: "ice_skating"
+      icon_type: "material"
+    - name: "Furniture"
+      kind: "expense"
+      sort_order: 8
+      level: 2
+      parent_name: "Shopping"
+      icon: "chair"
+      icon_type: "material"
+    - name: "Appliances"
+      kind: "expense"
+      sort_order: 9
+      level: 2
+      parent_name: "Shopping"
+      icon: "kitchen"
+      icon_type: "material"
+    - name: "Movie"
+      kind: "expense"
+      sort_order: 10
+      level: 2
+      parent_name: "Entertainment"
+      icon: "theaters"
+      icon_type: "material"
+    - name: "KTV"
+      kind: "expense"
+      sort_order: 11
+      level: 2
+      parent_name: "Entertainment"
+      icon: "mic"
+      icon_type: "material"
+    - name: "Concert"
+      kind: "expense"
+      sort_order: 12
+      level: 2
+      parent_name: "Entertainment"
+      icon: "music_note"
+      icon_type: "material"
+    - name: "Outpatient"
+      kind: "expense"
+      sort_order: 13
+      level: 2
+      parent_name: "Medical"
+      icon: "medical_services"
+      icon_type: "material"
+    - name: "Medicine"
+      kind: "expense"
+      sort_order: 14
+      level: 2
+      parent_name: "Medical"
+      icon: "medication"
+      icon_type: "material"
+    - name: "Checkup"
+      kind: "expense"
+      sort_order: 15
+      level: 2
+      parent_name: "Medical"
+      icon: "monitor_heart"
+      icon_type: "material"
+    - name: "Training"
+      kind: "expense"
+      sort_order: 16
+      level: 2
+      parent_name: "Education"
+      icon: "model_training"
+      icon_type: "material"
+    - name: "Online Course"
+      kind: "expense"
+      sort_order: 17
+      level: 2
+      parent_name: "Education"
+      icon: "ondemand_video"
+      icon_type: "material"
+    - name: "Textbook"
+      kind: "expense"
+      sort_order: 18
+      level: 2
+      parent_name: "Education"
+      icon: "auto_stories"
+      icon_type: "material"
+    - name: "Flight"
+      kind: "expense"
+      sort_order: 19
+      level: 2
+      parent_name: "Travel"
+      icon: "flight_takeoff"
+      icon_type: "material"
+    - name: "Hotel"
+      kind: "expense"
+      sort_order: 20
+      level: 2
+      parent_name: "Travel"
+      icon: "hotel"
+      icon_type: "material"
+    - name: "Ticket"
+      kind: "expense"
+      sort_order: 21
+      level: 2
+      parent_name: "Travel"
+      icon: "confirmation_number"
+      icon_type: "material"
+    - name: "Accessories"
+      kind: "expense"
+      sort_order: 22
+      level: 2
+      parent_name: "Digital"
+      icon: "cable"
+      icon_type: "material"
+    - name: "Phone"
+      kind: "expense"
+      sort_order: 23
+      level: 2
+      parent_name: "Digital"
+      icon: "phone_iphone"
+      icon_type: "material"
+    - name: "Computer"
+      kind: "expense"
+      sort_order: 24
+      level: 2
+      parent_name: "Digital"
+      icon: "laptop"
+      icon_type: "material"
+    - name: "Salary"
+      kind: "income"
+      sort_order: 0
+      level: 1
+      icon: "work"
+      icon_type: "material"
+    - name: "Investment"
+      kind: "income"
+      sort_order: 1
+      level: 1
+      icon: "account_balance"
+      icon_type: "material"
+    - name: "Receive Red Packet"
+      kind: "income"
+      sort_order: 2
+      level: 1
+      icon: "wallet"
+      icon_type: "material"
+    - name: "Bonus"
+      kind: "income"
+      sort_order: 3
+      level: 1
+      icon: "emoji_events"
+      icon_type: "material"
+    - name: "Reimbursement"
+      kind: "income"
+      sort_order: 4
+      level: 1
+      icon: "receipt"
+      icon_type: "material"
+    - name: "Part-time"
+      kind: "income"
+      sort_order: 5
+      level: 1
+      icon: "schedule"
+      icon_type: "material"
+    - name: "Receive Gift"
+      kind: "income"
+      sort_order: 6
+      level: 1
+      icon: "card_giftcard"
+      icon_type: "material"
+    - name: "Interest"
+      kind: "income"
+      sort_order: 7
+      level: 1
+      icon: "monetization_on"
+      icon_type: "material"
+    - name: "Refund"
+      kind: "income"
+      sort_order: 8
+      level: 1
+      icon: "undo"
+      icon_type: "material"
+    - name: "Investment Income"
+      kind: "income"
+      sort_order: 9
+      level: 1
+      icon: "trending_up"
+      icon_type: "material"
+    - name: "Second-hand"
+      kind: "income"
+      sort_order: 10
+      level: 1
+      icon: "sell"
+      icon_type: "material"
+    - name: "Social Benefit"
+      kind: "income"
+      sort_order: 11
+      level: 1
+      icon: "health_and_safety"
+      icon_type: "material"
+    - name: "Tax Refund"
+      kind: "income"
+      sort_order: 12
+      level: 1
+      icon: "receipt_long"
+      icon_type: "material"
+    - name: "Provident Fund"
+      kind: "income"
+      sort_order: 13
+      level: 1
+      icon: "account_balance_wallet"
+      icon_type: "material"
+    - name: "Base Salary"
+      kind: "income"
+      sort_order: 0
+      level: 2
+      parent_name: "Salary"
+      icon: "payments"
+      icon_type: "material"
+    - name: "Overtime"
+      kind: "income"
+      sort_order: 1
+      level: 2
+      parent_name: "Salary"
+      icon: "more_time"
+      icon_type: "material"
+    - name: "Dividend"
+      kind: "income"
+      sort_order: 2
+      level: 2
+      parent_name: "Investment Income"
+      icon: "savings"
+      icon_type: "material"
+    - name: "Fund Distribution"
+      kind: "income"
+      sort_order: 3
+      level: 2
+      parent_name: "Investment Income"
+      icon: "pie_chart"
+      icon_type: "material"
+
+# ----- 标签(24 个,含 Material 调色板颜色)-----
+tags:
+  items:
+    - name: "Meituan"
+      color: "#FF5722"
+    - name: "Eleme"
+      color: "#2196F3"
+    - name: "Taobao"
+      color: "#FF9800"
+    - name: "JD.com"
+      color: "#F44336"
+    - name: "Pinduoduo"
+      color: "#E91E63"
+    - name: "Starbucks"
+      color: "#009688"
+    - name: "Luckin Coffee"
+      color: "#795548"
+    - name: "McDonald's"
+      color: "#FFC107"
+    - name: "KFC"
+      color: "#D32F2F"
+    - name: "Hema"
+      color: "#00BCD4"
+    - name: "Sam's Club"
+      color: "#3F51B5"
+    - name: "Costco"
+      color: "#673AB7"
+    - name: "Business Trip"
+      color: "#607D8B"
+    - name: "Travel"
+      color: "#00E676"
+    - name: "Dining Out"
+      color: "#FF4081"
+    - name: "Online Shopping"
+      color: "#536DFE"
+    - name: "Daily"
+      color: "#8BC34A"
+    - name: "Reimbursement"
+      color: "#9C27B0"
+    - name: "Refundable"
+      color: "#CDDC39"
+    - name: "Refunded"
+      color: "#4CAF50"
+    - name: "Voice"
+      color: "#FF9800"
+    - name: "Image"
+      color: "#4CAF50"
+    - name: "Photo"
+      color: "#2196F3"
+    - name: "AI"
+      color: "#9C27B0"
+
+# ----- 预算(2 个总预算 + 8 个分类预算)-----
+budgets:
+  items:
+    - ledger_name: "Default"
+      type: "total"
+      amount: 1500.0
+      start_day: 1
+    - ledger_name: "Business Travel"
+      type: "total"
+      amount: 500.0
+      start_day: 1
+    - ledger_name: "Default"
+      type: "category"
+      amount: 300.0
+      start_day: 1
+      category_name: "Dining"
+    - ledger_name: "Default"
+      type: "category"
+      amount: 250.0
+      start_day: 1
+      category_name: "Shopping"
+    - ledger_name: "Default"
+      type: "category"
+      amount: 120.0
+      start_day: 1
+      category_name: "Transport"
+    - ledger_name: "Default"
+      type: "category"
+      amount: 100.0
+      start_day: 1
+      category_name: "Entertainment"
+    - ledger_name: "Default"
+      type: "category"
+      amount: 80.0
+      start_day: 1
+      category_name: "Utilities"
+    - ledger_name: "Default"
+      type: "category"
+      amount: 40.0
+      start_day: 1
+      category_name: "Communication"
+    - ledger_name: "Default"
+      type: "category"
+      amount: 150.0
+      start_day: 1
+      category_name: "Delivery"
+    - ledger_name: "Default"
+      type: "category"
+      amount: 40.0
+      start_day: 1
+      category_name: "Beverage"

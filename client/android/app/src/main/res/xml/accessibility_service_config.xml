@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 账单详情页自动记账无障碍服务配置。
+     packageNames 已移除(原因见文末注释):系统会向本服务投递所有前台 App 的
+     无障碍事件,由 Kotlin 侧 ScreenTextWatcher.TRUSTED_PACKAGES 做子串过滤
+     (该过滤本就存在,隐私边界不回退)。
+     isAccessibilityTool(2026-09):声明本服务是「无障碍工具」,供 Play 审核/系统
+     分类用,非「一开就关」的修复手段。vivo OriginOS「一开就关」的真正根因是
+     Android 13+ 对「侧载 + targetSdk>=33」的受限设置管控,已通过 build.gradle
+     将 targetSdk 降到 32 解决(见 build.gradle 注释)。 -->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/accessibility_service_description"
+    android:settingsActivity="com.smartbook.zhi.MainActivity"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:notificationTimeout="200"
+    android:accessibilityFlags="flagDefault"
+    android:canRetrieveWindowContent="true"
+    android:canPerformGestures="true"
+    android:isAccessibilityTool="true" />
+<!-- 白名单 packageNames 已移除(2026-09 vivo 秒关排查):李跳跳能通过 vivo 离页
+     校验的唯一剩余差异就是它不声明 packageNames(接收全部 App 事件)。声明白名单
+     = 自报"我只监听支付/购物 App" = 风控特征。移除后由 Kotlin 侧 TRUSTED_PACKAGES
+     在事件到达时过滤(该过滤本就存在,功能不变),隐私边界不回退。 -->

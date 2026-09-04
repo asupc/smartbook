@@ -1,0 +1,23 @@
+name: flutter_cloud_sync_webdav
+description: WebDAV provider for flutter_cloud_sync
+version: 0.1.0
+publish_to: none
+homepage: https://github.com/TNT-Likely/BeeCount
+repository: https://github.com/TNT-Likely/BeeCount/tree/main/packages/flutter_cloud_sync_webdav
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+  flutter: '>=3.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_cloud_sync:
+    path: ../flutter_cloud_sync
+  webdav_client: ^1.2.2
+  http: ^1.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^2.0.0

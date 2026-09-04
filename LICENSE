@@ -1,0 +1,12 @@
+# 许可证 / License
+
+本项目为 **BeeCount / BeeCount-Cloud** 的下游衍生作品,全部代码遵循
+上游原始许可协议(许可文本原样保留,未做任何修改):
+
+- 客户端(Fork BeeCount):`client/LICENSE`(中文)/ `client/LICENSE_EN`(英文)
+- 服务端(Fork BeeCount-Cloud):`server/LICENSE`(中文)/ `server/LICENSE_EN`(英文)
+- 商业授权说明(价格与购买流程):`client/COMMERCIAL_LICENSE.md`
+
+个人使用、学习研究、非营利组织、开源贡献**免费**;
+商业使用(为客户提供产品或服务、盈利性组织内部使用、SaaS / 白标 / 闭源发布)
+需购买商业授权。

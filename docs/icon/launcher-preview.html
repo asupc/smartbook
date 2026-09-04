@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>智记 SmartBook —— 启动图标成品预览</title>
+<style>
+  body { margin:0; padding:40px 32px; background:#0B0D12; color:#EDF2F7;
+         font-family:"Segoe UI","Microsoft YaHei",sans-serif; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  .sub { color:#8A94A6; margin:0 0 28px; font-size:13px; }
+  .cards { display:flex; gap:28px; align-items:flex-start; }
+  .card { background:#15181F; border:1px solid #232833; border-radius:16px;
+          padding:22px; text-align:center; }
+  .card h2 { font-size:14px; margin:14px 0 4px; }
+  .card p { font-size:12px; color:#9AA4B5; margin:0; }
+  .legacy { width:144px; height:144px; }
+  .adaptive { width:144px; height:144px; border-radius:32px;
+              background:#132040; overflow:hidden;
+              display:flex; align-items:center; justify-content:center; }
+  .adaptive img { width:144px; height:144px; }
+  .small48 { width:48px; height:48px; }
+  .small24 { width:24px; height:24px; }
+</style>
+</head>
+<body>
+  <h1>智记 SmartBook —— 启动图标成品(方案 A · 闪电票据)</h1>
+  <p class="sub">自动写入 client/android | 旧式 = mipmap/ic_launcher.png(渐变底) · 自适应 = 前景层(透明) + 背景色 #132040 · 单色 = 主题图标</p>
+  <div class="cards">
+    <div class="card">
+      <img class="legacy" src="_preview-legacy.png" alt="旧式">
+      <h2>旧式启动图标</h2>
+      <p>mipmap-xxhdpi/ic_launcher.png(144px,共 5 档)</p>
+    </div>
+    <div class="card">
+      <div class="adaptive">
+        <img src="_preview-fg.png" alt="自适应">
+      </div>
+      <h2>自适应图标(模拟)</h2>
+      <p>前景层(透明)+ ic_launcher_background #132040</p>
+    </div>
+    <div class="card">
+      <img class="small48" src="_preview-48.png" alt="48px">
+      <img class="small24" src="_preview-24.png" alt="24px" style="border-radius:6px">
+      <h2>小尺寸观感</h2>
+      <p>48px / 24px 在桌面仍可辨识</p>
+    </div>
+  </div>
+</body>
+</html>

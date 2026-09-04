@@ -1,0 +1,608 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  Camera,
+  Check,
+  ChevronDown,
+  Loader2,
+  Moon,
+  MoonStar,
+  Palette,
+  Pencil,
+  Sun,
+  Sunrise,
+  X,
+  type LucideIcon,
+} from 'lucide-react'
+
+import { Button, Card, Input, Modal, Select, Switch } from 'antd'
+import {
+  PrimaryColorPicker,
+  useT,
+  useToast,
+  usePrimaryColor,
+} from '@smartbook/ui'
+
+import { patchProfileMe, uploadProfileAvatar } from '@smartbook/api-client'
+
+import { useAuth } from '../../context/AuthContext'
+import {
+  HEADER_SKINS,
+  HEADER_SKIN_GROUP_ORDER,
+  boundPrimaryOf,
+  headerSkinGroupLabelKey,
+  headerSkinLabelKey,
+} from '../../lib/header-skins'
+import { localizeError } from '../../i18n/errors'
+import { SettingsExchangeRatesSection } from './SettingsExchangeRatesSection'
+
+
+const AVATAR_MAX_BYTES = 4 * 1024 * 1024 // 4 MB,跟 server 限制一致
+const DISPLAY_NAME_MAX = 60
+
+// 主币种候选列表 —— 跟 mobile prefs `baseCurrency` 常见取值对齐。当前值不在列表时
+// 会在下方动态补进去,保证旧值也能正常展示 / 选中。
+const PRIMARY_CURRENCY_OPTIONS = [
+  'CNY', 'USD', 'EUR', 'JPY', 'HKD', 'GBP', 'KRW', 'SGD',
+  'AUD', 'CAD', 'TWD', 'THB', 'MYR', 'RUB', 'INR', 'CHF',
+]
+
+/** 按本地时段返回欢迎语 i18n key + 配图 —— 5-11 / 11-13 / 13-18 / 18-23 /
+ *  23-5。icon 用 lucide-react,不同时段 vibe 不同。 */
+function pickGreeting(): { key: string; icon: LucideIcon; tone: string } {
+  const h = new Date().getHours()
+  if (h >= 5 && h < 11)
+    return { key: 'profile.greeting.morning', icon: Sunrise, tone: 'text-amber-500' }
+  if (h >= 11 && h < 13)
+    return { key: 'profile.greeting.noon', icon: Sun, tone: 'text-amber-500' }
+  if (h >= 13 && h < 18)
+    return { key: 'profile.greeting.afternoon', icon: Sun, tone: 'text-orange-500' }
+  if (h >= 18 && h < 23)
+    return { key: 'profile.greeting.evening', icon: MoonStar, tone: 'text-violet-500' }
+  return { key: 'profile.greeting.night', icon: Moon, tone: 'text-indigo-400' }
+}
+
+/**
+ * 设置 - 账号 / 主题色 / 二次验证 / 同步偏好 section。
+ *
+ * 头像和收支配色现在 web 端也可写 —— 改完会推送 server,然后 server 广播
+ * `profile_change` WS,mobile 端 sync_engine 自动 syncMyProfile() 拉新。
+ * 实现见 .docs/web-tx-batch-actions.md(同期):API client 多了 patchProfileMe
+ * 的 income_is_red / theme_primary_color / appearance 字段 + uploadProfileAvatar。
+ */
+export function SettingsProfileAppearanceSection() {
+  const t = useT()
+  const toast = useToast()
+  const { token, profileMe, sessionUserId, refreshProfile } = useAuth()
+  const { color: primaryColor } = usePrimaryColor()
+  const [themeOpen, setThemeOpen] = useState(false)
+  const [avatarUploading, setAvatarUploading] = useState(false)
+  const [incomeColorSaving, setIncomeColorSaving] = useState(false)
+  const [nameEditing, setNameEditing] = useState(false)
+  const [nameDraft, setNameDraft] = useState('')
+  const [nameSaving, setNameSaving] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+
+  // 欢迎语随时段变化:每分钟刷一次 tick,刚好跨越 11/13/18/23 这些边界时
+  // UI 自动更新。useState 持有 tick 数,变了就重新走 useMemo。
+  const [greetingTick, setGreetingTick] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => setGreetingTick((n) => n + 1), 60_000)
+    return () => clearInterval(id)
+  }, [])
+  const greeting = useMemo(() => pickGreeting(), [greetingTick])
+  // JSX 要求大写起始,把 icon 别名出来
+  const GreetingIcon = greeting.icon
+
+  const profileDisplayLabel = useMemo(
+    () => profileMe?.display_name?.trim() || profileMe?.email || sessionUserId || '-',
+    [profileMe, sessionUserId]
+  )
+  const profileInitial = useMemo(
+    () => profileDisplayLabel.trim().charAt(0).toUpperCase() || '?',
+    [profileDisplayLabel]
+  )
+
+  const handleAvatarPick = () => {
+    fileInputRef.current?.click()
+  }
+
+  const handleAvatarSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    // 选完后清掉 input,允许同名文件再次触发 onChange
+    event.target.value = ''
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      toast.error(t('profile.avatar.upload.invalidType'))
+      return
+    }
+    if (file.size > AVATAR_MAX_BYTES) {
+      toast.error(t('profile.avatar.upload.tooLarge'))
+      return
+    }
+    setAvatarUploading(true)
+    try {
+      await uploadProfileAvatar(token, file)
+      // server 已广播 profile_change,WS 监听会触发 refreshProfile;这里也立即拉一次
+      // 兜底,避免 WS 偶尔丢包或本地连接刚断开。
+      await refreshProfile()
+      toast.success(t('profile.avatar.upload.success'))
+    } catch (err) {
+      toast.error(localizeError(err, t))
+    } finally {
+      setAvatarUploading(false)
+    }
+  }
+
+  const startNameEdit = () => {
+    setNameDraft(profileMe?.display_name?.trim() || '')
+    setNameEditing(true)
+    // 聚焦 / 选中走 Input 的 onFocus(挂载后会自动 autoFocus)
+  }
+  const cancelNameEdit = () => {
+    setNameEditing(false)
+    setNameDraft('')
+  }
+  const submitNameEdit = async () => {
+    if (nameSaving) return
+    const next = nameDraft.trim().slice(0, DISPLAY_NAME_MAX)
+    const current = profileMe?.display_name?.trim() || ''
+    if (next === current) {
+      cancelNameEdit()
+      return
+    }
+    setNameSaving(true)
+    try {
+      // 空字符串 → 允许清空 display_name(回退到展示 email);server 接受空串
+      await patchProfileMe(token, { display_name: next })
+      await refreshProfile()
+      setNameEditing(false)
+      setNameDraft('')
+      toast.success(t('profile.displayName.saved'))
+    } catch (err) {
+      toast.error(localizeError(err, t))
+    } finally {
+      setNameSaving(false)
+    }
+  }
+
+  const incomeIsRed = profileMe?.income_is_red ?? true
+
+  const handleIncomeColorToggle = async () => {
+    if (incomeColorSaving) return
+    const next = !incomeIsRed
+    setIncomeColorSaving(true)
+    try {
+      await patchProfileMe(token, { income_is_red: next })
+      await refreshProfile()
+      toast.success(t('profile.sync.incomeScheme.saved'))
+    } catch (err) {
+      toast.error(localizeError(err, t))
+    } finally {
+      setIncomeColorSaving(false)
+    }
+  }
+
+  // 三个外观偏好(月装饰 / 紧凑金额 / 显示交易时间)—— 现在 web 也可写。
+  // 改任一项时,把整个 appearance dict 一起 PATCH(server 是整体替换语义,
+  // 单字段传过去会丢掉其它字段)。 :这里需要先合并出"完整的下一个 appearance"
+  // 再发 patch,而不是只发改动的那个 key。
+  const appearance = profileMe?.appearance ?? {}
+  const headerSkin = appearance.header_skin ?? 'none'
+  const compactAmount = appearance.compact_amount ?? false
+  const showTransactionTime = appearance.show_transaction_time ?? false
+  // 动态皮肤默认播放动效;关掉后 mobile 那边皮肤停在静态帧(省电)
+  const skinAnimation = appearance.skin_animation ?? true
+  const noteDisplayMode = appearance.note_display_mode ?? 'category'
+  const [appearanceSaving, setAppearanceSaving] = useState(false)
+
+  const saveAppearance = async (
+    patch: Partial<NonNullable<typeof profileMe>['appearance']>,
+  ) => {
+    if (appearanceSaving) return
+    setAppearanceSaving(true)
+    try {
+      await patchProfileMe(token, {
+        // 整体替换语义:把 server 现有 appearance 全量带上再 patch,否则会清掉
+        // mobile 设的 header_skin 等本页未直接管理的字段。
+        appearance: { ...appearance, ...patch },
+      })
+      await refreshProfile()
+      toast.success(t('profile.sync.appearanceSaved'))
+    } catch (err) {
+      toast.error(localizeError(err, t))
+    } finally {
+      setAppearanceSaving(false)
+    }
+  }
+
+  // 切换皮肤。自带配色的皮肤(如周年蛋糕)在 mobile 上会把主题色
+  // 锁成皮肤色,web 这边必须把同一个颜色也写回 server —— 否则 server 的
+  // theme_primary_color 停在旧值,app 收到 appearance 广播时会先应用旧色再被本地
+  // 绑定逻辑改回皮肤色,主题色在两个颜色之间闪。
+  //
+  // 顺序固定为「先颜色、后 appearance」:两者是 server 上两个字段、两次广播,
+  // 先把颜色落地,对端收到 header_skin 变更时读到的颜色才是对的。
+  const handleHeaderSkinChange = async (skinId: string) => {
+    if (appearanceSaving || skinId === headerSkin) return
+    const bound = boundPrimaryOf(skinId)
+    setAppearanceSaving(true)
+    try {
+      if (bound) {
+        await patchProfileMe(token, { theme_primary_color: bound })
+      }
+      await patchProfileMe(token, {
+        appearance: { ...appearance, header_skin: skinId },
+      })
+      await refreshProfile()
+      toast.success(t('profile.sync.appearanceSaved'))
+    } catch (err) {
+      toast.error(localizeError(err, t))
+    } finally {
+      setAppearanceSaving(false)
+    }
+  }
+
+  // 主币种(本位币)—— 资产折算目标,跟 mobile prefs `baseCurrency` 同步。
+  const primaryCurrency = profileMe?.primary_currency || ''
+  const [primaryCurrencySaving, setPrimaryCurrencySaving] = useState(false)
+  // 候选列表 ∪ 当前值(旧值可能不在内置列表,补进去保证可选中)
+  const currencyOptions = useMemo(() => {
+    const set = [...PRIMARY_CURRENCY_OPTIONS]
+    if (primaryCurrency && !set.includes(primaryCurrency)) set.unshift(primaryCurrency)
+    return set
+  }, [primaryCurrency])
+
+  const handlePrimaryCurrencyChange = async (code: string) => {
+    if (primaryCurrencySaving || code === primaryCurrency) return
+    setPrimaryCurrencySaving(true)
+    try {
+      await patchProfileMe(token, { primary_currency: code })
+      await refreshProfile()
+      toast.success(t('notice.profileUpdated'))
+    } catch (err) {
+      toast.error(localizeError(err, t))
+    } finally {
+      setPrimaryCurrencySaving(false)
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <Card
+        className="overflow-hidden"
+        size="small"
+        styles={{ body: { padding: 24 } }}
+      >
+        <div className="relative">
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary/20 via-primary/5 to-transparent" />
+          <div className="relative space-y-5">
+            <div className="flex flex-wrap items-center gap-4">
+              {/* 头像 — hover 出 Camera + 暗罩,点击触发文件选择器。常驻角标
+                  视觉太重,改回 hover-reveal。 */}
+              <button
+                type="button"
+                onClick={handleAvatarPick}
+                disabled={avatarUploading}
+                className="group relative h-16 w-16 shrink-0 overflow-hidden rounded-full border-2 border-primary/30 shadow-sm transition hover:border-primary/60 disabled:cursor-not-allowed disabled:opacity-60"
+                aria-label={t('profile.avatar.upload.button') as string}
+                title={t('profile.avatar.upload.button') as string}
+              >
+                {profileMe?.avatar_url ? (
+                  <img
+                    alt={profileDisplayLabel}
+                    className="h-full w-full object-cover"
+                    src={profileMe.avatar_url}
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center bg-muted text-base font-semibold text-muted-foreground">
+                    {profileInitial}
+                  </div>
+                )}
+                <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition group-hover:opacity-100">
+                  {avatarUploading ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-white" />
+                  ) : (
+                    <Camera className="h-4 w-4 text-white" />
+                  )}
+                </div>
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleAvatarSelected}
+              />
+              <div className="min-w-0 flex-1">
+                {/* 欢迎语图标 + 文案 + display name 同一行 —— icon 按时段切
+                    (Sunrise / Sun / MoonStar / Moon),配色 amber/orange/violet/indigo;
+                    名字 hover 出 ✏️,点击进入 inline edit。 */}
+                {nameEditing ? (
+                  <div className="flex items-center gap-1.5">
+                    <GreetingIcon
+                      className={`h-4 w-4 shrink-0 ${greeting.tone}`}
+                      aria-hidden
+                    />
+                    <span className="shrink-0 text-sm text-muted-foreground">
+                      {t(greeting.key)},
+                    </span>
+                    <Input
+                      autoFocus
+                      onFocus={(e) => e.currentTarget.select()}
+                      value={nameDraft}
+                      onChange={(e) => setNameDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          void submitNameEdit()
+                        } else if (e.key === 'Escape') {
+                          e.preventDefault()
+                          cancelNameEdit()
+                        }
+                      }}
+                      maxLength={DISPLAY_NAME_MAX}
+                      placeholder={profileMe?.email || ''}
+                      style={{ maxWidth: 240, fontSize: 16, fontWeight: 600 }}
+                      disabled={nameSaving}
+                    />
+                    <Button
+                      size="small"
+                      icon={nameSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                      onClick={() => void submitNameEdit()}
+                      disabled={nameSaving}
+                      aria-label={t('common.save') as string}
+                    />
+                    <Button
+                      size="small"
+                      icon={<X className="h-3.5 w-3.5" />}
+                      onClick={cancelNameEdit}
+                      disabled={nameSaving}
+                      aria-label={t('common.cancel') as string}
+                    />
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={startNameEdit}
+                    className="group/name -ml-1 flex max-w-full items-center gap-1.5 rounded-md px-1 py-0.5 text-left transition hover:bg-muted/40"
+                    aria-label={t('profile.displayName.edit') as string}
+                  >
+                    <GreetingIcon
+                      className={`h-4 w-4 shrink-0 ${greeting.tone}`}
+                      aria-hidden
+                    />
+                    <span className="shrink-0 text-sm text-muted-foreground">
+                      {t(greeting.key)},
+                    </span>
+                    <span className="truncate text-lg font-semibold">
+                      {profileDisplayLabel}
+                    </span>
+                    <Pencil className="h-3 w-3 shrink-0 text-muted-foreground opacity-0 transition group-hover/name:opacity-100" />
+                  </button>
+                )}
+                <p className="truncate text-xs text-muted-foreground">{profileMe?.email || '-'}</p>
+              </div>
+            </div>
+
+            {/* Inline pill:主题色 popup */}
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setThemeOpen(true)}
+                className="group inline-flex items-center gap-2 rounded-full border border-border/60 bg-muted/40 px-3 py-1.5 text-xs font-medium transition hover:bg-muted"
+                aria-label={t('profile.theme.title')}
+              >
+                <Palette className="h-3.5 w-3.5 text-muted-foreground" />
+                <span>{t('profile.theme.title')}</span>
+                <span
+                  className="inline-block h-3.5 w-3.5 rounded-full border border-border/60 shadow-sm"
+                  style={{ background: primaryColor }}
+                  aria-hidden
+                />
+                <ChevronDown className="h-3 w-3 text-muted-foreground transition group-hover:translate-y-0.5" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      <Modal
+        open={themeOpen}
+        title={t('profile.theme.title')}
+        onCancel={() => setThemeOpen(false)}
+        width={384}
+        footer={null}
+      >
+        <p className="mb-2 text-xs text-muted-foreground">{t('profile.theme.desc')}</p>
+        <PrimaryColorPicker />
+      </Modal>
+
+      <Card
+        size="small"
+        title={<span className="text-base">{t('profile.sync.title')}</span>}
+        styles={{ body: { padding: '12px 16px 16px' } }}
+      >
+          <div className="space-y-4">
+          {/* 收支配色:可点 toggle —— web 改后 server 广播 profile_change,
+              mobile 端 sync_engine 监听到自动拉新 */}
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/60 bg-muted/20 px-4 py-3">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <span
+                  className="inline-block h-4 w-4 rounded-full ring-2 ring-background"
+                  style={{ background: 'rgb(var(--income-rgb))' }}
+                  aria-label={t('enum.txType.income')}
+                />
+                <span className="text-sm">{t('enum.txType.income')}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span
+                  className="inline-block h-4 w-4 rounded-full ring-2 ring-background"
+                  style={{ background: 'rgb(var(--expense-rgb))' }}
+                  aria-label={t('enum.txType.expense')}
+                />
+                <span className="text-sm">{t('enum.txType.expense')}</span>
+              </div>
+            </div>
+            <Button
+              size="small"
+              icon={incomeColorSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+              onClick={handleIncomeColorToggle}
+              disabled={incomeColorSaving}
+            >
+              {incomeIsRed
+                ? t('profile.sync.incomeScheme.red')
+                : t('profile.sync.incomeScheme.green')}
+            </Button>
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-3">
+            {/* 皮肤 —— 选项来自 lib/header-skins.ts，与 mobile 的 kHeaderSkins
+                一一对齐（周年 / 秋日 / 经典三组）。自带配色的皮肤会连同主题色
+                一起写回 server，见 handleHeaderSkinChange。 */}
+            <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                {t('profile.sync.headerSkin')}
+              </p>
+              <Select
+                style={{ width: '100%', marginTop: 4 }}
+                size="small"
+                value={headerSkin}
+                onChange={(value) => void handleHeaderSkinChange(value)}
+                disabled={appearanceSaving}
+                options={[
+                  { value: 'none', label: t('profile.sync.headerSkin.none') },
+                  ...HEADER_SKIN_GROUP_ORDER.map((group) => ({
+                    label: t(headerSkinGroupLabelKey(group)),
+                    options: HEADER_SKINS.filter((s) => s.group === group).map((skin) => ({
+                      value: skin.id,
+                      label: (
+                        <span className="flex items-center gap-1.5">
+                          {t(headerSkinLabelKey(skin.id))}
+                          {skin.animated ? (
+                            <span className="rounded-sm bg-primary/12 px-1 text-[9px] font-medium leading-4 text-primary">
+                              {t('profile.sync.headerSkin.animated')}
+                            </span>
+                          ) : null}
+                          {skin.boundPrimary ? (
+                            <span
+                              aria-label={t('profile.sync.headerSkin.boundPalette')}
+                              title={t('profile.sync.headerSkin.boundPalette')}
+                              className="h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-border"
+                              style={{ backgroundColor: skin.boundPrimary }}
+                            />
+                          ) : null}
+                        </span>
+                      ),
+                    })),
+                  })),
+                ]}
+              />
+            </div>
+            {/* 余额显示格式:跟 mobile 一样下拉选择 — full(完整金额) / compact(简洁,如 12.3万) */}
+            <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                {t('profile.sync.compactAmount')}
+              </p>
+              <Select
+                style={{ width: '100%', marginTop: 4 }}
+                size="small"
+                value={compactAmount ? 'compact' : 'full'}
+                onChange={(value) =>
+                  void saveAppearance({ compact_amount: value === 'compact' })
+                }
+                disabled={appearanceSaving}
+                options={[
+                  { value: 'full', label: t('profile.sync.compactAmount.full') },
+                  { value: 'compact', label: t('profile.sync.compactAmount.compact') },
+                ]}
+              />
+            </div>
+            {/* 备注显示方式:下拉 — category(分类优先) / note(备注优先) */}
+            <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                {t('profile.sync.noteDisplay')}
+              </p>
+              <Select
+                style={{ width: '100%', marginTop: 4 }}
+                size="small"
+                value={noteDisplayMode}
+                onChange={(value) =>
+                  void saveAppearance({ note_display_mode: value as 'category' | 'note' })
+                }
+                disabled={appearanceSaving}
+                options={[
+                  { value: 'category', label: t('profile.sync.noteDisplay.category') },
+                  { value: 'note', label: t('profile.sync.noteDisplay.note') },
+                ]}
+              />
+            </div>
+            {/* 显示交易时间:Switch 风格(iOS pill) */}
+            <div className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                {t('profile.sync.showTime')}
+              </p>
+              <Switch
+                size="small"
+                checked={showTransactionTime}
+                aria-label={t('profile.sync.showTime') as string}
+                disabled={appearanceSaving}
+                onChange={(checked) =>
+                  void saveAppearance({ show_transaction_time: checked })
+                }
+              />
+            </div>
+            {/* 皮肤动效:关掉后 mobile 的动态皮肤停在静态帧 —— 那些皮肤是持续
+                重绘的,长时间用会发烫,这是给用户的省电出口。web 不渲染皮肤,
+                这里只负责把开关写回 server。 */}
+            <div className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                {t('profile.sync.skinAnimation')}
+              </p>
+              <Switch
+                size="small"
+                checked={skinAnimation}
+                aria-label={t('profile.sync.skinAnimation') as string}
+                disabled={appearanceSaving}
+                onChange={(checked) => void saveAppearance({ skin_animation: checked })}
+              />
+            </div>
+          </div>
+
+          {/* 主币种(本位币)—— 资产折算目标,与 mobile prefs baseCurrency 同步。
+              空值时占位显示「未设置」;旧值不在内置列表会被 currencyOptions 补上。 */}
+          <div className="rounded-lg border border-border/60 bg-muted/20 px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium">{t('settings.primaryCurrency')}</p>
+                <p className="text-xs text-muted-foreground">
+                  {t('settings.primaryCurrency.hint')}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {primaryCurrencySaving ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                ) : null}
+                <Select
+                  style={{ width: 140 }}
+                  size="small"
+                  value={primaryCurrency || undefined}
+                  placeholder={t('settings.primaryCurrency.unset')}
+                  onChange={(value) => void handlePrimaryCurrencyChange(value)}
+                  disabled={primaryCurrencySaving}
+                  options={currencyOptions.map((code) => ({
+                    value: code,
+                    label: `${code} · ${t(`currency.${code}`)}`,
+                  }))}
+                />
+              </div>
+            </div>
+          </div>
+          </div>
+      </Card>
+
+      {/* 汇率管理小节 —— 主币种未设置时内部渲染空态、不发请求 */}
+      <SettingsExchangeRatesSection />
+    </div>
+  )
+}

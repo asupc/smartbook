@@ -1,0 +1,32 @@
+name: flutter_ai_kit_openai
+description: OpenAI compatible protocol implementation for flutter_ai_kit
+version: 1.0.0
+publish_to: none
+
+environment:
+  sdk: '>=3.6.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # 核心框架依赖
+  flutter_ai_kit:
+    path: ../flutter_ai_kit
+
+  # HTTP 客户端
+  dio: ^5.7.0
+
+  # JSON 序列化
+  json_annotation: ^4.9.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  # 代码生成
+  build_runner: ^2.4.13
+  json_serializable: ^6.8.0
+
+  # 代码质量
+  flutter_lints: ^5.0.0

@@ -1,0 +1,142 @@
+name: smartbook
+description: "A new Flutter project."
+publish_to: 'none'
+version: 1.0.20+1
+
+environment:
+  sdk: ^3.6.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  flutter_riverpod: ^2.5.1
+  collection: ^1.18.0
+  drift: ^2.20.2
+  sqlite3_flutter_libs: ^0.5.24
+  path_provider: ^2.1.4
+  path: ^1.9.0
+  intl: ^0.19.0
+  decimal: ^3.0.0
+  fl_chart: ^0.68.0
+  shared_preferences: ^2.3.2
+  connectivity_plus: ^6.1.0
+  csv: ^5.0.2
+  file_picker: ^8.1.2
+  supabase_flutter: ^2.5.6
+  crypto: ^3.0.5
+  uuid: ^4.5.1
+  flutter_svg: ^2.0.10+1
+  package_info_plus: ^8.0.2
+  url_launcher: ^6.3.0
+  in_app_review: ^2.0.9
+  http: ^1.2.2
+  share_plus: ^12.0.1
+  permission_handler: ^11.3.1
+  dio: ^5.4.3+1
+  open_filex: ^4.4.0
+  flutter_local_notifications: ^17.2.2
+  timezone: ^0.9.4
+  flutter_list_view: ^1.1.29
+  visibility_detector: ^0.4.0+2
+  reorderable_grid_view: ^2.2.8
+  excel: ^4.0.6
+  # 注:pub.dev 最新为 0.9.3,但其 environment.sdk 要求 Dart >=3.10.0 / Flutter
+  # >=3.38.1,超出本项目当前锁定的 Flutter 3.27.3 / Dart 3.6.1(会导致
+  # pub get 直接解析失败)。0.9.3 相对 0.9.2+1 唯一变化是 iOS UIScene
+  # Lifecycle 支持,与本阶段(P0/P1 纯 Dart)无关,故锁定为兼容当前工具链的
+  # 最新版 0.9.2+1。
+  home_widget: ^0.9.2
+  image_picker: ^1.1.2
+  flutter_image_compress: ^2.3.0
+  image_cropper: ^10.0.0
+  gbk_codec: ^0.4.0
+  app_links: ^6.4.1
+  record: ^5.1.2
+  yaml: ^3.1.2
+  qr_flutter: ^4.1.0
+  gal: ^2.3.0
+  archive: ^3.6.1
+  # 打赏(IAP)只在 iOS 提供,Android 从不显示入口(见 mine_page.dart / donation_service.dart)。
+  # 这里故意不依赖 `in_app_purchase` 联合插件:它会把 in_app_purchase_android
+  # 一并打进 AAB,从而带入 com.android.billingclient。Google Play 要求结算库
+  # >= 8.0.0(2026-11-01 截止),而官方插件升到 billing 8 的版本
+  # (in_app_purchase_android 0.5.0)要求 Flutter >= 3.38 / Dart ^3.10,
+  # 远超本项目锁定的 Flutter 3.27.3。既然 Android 根本不用结算,索性只依赖
+  # iOS 专属实现,让 AAB 里彻底不含结算库 —— 该策略要求随之不适用。
+  # ⚠️ 若将来要在 Android 上做内购(如付费皮肤),需改回 `in_app_purchase`
+  #    联合插件,并同步升级 Flutter 以获得 billing 8+ 的实现。
+  in_app_purchase_storekit: ^0.3.6
+  in_app_purchase_platform_interface: ^1.4.0
+  flutter_ai_kit:
+    path: packages/flutter_ai_kit
+  flutter_ai_kit_zhipu:
+    path: packages/flutter_ai_kit_zhipu
+  flutter_ai_kit_openai:
+    path: packages/flutter_ai_kit_openai
+  flutter_cloud_sync:
+    path: packages/flutter_cloud_sync
+  flutter_cloud_sync_supabase:
+    path: packages/flutter_cloud_sync_supabase
+  flutter_cloud_sync_webdav:
+    path: packages/flutter_cloud_sync_webdav
+  flutter_cloud_sync_icloud:
+    path: packages/flutter_cloud_sync_icloud
+  flutter_cloud_sync_s3:
+    path: packages/flutter_cloud_sync_s3
+  quick_actions: ^1.1.0
+  table_calendar: ^3.1.0
+  local_auth: ^2.3.0
+  webview_flutter: ^4.13.0
+  webview_flutter_wkwebview: ^3.23.0
+  country_flags: ^3.2.0
+  jovial_svg: ^1.1.29
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  build_runner: ^2.4.10
+  drift_dev: ^2.20.2
+  # Testing framework enhancements
+  mocktail: ^1.0.4
+  integration_test:
+    sdk: flutter
+
+dependency_overrides:
+  # Fix record_linux compatibility issue (we target iOS/Android only)
+  record_platform_interface: 1.2.0
+  # Pin to 7.1.0 because 7.2.0 requires Flutter >= 3.27.6 (Color.toARGB32)
+  image_cropper_platform_interface: 7.1.0
+
+flutter:
+  uses-material-design: true
+  generate: true
+  assets:
+    - assets/logo2.png
+    - assets/icon/smartbook_icon.svg
+    - assets/icons/
+    - assets/icons/social/
+    - assets/images/
+    - assets/header_skins/
+  # 字体已移动到可选依赖，使用系统字体以减少应用体积
+  # fonts:
+  #   - family: Inter
+  #     fonts:
+  #       - asset: assets/fonts/Inter-Regular.ttf
+  #       - asset: assets/fonts/Inter-Medium.ttf
+  #         weight: 500
+  #       - asset: assets/fonts/Inter-SemiBold.ttf
+  #         weight: 600
+  #       - asset: assets/fonts/Inter-Bold.ttf
+  #         weight: 700
+  #   - family: NotoSansSC
+  #     fonts:
+  #       - asset: assets/fonts/NotoSansSC-Regular.ttf
+  #       - asset: assets/fonts/NotoSansSC-Medium.ttf
+  #         weight: 500
+  #       - asset: assets/fonts/NotoSansSC-SemiBold.ttf
+  #         weight: 600
+  #       - asset: assets/fonts/NotoSansSC-Bold.ttf
+  #         weight: 700

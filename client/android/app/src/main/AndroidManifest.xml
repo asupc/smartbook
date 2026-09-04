@@ -1,0 +1,335 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Required for Supabase network requests -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Required for voice recording -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- Required for downloading APK files and saving images (API <= 29) -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="29" />
+    <!-- Required for reading screenshots (Android 13+) -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <!-- Required for reading screenshots (Android 10-12) -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <!-- Required for installing APK files -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Required for showing notifications -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Required for exact alarms on Android 12+ -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!-- Required for notifications to work while the app is in background -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- 短信监听自动记账(M1)。仅 RECEIVE_SMS:
+         足够实时接收新短信;不做历史短信回填(不申请 READ_SMS,隐私最小化)。 -->
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
+    <!-- Optional: vibration for notifications -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Required for foreground service notifications -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- Required for apps targeting Android 14+ -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <!-- Required for requesting battery optimization exemption -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Required for biometric authentication -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    
+    <application
+        android:label="@string/app_name"
+        android:name="${applicationName}"
+        android:icon="@mipmap/ic_launcher"
+        android:requestLegacyExternalStorage="true">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:documentLaunchMode="never"
+            android:alwaysRetainTaskState="true"
+            android:theme="@style/LaunchTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
+            <!-- Specifies an Android theme to apply to this Activity as soon as
+                 the Android process has started. This theme is visible to the user
+                 while the Flutter UI initializes. After that, this theme continues
+                 to determine the Window background behind the Flutter UI. -->
+            <meta-data
+              android:name="io.flutter.embedding.android.NormalTheme"
+              android:resource="@style/NormalTheme"
+              />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+            <!-- 接收图片分享 -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:mimeType="image/*"/>
+            </intent-filter>
+            <!-- URL Scheme: smartbook:// -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="smartbook"/>
+            </intent-filter>
+        </activity>
+
+        <!-- Image cropper activity -->
+        <activity
+            android:name="com.yalantis.ucrop.UCropActivity"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.AppCompat.Light.NoActionBar"/>
+
+        <!-- FileProvider for sharing APK files on Android 7.0+ -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+        <!-- Don't delete the meta-data below.
+             This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2" />
+        
+        <!-- 后台通知接收器 -->
+        <receiver android:name=".NotificationReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.PACKAGE_REPLACED" />
+                <data android:scheme="package" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="${applicationId}.NOTIFICATION_ALARM" />
+            </intent-filter>
+        </receiver>
+
+        <!-- 通知点击接收器 -->
+        <receiver android:name=".NotificationClickReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="${applicationId}.NOTIFICATION_CLICK" />
+            </intent-filter>
+        </receiver>
+
+        <!-- 短信监听(M1):SMS_RECEIVED 是系统受保护广播,系统可送达
+             exported=false 的接收器(与上方 BOOT_COMPLETED 同样的写法)。
+             开关由 Flutter 经 MethodChannel setEnabled 维护。 -->
+        <receiver android:name=".SmsReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- 支付通知监听:系统绑定服务,需用户在「通知使用权」中手动开启;
+             打开的引导入口见 MainActivity openNotificationListenerSettings -->
+        <service android:name=".NotificationWatcher"
+            android:label="支付通知自动记账"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <!-- 账单详情页自动记账:系统绑定服务,需用户在「无障碍」中手动开启;
+             打开的引导入口见 MainActivity openAccessibilitySettings。
+             packageNames 白名单已移除,事件过滤交给 Kotlin 侧
+             ScreenTextWatcher.TRUSTED_PACKAGES(见 accessibility_service_config.xml 注释)。
+             exported=false 是正确的:无障碍服务只允许系统进程经
+             BIND_ACCESSIBILITY_SERVICE(签名级权限)绑定,系统绑定不受
+             exported 限制,false 不会导致绑定失败或开关被回收(实测 vivo
+             OriginOS 亦然)。 -->
+        <service android:name="com.google.android.accessibility.selecttospeak.SelectToSpeakService"
+            android:label="@string/accessibility_service_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+
+        <!-- 桌面小组件 -->
+        <receiver android:name="com.smartbook.zhi.SmartBookWidgetProvider"
+            android:label="@string/widget_name"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/smartbook_widget_info" />
+        </receiver>
+
+        <!-- 桌面小组件:收支速览·小号(补全:老 provider 只有中号且不可改动,
+             小号独立成类,见 SmartBookGlanceSmallWidgetProvider 注释) -->
+        <receiver android:name=".SmartBookGlanceSmallWidgetProvider"
+            android:label="@string/widget_glance_small_name"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/glance_small_widget_info" />
+        </receiver>
+
+        <!-- 桌面小组件:净资产 -->
+        <receiver android:name=".SmartBookNetWorthWidgetProvider"
+            android:label="@string/widget_networth_name"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/net_worth_widget_info" />
+        </receiver>
+
+        <!-- 桌面小组件:快速记账 -->
+        <receiver android:name=".SmartBookQuickAddWidgetProvider"
+            android:label="@string/widget_quickadd_name"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/quick_add_widget_info" />
+        </receiver>
+
+        <!-- 桌面小组件:预算进度 -->
+        <receiver android:name=".SmartBookBudgetWidgetProvider"
+            android:label="@string/widget_budget_name"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/budget_widget_info" />
+        </receiver>
+
+        <!-- 桌面小组件:最近交易 -->
+        <receiver android:name=".SmartBookRecentWidgetProvider"
+            android:label="@string/widget_recent_name"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/recent_widget_info" />
+        </receiver>
+
+        <!-- 桌面小组件:按尺寸拆分的入口(空子类复用父类逻辑,见
+             SmartBookSizedWidgetProviders.kt 注释——Android 选择器不按尺寸
+             分档,不拆 provider 中/大档位对用户形同不存在) -->
+        <receiver android:name=".SmartBookNetWorthMediumWidgetProvider"
+            android:label="@string/widget_networth_medium_name"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/net_worth_medium_widget_info" />
+        </receiver>
+        <receiver android:name=".SmartBookNetWorthLargeWidgetProvider"
+            android:label="@string/widget_networth_large_name"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/net_worth_large_widget_info" />
+        </receiver>
+        <receiver android:name=".SmartBookBudgetMediumWidgetProvider"
+            android:label="@string/widget_budget_medium_name"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/budget_medium_widget_info" />
+        </receiver>
+        <receiver android:name=".SmartBookQuickAddMediumWidgetProvider"
+            android:label="@string/widget_quickadd_medium_name"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/quick_add_medium_widget_info" />
+        </receiver>
+        <receiver android:name=".SmartBookRecentLargeWidgetProvider"
+            android:label="@string/widget_recent_large_name"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/recent_large_widget_info" />
+        </receiver>
+
+        <!-- 桌面小组件:综合仪表盘 -->
+        <receiver android:name=".SmartBookDashboardWidgetProvider"
+            android:label="@string/widget_dashboard_name"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/dashboard_widget_info" />
+        </receiver>
+
+    </application>
+    <!-- Required to query activities that can process text, see:
+         https://developer.android.com/training/package-visibility and
+         https://developer.android.com/reference/android/content/Intent#ACTION_PROCESS_TEXT.
+
+         In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.PROCESS_TEXT"/>
+            <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- Required for url_launcher to query and launch browser apps -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="http" />
+        </intent>
+        <!-- Required for opening mailto: links (Android 11+ package visibility).
+             少了这条,canLaunchUrl(mailto:) 强制返 false,「申请内测」按钮静默无反应。 -->
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="mailto" />
+        </intent>
+    </queries>
+</manifest>

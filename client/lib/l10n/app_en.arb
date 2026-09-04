@@ -1,0 +1,3456 @@
+{
+  "@@locale": "en",
+  "aiConsentTitle": "Before enabling AI features",
+  "aiConsentBody": "AI features need to send related data to the third-party AI provider you configure:\n\n• Who it goes to: by default Zhipu GLM (open.bigmodel.cn, operated by Zhipu); if you configure another third-party AI service, it goes to the provider you entered.\n• What is sent: the content you actively use for recognition/chat — receipt images, voice recordings, text you type, plus the category names, account names and relevant transaction records needed to complete recognition/analysis.\n• Purpose: only for bill recognition, bookkeeping and chats you initiate; SmartBook itself does not collect or store this data.\n\nThe data is processed by that third-party provider under its own privacy policy. Enabling means you consent to the data sharing above.",
+  "aiConsentAgree": "Agree & enable",
+  "aboutPrivacyPolicy": "Privacy Policy",
+  "aboutChangelog": "Changelog",
+  "appTitle": "智记",
+  "@appTitle": {
+    "description": "The application title"
+  },
+  "tabHome": "Home",
+  "tabInsights": "Stats",
+  "tabAssets": "Assets",
+  "tabRecord": "Record",
+  "tabAiAssistant": "AI Assistant",
+  "tabMine": "Mine",
+  "commonCancel": "Cancel",
+  "commonConfirm": "Confirm",
+  "commonSave": "Save",
+  "commonDelete": "Delete",
+  "commonAdd": "Add",
+  "commonEdit": "Edit",
+  "commonMore": "More",
+  "commonOk": "OK",
+  "commonKnow": "Got it",
+  "commonNo": "No",
+  "commonEmpty": "No data",
+  "commonError": "Error",
+  "commonSuccess": "Success",
+  "commonFailed": "Failed",
+  "commonBack": "Back",
+  "commonNext": "Next",
+  "fabActionCamera": "Camera",
+  "fabActionGallery": "Gallery",
+  "fabActionVoice": "Voice",
+  "fabActionVoiceDisabled": "AI enabled & API Key required",
+  "voiceRecordingTitle": "Voice Billing",
+  "voiceRecordingPreparing": "Preparing...",
+  "voiceRecordingInProgress": "Recording...",
+  "voiceRecordingProcessing": "Recognizing...",
+  "voiceRecordingDuration": "Duration: {duration}s",
+  "@voiceRecordingDuration": {
+    "placeholders": {
+      "duration": {
+        "type": "int"
+      }
+    }
+  },
+  "voiceRecordingSuccess": "Voice billing successful",
+  "voiceRecordingNoLedger": "No ledger found",
+  "voiceRecordingNoInfo": "No billing information recognized",
+  "voiceRecordingPermissionDenied": "Microphone permission required",
+  "voiceRecordingPermissionDeniedTitle": "Microphone Permission Required",
+  "voiceRecordingPermissionDeniedMessage": "Voice billing requires microphone permission. Please allow SmartBook to access the microphone in System Settings.",
+  "voiceRecordingStartFailed": "Failed to start recording: {error}",
+  "@voiceRecordingStartFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "voiceRecordingFailed": "Recording failed: {error}",
+  "@voiceRecordingFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "voiceRecordingRecognizeFailed": "Recognition failed: {error}",
+  "@voiceRecordingRecognizeFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "voiceRecordingNoInfoDetected": "Unable to extract bill info: {text}",
+  "@voiceRecordingNoInfoDetected": {
+    "placeholders": {
+      "text": {
+        "type": "String"
+      }
+    }
+  },
+  "voiceRecordingNoSpeech": "No speech detected",
+  "voiceRecordingHoldToTalk": "Hold to talk",
+  "voiceRecordingReleaseToFinish": "Release to finish",
+  "voiceRecordingTooShort": "Recording too short",
+  "voiceRecordingResultLabel": "Recognition result:",
+  "voiceRecordingAutoHintSpoken": "Pause when done to auto-recognize",
+  "voiceRecordingAutoHintWaiting": "Please start speaking...",
+  "smartBillingVoiceTrigger": "Voice trigger mode",
+  "voiceTriggerModeAuto": "Auto-detect pause",
+  "voiceTriggerModeAutoDesc": "Stops automatically after a pause; best for short entries",
+  "voiceTriggerModeHold": "Hold to talk",
+  "voiceTriggerModeHoldDesc": "Hold to record, release to stop; best for longer input",
+  "smartBillingVoiceSilenceTimeout": "Pause to finish",
+  "smartBillingVoiceSilenceTimeoutValue": "Auto-finish after a {seconds}s pause",
+  "@smartBillingVoiceSilenceTimeoutValue": {
+    "placeholders": {
+      "seconds": {
+        "type": "String"
+      }
+    }
+  },
+  "commonPrevious": "Previous",
+  "commonFinish": "Finish",
+  "commonClose": "Close",
+  "commonOther": "Other",
+  "commonYesterday": "Yesterday",
+  "commonSearch": "Search",
+  "commonNoteHint": "Note...",
+  "commonSettings": "Settings",
+  "commonGoSettings": "Go to Settings",
+  "commonLanguage": "Language",
+  "commonCurrent": "Current",
+  "commonTutorial": "Tutorial",
+  "commonConfigure": "Configure",
+  "commonPressAgainToExit": "Press again to exit",
+  "commonWeekdayMonday": "Monday",
+  "commonWeekdayTuesday": "Tuesday",
+  "commonWeekdayWednesday": "Wednesday",
+  "commonWeekdayThursday": "Thursday",
+  "commonWeekdayFriday": "Friday",
+  "commonWeekdaySaturday": "Saturday",
+  "commonWeekdaySunday": "Sunday",
+  "homeIncome": "Income",
+  "homeExpense": "Expense",
+  "homeBalance": "Balance",
+  "homeNoRecords": "No records yet",
+  "homeSelectDate": "Select date",
+  "homeAppTitle": "智记",
+  "homeSearch": "Search",
+  "homeYear": "{year}",
+  "@homeYear": {
+    "placeholders": {
+      "year": {
+        "type": "int"
+      }
+    }
+  },
+  "homeMonth": "{month}M",
+  "@homeMonth": {
+    "placeholders": {
+      "month": {
+        "type": "String"
+      }
+    }
+  },
+  "homeNoRecordsSubtext": "Tap the plus button at the bottom to add a record",
+  "homeLastMonthReportSubtitle": "View and share last month's report",
+  "homeLastMonthReportView": "View",
+  "homeAnnualReportReminder": "Your {year} Annual Report is ready",
+  "@homeAnnualReportReminder": {
+    "placeholders": {
+      "year": {
+        "type": "int"
+      }
+    }
+  },
+  "homeAnnualReportView": "View",
+  "widgetTodayExpense": "Today's Expense",
+  "widgetTodayIncome": "Today's Income",
+  "widgetMonthExpense": "Month's Expense",
+  "widgetMonthIncome": "Month's Income",
+  "widgetMonthSuffix": "",
+  "widgetToday": "Today",
+  "widgetQuickAddLabel": "Add",
+  "widgetBudgetTotal": "Total",
+  "widgetBudgetRemaining": "Left",
+  "widgetNoBudget": "No Budget",
+  "widgetNoTransactions": "No Transactions",
+  "widgetRecentTransactions": "Recent Transactions",
+  "widgetNoAccounts": "No Accounts",
+  "searchTitle": "Search",
+  "searchHint": "Search notes, categories or amounts...",
+  "searchCategoryHint": "Search category name...",
+  "searchCategoryFilter": "Category Filter",
+  "searchMinAmount": "Min amount",
+  "searchMaxAmount": "Max amount",
+  "searchNoInput": "Enter keywords to start searching",
+  "searchNoResults": "No matching results found",
+  "searchBatchMode": "Batch Operations",
+  "searchBatchModeWithCount": "Batch Operations ({selected}/{total})",
+  "searchExitBatchMode": "Exit Batch Mode",
+  "searchSelectAll": "Select All",
+  "searchDeselectAll": "Deselect All",
+  "searchSelectedCount": "{count} selected",
+  "searchBatchSetNote": "Set Note",
+  "searchBatchChangeCategory": "Change Category",
+  "searchBatchDeleteConfirmTitle": "Confirm Delete",
+  "searchBatchDeleteConfirmMessage": "Are you sure you want to delete the selected {count} transactions?\nThis action cannot be undone.",
+  "searchBatchSetNoteTitle": "Batch Set Note",
+  "searchBatchSetNoteMessage": "Set the same note for the selected {count} transactions",
+  "searchBatchSetNoteHint": "Enter note content (leave empty to clear notes)",
+  "searchBatchDeleteSuccess": "Successfully deleted {count} transactions",
+  "searchBatchDeleteFailed": "Delete failed: {error}",
+  "searchBatchSetNoteSuccess": "Successfully set note for {count} transactions",
+  "searchBatchSetNoteFailed": "Set note failed: {error}",
+  "searchBatchChangeCategorySuccess": "Successfully changed category for {count} transactions",
+  "searchBatchChangeCategoryFailed": "Change category failed: {error}",
+  "searchResultsCount": "{count} results",
+  "searchSummaryIncome": "Income",
+  "searchSummaryExpense": "Expense",
+  "searchFilterTitle": "Filter",
+  "searchAmountFilter": "Amount Filter",
+  "searchDateFilter": "Date Filter",
+  "searchStartDate": "Start Date",
+  "searchEndDate": "End Date",
+  "searchNotSet": "Not Set",
+  "searchClearFilter": "Clear Filter",
+  "searchBatchCategoryTransferError": "Selected transactions contain transfers, cannot change category",
+  "searchBatchCategoryTypeError": "Selected transactions have different types, please select all income or all expense",
+  "searchDateStart": "Start",
+  "searchDateEnd": "End",
+  "analyticsMonth": "Month",
+  "analyticsYear": "Year",
+  "analyticsAll": "All",
+  "analyticsCustom": "Custom",
+  "analyticsCompareLastMonth": "vs last month",
+  "analyticsCompareSameMonthLastYear": "vs same month last year",
+  "analyticsCompareLastYear": "vs last year",
+  "analyticsComparePrevPrevYear": "vs year before last",
+  "analyticsAccountBreakdown": "Account breakdown",
+  "analyticsTopMerchants": "Top merchants",
+  "analyticsNoAccount": "No account",
+  "analyticsCategoryRanking": "Category Ranking",
+  "analyticsTotalAmount": "Total",
+  "analyticsNoDataSubtext": "Swipe left/right to switch periods, or tap button to toggle income/expense",
+  "analyticsSwipeHint": "Swipe left/right to change period",
+  "analyticsSwitchTo": "Switch to {type}",
+  "@analyticsSwitchTo": {
+    "placeholders": {
+      "type": {
+        "type": "String"
+      }
+    }
+  },
+  "analyticsTipHeader": "Tip: Top capsule can switch Month/Year/All",
+  "analyticsSwipeToSwitch": "Swipe to switch",
+  "analyticsAllYears": "All Years",
+  "analyticsToday": "Today",
+  "splashAppName": "Bee Accounting",
+  "splashSlogan": "Record Every Drop",
+  "splashSecurityTitle": "Open Source Data Security",
+  "splashSecurityFeature1": "• Local data storage, complete privacy control",
+  "splashSecurityFeature2": "• Open source code transparency, trustworthy security",
+  "splashSecurityFeature3": "• Optional cloud sync, consistent data across devices",
+  "splashInitializing": "Initializing data...",
+  "ledgersTitle": "Ledger Management",
+  "ledgersNew": "New Ledger",
+  "ledgersClear": "Clear Ledger",
+  "ledgersClearMessage": "Are you sure to clear all transactions in ledger \"{name}\"? This action cannot be undone.\\nThe ledger will be kept, only transaction data will be deleted.",
+  "ledgerDefaultName": "Default Ledger",
+  "ledgersEdit": "Edit Ledger",
+  "ledgersDelete": "Delete Ledger",
+  "ledgersDeleteConfirm": "Delete Ledger",
+  "ledgersDeleteMessage": "Are you sure you want to delete this ledger and all its records? This action cannot be undone.\\nIf there is a backup in the cloud, it will also be deleted.",
+  "ledgersDeleted": "Deleted",
+  "ledgersDeleteFailed": "Delete Failed",
+  "ledgersClearTitle": "Clear Ledger",
+  "ledgersClearSuccess": "Ledger cleared",
+  "ledgersDeleteLocal": "Delete Local Ledger Only",
+  "ledgersDeleteLocalTitle": "Delete Local Ledger",
+  "ledgersDeleteLocalMessage": "Are you sure to delete local ledger \"{name}\"?\\nCloud backup will be kept and you can restore it anytime.",
+  "ledgersDeleteLocalSuccess": "Local ledger deleted",
+  "ledgersName": "Name",
+  "ledgersDefaultLedgerName": "Default Ledger",
+  "ledgersCurrency": "Currency",
+  "ledgersMonthStartDay": "Month start day",
+  "ledgersMonthStartDayHint": "Statistics and budgets use this day (1-28) as the start of each monthly period",
+  "ledgersMonthStartDayNatural": "1st (calendar month)",
+  "ledgersMonthStartDayValue": "Day {day} of each month",
+  "@ledgersMonthStartDayValue": {
+    "placeholders": {
+      "day": {
+        "type": "int"
+      }
+    }
+  },
+  "ledgersSelectCurrency": "Select Currency",
+  "ledgersSearchCurrency": "Search: Chinese or code",
+  "ledgersCreate": "Create",
+  "ledgersActions": "Actions",
+  "ledgersRecords": "Records: {count}",
+  "@ledgersRecords": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "ledgersBalance": "Balance: {balance}",
+  "@ledgersBalance": {
+    "placeholders": {
+      "balance": {
+        "type": "String"
+      }
+    }
+  },
+  "ledgerCardDownloadCloud": "Download from Cloud",
+  "ledgersLocal": "Local Ledgers",
+  "ledgersRemote": "Cloud Ledgers",
+  "ledgersEmpty": "No ledgers",
+  "ledgersRestoreAll": "Restore All",
+  "ledgersSwitched": "Switched to ledger \"{name}\"",
+  "@ledgersSwitched": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "ledgersDownloadTitle": "Download Ledger",
+  "ledgersDownloadMessage": "Confirm download ledger \"{name}\" to local?",
+  "@ledgersDownloadMessage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "ledgersDownloading": "Downloading...",
+  "ledgersDownloadSuccess": "Ledger \"{name}\" downloaded successfully",
+  "@ledgersDownloadSuccess": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "ledgersDownload": "Download",
+  "ledgersDeleteRemote": "Delete Cloud Ledger",
+  "ledgersDeleteRemoteConfirm": "Delete Cloud Ledger",
+  "ledgersDeleteRemoteMessage": "Confirm delete cloud ledger \"{name}\"? This action cannot be undone.",
+  "@ledgersDeleteRemoteMessage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "ledgersDeleting": "Deleting...",
+  "ledgersDeleteRemoteSuccess": "Cloud ledger deleted",
+  "ledgersCannotDeleteLastOne": "Cannot delete the last ledger",
+  "ledgersRestoreAllTitle": "Batch Restore",
+  "ledgersRestoreAllMessage": "Confirm restore all cloud ledgers? Total {count}.",
+  "@ledgersRestoreAllMessage": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "ledgersRestoring": "Restoring...",
+  "ledgersRestoreComplete": "Restore Complete",
+  "ledgersRestoreResult": "Success: {success}, Failed: {failed}",
+  "@ledgersRestoreResult": {
+    "placeholders": {
+      "success": {
+        "type": "int"
+      },
+      "failed": {
+        "type": "int"
+      }
+    }
+  },
+  "categoryTitle": "Category Management",
+  "categoryNew": "New Category",
+  "categoryExpense": "Expense",
+  "categoryIncome": "Income",
+  "categoryEmpty": "No categories",
+  "categoryDefault": "Default Category",
+  "categoryReorderTip": "Long press to drag and reorder categories",
+  "categoryLoadFailed": "Load failed: {error}",
+  "@categoryLoadFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "iconPickerTitle": "Select Icon",
+  "iconCategoryTransport": "Transport",
+  "iconCategoryShopping": "Shopping",
+  "iconCategoryEntertainment": "Entertainment",
+  "iconCategoryLife": "Life",
+  "iconCategoryHealth": "Health",
+  "iconCategoryEducation": "Education",
+  "iconCategoryWork": "Work",
+  "iconCategoryFinance": "Finance",
+  "iconCategoryReward": "Reward",
+  "iconCategoryOther": "Other",
+  "iconCategoryDining": "Dining",
+  "importTitle": "Import Bills",
+  "importBillType": "Bill Type",
+  "importBillTypeGeneric": "Generic CSV",
+  "importBillTypeAlipay": "Alipay",
+  "importBillTypeWechat": "WeChat",
+  "importChooseFile": "Choose File",
+  "importNoFileSelected": "No file selected",
+  "importHint": "Tip: Please select a file to start importing (CSV/TSV/XLSX)",
+  "importReading": "Reading file…",
+  "importPreparing": "Preparing…",
+  "importColumnNumber": "Column {number}",
+  "importConfirmMapping": "Confirm Mapping",
+  "importCategoryMapping": "Category Mapping",
+  "importNoDataParsed": "No data parsed. Please return to previous page to check CSV content or separator.",
+  "importFieldDate": "Date",
+  "importFieldType": "Type",
+  "importFieldAmount": "Amount",
+  "importFieldCategory": "Category",
+  "importFieldAccount": "Account",
+  "importFieldNote": "Note",
+  "importPreview": "Data Preview",
+  "importPreviewLimit": "Showing first {shown} of {total} records",
+  "importCategoryNotSelected": "Category not selected",
+  "importCategoryMappingDescription": "Please select corresponding local categories for each category name:",
+  "importKeepOriginalName": "Keep original name",
+  "importProgress": "Importing, success: {ok}, failed: {fail}",
+  "importCancelImport": "Cancel Import",
+  "importCompleteTitle": "Import Complete",
+  "importSelectCategoryFirst": "Please select category mapping first",
+  "importNextStep": "Next Step",
+  "importPreviousStep": "Previous Step",
+  "importStartImport": "Start Import",
+  "importAutoDetect": "Auto Detect",
+  "importInProgress": "Import in Progress",
+  "importProgressDetail": "Imported {done} / {total} records, success {ok}, failed {fail}",
+  "importBackgroundImport": "Background Import",
+  "importCancelled": "Import Cancelled",
+  "importCompleted": "Import Completed{cancelled}, success {ok}, failed {fail}",
+  "importSkippedNonTransactionTypes": "Skipped {count} non-transaction records (debts, etc.)",
+  "importTransactionFailed": "Import failed, all changes have been rolled back: {error}",
+  "importFileOpenError": "Unable to open file picker: {error}",
+  "@importFileOpenError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "mineTitle": "Mine",
+  "mineReminder": "Reminder Settings",
+  "mineImport": "Import Data",
+  "mineExport": "Export Data",
+  "mineCloud": "Cloud Service",
+  "mineUpdate": "Check for Updates",
+  "mineLanguageSettings": "Language",
+  "languageTitle": "Language Settings",
+  "languageChinese": "中文",
+  "languageEnglish": "English",
+  "languageSystemDefault": "Follow System",
+  "deleteConfirmTitle": "Delete Confirmation",
+  "deleteConfirmMessage": "Are you sure you want to delete this record?",
+  "mineSlogan": "SmartBook, Smart & Automatic",
+  "mineDisplayNameEditTitle": "Set nickname",
+  "mineDisplayNameHint": "Enter a nickname",
+  "mineDisplayNameSaved": "Nickname updated",
+  "mineGreetingMorning": "Good morning",
+  "mineGreetingNoon": "Good noon",
+  "mineGreetingAfternoon": "Good afternoon",
+  "mineGreetingEvening": "Good evening",
+  "mineGreetingNight": "Good night",
+  "mineGreetingNamed": "{greeting}, {name}",
+  "@mineGreetingNamed": {
+    "placeholders": {
+      "greeting": { "type": "String" },
+      "name": { "type": "String" }
+    }
+  },
+  "mineProfileEditTitle": "Edit profile",
+  "headerSkinTitle": "Skin",
+  "headerSkinSubtitle": "Follows your theme color, layered over the header",
+  "headerSkinGroupBasic": "Basic",
+  "headerSkinGroupAnniversary": "Anniversary",
+  "headerSkinGroupGradient": "Gradient",
+  "headerSkinGroupScene": "Scenery",
+  "headerSkinGroupPattern": "Patterns",
+  "headerSkinGroupGeometric": "Geometric",
+  "headerSkinNone": "Solid",
+  "headerSkinAnniversary": "Constellation No.1",
+  "headerSkinAnnivCake": "Birthday Cake",
+  "headerSkinTabAll": "All",
+  "headerSkinTabAnimated": "Animated",
+  "headerSkinTabStatic": "Static",
+  "headerSkinAnimatedBadge": "LIVE",
+  "headerSkinFixedPalette": "Own palette",
+  "personalizeLockedBySkin": "The skin \"{skin}\" comes with its own palette, so the theme color is set by the skin and can't be changed. Switch to another skin to get your color back.",
+  "@personalizeLockedBySkin": {
+    "placeholders": { "skin": { "type": "String" } }
+  },
+  "personalizeFixedSkinAction": "Change skin",
+  "headerSkinAurora": "Aurora",
+  "headerSkinMountains": "Mountains",
+  "headerSkinBokeh": "Bokeh",
+  "headerSkinWaves": "Waves",
+  "headerSkinSunset": "Sunset",
+  "headerSkinClouds": "Clouds",
+  "headerSkinExample": "Example",
+  "headerSkinHoneycomb": "Honeycomb",
+  "headerSkinStarry": "Starry",
+  "headerSkinStripes": "Stripes",
+  "headerSkinSkyline": "Skyline",
+  "headerSkinSakura": "Sakura",
+  "headerSkinMeteor": "Meteor",
+  "headerSkinMemphis": "Memphis",
+  "headerSkinSilk": "Silk",
+  "headerSkinBubbles": "Bubbles",
+  "headerSkinGalaxy": "Galaxy",
+  "headerSkinLowPoly": "Low-poly",
+  "headerSkinPrism": "Prism",
+  "headerSkinTerrazzo": "Terrazzo",
+  "mineAvatarTitle": "Avatar Settings",
+  "mineAvatarFromGallery": "Choose from Gallery",
+  "mineAvatarFromCamera": "Take Photo",
+  "mineAvatarDelete": "Delete Avatar",
+  "annualReportTitle": "Annual Report",
+  "annualReportSubtitle": "Review your {year} financial journey",
+  "@annualReportSubtitle": {
+    "placeholders": {
+      "year": {
+        "type": "int"
+      }
+    }
+  },
+  "annualReportEntrySubtitle": "Create your personalized annual report to share",
+  "annualReportNoData": "No data for {year}",
+  "@annualReportNoData": {
+    "placeholders": {
+      "year": {
+        "type": "int"
+      }
+    }
+  },
+  "annualReportPage1Title": "Annual Overview",
+  "annualReportPage1Subtitle": "Your {year} bookkeeping journey",
+  "@annualReportPage1Subtitle": {
+    "placeholders": {
+      "year": {
+        "type": "int"
+      }
+    }
+  },
+  "annualReportTotalDays": "Days Tracked",
+  "annualReportTotalRecords": "Total Records",
+  "annualReportTotalIncome": "Total Income",
+  "annualReportTotalExpense": "Total Expense",
+  "annualReportNetSavings": "Net Savings",
+  "annualReportPage2Title": "Expense Analysis",
+  "annualReportPage2Subtitle": "Where your money went",
+  "annualReportPage3Title": "Monthly Trends",
+  "annualReportPage3Subtitle": "12 months of income & expense",
+  "annualReportHighestMonth": "Highest Spending Month",
+  "annualReportLowestMonth": "Lowest Spending Month",
+  "annualReportPage4Title": "Special Moments",
+  "annualReportPage4Subtitle": "Memorable transactions",
+  "annualReportLargestExpense": "Largest Expense",
+  "annualReportLargestIncome": "Largest Income",
+  "annualReportFirstRecord": "First Record",
+  "annualReportPage5Title": "Achievements",
+  "annualReportPage5Subtitle": "Your bookkeeping badges",
+  "annualReportAchievementConsistent": "Consistent",
+  "annualReportAchievementConsistentDesc": "Tracked for over {days} days straight",
+  "@annualReportAchievementConsistentDesc": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "annualReportAchievementSaver": "Saver",
+  "annualReportAchievementSaverDesc": "Positive net savings this year",
+  "annualReportAchievementDetail": "Detail-Oriented",
+  "annualReportAchievementDetailDesc": "Over {count} records tracked",
+  "@annualReportAchievementDetailDesc": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "annualReportShareButton": "Generate Share Poster",
+  "annualReportGenerating": "Generating annual report...",
+  "annualReportSaveSuccess": "Annual report poster saved",
+  "mineShareApp": "Share App",
+  "mineShareWithFriends": "Share SmartBook with friends",
+  "mineCopyPromoText": "Copy Promo Text",
+  "mineCopyPromoSubtitle": "Copy and share with friends",
+  "mineShareGenerating": "Generating share poster...",
+  "sharePosterAppName": "智记",
+  "sharePosterSlogan": "Smart Accounting, Beautiful Life",
+  "sharePosterFeature1": "Data Security·You Control",
+  "sharePosterFeature2": "Open Source·Auditable",
+  "sharePosterFeature3": "AI Smart·Photo & Voice",
+  "sharePosterFeature4": "Photo Accounting·Auto Recognition",
+  "sharePosterFeature5": "Multi Ledger·Dark Mode",
+  "sharePosterFeature6": "Self-Hosted Cloud·Free Forever",
+  "sharePosterScanText": "Scan to visit open source project",
+  "appPromoTagOpenSource": "Open Source",
+  "appPromoTagFree": "Free",
+  "appPromoFooterText": "Track every penny, trace every moment",
+  "userProfileJourneyYears": "Bookkeeping Pro {years} Years",
+  "@userProfileJourneyYears": {
+    "placeholders": {
+      "years": {
+        "type": "int"
+      }
+    }
+  },
+  "userProfileJourneyOneYear": "One Year of Bookkeeping",
+  "userProfileJourneyHalfYear": "Six Months Strong",
+  "userProfileJourneyThreeMonths": "Three Months In",
+  "userProfileJourneyOneMonth": "One Month Milestone",
+  "userProfileJourneyOneWeek": "First Week Done",
+  "userProfileJourneyStart": "Starting the Journey",
+  "userProfileDailyAverage": "Daily Average",
+  "sharePosterSave": "Save to Gallery",
+  "sharePosterShare": "Share",
+  "sharePosterHideIncome": "Hide Income",
+  "sharePosterShowIncome": "Show Income",
+  "sharePosterSaveSuccess": "Saved to gallery",
+  "shareGuidanceCopyText": "Track my expenses with SmartBook - open source, free & ad-free! 🐝 Download: https://github.com/TNT-Likely/BeeCount",
+  "shareGuidanceCopied": "Text copied",
+  "sharePosterSaveFailed": "Failed to save",
+  "sharePosterPermissionDenied": "Gallery permission denied, please enable in settings",
+  "sharePosterGenerating": "Generating...",
+  "sharePosterGenerateFailed": "Failed to generate poster, please try again",
+  "sharePosterNoLedger": "Please select a ledger first",
+  "sharePosterYearTitle": "My Annual Bookkeeping Report",
+  "sharePosterYearSubtitle": "Record life with data, plan future with reason",
+  "sharePosterMonthTitle": "Monthly Bill Report",
+  "sharePosterMonthSubtitle": "Budget Wisely, Spend Rationally",
+  "sharePosterLedgerTitle": "Ledger Statistics Report",
+  "sharePosterRecordDays": "Record Days",
+  "sharePosterRecordCount": "Record Count",
+  "sharePosterTotalExpense": "Total Expense",
+  "sharePosterTotalIncome": "Total Income",
+  "sharePosterYearBalance": "Annual Balance",
+  "sharePosterYearDeficit": "Annual Deficit",
+  "sharePosterMonthBalance": "Monthly Balance",
+  "sharePosterBalance": "Total Balance",
+  "sharePosterAvgMonthlyExpense": "Avg. Monthly Expense",
+  "sharePosterAvgMonthlyIncome": "Avg. Monthly Income",
+  "sharePosterAvgDailyExpense": "Avg. Daily Expense",
+  "sharePosterMaxExpenseMonth": "Highest Expense Month",
+  "sharePosterTopExpense": "TOP 3 Expenses",
+  "sharePosterCompareLastMonth": "vs Last Month",
+  "sharePosterIncreaseRate": "Increase",
+  "sharePosterDecreaseRate": "Decrease",
+  "sharePosterSavedMoneyTitle": "Congrats! You saved this month",
+  "sharePosterLedgerName": "Ledger Name",
+  "sharePosterUnitDay": "days",
+  "sharePosterUnitCount": "",
+  "sharePosterUnitYuan": "",
+  "userProfilePosterStartDate": "Bookkeeping since {date}",
+  "@userProfilePosterStartDate": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "userProfilePosterRecordDays": "Days",
+  "userProfilePosterDaysUnit": "days",
+  "userProfilePosterRecordCount": "Records",
+  "userProfilePosterCountUnit": "",
+  "userProfilePosterLedgerCount": "Ledgers",
+  "userProfilePosterLedgerUnit": "",
+  "mineDaysCount": "Days",
+  "mineTotalRecords": "Records",
+  "mineCurrentBalance": "Ledger balance",
+  "mineCloudService": "Cloud Service",
+  "mineCloudServiceLoading": "Loading...",
+  "mineCloudServiceOffline": "Default Mode (Offline)",
+  "mineCloudServiceCustom": "Custom Supabase",
+  "mineCloudServiceWebDAV": "Custom Cloud Service (WebDAV)",
+  "mineSyncTitle": "Sync",
+  "mineSyncNotLoggedIn": "Not logged in",
+  "mineSyncNotConfigured": "Cloud not configured",
+  "mineSyncNoRemote": "No cloud data",
+  "mineSyncInSync": "Synced (local {count} records)",
+  "mineSyncInSyncSimple": "Synced",
+  "mineSyncLocalNewer": "Local updated ({count} records, upload recommended)",
+  "mineSyncLocalNewerSimple": "Local updated",
+  "mineSyncCloudNewer": "Cloud updated (download to sync)",
+  "mineSyncCloudNewerSimple": "Cloud updated",
+  "mineSyncDifferent": "Local and cloud differ, download to compare",
+  "mineSyncError": "Failed to get status",
+  "mineSyncDetailTitle": "Sync Status Details",
+  "mineSyncLocalRecords": "Local records: {count}",
+  "mineSyncCloudRecords": "Cloud records: {count}",
+  "mineSyncCloudLatest": "Cloud latest record time: {time}",
+  "mineSyncLocalFingerprint": "Local fingerprint: {fingerprint}",
+  "mineSyncCloudFingerprint": "Cloud fingerprint: {fingerprint}",
+  "mineSyncMessage": "Message: {message}",
+  "mineUploadTitle": "Upload",
+  "mineUploadNeedLogin": "Login required",
+  "mineUploadNeedCloudService": "Available in cloud service mode only",
+  "mineUploadInProgress": "Uploading...",
+  "mineUploadRefreshing": "Refreshing...",
+  "mineUploadSynced": "Synced",
+  "mineUploadSuccess": "Uploaded",
+  "mineUploadSuccessMessage": "Current ledger synced to cloud",
+  "mineDownloadTitle": "Download & Sync",
+  "mineDownloadNeedCloudService": "Available in cloud service mode only",
+  "mineDownloadComplete": "Sync Complete",
+  "mineDownloadResult": "Imported: {inserted} records",
+  "mineLoginTitle": "Login",
+  "mineLoginSubtitle": "Only needed for sync",
+  "cloudReloginTitle": "Re-login",
+  "cloudReloginSuccess": "Re-logged in",
+  "cloudReloginFailed": "Re-login failed",
+  "mineLoggedInEmail": "Logged in",
+  "mineLogoutSubtitle": "Tap to logout",
+  "mineLogoutConfirmTitle": "Logout",
+  "mineLogoutConfirmMessage": "Are you sure you want to logout?\nYou won't be able to use cloud sync after logout.",
+  "mineLogoutButton": "Logout",
+  "mineAutoSyncTitle": "Auto sync ledger",
+  "mineAutoSyncSubtitle": "Auto upload to cloud after recording",
+  "mineAutoSyncNeedLogin": "Login required to enable",
+  "mineImportProgressTitle": "Importing in background...",
+  "mineImportProgressSubtitle": "Progress: {done}/{total}, Success {ok}, Failed {fail}",
+  "mineImportCompleteTitle": "Import complete",
+  "mineCategoryManagement": "Category Management",
+  "mineCategoryManagementSubtitle": "Edit custom categories",
+  "mineCategoryMigration": "Category Migration",
+  "mineCategoryMigrationSubtitle": "Migrate category data to other categories",
+  "mineRecurringTransactions": "Recurring Bills",
+  "mineRecurringTransactionsSubtitle": "Manage recurring bills",
+  "mineReminderSettings": "Reminder Settings",
+  "mineReminderSettingsSubtitle": "Set daily recording reminders",
+  "minePersonalize": "Personalization",
+  "mineDisplayScale": "Display Scale",
+  "mineDisplayScaleSubtitle": "Adjust text and UI element sizes",
+  "mineCheckUpdate": "Check Update",
+  "mineCheckUpdateSubtitle": "Checking for latest version",
+  "mineUpdateDownload": "Download Update",
+  "mineFeedback": "Feedback",
+  "mineFeedbackSubtitle": "Report issues or suggestions",
+  "mineHelp": "Help",
+  "helpCenterOpenInBrowser": "Open in browser",
+  "helpCenterLoadFailed": "Failed to load. Please check your network.",
+  "helpCenterRetry": "Retry",
+  "mineHelpSubtitle": "View documentation and FAQ",
+  "mineSupportAuthor": "Star the Project ⭐️",
+  "mineSupportAuthorSubtitle": "Open source, {count} stars",
+  "@mineSupportAuthorSubtitle": {
+    "placeholders": {
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "githubStarGuideTitle": "How to Star the Project",
+  "githubStarGuideContent": "After tapping the button below to open GitHub, tap the area marked in the image to complete the Star",
+  "githubStarGuideButton": "Go to GitHub",
+  "categoryEditTitle": "Edit Category",
+  "categoryNewTitle": "New Category",
+  "categoryDetailTooltip": "Category Details",
+  "categoryMigrationTooltip": "Category Migration",
+  "categoryMigrationTitle": "Category Migration",
+  "categoryMigrationDescription": "Category Migration Instructions",
+  "categoryMigrationDescriptionContent": "• Migrate all transaction records from one category to another\n• After migration, all transaction data from the source category will be transferred to the target category\n• This operation cannot be undone, please choose carefully",
+  "categoryMigrationTypeLabel": "Select Type",
+  "categoryMigrationFromLabel": "From Category",
+  "categoryMigrationFromHint": "Select category to migrate from",
+  "categoryMigrationToLabel": "To Category",
+  "categoryMigrationToHint": "Select target category",
+  "categoryMigrationToHintFirst": "Please select source category first",
+  "categoryMigrationStartButton": "Start Migration",
+  "categoryMigrationCannotTitle": "Cannot Migrate",
+  "categoryMigrationCannotMessage": "Selected categories cannot be migrated, please check category status.",
+  "categoryExpenseType": "Expense Category",
+  "categoryIncomeType": "Income Category",
+  "categoryDefaultTitle": "Default Category",
+  "categoryNameLabel": "Category Name",
+  "categoryNameHint": "Enter category name",
+  "categoryNameRequired": "Please enter category name",
+  "categoryNameTooLong": "Category name cannot exceed 4 characters",
+  "categoryNameDuplicate": "Category name already exists",
+  "categoryIconLabel": "Category Icon",
+  "categoryCustomIconTitle": "Custom Icon",
+  "categoryCustomIconTapToSelect": "Tap to select image",
+  "categoryCustomIconTapToChange": "Tap to change image",
+  "categoryCustomIconError": "Error selecting image",
+  "categoryCustomIconRequired": "Please select a custom icon image",
+  "categoryCustomIconCrop": "Crop Icon",
+  "categoryDangerousOperations": "Dangerous Operations",
+  "categoryDeleteTitle": "Delete Category",
+  "categoryDeleteSubtitle": "Cannot be recovered after deletion",
+  "categorySaveError": "Save failed",
+  "categoryUpdated": "Category \"{name}\" updated",
+  "categoryCreated": "Category \"{name}\" created",
+  "categoryCannotDelete": "Cannot delete",
+  "categoryCannotDeleteMessage": "This category has {count} transaction records. Please handle them first.",
+  "categoryShare": "Share Categories",
+  "categoryImport": "Import Categories",
+  "categoryClearUnused": "Clear Unused Categories",
+  "categoryClearUnusedTitle": "Clear Unused Categories",
+  "categoryClearUnusedMessage": "Are you sure you want to delete {count} unused categories? This action cannot be undone.",
+  "categoryClearUnusedListTitle": "Categories to be deleted:",
+  "categoryClearUnusedEmpty": "No unused categories",
+  "categoryClearUnusedSuccess": "Deleted {count} categories",
+  "categoryClearUnusedFailed": "Clear failed",
+  "categoryShareScopeTitle": "Select Scope",
+  "categoryShareScopeExpense": "Expense categories only",
+  "categoryShareScopeIncome": "Income categories only",
+  "categoryShareScopeAll": "All categories",
+  "categoryShareSuccess": "Saved to {path}",
+  "categoryShareSubject": "智记 Category Configuration",
+  "categoryShareFailed": "Share failed",
+  "categoryImportInvalidFile": "Please select a category package file (.zip)",
+  "categoryImportModeTitle": "Select Import Mode",
+  "categoryImportModeMerge": "Merge",
+  "categoryImportModeMergeDesc": "Keep existing, add new ones",
+  "categoryImportModeOverwrite": "Overwrite",
+  "categoryImportModeOverwriteDesc": "Clear unused categories then import",
+  "categoryImportSuccess": "Import successful",
+  "categoryImportSuccessDetail": "Imported {imported} categories, skipped {skipped}, imported {icons} icons",
+  "@categoryImportSuccessDetail": {
+    "placeholders": {
+      "imported": {
+        "type": "int"
+      },
+      "skipped": {
+        "type": "int"
+      },
+      "icons": {
+        "type": "int"
+      }
+    }
+  },
+  "categoryImportFailed": "Import failed",
+  "categoryDeleteConfirmTitle": "Delete Category",
+  "categoryDeleteConfirmMessage": "Are you sure you want to delete category \"{name}\"? This action cannot be undone.",
+  "categoryDeleteError": "Delete failed",
+  "categoryDeleted": "Category \"{name}\" deleted",
+  "categorySubCategoryTitle": "Subcategory",
+  "categorySubCategoryDescriptionEnabled": "This category belongs to a parent category",
+  "categorySubCategoryDescriptionDisabled": "This is an independent top-level category",
+  "categoryParentCategoryTitle": "Parent Category",
+  "categoryParentCategoryHint": "Please select parent category",
+  "categorySelectParentTitle": "Select Parent Category",
+  "categorySubCategoryCreated": "Subcategory added: {name}",
+  "categoryParentRequired": "Please select parent category",
+  "categoryParentRequiredTitle": "Error",
+  "categoryExpenseList": "Dining-Transport-Shopping-Entertainment-Home-Family-Communication-Utilities-Housing-Medical-Education-Pets-Sports-Digital-Travel-Alcohol & Tobacco-Baby Care-Beauty-Repair-Social-Learning-Car-Taxi-Subway-Delivery-Property-Parking-Donation-Give Gift-Tax-Beverage-Clothing-Snacks-Send Red Packet-Fruit-Game-Book-Lover-Decoration-Daily Goods-Lottery-Stock-Social Security-Express-Work",
+  "categoryIncomeList": "Salary-Investment-Receive Red Packet-Bonus-Reimbursement-Part time-Receive Gift-Interest-Refund-Investment Income-Second hand-Social Benefit-Tax Refund-Provident Fund",
+  "categoryExpenseDining": "Dining-Breakfast-Lunch-Dinner-Meituan Delivery-Ele.me Delivery-JD Delivery-Restaurant-Food",
+  "categoryExpenseSnacks": "Snacks-Cookies-Chips-Candy-Chocolate-Nuts",
+  "categoryExpenseFruit": "Fruit-Apple-Banana-Orange-Grape-Watermelon-Other Fruits",
+  "categoryExpenseBeverage": "Beverage-Milk Tea-Coffee-Juice-Soda-Mineral Water",
+  "categoryExpensePastry": "Pastry-Cake-Bread-Dessert-Baked Goods",
+  "categoryExpenseCooking": "Cooking Ingredients-Vegetables-Meat-Seafood-Seasoning-Grain & Oil",
+  "categoryExpenseShopping": "Shopping-Clothing-Shoes & Hats-Bags-Accessories-Daily Necessities",
+  "categoryExpensePets": "Pets-Pet Food-Pet Supplies-Pet Medical-Pet Grooming",
+  "categoryExpenseTransport": "Transport-Subway-Bus-Taxi-Ride hailing-Parking Fee-Fuel",
+  "categoryExpenseCar": "Car-Car Maintenance-Car Repair-Car Insurance-Car Wash-Traffic Fine",
+  "categoryExpenseClothing": "Apparel-Top-Pants-Dress-Shoes-Apparel Accessories",
+  "categoryExpenseDailyGoods": "Daily Goods-Personal Care-Paper Products-Cleaning Supplies-Kitchen Supplies",
+  "categoryExpenseEducation": "Education-Tuition-Training Fee-Books-Stationery-Office Supplies",
+  "categoryExpenseInvestLoss": "Investment Loss-Stock Loss-Fund Loss-Other Investment Loss",
+  "categoryExpenseEntertainment": "Entertainment-Movie-KTV-Amusement Park-Bar-Other Entertainment",
+  "categoryExpenseGame": "Game-Game Top up-Game Equipment-Game Membership",
+  "categoryExpenseHealthProducts": "Health Products-Vitamins-Health Food-Nutritional Supplements",
+  "categoryExpenseSubscription": "Subscription-Video Membership-Music Membership-Cloud Storage-Other Subscription",
+  "categoryExpenseSports": "Sports-Gym-Sports Equipment-Sports Course-Outdoor Activity",
+  "categoryExpenseHousing": "Housing-Rent-Property Fee-Mortgage-Renovation",
+  "categoryExpenseHome": "Home-Furniture-Appliances-Decorations-Bedding",
+  "categoryExpenseBeauty": "Beauty-Skincare-Cosmetics-Beauty Salon-Nail Care",
+  "categoryIncomeSalary": "Salary-Base Salary-Performance Bonus-Year end Bonus-Overtime Pay",
+  "categoryIncomeInvestment": "Investment-Fund Earnings-Stock Dividend-Wealth Management-Other Wealth Management",
+  "categoryIncomeRedPacket": "Red Packet-Holiday Red Packet-Birthday Red Packet-Return Gift",
+  "categoryIncomeBonus": "Bonus-Annual Bonus-Quarterly Bonus-Project Bonus-Other Bonus",
+  "categoryIncomeReimbursement": "Reimbursement-Travel Reimbursement-Meal Reimbursement-Other Reimbursement",
+  "categoryIncomePartTime": "Part time-Part time Income-Side Income",
+  "categoryIncomeGift": "Gift-Wedding Gift-Birthday Gift-Other Gift",
+  "categoryIncomeInterest": "Interest-Bank Interest-Other Interest",
+  "categoryIncomeRefund": "Refund-Shopping Refund-Service Refund-Other Refund",
+  "categoryIncomeInvestIncome": "Investment Income-Stock Earnings-Fund Investment-Other Investment Income",
+  "categoryIncomeSecondHand": "Second hand-Idle Items-Second hand Goods",
+  "categoryIncomeSocialBenefit": "Social Benefit-Unemployment Insurance-Maternity Subsidy-Other Subsidy",
+  "categoryIncomeTaxRefund": "Tax Refund-Individual Tax Refund-Other Tax Refund",
+  "categoryIncomeProvidentFund": "Provident Fund-Provident Fund Withdrawal-Provident Fund Interest",
+  "personalizeTitle": "Theme color",
+  "personalizeSubtitle": "Pick or customize the app accent color",
+  "personalizeCustomColor": "Choose custom color",
+  "personalizeCustomTitle": "Custom",
+  "personalizeHue": "Hue ({value}°)",
+  "personalizeSaturation": "Saturation ({value}%)",
+  "personalizeBrightness": "Brightness ({value}%)",
+  "personalizeSelectColor": "Select this color",
+  "appearanceThemeMode": "Appearance",
+  "appearanceThemeModeSystem": "Follow System",
+  "appearanceThemeModeLight": "Light Mode",
+  "appearanceThemeModeDark": "Dark Mode",
+  "appearanceDarkModePattern": "Dark Mode Header Pattern",
+  "appearancePatternNone": "None",
+  "appearancePatternIcons": "Icon Tiling",
+  "appearancePatternParticles": "Particles",
+  "appearancePatternHoneycomb": "Honeycomb",
+  "appearanceAmountFormat": "Balance Display Format",
+  "appearanceAmountFormatFull": "Full Amount",
+  "appearanceAmountFormatFullDesc": "Show full amount, e.g. 123,456.78",
+  "appearanceAmountFormatCompact": "Compact",
+  "appearanceAmountFormatCompactDesc": "Abbreviate large amounts, e.g. 12.3K (only affects account balance)",
+  "appearanceSkinAnimation": "Skin Animation",
+  "appearanceSkinAnimationDesc": "Turn off to freeze animated skins on a still frame and save power",
+  "appearanceShowTransactionTime": "Show Transaction Time",
+  "appearanceShowTransactionTimeDesc": "Display time in transaction list, allow time selection when editing",
+  "appearanceNoteDisplay": "Note display",
+  "appearanceNoteDisplayCategory": "Category first",
+  "appearanceNoteDisplayCategoryDesc": "Show category, note in parentheses",
+  "appearanceNoteDisplayNote": "Note first",
+  "appearanceNoteDisplayNoteDesc": "Show note when present, else category",
+  "appearanceNoteHistory": "Note history",
+  "appearanceNoteHistoryScope": "Show",
+  "appearanceNoteHistoryScopeAllCategories": "All categories",
+  "appearanceNoteHistoryScopeCurrentCategory": "Current category",
+  "appearanceNoteHistorySort": "Sort by",
+  "appearanceNoteHistorySortFrequency": "Usage frequency",
+  "appearanceNoteHistorySortRecent": "Most recent",
+  "appearanceNoteHistoryLimit": "Display limit",
+  "appearanceNoteHistoryLimitHint": "Enter a value from 1 to 100",
+  "appearanceNoteHistoryLimitInvalid": "Enter an integer from 1 to 100",
+  "appearanceColorScheme": "Income/Expense Color Scheme",
+  "appearanceColorSchemeOn": "Red for income · Green for expense",
+  "appearanceColorSchemeOff": "Red for expense · Green for income",
+  "appearanceColorSchemeOnDesc": "Red represents income, green represents expense",
+  "appearanceColorSchemeOffDesc": "Red represents expense, green represents income",
+  "fontSettingsCurrentScale": "Current scale: x{scale}",
+  "fontSettingsPreview": "Live Preview",
+  "fontSettingsPreviewText": "Spent 23.50 on lunch today, record it;\nRecorded for 45 days this month, 320 entries;\nPersistence is victory!",
+  "fontSettingsCurrentLevel": "Current level: {level} (scale x{scale})",
+  "fontSettingsQuickLevel": "Quick Levels",
+  "fontSettingsCustomAdjust": "Custom Adjustment",
+  "fontSettingsDescription": "Note: This setting ensures consistent display at 1.0x across all devices, with device differences auto-compensated; adjust values for personalized scaling on this consistent base.",
+  "fontSettingsExtraSmall": "Extra Small",
+  "fontSettingsVerySmall": "Very Small",
+  "fontSettingsSmall": "Small",
+  "fontSettingsStandard": "Standard",
+  "fontSettingsLarge": "Large",
+  "fontSettingsBig": "Big",
+  "fontSettingsVeryBig": "Very Big",
+  "fontSettingsExtraBig": "Extra Big",
+  "fontSettingsMoreStyles": "More Styles",
+  "fontSettingsPageTitle": "Page Title",
+  "fontSettingsBlockTitle": "Block Title",
+  "fontSettingsBodyExample": "Body Text",
+  "fontSettingsLabelExample": "Label Text",
+  "fontSettingsStrongNumber": "Strong Number",
+  "fontSettingsListTitle": "List Item Title",
+  "fontSettingsListSubtitle": "Helper Text",
+  "fontSettingsScreenInfo": "Screen Adaptation Info",
+  "fontSettingsScreenDensity": "Screen Density",
+  "fontSettingsScreenWidth": "Screen Width",
+  "fontSettingsDeviceScale": "Device Scale",
+  "fontSettingsUserScale": "User Scale",
+  "fontSettingsFinalScale": "Final Scale",
+  "fontSettingsBaseDevice": "Base Device",
+  "fontSettingsRecommendedScale": "Recommended Scale",
+  "fontSettingsYes": "Yes",
+  "fontSettingsNo": "No",
+  "fontSettingsScaleExample": "This box and spacing auto-scale based on device",
+  "fontSettingsPreciseAdjust": "Precise Adjustment",
+  "fontSettingsResetTo1x": "Reset to 1.0x",
+  "fontSettingsAdaptBase": "Adapt to Base",
+  "reminderTitle": "Recording Reminder",
+  "reminderSubtitle": "Set daily recording reminder time",
+  "reminderDailyTitle": "Daily Recording Reminder",
+  "reminderDailySubtitle": "When enabled, will remind you to record at specified time",
+  "reminderTimeTitle": "Reminder Time",
+  "commonSelectTime": "Select Time",
+  "reminderTestNotification": "Send Test Notification",
+  "reminderTestSent": "Test notification sent",
+  "reminderTestTitle": "Test Notification",
+  "reminderTestBody": "This is a test notification, tap to see the effect",
+  "reminderCheckBattery": "Check Battery Optimization Status",
+  "reminderBatteryStatus": "Battery Optimization Status",
+  "reminderManufacturer": "Manufacturer: {value}",
+  "reminderModel": "Model: {value}",
+  "reminderAndroidVersion": "Android Version: {value}",
+  "reminderBatteryIgnored": "Battery optimization: Ignored ✅",
+  "reminderBatteryNotIgnored": "Battery optimization: Not ignored ⚠️",
+  "reminderBatteryAdvice": "Recommend disabling battery optimization for proper notifications",
+  "reminderCheckChannel": "Check Notification Channel Settings",
+  "reminderChannelStatus": "Notification Channel Status",
+  "reminderChannelEnabled": "Channel enabled: Yes ✅",
+  "reminderChannelDisabled": "Channel enabled: No ❌",
+  "reminderChannelImportance": "Importance: {value}",
+  "reminderChannelSoundOn": "Sound: On 🔊",
+  "reminderChannelSoundOff": "Sound: Off 🔇",
+  "reminderChannelVibrationOn": "Vibration: On 📳",
+  "reminderChannelVibrationOff": "Vibration: Off",
+  "reminderChannelDndBypass": "Do Not Disturb: Can bypass",
+  "reminderChannelDndNoBypass": "Do Not Disturb: Cannot bypass",
+  "reminderChannelAdvice": "⚠️ Recommended settings:",
+  "reminderChannelAdviceImportance": "• Importance: Urgent or High",
+  "reminderChannelAdviceSound": "• Enable sound and vibration",
+  "reminderChannelAdviceBanner": "• Allow banner notifications",
+  "reminderChannelAdviceXiaomi": "• Xiaomi phones need individual channel setup",
+  "reminderChannelGood": "✅ Notification channel well configured",
+  "reminderOpenAppSettings": "Open App Settings",
+  "reminderAppSettingsMessage": "Please allow notifications and disable battery optimization in settings",
+  "reminderDescription": "Tip: When recording reminder is enabled, the system will send notifications at the specified time daily to remind you to record income and expenses.",
+  "reminderIOSInstructions": "🍎 iOS notification settings:\n• Settings > Notifications > Bee Accounting\n• Enable \"Allow Notifications\"\n• Set notification style: Banner or Alert\n• Enable sound and vibration\n\n⚠️ Important Note:\n• iOS local notifications depend on app process\n• Do not force quit app from task manager\n• Notifications work when app is in background or foreground\n• Force quitting will disable notifications\n\n💡 Usage Tips:\n• Simply press Home button to exit app\n• iOS will manage background apps automatically\n• Keep app in background to receive reminders",
+  "reminderAndroidInstructions": "If notifications don't work properly, check:\n• App is allowed to send notifications\n• Disable battery optimization/power saving for app\n• Allow app to run in background and auto-start\n• Android 12+ needs exact alarm permission\n\n📱 Xiaomi phone special settings:\n• Settings > App Management > Bee Accounting > Notification Management\n• Tap \"Recording Reminder\" channel\n• Set importance to \"Urgent\" or \"High\"\n• Enable \"Banner notifications\", \"Sound\", \"Vibration\"\n• Security Center > App Management > Permissions > Auto-start\n\n🔒 Lock background methods:\n• Find Bee Accounting in recent tasks\n• Pull down app card to show lock icon\n• Tap lock icon to prevent cleanup",
+  "categoryDetailLoadFailed": "Load failed",
+  "categoryDetailSummaryTitle": "Category Summary",
+  "categoryDetailTotalCount": "Total Count",
+  "categoryDetailTotalAmount": "Total Amount",
+  "categoryDetailAverageAmount": "Average Amount",
+  "categoryDetailSortTitle": "Sort",
+  "categoryDetailSortTimeDesc": "Time ↓",
+  "categoryDetailSortTimeAsc": "Time ↑",
+  "categoryDetailSortAmountDesc": "Amount ↓",
+  "categoryDetailSortAmountAsc": "Amount ↑",
+  "categoryDetailNoTransactions": "No transactions",
+  "categoryDetailNoTransactionsSubtext": "No transactions in this category yet",
+  "categoryDetailDeleteFailed": "Delete failed",
+  "categoryMigrationConfirmTitle": "Confirm Migration",
+  "categoryMigrationConfirmMessage": "Migrate {count} transactions from \"{fromName}\" to \"{toName}\"?\n\nThis operation cannot be undone!",
+  "categoryMigrationConfirmOk": "Confirm Migration",
+  "categoryMigrationCompleteTitle": "Migration Complete",
+  "categoryMigrationCompleteMessage": "Successfully migrated {count} transactions from \"{fromName}\" to \"{toName}\".",
+  "categoryMigrationFailedTitle": "Migration Failed",
+  "categoryMigrationFailedMessage": "Migration error: {error}",
+  "categoryMigrationTransactionLabel": "{count} records",
+  "@categoryMigrationTransactionLabel": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "mineImportCompleteAllSuccess": "All Success",
+  "mineCheckUpdateDetecting": "Checking update...",
+  "mineCheckUpdateSubtitleDetecting": "Checking for latest version",
+  "mineUpdateDownloadTitle": "Download Update",
+  "cloudTest": "Test",
+  "cloudSwitched": "Switched",
+  "cloudSwitchFailed": "Switch failed",
+  "cloudSupabaseUrlLabel": "Supabase URL",
+  "cloudSupabaseUrlHint": "https://xxx.supabase.co",
+  "cloudAnonKeyLabel": "Anon Key",
+  "cloudSelectServiceType": "Select Cloud Service Type",
+  "cloudMultiDeviceWarningTitle": "Multi-Device Tips",
+  "cloudMultiDeviceWarningMessage": "Upload before switching devices, download on the new device before editing. Don't edit the same ledger on two devices at once. Tap for details →",
+  "cloudWebdavUrlLabel": "WebDAV Server URL",
+  "cloudWebdavUrlHint": "https://dav.jianguoyun.com/dav/",
+  "cloudWebdavUsernameLabel": "Username",
+  "cloudWebdavPasswordLabel": "Password",
+  "cloudWebdavPathHint": "/SmartBook",
+  "cloudS3EndpointLabel": "Endpoint",
+  "cloudS3EndpointHint": "s3.amazonaws.com or custom endpoint",
+  "cloudS3RegionLabel": "Region",
+  "cloudS3RegionHint": "us-east-1 (leave blank for auto)",
+  "cloudS3AccessKeyLabel": "Access Key",
+  "cloudS3AccessKeyHint": "Your Access Key ID",
+  "cloudS3SecretKeyLabel": "Secret Key",
+  "cloudS3SecretKeyHint": "Your Secret Access Key",
+  "cloudS3BucketLabel": "Bucket Name",
+  "cloudS3BucketHint": "smartbook-data",
+  "cloudS3UseSSLLabel": "Use HTTPS",
+  "cloudS3PortLabel": "Port (optional)",
+  "cloudS3PortHint": "Leave blank for default",
+  "cloudSupabaseBucketLabel": "Storage Bucket Name",
+  "cloudSupabaseBucketHint": "Leave blank for default: beecount-backups",
+  "authRememberAccount": "Remember account",
+  "authRememberAccountHint": "Auto-fill on next login (Supabase only)",
+  "cloudConfigSaved": "Configuration saved",
+  "cloudTestSuccess": "Connection test successful!",
+  "cloudTestFailed": "Connection test failed, please check if the configuration is correct.",
+  "cloudTestError": "Test failed",
+  "authLogin": "Login",
+  "authEmail": "Email",
+  "authPassword": "Password",
+  "authInvalidEmail": "Please enter a valid email address",
+  "authNoAccountYet": "No account yet? ",
+  "authViewRegisterGuide": "See how to register",
+  "authErrorInvalidCredentials": "Email or password is incorrect.",
+  "authErrorEmailNotConfirmed": "Email not verified, please complete verification in your email before logging in.",
+  "authErrorRateLimit": "Too many attempts, please try again later.",
+  "authErrorNetworkIssue": "Network error, please check your connection and try again.",
+  "authErrorLoginFailed": "Login failed, please try again later.",
+  "authErrorEmailInvalid": "Email address is invalid, please check for spelling errors.",
+  "authErrorWeakPassword": "Password is too simple, please include letters and numbers, at least 6 characters.",
+  "importSelectCsvFile": "Please select a file to import (CSV/TSV/XLSX supported)",
+  "exportTitle": "Export",
+  "exportDescription": "Supported export types:\n• Transactions (Income/Expense/Transfer)\n• Categories\n• Accounts\n\nClick the button below to select save location and export current ledger to CSV file.",
+  "exportButtonIOS": "Export and Share",
+  "exportButtonAndroid": "Export Data",
+  "exportJsonButton": "JSON structured export (backup)",
+  "privacyPanelTitle": "Privacy panel",
+  "privacyPanelDesc": "Raw-data retention policy and one-tap cleanup",
+  "privacyStatsAttachments": "Screenshot/image originals",
+  "privacyStatsAttachmentsDesc": "{count} file(s), {size}",
+  "privacyStatsPending": "Pending candidates: {count}",
+  "privacyNoOriginalForSmsNotifyTitle": "SMS/notification originals are not stored",
+  "privacyNoOriginalForSmsNotifyDesc": "SMS and payment-notification text is dropped right after AI parsing (by design); only structured transactions are kept.",
+  "privacyClearAttachments": "Clear screenshot/image originals",
+  "privacyClearAttachmentsConfirmTitle": "Clear originals?",
+  "privacyClearAttachmentsConfirmBody": "This deletes {count} screenshot/image original files; transactions and statistics are unaffected. Consider exporting a backup first.",
+  "privacyCleared": "Cleared {count} original file(s) (transactions kept)",
+  "exportSavedTo": "Saved to: {path}",
+  "exportCsvHeaderType": "Type",
+  "exportCsvHeaderCategory": "Category",
+  "exportCsvHeaderSubCategory": "Subcategory",
+  "exportCsvHeaderAmount": "Amount",
+  "exportCsvHeaderAccount": "Account",
+  "exportCsvHeaderFromAccount": "From Account",
+  "exportCsvHeaderToAccount": "To Account",
+  "exportCsvHeaderNote": "Note",
+  "exportCsvHeaderTime": "Time",
+  "exportCsvHeaderTags": "Tags",
+  "exportCsvHeaderAttachments": "Attachments",
+  "exportShareText": "智记 Export File",
+  "exportSuccessTitle": "Export Successful",
+  "exportSuccessMessageIOS": "Saved and available in share history:\n{path}",
+  "exportSuccessMessageAndroid": "Saved to:\n{path}",
+  "exportFailedTitle": "Export Failed",
+  "exportTypeIncome": "Income",
+  "exportTypeExpense": "Expense",
+  "exportTypeTransfer": "Transfer",
+  "@exportSavedTo": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "@exportSuccessMessageIOS": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "@exportSuccessMessageAndroid": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "personalizeThemeHoney": "Bee Yellow",
+  "personalizeThemeOrange": "Flame Orange",
+  "personalizeThemeGreen": "Emerald Green",
+  "personalizeThemePurple": "Purple Lotus",
+  "personalizeThemePink": "Cherry Pink",
+  "personalizeThemeBlue": "Sky Blue",
+  "personalizeThemeMint": "Forest Moon",
+  "personalizeThemeSand": "Sunset Dune",
+  "personalizeThemeLavender": "Snow & Pine",
+  "personalizeThemeSky": "Misty Wonderland",
+  "personalizeThemeWarmOrange": "Warm Orange",
+  "personalizeThemeMintGreen": "Mint Green",
+  "personalizeThemeRoseGold": "Rose Gold",
+  "personalizeThemeDeepBlue": "Deep Blue",
+  "personalizeThemeMapleRed": "Maple Red",
+  "personalizeThemeEmerald": "Emerald",
+  "personalizeThemeLavenderPurple": "Lavender",
+  "personalizeThemeAmber": "Amber",
+  "personalizeThemeRouge": "Rouge Red",
+  "personalizeThemeIndigo": "Indigo Blue",
+  "personalizeThemeOlive": "Olive Green",
+  "personalizeThemeCoral": "Coral Pink",
+  "personalizeThemeDarkGreen": "Dark Green",
+  "personalizeThemeViolet": "Violet",
+  "personalizeThemeSunset": "Sunset Orange",
+  "personalizeThemePeacock": "Peacock Blue",
+  "personalizeThemeLime": "Lime Green",
+  "analyticsMonthlyAvg": "Monthly Avg",
+  "analyticsDailyAvg": "Daily Avg",
+  "analyticsOverallAvg": "Overall Avg",
+  "analyticsTotalIncome": "Total Income: ",
+  "analyticsTotalExpense": "Total Expense: ",
+  "analyticsBalance": "Balance: ",
+  "analyticsAvgIncome": "{avgLabel} Income: ",
+  "@analyticsAvgIncome": {
+    "placeholders": {
+      "avgLabel": {
+        "type": "String"
+      }
+    }
+  },
+  "analyticsAvgExpense": "{avgLabel} Expense: ",
+  "@analyticsAvgExpense": {
+    "placeholders": {
+      "avgLabel": {
+        "type": "String"
+      }
+    }
+  },
+  "analyticsExpense": "Expense",
+  "analyticsIncome": "Income",
+  "analyticsTotal": "Total {type}: ",
+  "@analyticsTotal": {
+    "placeholders": {
+      "type": {
+        "type": "String"
+      }
+    }
+  },
+  "analyticsAverage": "{avgLabel}: ",
+  "@analyticsAverage": {
+    "placeholders": {
+      "avgLabel": {
+        "type": "String"
+      }
+    }
+  },
+  "updateCheckTitle": "Check Update",
+  "updateNewVersionTitle": "New Version {version} Found",
+  "@updateNewVersionTitle": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "updateNoApkFound": "APK download link not found",
+  "updateAlreadyLatest": "Already latest version",
+  "updateCheckFailed": "Update check failed",
+  "updatePermissionDenied": "Permission denied",
+  "updateUserCancelled": "User cancelled",
+  "updateDownloadTitle": "Download Update",
+  "updateDownloading": "Downloading: {percent}%",
+  "@updateDownloading": {
+    "placeholders": {
+      "percent": {
+        "type": "String"
+      }
+    }
+  },
+  "updateDownloadBackgroundHint": "You can switch the app to background, download will continue",
+  "updateCancelButton": "Cancel",
+  "updateBackgroundDownload": "Background Download",
+  "updateLaterButton": "Later",
+  "updateDownloadButton": "Download",
+  "updateInstallingCachedApk": "Installing cached APK",
+  "updateDownloadComplete": "Download Complete",
+  "updateInstallStarted": "Download complete, installer started",
+  "updateInstallFailed": "Installation failed",
+  "updateDownloadFailed": "Download failed",
+  "updateInstallNow": "Install Now",
+  "updateNotificationPermissionTitle": "Notification Permission Denied",
+  "updateCheckFailedTitle": "Update Check Failed",
+  "updateDownloadFailedTitle": "Download Failed",
+  "updateGoToGitHub": "Go to GitHub",
+  "updateCannotOpenLink": "Cannot open link",
+  "updateManualVisit": "Please manually visit in browser:\\nhttps://github.com/TNT-Likely/BeeCount/releases",
+  "updateNoLocalApkTitle": "No Update Package Found",
+  "updateInstallPackageTitle": "Install Update Package",
+  "updateMultiplePackagesTitle": "Found Multiple Update Packages",
+  "updateSearchFailedTitle": "Search Failed",
+  "updateFoundCachedPackageTitle": "Found Downloaded Update Package",
+  "updateIgnoreButton": "Ignore",
+  "updateInstallFailedTitle": "Installation Failed",
+  "updateInstallFailedMessage": "Cannot start APK installer, please check file permissions.",
+  "updateErrorTitle": "Error",
+  "updateCheckingPermissions": "Checking permissions...",
+  "updateCheckingCache": "Checking local cache...",
+  "updatePreparingDownload": "Preparing download...",
+  "updateUserCancelledDownload": "User cancelled download",
+  "updateStartingInstaller": "Starting installer...",
+  "updateInstallerStarted": "Installer started",
+  "updateInstallationFailed": "Installation failed",
+  "updateDownloadCompleted": "Download completed",
+  "updateDownloadCompletedManual": "Download completed, can install manually",
+  "updateDownloadCompletedDialog": "Download completed, please install manually (dialog exception)",
+  "updateDownloadCompletedContext": "Download completed, please install manually",
+  "updateDownloadFailedGeneric": "Download failed",
+  "updateCheckingUpdate": "Checking for updates...",
+  "updateCurrentLatestVersion": "Already latest version",
+  "updateCheckFailedGeneric": "Update check failed",
+  "updateDownloadProgress": "Downloading: {percent}%",
+  "@updateDownloadProgress": {
+    "placeholders": {
+      "percent": {
+        "type": "String"
+      }
+    }
+  },
+  "updateCheckingUpdateError": "Update check failed: {error}",
+  "@updateCheckingUpdateError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "updateNoLocalApkFoundMessage": "No downloaded update package file found.\\n\\nPlease first download new version through \"Check Update\".",
+  "updateInstallPackageFoundMessage": "Found update package:\\n\\nFile name: {fileName}\\nSize: {fileSize}MB\\nDownload time: {time}\\n\\nInstall immediately?",
+  "@updateInstallPackageFoundMessage": {
+    "placeholders": {
+      "fileName": {
+        "type": "String"
+      },
+      "fileSize": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "updateMultiplePackagesFoundMessage": "Found {count} update package files.\\n\\nRecommend using the latest downloaded version, or manually install in file manager.\\n\\nFile location: {path}",
+  "@updateMultiplePackagesFoundMessage": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "updateSearchLocalApkError": "Error occurred while searching for local update packages: {error}",
+  "@updateSearchLocalApkError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "updateCachedPackageFoundMessage": "Detected previously downloaded update package:\\n\\nFile name: {fileName}\\nSize: {fileSize}MB\\n\\nInstall immediately?",
+  "@updateCachedPackageFoundMessage": {
+    "placeholders": {
+      "fileName": {
+        "type": "String"
+      },
+      "fileSize": {
+        "type": "String"
+      }
+    }
+  },
+  "updateReadCachedPackageError": "Failed to read cached update package: {error}",
+  "@updateReadCachedPackageError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "updateOk": "OK",
+  "updateCannotOpenLinkTitle": "Cannot Open Link",
+  "updateCachedVersionTitle": "Found Downloaded Version",
+  "updateCachedVersionMessage": "Found previously downloaded installation package... Click \\\"OK\\\" to install immediately, click \\\"Cancel\\\" to close...",
+  "updateConfirmDownload": "Download and Install Now",
+  "updateDownloadCompleteTitle": "Download Complete",
+  "updateInstallConfirmMessage": "New version has been downloaded. Install now?",
+  "updateMirrorSelectTitle": "Select Download Accelerator",
+  "updateMirrorSelectHint": "If download is slow, select an accelerated mirror. Click \"Test\" to check latency.",
+  "updateMirrorTestButton": "Test",
+  "updateMirrorTesting": "Testing {completed}/{total}...",
+  "@updateMirrorTesting": {
+    "placeholders": {
+      "completed": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "updateMirrorDirectHint": "For users with good network",
+  "updateDownloadMirror": "Source: {mirror}",
+  "@updateDownloadMirror": {
+    "placeholders": {
+      "mirror": {
+        "type": "String"
+      }
+    }
+  },
+  "updateMirrorSettingTitle": "Download Accelerator",
+  "updateNotificationPermissionGuideText": "Download progress notifications are disabled, but this doesn't affect download functionality. To view progress:",
+  "updateNotificationGuideStep1": "Go to System Settings > App Management",
+  "updateNotificationGuideStep2": "Find \\\"SmartBook\\\" app",
+  "updateNotificationGuideStep3": "Enable notification permissions",
+  "updateNotificationGuideInfo": "Downloads will continue normally in the background even without notifications",
+  "currencyCNY": "Chinese Yuan",
+  "currencyUSD": "US Dollar",
+  "currencyEUR": "Euro",
+  "currencyJPY": "Japanese Yen",
+  "currencyHKD": "Hong Kong Dollar",
+  "currencyTWD": "New Taiwan Dollar",
+  "currencyGBP": "British Pound",
+  "currencyAUD": "Australian Dollar",
+  "currencyCAD": "Canadian Dollar",
+  "currencyKRW": "South Korean Won",
+  "currencySGD": "Singapore Dollar",
+  "currencyMYR": "Malaysian Ringgit",
+  "currencyTHB": "Thai Baht",
+  "currencyIDR": "Indonesian Rupiah",
+  "currencyPHP": "Philippine Peso",
+  "currencyVND": "Vietnamese Dong",
+  "currencyINR": "Indian Rupee",
+  "currencyRUB": "Russian Ruble",
+  "currencyBYN": "Belarusian Ruble",
+  "currencyNZD": "New Zealand Dollar",
+  "currencyCHF": "Swiss Franc",
+  "currencySEK": "Swedish Krona",
+  "currencyNOK": "Norwegian Krone",
+  "currencyDKK": "Danish Krone",
+  "currencyBRL": "Brazilian Real",
+  "currencyMXN": "Mexican Peso",
+  "currencyTRY": "Turkish Lira",
+  "currencyZAR": "South African Rand",
+  "currencyAED": "UAE Dirham",
+  "currencySAR": "Saudi Riyal",
+  "currencyPLN": "Polish Zloty",
+  "currencyCZK": "Czech Koruna",
+  "currencyHUF": "Hungarian Forint",
+  "currencyARS": "Argentine Peso",
+  "currencyCLP": "Chilean Peso",
+  "currencyCOP": "Colombian Peso",
+  "currencyPEN": "Peruvian Sol",
+  "currencyEGP": "Egyptian Pound",
+  "currencyNGN": "Nigerian Naira",
+  "currencyKZT": "Kazakhstani Tenge",
+  "currencyUAH": "Ukrainian Hryvnia",
+  "currencyILS": "Israeli New Shekel",
+  "currencyPKR": "Pakistani Rupee",
+  "currencyBDT": "Bangladeshi Taka",
+  "currencyLKR": "Sri Lankan Rupee",
+  "currencyMMK": "Myanmar Kyat",
+  "webdavConfiguredTitle": "WebDAV Cloud Service Configured",
+  "webdavConfiguredMessage": "WebDAV cloud service uses the credentials provided during configuration, no additional login required.",
+  "recurringTransactionTitle": "Recurring Bills",
+  "recurringTransactionAdd": "Add Recurring Bill",
+  "recurringTransactionEdit": "Edit Recurring Bill",
+  "recurringTransactionFrequency": "Frequency",
+  "recurringTransactionDaily": "Daily",
+  "recurringTransactionWeekly": "Weekly",
+  "recurringTransactionMonthly": "Monthly",
+  "recurringTransactionYearly": "Yearly",
+  "recurringTransactionInterval": "Interval",
+  "recurringTransactionDayOfMonth": "Day of Month",
+  "recurringTransactionStartDate": "Start Date",
+  "recurringTransactionEndDate": "End Date",
+  "recurringTransactionNoEndDate": "Perpetual",
+  "recurringTransactionDeleteConfirm": "Are you sure you want to delete this recurring bill?",
+  "recurringTransactionEmpty": "No Recurring Bills",
+  "recurringTransactionEmptyHint": "Tap the + button in the top right corner to add",
+  "recurringTransactionEveryNDays": "Every {n} day(s)",
+  "@recurringTransactionEveryNDays": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "recurringTransactionEveryNWeeks": "Every {n} week(s)",
+  "@recurringTransactionEveryNWeeks": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "recurringTransactionEveryNMonths": "Every {n} month(s)",
+  "@recurringTransactionEveryNMonths": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "recurringTransactionEveryNYears": "Every {n} year(s)",
+  "@recurringTransactionEveryNYears": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "recurringTransactionUsageTitle": "Usage Guide",
+  "recurringTransactionUsageContent": "Recurring transactions are automatically scanned and generated when the app cold starts. After setting a date, the system will create corresponding bills on the first startup after that date. For example: if set to Nov 27, bills will be auto-recorded on the first launch after Nov 27.",
+  "ledgerSelectTitle": "Select Ledger",
+  "ledgerSelect": "Select Ledger",
+  "syncNotConfiguredMessage": "Cloud not configured",
+  "syncNotLoggedInMessage": "Not logged in",
+  "syncCloudBackupCorruptedMessage": "Cloud backup content is corrupted, possibly due to encoding issues from earlier versions. Please click 'Upload Current Ledger to Cloud' to overwrite and fix.",
+  "syncNoCloudBackupMessage": "No cloud backup",
+  "syncAccessDeniedMessage": "403 Access denied (check storage RLS policy and path)",
+  "cloudTestConnection": "Test Connection",
+  "cloudLocalStorageTitle": "Local Storage",
+  "cloudLocalStorageSubtitle": "Data is only saved on local device",
+  "cloudCustomSupabaseTitle": "Custom Supabase",
+  "cloudCustomSupabaseSubtitle": "Click to configure self-hosted Supabase",
+  "cloudCustomWebdavTitle": "Custom WebDAV",
+  "cloudCustomWebdavSubtitle": "Click to configure Nutstore/Nextcloud etc.",
+  "cloudCustomS3Title": "S3 Protocol Storage",
+  "cloudCustomS3Subtitle": "AWS S3 / Cloudflare R2 / MinIO",
+  "cloudSmartBookCloudTitle": "SmartBook",
+  "cloudSmartBookCloudSubtitle": "Self-hosted · Incremental sync · Multi-device",
+  "cloudConfigureSmartBookCloudTitle": "Configure SmartBook",
+  "cloudSmartBookCloudUrlLabel": "Server URL",
+  "cloudSmartBookCloudUrlHint": "https://your-server.com",
+  "cloudSmartBookCloudApiPrefixLabel": "API Prefix",
+  "cloudSmartBookCloudApiPrefixHint": "/api/v1",
+  "cloudSmartBookCloudEmailLabel": "Email",
+  "cloudSmartBookCloudEmailHint": "your@email.com",
+  "cloudSmartBookCloudPasswordLabel": "Password",
+  "cloudSmartBookCloudPasswordHint": "Enter password",
+  "cloudSmartBookCloudLoginSuccess": "Login successful",
+  "cloudSmartBookCloudLoginFailed": "Login failed",
+  "cloudSmartBookCloudSyncSubtitle": "Incremental sync · Multi-device",
+  "cloudSmartBookCloudConnected": "Connected",
+  "cloudSmartBookCloudNotConnected": "Not connected",
+  "cloudSmartBookCloudNotConnectedHint": "Configure and login in cloud service settings",
+  "cloudSmartBookCloudAutoSync": "Incremental Sync",
+  "cloudSmartBookCloudAutoSyncHint": "Changes sync to cloud automatically",
+  "cloudSmartBookCloudMultiDevice": "Multi-device Sync",
+  "cloudSmartBookCloudMultiDeviceHint": "Keep data consistent across devices",
+  "cloudSmartBookCloudAttachment": "Attachment Sync",
+  "cloudSmartBookCloudAttachmentHint": "Receipt images backed up to cloud automatically",
+  "cloudTabOffline": "Offline",
+  "cloudTabBackup": "Backup",
+  "cloudTabCloudSync": "Cloud Sync",
+  "cloudIcloudSubtitle": "Auto sync with Apple ID",
+  "cloudIcloudNotAvailableTitle": "iCloud Not Available",
+  "cloudIcloudNotAvailableMessage": "Please sign in to iCloud in Settings and try again",
+  "cloudIcloudHelpTitle": "iCloud Instructions",
+  "cloudIcloudHelpPrerequisites": "Prerequisites",
+  "cloudIcloudHelpPrereq1": "1. Device is signed in with Apple ID",
+  "cloudIcloudHelpPrereq2": "2. iCloud Drive is enabled",
+  "cloudIcloudHelpPrereq3": "3. Device is connected to internet",
+  "cloudIcloudHelpCheckTitle": "How to Check iCloud Drive",
+  "cloudIcloudHelpCheck1": "1. Open Settings",
+  "cloudIcloudHelpCheck2": "2. Tap your Apple ID at the top",
+  "cloudIcloudHelpCheck3": "3. Tap iCloud",
+  "cloudIcloudHelpCheck4": "4. Make sure iCloud Drive is enabled",
+  "cloudIcloudHelpFaqTitle": "FAQ",
+  "cloudIcloudHelpFaq1": "If not available, check if iCloud Drive is enabled",
+  "cloudIcloudHelpFaq2": "First time use may take a few seconds to initialize",
+  "cloudIcloudHelpFaq3": "Data is stored in your private iCloud space",
+  "cloudIcloudHelpFaq4": "Devices with same Apple ID sync automatically",
+  "cloudIcloudHelpNote": "iCloud sync uses your Apple ID, no extra configuration needed",
+  "cloudSupabaseHelpTitle": "Supabase Setup Guide",
+  "cloudSupabaseHelpIntro": "What is Supabase",
+  "cloudSupabaseHelpIntro1": "Supabase is an open-source backend-as-a-service platform",
+  "cloudSupabaseHelpIntro2": "Offers a free tier, sufficient for personal use",
+  "cloudSupabaseHelpIntro3": "You have full control over your data",
+  "cloudSupabaseHelpSteps": "Setup Steps",
+  "cloudSupabaseHelpStep1": "1. Visit supabase.com to create an account",
+  "cloudSupabaseHelpStep2": "2. Create a new project (select free tier)",
+  "cloudSupabaseHelpStep3": "3. Go to Project Settings > API",
+  "cloudSupabaseHelpStep4": "4. Copy Project URL and anon key",
+  "cloudSupabaseHelpStep5": "5. Paste them into the app configuration",
+  "cloudSupabaseHelpFaq": "FAQ",
+  "cloudSupabaseHelpFaq1": "Free tier includes 500MB storage",
+  "cloudSupabaseHelpFaq2": "Data is encrypted and secure",
+  "cloudSupabaseHelpFaq3": "Supports multi-device sync",
+  "cloudSupabaseHelpNote": "After configuration, you need to register/login to use sync",
+  "cloudDetailedTutorial": "Detailed Tutorial",
+  "cloudWebdavHelpTitle": "WebDAV Setup Guide",
+  "cloudWebdavHelpIntro": "What is WebDAV",
+  "cloudWebdavHelpIntro1": "WebDAV is a network file protocol",
+  "cloudWebdavHelpIntro2": "Supported by many cloud storage and NAS devices",
+  "cloudWebdavHelpIntro3": "Data is stored on your own server",
+  "cloudWebdavHelpProviders": "Supported Providers",
+  "cloudWebdavHelpProvider1": "- Nutstore (recommended for China users)",
+  "cloudWebdavHelpProvider2": "- Nextcloud / ownCloud",
+  "cloudWebdavHelpProvider3": "- Synology / QNAP NAS",
+  "cloudWebdavHelpProvider4": "- Other WebDAV-compatible services",
+  "cloudWebdavHelpSteps": "Setup Steps (Nutstore example)",
+  "cloudWebdavHelpStep1": "1. Login to Nutstore web version",
+  "cloudWebdavHelpStep2": "2. Click account name > Account Info",
+  "cloudWebdavHelpStep3": "3. Select Security Options tab",
+  "cloudWebdavHelpStep4": "4. Add application password (for third-party apps)",
+  "cloudWebdavHelpStep5": "5. Copy server address, account, and app password",
+  "cloudWebdavHelpNote": "Use an app-specific password instead of your account password",
+  "cloudS3HelpTitle": "S3 Storage Setup Guide",
+  "cloudS3HelpIntro": "What is S3",
+  "cloudS3HelpIntro1": "S3 is a standard object storage protocol",
+  "cloudS3HelpIntro2": "Supported by many cloud providers",
+  "cloudS3HelpIntro3": "Data is stored on your chosen cloud service",
+  "cloudS3HelpProviders": "Supported Providers",
+  "cloudS3HelpProvider1": "- AWS S3 (Amazon Web Services)",
+  "cloudS3HelpProvider2": "- Cloudflare R2 (free 10GB/month)",
+  "cloudS3HelpProvider3": "- Backblaze B2 (free 10GB)",
+  "cloudS3HelpProvider4": "- MinIO (self-hosted)",
+  "cloudS3HelpProvider5": "- Alibaba Cloud OSS",
+  "cloudS3HelpProvider6": "- Tencent Cloud COS",
+  "cloudS3HelpProvider7": "- Qiniu Kodo",
+  "cloudS3HelpSteps": "Setup Steps (Cloudflare R2 example)",
+  "cloudS3HelpStep1": "1. Login to Cloudflare Dashboard",
+  "cloudS3HelpStep2": "2. Go to R2 > Create Bucket",
+  "cloudS3HelpStep3": "3. Go to R2 > Manage R2 API Tokens",
+  "cloudS3HelpStep4": "4. Create API Token and copy credentials",
+  "cloudS3HelpStep5": "5. Paste endpoint, access key, secret key, and bucket name",
+  "cloudS3HelpNote": "Recommended: Cloudflare R2 offers 10GB free storage without egress fees",
+  "cloudStatusNotTested": "Not tested",
+  "cloudStatusNormal": "Connection normal",
+  "cloudStatusFailed": "Connection failed",
+  "cloudCannotOpenLink": "Cannot open link",
+  "cloudErrorAuthFailed": "Authentication failed: Invalid API Key",
+  "cloudErrorServerStatus": "Server returned status code {code}",
+  "@cloudErrorServerStatus": {
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
+  "cloudErrorWebdavNotSupported": "Server does not support WebDAV protocol",
+  "cloudErrorAuthFailedCredentials": "Authentication failed: Incorrect username or password",
+  "cloudErrorAccessDenied": "Access denied: Please check permissions",
+  "cloudErrorPathNotFound": "Server path not found: {path}",
+  "@cloudErrorPathNotFound": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "cloudErrorNetwork": "Network error: {message}",
+  "@cloudErrorNetwork": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "cloudTestSuccessTitle": "Test Successful",
+  "cloudTestSuccessMessage": "Connection normal, configuration valid",
+  "cloudTestFailedTitle": "Test Failed",
+  "cloudTestFailedMessage": "Connection failed",
+  "cloudTestErrorTitle": "Test Error",
+  "cloudSwitchConfirmTitle": "Switch Cloud Service",
+  "cloudSwitchConfirmMessage": "Switching cloud service will log out current account. Confirm switch?",
+  "cloudSwitchFailedTitle": "Switch Failed",
+  "cloudSwitchFailedConfigMissing": "Please configure this cloud service first",
+  "cloudConfigInvalidTitle": "Invalid Configuration",
+  "cloudConfigInvalidMessage": "Please fill in complete information",
+  "cloudSaveFailed": "Save Failed",
+  "cloudSwitchedTo": "Switched to {type}",
+  "@cloudSwitchedTo": {
+    "placeholders": {
+      "type": {
+        "type": "String"
+      }
+    }
+  },
+  "cloudConfigureSupabaseTitle": "Configure Supabase",
+  "cloudConfigureWebdavTitle": "Configure WebDAV",
+  "cloudConfigureS3Title": "Configure S3",
+  "cloudSupabaseAnonKeyHintLong": "Paste complete anon key",
+  "cloudWebdavRemotePathHelp": "Remote directory path for data storage",
+  "cloudWebdavRemotePathLabel": "Remote Path",
+  "cloudWebdavRemotePathHelperText": "Remote directory path for data storage",
+  "accountsTitle": "Asset Management",
+  "accountsEmptyMessage": "No accounts yet, tap the top right to add",
+  "accountAddTooltip": "Add Account",
+  "accountAddButton": "Add Account",
+  "accountBalance": "Balance",
+  "accountEditTitle": "Edit Account",
+  "accountNewTitle": "New Account",
+  "accountNameLabel": "Account Name",
+  "accountNameHint": "e.g.: ICBC, Alipay, etc.",
+  "accountNameRequired": "Please enter account name",
+  "accountNameDuplicate": "Account name already exists, please use a different name",
+  "accountTypeLabel": "Account Type",
+  "accountTypeCash": "Cash",
+  "accountTypeBankCard": "Bank Card",
+  "accountTypeCreditCard": "Credit Card",
+  "accountTypeAlipay": "Alipay",
+  "accountTypeWechat": "WeChat",
+  "accountTypeOther": "Other",
+  "accountInitialBalance": "Initial Balance",
+  "accountInitialBalanceHint": "Enter initial balance (optional)",
+  "accountInitialBalanceLocked": "Cannot be modified after creation. Use \"Adjust balance\" instead.",
+  "accountAdjustBalanceLabel": "Adjust Balance",
+  "accountAdjustBalanceHint": "Enter the adjusted current balance (e.g. reconcile with bank statement)",
+  "accountAdjustBalanceNote": "Balance adjustment",
+  "accountBalanceAdjustedToast": "Balance adjustment recorded, syncing…",
+  "accountAdjustBalanceSame": "Balance already matches, no adjustment needed",
+  "accountAdjustBalanceNewValue": "Adjusted balance",
+  "accountAdjustBalanceUpdate": "Update Balance",
+  "accountAdjustBalanceInvalid": "Please enter a valid amount",
+  "accountDeleteWarningTitle": "Confirm Delete",
+  "accountDeleteWarningMessage": "This account has {count} related transactions. After deletion, account information in transaction records will be cleared. Confirm deletion?",
+  "@accountDeleteWarningMessage": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "accountDeleteConfirm": "Confirm to delete this account?",
+  "accountSelectTitle": "Select Account",
+  "accountNone": "No Account",
+  "accountsEnableFeature": "Enable Account Feature",
+  "accountHide": "Hide account",
+  "accountUnhide": "Restore account",
+  "accountRestore": "Restore",
+  "accountHiddenTag": "Hidden",
+  "accountHiddenSection": "Hidden",
+  "accountHiddenSectionSummary": "{count} hidden · {total}",
+  "@accountHiddenSectionSummary": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "accountHideConfirmTitle": "Hide this account?",
+  "accountHideConfirmBody": "It won't be selectable for new records; history and balance are kept and you can restore it anytime.",
+  "accountHideRecurringWarn": "{count} recurring bills use this account; they'll be skipped while hidden.",
+  "@accountHideRecurringWarn": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "accountHideClearedDefault": "Cleared its default-account setting",
+  "accountHiddenToast": "Hidden",
+  "accountRestoredToast": "Restored",
+  "privacyOpenSourceUrlError": "Cannot open link",
+  "updateCorruptedFileTitle": "Corrupted Installation Package",
+  "updateCorruptedFileMessage": "The previously downloaded installation package is incomplete or corrupted. Delete and re-download?",
+  "welcomeTitle": "Welcome to 智记",
+  "welcomeDescription": "An accounting app that truly respects your privacy",
+  "welcomeCurrencyDescription": "Choose your preferred currency, you can change it anytime in settings",
+  "welcomeCreateDefaultLedger": "Create a default ledger",
+  "welcomePrivacyTitle": "Open Source · Community Driven",
+  "welcomePrivacyFeature1": "100% open source code, supervised by community",
+  "welcomePrivacyFeature2": "No privacy concerns, data stored locally",
+  "welcomeOpenSourceFeature1": "Active developer community, continuous improvement",
+  "welcomeViewGitHub": "Visit GitHub Repository",
+  "welcomeCloudSyncTitle": "Optional Cloud Sync",
+  "welcomeCloudSyncDescription": "SmartBook supports multiple sync methods - your data, your control",
+  "welcomeCloudSyncFeature1": "Completely offline usage, no cloud needed",
+  "welcomeCloudSyncFeature2": "SmartBook self-hosted (real-time multi-device + Web UI)",
+  "welcomeCloudSyncFeature3": "Or pick iCloud / WebDAV / Supabase / S3",
+  "widgetManagement": "Home Screen Widget",
+  "widgetManagementDesc": "Quick view of income and expenses on home screen",
+  "widgetPreview": "Widget Preview",
+  "widgetPreviewDesc": "Widget automatically displays actual data from current ledger, theme color follows app settings",
+  "widgetGalleryTitle": "Widget Gallery",
+  "widgetGalleryDesc": "Previews use sample data — the real widget shows your current ledger and follows your theme color.",
+  "widgetGalleryGlanceTitle": "Overview",
+  "widgetGalleryGlanceDesc": "Today's and this month's income and expenses at a glance",
+  "widgetGalleryNetWorthDesc": "Total assets, liabilities and net worth trend",
+  "widgetGalleryQuickAddTitle": "Quick Add",
+  "widgetGalleryQuickAddDesc": "One-tap entry for your frequent categories",
+  "widgetGalleryBudgetDesc": "Track your budget progress at a glance",
+  "widgetGalleryRecentDesc": "See your latest transactions",
+  "widgetGalleryDashboardTitle": "Dashboard",
+  "widgetDashboardTitle": "This Month",
+  "widgetGalleryDashboardDesc": "Income, trend and recent transactions in one view",
+  "widgetSizeSmall": "Small",
+  "widgetSizeMedium": "Medium",
+  "widgetSizeLarge": "Large",
+  "howToAddWidget": "How to Add Widget",
+  "iosWidgetStep1": "Long press on home screen blank area to enter edit mode",
+  "iosWidgetStep2": "Tap the \"+\" button in upper left corner",
+  "iosWidgetStep3": "Search and select \"SmartBook\"",
+  "iosWidgetStep4": "Select medium widget and add to home screen",
+  "androidWidgetStep1": "Long press on home screen blank area",
+  "androidWidgetStep2": "Select \"Widgets\"",
+  "androidWidgetStep3": "Find and long press \"SmartBook\" widget",
+  "androidWidgetStep4": "Drag to suitable position on home screen",
+  "aboutWidget": "About Widget",
+  "widgetDescription": "Widget automatically syncs to display today's and this month's income and expense data, refreshing every 30 minutes. Data updates immediately when app is opened.",
+  "widgetQuickEntryTitle": "Quick Entry",
+  "widgetQuickEntryDesc": "Tap the left side of the widget to quickly add an expense, or tap the right side to add an income. You can also use smartbook://new?type=transfer via Shortcuts to quickly start a transfer.",
+  "appName": "智记",
+  "monthSuffix": "",
+  "todayExpense": "Today's Expense",
+  "todayIncome": "Today's Income",
+  "monthExpense": "Month's Expense",
+  "monthIncome": "Month's Income",
+  "autoScreenshotBilling": "Auto Screenshot Billing",
+  "autoScreenshotBillingDesc": "Auto-recognize payment info from screenshots",
+  "autoScreenshotBillingTitle": "Auto Screenshot Billing",
+  "featureDescription": "Feature Description",
+  "featureDescriptionContent": "After taking a screenshot of payment page, the system will automatically recognize amount and merchant info, and create expense record.\n\n⚡ Recognition speed: 2-3 seconds (may be longer on some devices)\n🤖 Smart category matching\n📝 Auto-fill notes\n\n⚠️ Note:\n• Different devices have different screenshot save speeds, delay may be 5-10 seconds\n• May not work on some devices, depending on system implementation\n• Recognized screenshots will be skipped automatically\n• Due to Android Scoped Storage restrictions (Android 10+), apps cannot delete system screenshots. Manual cleanup required",
+  "autoBilling": "Auto Billing",
+  "enabled": "Enabled",
+  "disabled": "Disabled",
+  "photosPermissionRequired": "Photos permission required for screenshot monitoring",
+  "enableSuccess": "Auto billing enabled",
+  "disableSuccess": "Auto billing disabled",
+  "autoBillingBatteryTitle": "Keep Running in Background",
+  "autoBillingBatteryGuideTitle": "Battery Optimization Settings",
+  "autoBillingBatteryDesc": "Auto billing requires the app to keep running in the background. Some phones automatically clean background apps when locked, which may cause auto billing to fail. It is recommended to disable battery optimization to ensure proper functionality.",
+  "autoBillingCheckBattery": "Check Battery Optimization",
+  "autoBillingBatteryWarning": "⚠️ Battery optimization is not disabled. The app may be automatically cleaned by the system, causing auto billing to fail. Please tap the \"Settings\" button above to disable battery optimization.",
+  "enableFailed": "Enable failed",
+  "disableFailed": "Disable failed",
+  "iosAutoFeatureDesc": "Use iOS \"Shortcuts\" app to automatically identify payment information from screenshots and create transactions. Once set up, it will automatically trigger on every screenshot.",
+  "iosAutoShortcutConfigTitle": "Configuration Steps:",
+  "iosAutoShortcutStep1": "Open \"Shortcuts\" app, tap \"+\" in top right to create new shortcut",
+  "iosAutoShortcutStep2": "Add \"Take Screenshot\" action",
+  "iosAutoShortcutStep3": "Search and add \"SmartBook - Auto Billing\" action",
+  "iosAutoShortcutStep4": "Set the screenshot parameter of \"SmartBook\" to the previous \"Screenshot\"",
+  "iosAutoShortcutStep5": "(Optional) Go to Settings > Accessibility > Touch > Back Tap, bind this shortcut",
+  "iosAutoShortcutStep6": "Done! Double tap phone back during payment for quick billing",
+  "iosAutoShortcutRecommendedTip": "✅ Recommended: After binding the shortcut to \"Back Tap\", double tap phone back during payment to auto-screenshot and recognize billing, no manual screenshot needed.",
+  "iosAutoBackTapTitle": "💡 Double Tap Back to Trigger (Recommended)",
+  "iosAutoBackTapDesc": "Settings > Accessibility > Touch > Back Tap\n• Select \"Double Tap\" or \"Triple Tap\"\n• Choose the shortcut you just created\n• After setup, double tap phone back during payment to auto-record, no screenshot needed",
+  "iosAutoTutorialTitle": "Video Tutorial",
+  "iosAutoTutorialDesc": "Watch detailed setup video tutorial",
+  "iosAutoImportTitle": "Get Shortcut in One Tap",
+  "iosAutoImportDesc": "Tap the button below to import the ready-made \"Screenshot → Auto Billing\" shortcut — no need to add the \"Take Screenshot\" action or connect parameters manually. After importing, binding it to \"Back Tap\" is recommended.",
+  "iosAutoImportButton": "Get Shortcut",
+  "iosAutoImportFailed": "Couldn't open the shortcut link. Check your connection and try again.",
+  "iosAutoManualConfigTitle": "Manual Setup (Advanced)",
+  "iosAutoManualConfigDesc": "If one-tap import isn't available, follow these steps to create the shortcut manually.",
+  "aiSettingsTitle": "AI Assistant",
+  "aiSettingsSubtitle": "Configure AI models and recognition strategy",
+  "aiEnableTitle": "Enable AI Assistant",
+  "aiEnableSubtitle": "Use AI vision to recognize bill screenshots, extract amount, merchant, time, and support natural language conversation",
+  "aiEnableToastOn": "AI Assistant enabled",
+  "aiEnableToastOff": "AI Assistant disabled",
+  "aiStrategyTitle": "Execution Strategy",
+  "aiStrategyLocalFirst": "Local First (Recommended)",
+  "aiStrategyCloudFirst": "Cloud First",
+  "aiStrategyCloudFirstDesc": "Use cloud API first, downgrade to local if failed",
+  "aiStrategyLocalOnly": "Local Only",
+  "aiStrategyCloudOnly": "Cloud Only",
+  "aiStrategyCloudOnlyDesc": "Use cloud API only, no model download",
+  "aiStrategyUnavailable": "Local model in training, coming soon",
+  "aiStrategySwitched": "Switched to: {strategy}",
+  "@aiStrategySwitched": {
+    "placeholders": {
+      "strategy": {
+        "type": "String"
+      }
+    }
+  },
+  "aiCloudApiKeyHint": "Enter your Zhipu AI API Key",
+  "aiCloudApiKeyHintCustom": "Enter API Key",
+  "aiCloudApiKeyHelper": "GLM-*-Flash model is completely free",
+  "aiCloudApiGetKey": "Get API Key",
+  "aiCloudApiTutorial": "Tutorial",
+  "aiCloudApiTestKey": "Test Connection",
+  "aiChatConfigWarning": "AI provider not configured. Please add and bind one in Settings",
+  "aiChatGoToSettings": "Go to Settings",
+  "aiOcrRecognizing": "Recognizing bill...",
+  "aiOcrNoAmount": "No valid amount recognized, please add manually",
+  "aiNotConfiguredHint": "AI service not configured. Go to \"Me → AI Settings\" to set up.",
+  "aiOcrCheckLog": "Recognition failed. Check logs for details.",
+  "aiOcrNoBill": "No bill recognized. Make sure the image is a bill, then try again.",
+  "aiNotConfiguredNotificationTitle": "❌ Cannot recognize screenshot",
+  "aiNotConfiguredNotificationBody": "AI service not configured. Tap to set up.",
+  "autoBillingNotifyDetectedTitle": "✅ Screenshot detected",
+  "autoBillingNotifyWaitingFileBody": "Waiting for file to be written...",
+  "autoBillingNotifyRecognizingScreenshotTitle": "Recognizing screenshot...",
+  "autoBillingNotifyVisionAnalyzingBody": "Calling AI vision to analyze payment info, please wait",
+  "autoBillingNotifyRecognizingTextTitle": "⏳ Recognizing",
+  "autoBillingNotifyTextAnalyzingBody": "Calling AI to parse payment info...",
+  "autoSmsBillingRecognizingTitle": "⏳ Analyzing SMS",
+  "autoNotifyBillingRecognizingTitle": "⏳ Analyzing Notification",
+  "autoNotifyBillingAnalyzingBody": "Calling AI to parse payment notification...",
+  "autoScreenBillingRecognizingTitle": "⏳ Analyzing bill page",
+  "autoScreenBillingAnalyzingBody": "Extracting bookkeeping info from page text...",
+  "autoSmsBillingAnalyzingBody": "Extracting bill info from the SMS...",
+  "autoSmsBillingTitle": "SMS auto billing",
+  "autoSmsBillingDesc": "Listen to bank/payment SMS and auto-record with AI",
+  "autoSmsBillingDescEnabled": "Listening — bank/payment SMS will be auto-recorded",
+  "smsPermissionRequired": "SMS permission is required for auto billing",
+  "autoBillingEntryTitle": "Auto billing",
+  "autoBillingHealthy": "Working normally",
+  "autoBillingPartial": "{count} item(s) not ready: {issues}",
+  "autoBillingSmsPermissionMissing": "SMS permission revoked - auto billing incomplete",
+  "autoBillingNotifyPermissionMissing": "Notification access not granted - auto billing incomplete",
+  "autoBillingNotifyTitle": "Notification auto billing",
+  "autoBillingNotifyDesc": "Listen to payment notifications (WeChat/Alipay/bank apps)",
+  "autoBillingNotifyDescEnabled": "Listening - payment notifications will be auto-recorded",
+  "autoBillingNotifyPermissionTitle": "Enable notification access",
+  "autoBillingNotifyPermissionContent": "Notification auto billing requires system \"Notification access\". Tap to open system settings, find this app and enable it.",
+  "autoBillingScreenTextTitle": "Detail page auto billing",
+  "autoBillingScreenTextDesc": "Auto bill from Alipay / Douyin / JD / WeChat bill & order detail pages",
+  "autoBillingScreenTextDescEnabled": "Watching — bill detail pages will be recorded automatically",
+  "autoBillingScreenTextPermissionMissing": "\"Accessibility\" not granted, detail-page auto billing inactive",
+  "autoBillingScreenTextVivoHint": "vivo/iQOO users: if the toggle bounces back off right after enabling, open Settings → Shortcuts & Accessibility, find this service and enable it. If still turned off, allow this app in i Manager → Privacy permissions → Restricted settings, and allow SmartBook in Settings → Battery → Background power consumption.",
+  "autoBillingScreenTextPermissionTitle": "Enable “Accessibility Service”",
+  "autoBillingScreenTextPermissionContent": "Detail-page auto billing requires system “Accessibility” permission. Only reads text (amount, merchant) from Alipay/Douyin/JD/WeChat pages for billing; text is not logged or stored and is deleted right after processing.",
+  "autoBillingHealthIssueScreenshot": "Screenshot monitor",
+  "autoBillingHealthIssueSms": "SMS monitor",
+  "autoBillingHealthIssueSmsPermission": "SMS permission",
+  "autoBillingHealthIssueNotify": "Notification monitor",
+  "autoBillingHealthIssueNotifyListener": "Notification access",
+  "autoBillingHealthIssueAiText": "AI text model",
+  "autoBillingHealthIssueAiVision": "AI vision model",
+  "autoBillingHealthIssueBattery": "Battery optimization",
+  "autoStartTitle": "Auto-start & background persistence",
+  "autoStartDesc": "On vivo/OriginOS you must also allow auto-start, disable the \"high background power\" limit and lock the app in recent tasks, otherwise SMS/notifications are missed after the app is cleaned up",
+  "autoStartGo": "Open settings",
+  "autoStartOpened": "Settings opened - enable auto-start for this app",
+  "autoStartOpenFailed": "Could not open vendor settings - enable auto-start manually in app details",
+  "channelMappingTitle": "Channel → account mapping",
+  "channelMappingDesc": "When AI cannot identify an account, fall back to the mapped asset account for the channel (e.g. 招商银行, 支付宝)",
+  "channelMappingAdd": "Add mapping",
+  "channelMappingChannelLabel": "Channel name",
+  "channelMappingAccountLabel": "Target account",
+  "channelMappingEmpty": "No mappings yet - auto billing will fall back by source channel",
+  "channelMappingSaved": "Mapping saved",
+  "channelMappingDeleted": "Mapping deleted",
+  "autoBillingMockTitle": "Manual mock test",
+  "autoBillingMockDesc": "Inject a mock SMS/notification to verify the AI bookkeeping pipeline without real messages",
+  "autoBillingMockSms": "Mock SMS",
+  "autoBillingMockNotify": "Mock notification",
+  "autoBillingMockScreen": "Mock page text",
+  "autoBillingMockSubmitted": "Submitted - result will show in system notification",
+  "autoBillingMockCustom": "Custom content",
+  "autoBillingMockNotice": "Mock data goes through the same AI pipeline as real messages",
+  "pendingConfirmationTitle": "Pending confirmation",
+  "pendingConfirmationDesc": "Review candidates from auto billing (low-confidence / large / duplicate)",
+  "pendingConfirmationEmpty": "No pending entries",
+  "pendingConfirmationCountBadge": "{count} pending - tap to review",
+  "pendingConfirmationConfirm": "Book",
+  "pendingConfirmationEdit": "Edit & book",
+  "pendingConfirmationReject": "Discard",
+  "pendingConfirmationRejectAsk": "Discard this pending entry?",
+  "pendingConfirmationApproved": "Booked",
+  "pendingConfirmationRejected": "Discarded",
+  "pendingConfirmationEditFailed": "Invalid amount",
+  "pendingConfirmationApproveFailed": "Failed to book",
+  "pendingConfirmationAmount": "Amount",
+  "pendingConfirmationNote": "Note",
+  "pendingConfirmationUncheckedReason": "Unconfirmed",
+  "pendingCandidateReasonDuplicate": "Possible duplicate - similar transaction recently",
+  "pendingCandidateReasonLarge": "Large amount",
+  "pendingCandidateReasonLowConfidence": "Low confidence - please verify",
+  "pendingCandidateReasonAnomaly": "Anomalous - above recent baseline",
+  "@spendAlertLargeBody": {
+    "description": "M3: large spend notification body",
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      },
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "@spendAlertAnomalyBody": {
+    "description": "M3: anomaly notification body with current/baseline/amplitude",
+    "placeholders": {
+      "current": {
+        "type": "String"
+      },
+      "median": {
+        "type": "String"
+      },
+      "pct": {
+        "type": "String"
+      }
+    }
+  },
+  "autoDeleteScreenshotTitle": "Auto-delete screenshot after billing",
+  "autoDeleteScreenshotDesc": "Delete the phone screenshot after it was recognized as a bill and booked. It is kept when not a bill, on failure, or when sent to pending.",
+  "autoBookCheckTitle": "Auto-billing check",
+  "autoBookCheckDesc": "Low-confidence / large / duplicate entries go to pending first",
+  "autoBookCheckDisabledDesc": "Off - all entries booked directly (legacy)",
+  "smartBillingChecking": "Checking...",
+  "autoBillingNotifyRecognizeFailedTitle": "❌ Recognition failed",
+  "autoBillingNotifyRecognizeFailedBody": "Could not extract billing info from screenshot. Check AI config or the image.",
+  "autoBillingNotifyNoBillTitle": "No bill found",
+  "autoBillingNotifyNoBillBody": "No billing info found in this screenshot — it may not be a bill.",
+  "autoScreenBillingNoBillTitle": "No bill found on this page",
+  "autoScreenBillingNoBillBody": "No completed transaction found on this page — skipped",
+  "autoScreenBillingRecognizeFailedTitle": "❌ Recognition failed",
+  "autoScreenBillingRecognizeFailedBody": "Could not extract billing info from page text. Check AI config.",
+  "autoScreenBillingProcessFailedTitle": "❌ Process failed",
+  "autoBillingNotifyFileUnavailableTitle": "Recognition failed",
+  "autoBillingNotifyFileUnavailableBody": "Screenshot file is not available",
+  "autoBillingNotifyNoLedgerTitle": "❌ Auto billing failed",
+  "autoBillingNotifyNoLedgerBody": "No ledger available. Please create one first.",
+  "autoBillingNotifyNoAmountBody": "Could not recognize the amount",
+  "autoBillingNotifyCreateFailedTitle": "❌ Failed to create",
+  "autoBillingNotifyCreateFailedBody": "Could not create transaction record",
+  "autoBillingNotifyProcessFailedTitle": "❌ Processing failed",
+  "autoBillingNotifyProcessFailedBody": "Error: {error}",
+  "@autoBillingNotifyProcessFailedBody": {
+    "placeholders": { "error": { "type": "String" } }
+  },
+  "autoBillingNotifySuccessSingleTitle": "✅ Auto billing succeeded ¥{amount}",
+  "@autoBillingNotifySuccessSingleTitle": {
+    "placeholders": { "amount": { "type": "String" } }
+  },
+  "autoBillingNotifySuccessMultiTitle": "✅ Auto billing succeeded ({count} entries)",
+  "@autoBillingNotifySuccessMultiTitle": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "autoBillingNotifySuccessMultiBody": "Total ¥{amount}",
+  "@autoBillingNotifySuccessMultiBody": {
+    "placeholders": { "amount": { "type": "String" } }
+  },
+  "autoBillingNotifySuccessSingleBodyNote": "Note: {note}",
+  "@autoBillingNotifySuccessSingleBodyNote": {
+    "placeholders": { "note": { "type": "String" } }
+  },
+  "autoBillingNotifySuccessSingleBodyDefault": "Record created automatically",
+  "aiOcrNoLedger": "Ledger not found",
+  "aiBillingRateMissingHint": "⚠️ No {currency} rate available — recorded 1:1 for now; use “Reconvert” on the stats page to fix.",
+  "@aiBillingRateMissingHint": {
+    "placeholders": { "currency": { "type": "String" } }
+  },
+  "aiPromptVarCurrencies": "Ledger base currency + foreign-currency accounts in use",
+  "aiPromptVarBillGuard": "Non-bill filter (injected for screenshot / auto bookkeeping only)",
+  "aiPromptMissingVarsHint": "Your custom template is missing these variables, so the matching features stop working: {vars}",
+  "@aiPromptMissingVarsHint": {
+    "placeholders": { "vars": { "type": "String" } }
+  },
+  "aiPromptInsertVarSection": "Insert {name} section",
+  "@aiPromptInsertVarSection": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "aiPromptVarSectionInserted": "{name} section appended — review, then save",
+  "@aiPromptVarSectionInserted": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "aiOcrSuccess": "✅ {type} bill created ¥{amount}",
+  "@aiOcrSuccess": {
+    "placeholders": {
+      "type": {
+        "type": "String"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "aiOcrFailed": "Recognition failed: {error}",
+  "@aiOcrFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "aiOcrCreateFailed": "Failed to create bill",
+  "aiTypeIncome": "Income",
+  "aiTypeExpense": "Expense",
+  "cloudSyncPageTitle": "Cloud Sync",
+  "cloudSyncPageSubtitle": "Manual upload and download ledger data",
+  "cloudTutorialTitle": "Getting Started",
+  "cloudTutorialIntro": "SmartBook is a self-hosted sync server that supports real-time multi-device collaboration. The flow is simple:",
+  "cloudTutorialStep1Title": "Step 1: Deploy or join a server",
+  "cloudTutorialStep1Desc": "Self-host with one Docker command (see the Docker guide in GitHub README). Or join an existing SmartBook server run by a friend / team.",
+  "cloudTutorialStep2Title": "Step 2: Get an account",
+  "cloudTutorialStep2Desc": "SmartBook does NOT offer self-registration (to prevent abuse on public servers). If you self-host: the first Docker boot prints a random admin email + password to the logs — use that. Joining someone else's server: ask the admin to create an account for you in Web → Users.",
+  "cloudTutorialStep3Title": "Step 3: Login + enable sync",
+  "cloudTutorialStep3Desc": "In the app, pick SmartBook, enter the server URL and the account you got in step 2. First login uploads your entire local ledger; every subsequent edit is pushed in real time.",
+  "cloudTutorialStep4Title": "Step 4: Login from other devices",
+  "cloudTutorialStep4Desc": "Phone / tablet / Web — same account, instant shared state. Edits propagate within seconds.",
+  "cloudTutorialTipTitle": "Tip",
+  "cloudTutorialTipDesc": "The Web UI lives at the server URL. Open it in a browser to manage ledgers, members, and view logs.",
+  "cloudTutorialFeaturesTitle": "Features",
+  "cloudTutorialFeature1": "📱 Real-time multi-device: phone A + phone B + Web on one account, sub-second sync",
+  "cloudTutorialFeature2": "🌐 Web UI included: one Docker image ships server + Web, browser ready",
+  "cloudTutorialFeature3": "👥 Multi-user isolation: multiple users on one server, data fully separated",
+  "cloudTutorialFeature4": "🤝 Shared ledgers: invite family / team into one book with seconds-level sync",
+  "cloudTutorialGotIt": "Got it",
+  "cloudSyncHint": "Downloads automatically compare differences for selective preview. Not real-time — avoid editing the same ledger on multiple devices simultaneously. Sync scope covers ledger data (including associated accounts, categories, and tags), excluding attachments.",
+  "cloudSyncNow": "Sync Now",
+  "cloudSyncNowHint": "Push local changes and pull remote updates",
+  "cloudSyncInProgress": "Syncing...",
+  "cloudSyncComplete": "Sync complete: pushed {pushed}, pulled {pulled}",
+  "@cloudSyncComplete": {
+    "placeholders": {
+      "pushed": {"type": "int"},
+      "pulled": {"type": "int"}
+    }
+  },
+  "cloudAutoSyncHint": "Auto-sync to cloud after data changes",
+  "dataManagement": "Data Management",
+  "dataManagementDesc": "Import, export, categories and accounts",
+  "dataManagementPageTitle": "Data Management",
+  "dataManagementPageSubtitle": "Manage transaction data and categories",
+  "dataManagementAttachmentHint": "When restoring data, please import the attachment package first, then import ledger data (CSV or cloud sync) to ensure attachments are correctly associated.",
+  "smartBilling": "Smart Billing",
+  "smartBillingDesc": "AI Assistant, smart recognition, auto billing",
+  "smartBillingPageTitle": "Smart Billing",
+  "smartBillingPageSubtitle": "AI and automation billing features",
+  "smartBillingGuideHint": "Long press the + button at the bottom center of the home page to quickly access these features",
+  "smartBillingImageBilling": "Image Billing",
+  "smartBillingImageBillingDesc": "Select payment screenshots from gallery for recognition",
+  "smartBillingImageBillingGuide": "Long press the + button at the bottom center of the home page and select 'Gallery' to use image billing. Requires AI service configured under \"Me → AI Settings\"; the vision model will extract amount, merchant, time, etc. from the screenshot.",
+  "smartBillingVisionAIRequired": "Image recognition requires an AI vision service. Set it up in \"Me → AI Settings\" first.",
+  "smartBillingCameraBilling": "Camera Billing",
+  "smartBillingCameraBillingDesc": "Capture payment screenshots for recognition",
+  "smartBillingCameraBillingGuide": "Long press the + button at the bottom center of the home page and select 'Camera' to use camera billing. Requires AI service configured under \"Me → AI Settings\"; the vision model will extract amount, merchant, time, etc. from the photo.",
+  "smartBillingVoiceBilling": "Voice Billing",
+  "smartBillingVoiceBillingDesc": "Quick billing through voice input",
+  "smartBillingVoiceBillingGuide": "Long press the + button at the bottom center of the home page and select 'Voice' to use voice billing. Voice billing requires AI to convert speech to text and extract bill information.",
+  "smartBillingAIRequired": "Voice billing requires an AI speech service. Set it up in \"Me → AI Settings\" first.",
+  "smartBillingAutoTags": "Auto-associate Tags",
+  "smartBillingAutoTagsDesc": "Automatically associate frequently used tags based on category",
+  "smartBillingAutoAttachment": "Auto-add Attachment",
+  "smartBillingAutoAttachmentDesc": "Automatically add original image as attachment for photo billing",
+  "autoScreenshotBillingIosTitle": "Auto Billing",
+  "autoScreenshotBillingIosDesc": "Auto-recognize payments via Shortcuts",
+  "shareBilling": "Share to Bill",
+  "shareBillingDesc": "Share a payment screenshot from Alipay/WeChat to bill it",
+  "shareBillingGuide": "When you see a payment screenshot in Alipay, WeChat, Photos, etc., tap \"Share\" and choose \"SmartBook\" to auto-recognize the amount, merchant, and time and create a transaction — no need to save the screenshot first.",
+  "shareBillingActionHint": "Recognized automatically in the background after sharing — no need to open SmartBook",
+  "automation": "Automation",
+  "automationDesc": "Recurring transactions and reminders",
+  "automationPageTitle": "Automation",
+  "automationPageSubtitle": "Recurring transactions and reminder settings",
+  "appearanceSettings": "Personalization",
+  "appearanceSettingsDesc": "Theme, font, language, app lock, etc.",
+  "appearanceSettingsPageTitle": "Personalization",
+  "appearanceSettingsPageSubtitle": "Appearance, display, security and other app preferences",
+  "about": "About",
+  "aboutDesc": "Version info, help and feedback",
+  "mineRateApp": "Rate the App",
+  "mineRateAppSubtitle": "Rate us on the App Store",
+  "aboutPageTitle": "About",
+  "aboutPageSubtitle": "App information and help",
+  "aboutPageLoadingVersion": "Loading version...",
+  "aboutWebsite": "Official Website",
+  "aboutGitHubRepo": "GitHub Repository",
+  "aboutXiaohongshu": "Xiaohongshu",
+  "aboutDouyin": "Douyin",
+  "aboutTelegram": "Telegram",
+  "aboutSupportDevelopment": "Support Development",
+  "aboutSupportDevelopmentSubtitle": "Buy me a coffee",
+  "aboutDeveloperStoryTitle": "From the Developer",
+  "aboutDeveloperStory": "I started tracking my expenses in 2015 as an intern, and I've kept the habit for over a decade. Concerned about ads, paywalls, privacy risks, and apps shutting down, I decided to build my own — first as a small tool for myself and my family.\n\nIn September 2025, SmartBook launched its first version. Honestly, I had no idea if anyone would use it. But gradually, feedback started coming in — someone said they finally found a clean budgeting app, others offered great suggestions, and some quietly left five-star reviews. Every single message reminded me this was worth continuing.\n\nSmartBook is ad-free, subscription-free, and fully open source. All your data stays on your device and is never uploaded to any third-party server. But publishing and maintaining an app isn't free — developer accounts, servers, and other costs are currently covered by community donations, and every system update, bug fix, and new feature is built outside of my day job.\n\nIf SmartBook has been helpful to you, a rating, a share, or a donation would help this little project go further. Thank you for your trust.",
+  "aboutRelatedProducts": "More Products",
+  "aboutBeeAssets": "BeeAssets",
+  "aboutBeeAssetsSubtitle": "Visualize your full asset portfolio",
+  "aboutBeeAssetsIntro": "SmartBook focuses on daily cash flow; BeeAssets is its sibling product, focused on asset portfolio visualization: net worth trends across accounts, property / investment / crypto classification, returns, holding period, and allocation breakdown.",
+  "aboutBeeDNS": "BeeDNS",
+  "aboutBeeDNSSubtitle": "Simple and efficient DNS management tool",
+  "aboutBeeDNSIntro": "Got domains across Cloudflare and Aliyun? BeeDNS unifies them in one place: batch edit records, A/AAAA toggles, resolution migration, subdomain bulk management — no more switching between provider consoles.",
+  "productPromoAndroidTitle": "Request Beta Access",
+  "productPromoAndroidMessage": "This app is still in closed testing on Google Play — invitation only.\n\nHow to apply: email us with your Google account address (required) and a brief use case (optional). We'll reply within 1-3 days and add you to the beta whitelist.",
+  "productPromoOpenStore": "Open in App Store",
+  "productPromoTestFlight": "TestFlight beta",
+  "productPromoLearnMore": "Pro",
+  "productPromoEmailLabel": "Application Email (tap to copy)",
+  "productPromoCopiedToast": "Email copied to clipboard",
+  "productPromoMailUnavailable": "No email app detected. The address has been copied — paste it into any mail app to send.",
+  "productPromoEmailButton": "Send Email",
+  "productPromoWebsiteButton": "Visit Website",
+  "productPromoEmailSubject": "Beta access request - {productName}",
+  "@productPromoEmailSubject": {
+    "placeholders": {
+      "productName": { "type": "String" }
+    }
+  },
+  "productPromoEmailBody": "Hi,\n\nI'd like to join the closed beta for {productName} on Google Play. My Google account email is:\n\n(please fill in your Gmail / Google account email)\n\nThanks!",
+  "@productPromoEmailBody": {
+    "placeholders": {
+      "productName": { "type": "String" }
+    }
+  },
+  "logCenterTitle": "Log Center",
+  "logCenterSubtitle": "View app runtime logs",
+  "logCenterSearchHint": "Search log content or tags...",
+  "logCenterFilterLevel": "Log Level",
+  "logCenterFilterPlatform": "Platform",
+  "logCenterTotal": "Total",
+  "logCenterFiltered": "Filtered",
+  "logCenterEmpty": "No logs",
+  "logCenterExport": "Export",
+  "logCenterClear": "Clear",
+  "logCenterExportFailed": "Export failed",
+  "logCenterClearConfirmTitle": "Clear Logs",
+  "logCenterClearConfirmMessage": "Are you sure you want to clear all logs? This action cannot be undone.",
+  "logCenterCleared": "Logs cleared",
+  "logCenterCopied": "Copied to clipboard",
+  "configImportExportTitle": "Config Import/Export",
+  "configImportExportSubtitle": "Backup and restore app configurations",
+  "configImportExportInfoTitle": "Feature Description",
+  "configImportExportInfoMessage": "This feature is used to export and import app configurations, including cloud service settings, AI settings, etc. The config file uses YAML format for easy viewing and editing.\n\n⚠️ Config files contain sensitive information (such as API keys, passwords, etc.), please keep them safe.",
+  "configExportTitle": "Export Config",
+  "configExportSubtitle": "Export current config to YAML file",
+  "configExportShareSubject": "智记 Config File",
+  "configExportSuccess": "Config exported successfully",
+  "configExportFailed": "Config export failed",
+  "configImportTitle": "Import Config",
+  "configImportSubtitle": "Restore config from YAML file",
+  "configImportNoFilePath": "No file selected",
+  "configImportConfirmTitle": "Confirm Import",
+  "configImportSuccess": "Config imported successfully",
+  "configImportFailed": "Config import failed",
+  "configImportRestartTitle": "Restart Required",
+  "configImportRestartMessage": "Config has been imported. Some settings will take effect after restarting the app.",
+  "configImportExportIncludesTitle": "Included Configurations",
+  "configExportSavedTo": "Saved to: {path}",
+  "configExportViewContent": "View Content",
+  "configExportCopyContent": "Copy Content",
+  "configExportContentCopied": "Copied to clipboard",
+  "configExportReadFileFailed": "Failed to read file",
+  "@configExportSavedTo": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "configIncludeLedgers": "Ledgers",
+  "configIncludeSupabase": "Supabase cloud service config",
+  "configIncludeWebdav": "WebDAV cloud service config",
+  "configIncludeS3": "S3 cloud service config",
+  "configIncludeAI": "AI smart recognition config",
+  "configIncludeAISubtitle": "Providers, capability binding, model settings, etc.",
+  "configIncludeAppSettings": "App settings (language, appearance, reminder, default account, etc.)",
+  "configIncludeRecurringTransactions": "Recurring transactions",
+  "configIncludeAccounts": "Accounts",
+  "configIncludeCategories": "Categories",
+  "configIncludeTags": "Tags",
+  "configIncludeBudgets": "Budgets",
+  "configIncludeOtherSettings": "Other Settings",
+  "configIncludeOtherSettingsSubtitle": "Including cloud service, AI config, app settings, etc.",
+  "configExportSelectTitle": "Select Export Content",
+  "configExportPreviewTitle": "Export Preview",
+  "configExportConfirmTitle": "Confirm Export",
+  "configImportSelectTitle": "Select Import Content",
+  "configImportPreviewTitle": "Import Preview",
+  "ledgersConflictTitle": "Sync Conflict",
+  "ledgersConflictMessage": "Local and cloud ledger data are inconsistent, please choose an action:",
+  "ledgersConflictLocalInfo": "Local: {count} transactions",
+  "@ledgersConflictLocalInfo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "ledgersConflictRemoteInfo": "Cloud: {count} transactions",
+  "@ledgersConflictRemoteInfo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "ledgersConflictRemoteUpdated": "Cloud updated: {time}",
+  "@ledgersConflictRemoteUpdated": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "ledgersConflictLocalFingerprint": "Local fingerprint: {fp}",
+  "@ledgersConflictLocalFingerprint": {
+    "placeholders": {
+      "fp": {
+        "type": "String"
+      }
+    }
+  },
+  "ledgersConflictRemoteFingerprint": "Cloud fingerprint: {fp}",
+  "@ledgersConflictRemoteFingerprint": {
+    "placeholders": {
+      "fp": {
+        "type": "String"
+      }
+    }
+  },
+  "ledgersConflictUpload": "Upload to Cloud",
+  "ledgersConflictDownload": "Download to Local",
+  "ledgersConflictUploading": "Uploading...",
+  "ledgersConflictDownloading": "Downloading...",
+  "ledgersConflictUploadSuccess": "Upload successful",
+  "ledgersConflictDownloadSuccess": "Download successful, merged {inserted} transactions",
+  "@ledgersConflictDownloadSuccess": {
+    "placeholders": {
+      "inserted": {
+        "type": "int"
+      }
+    }
+  },
+  "storageManagementTitle": "Storage Management",
+  "storageManagementSubtitle": "Clear cache to free up space",
+  "storageAIModels": "AI Models",
+  "storageAPKFiles": "Installation Packages",
+  "storageNoData": "No Data",
+  "storageFiles": "files",
+  "storageHint": "Tap items to clear corresponding cache files",
+  "storageClearConfirmTitle": "Confirm Clear",
+  "storageClearAIModelsMessage": "Are you sure you want to clear all AI models? Size: {size}",
+  "@storageClearAIModelsMessage": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "storageClearAPKMessage": "Are you sure you want to clear all installation packages? Size: {size}",
+  "@storageClearAPKMessage": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "storageClearSuccess": "Cleared successfully",
+  "accountNoTransactions": "No transactions",
+  "accountTransactionHistory": "Transaction History",
+  "accountTotalBalance": "Net Assets",
+  "accountCurrencyLocked": "This account has transactions and cannot change currency",
+  "accountDefaultIncomeTitle": "Default Income Account",
+  "accountDefaultExpenseTitle": "Default Expense Account",
+  "accountDefaultNone": "Not Set",
+  "commonNotice": "Notice",
+  "transferTitle": "Transfer",
+  "transferIconSettings": "Transfer Icon Settings",
+  "transferIconSettingsDesc": "Customize the display icon for transfer records",
+  "transferFromAccount": "From Account",
+  "transferToAccount": "To Account",
+  "transferSelectAccount": "Select Account",
+  "transferCreateSuccess": "Transfer created successfully",
+  "transferUpdateSuccess": "Transfer updated successfully",
+  "transferDifferentCurrencyError": "Transfer only supports accounts with the same currency",
+  "transferToPrefix": "To",
+  "transferFromPrefix": "From",
+  "welcomeCategoryModeTitle": "Choose Category Mode",
+  "welcomeCategoryModeDescription": "Select the category structure that suits your needs",
+  "welcomeCategoryModeFlatTitle": "Flat Categories",
+  "welcomeCategoryModeFlatDescription": "Simple and fast",
+  "welcomeCategoryModeFlatFeature1": "Flat structure, easy to use",
+  "welcomeCategoryModeFlatFeature2": "Perfect for simple categorization",
+  "welcomeCategoryModeFlatFeature3": "Quick selection, efficient tracking",
+  "welcomeCategoryModeHierarchicalTitle": "Hierarchical Categories",
+  "welcomeCategoryModeHierarchicalDescription": "Detailed management",
+  "welcomeCategoryModeHierarchicalFeature1": "Support parent-child category levels",
+  "welcomeCategoryModeHierarchicalFeature2": "More detailed transaction classification",
+  "welcomeCategoryModeHierarchicalFeature3": "Perfect for detailed management",
+  "welcomeCategoryModeNoneTitle": "No Categories",
+  "welcomeCategoryModeNoneDescription": "Fully customizable, add as needed",
+  "welcomeCategoryModeNoneFeature1": "No preset categories",
+  "welcomeCategoryModeNoneFeature2": "Create categories based on your needs",
+  "welcomeCategoryModeNoneFeature3": "Perfect for custom classification needs",
+  "welcomeExistingUserTitle": "Existing User?",
+  "welcomeExistingUserButton": "Import Config",
+  "welcomeImportingConfig": "Importing configuration...",
+  "welcomeImportSuccess": "Configuration imported successfully",
+  "welcomeImportFailed": "Import failed: {error}",
+  "@welcomeImportFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "welcomeImportNoFile": "No file selected",
+  "welcomeImportAttachmentTitle": "Import Attachments",
+  "welcomeImportAttachmentDesc": "Would you like to import attachment files as well?",
+  "welcomeImportAttachmentButton": "Select Attachment File",
+  "welcomeImportAttachmentSkip": "Skip",
+  "welcomeImportAttachmentSuccess": "Attachments imported: {imported}",
+  "@welcomeImportAttachmentSuccess": {
+    "placeholders": {
+      "imported": {
+        "type": "int"
+      }
+    }
+  },
+  "welcomeImportAttachmentFailed": "Attachment import failed: {error}",
+  "@welcomeImportAttachmentFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "welcomeImportingAttachment": "Importing attachments...",
+  "iosVersionWarningTitle": "Requires iOS 16.0 or later",
+  "iosVersionWarningDesc": "Screenshot auto-billing feature uses the App Intents framework introduced in iOS 16. Your device is running an older version and does not support this feature.\n\nPlease upgrade to iOS 16 or later to use this feature.",
+  "aiChatTitle": "AI Assistant",
+  "aiChatImageLabel": "Image",
+  "aiChatVoiceLabel": "Voice",
+  "aiChatClearHistory": "Clear History",
+  "aiChatClearHistoryDialogTitle": "Clear Conversation History",
+  "aiChatClearHistoryDialogContent": "Are you sure you want to clear all conversation records? This action cannot be undone.",
+  "aiChatInputHint": "e.g.: Bought a coffee for $35",
+  "aiChatThinking": "Thinking...",
+  "aiChatHistoryCleared": "Conversation history cleared",
+  "aiChatCopy": "Copy",
+  "aiChatCopied": "Copied to clipboard",
+  "aiChatDeleteMessageConfirm": "Are you sure you want to delete this message?",
+  "aiChatMessageDeleted": "Message deleted",
+  "aiChatUndone": "Undone",
+  "aiChatUndoFailed": "Undo failed",
+  "aiChatTransactionNotFound": "Transaction not found",
+  "aiChatOpenEditorFailed": "Failed to open editor",
+  "aiChatSendFailed": "Failed to send",
+  "billCardSuccess": "Booking Successful",
+  "billCardUndone": "Undone",
+  "billCardAmount": "💰 Amount",
+  "billCardCategory": "🏷️ Category",
+  "billCardTime": "📅 Time",
+  "billCardNote": "📝 Note",
+  "billCardAccount": "💳 Account",
+  "billCardUndo": "Undo",
+  "billCardEdit": "Edit",
+  "donationTitle": "Donate",
+  "donationSubtitle": "Buy me a coffee",
+  "donationEntrySubtitle": "Support continued development",
+  "donationDescription": "Description",
+  "donationDescriptionDetail": "Thank you for using SmartBook! If this app helps you, feel free to buy the developer a coffee as encouragement. Your support is my motivation to keep improving.",
+  "donationNoFeatures": "Note: Donations will not unlock any features. All features remain completely free.",
+  "donationNoProducts": "No products available",
+  "donationThankYouTitle": "Thank You!",
+  "donationThankYouMessage": "Thank you for purchasing {productName}! Your support means a lot to me. I will continue to improve SmartBook to make it even better!",
+  "@donationThankYouMessage": {
+    "placeholders": {
+      "productName": {
+        "type": "String"
+      }
+    }
+  },
+  "aiQuickCommandFinancialHealthTitle": "Financial Health Analysis",
+  "aiQuickCommandFinancialHealthDesc": "Analyze income-expense balance and savings rate",
+  "aiQuickCommandFinancialHealthPrompt": "Please analyze my financial health based on the following data:\n\n[monthlyStats]\n\n[recentTrends]\n\nPlease provide professional analysis and suggestions from the perspectives of income-expense balance, savings rate, and spending trends. Please respond in English.",
+  "aiQuickCommandMonthlyExpenseTitle": "Monthly Expense Summary",
+  "aiQuickCommandMonthlyExpenseDesc": "Monthly expense analysis and recommendations",
+  "aiQuickCommandMonthlyExpensePrompt": "Please summarize my monthly expenses based on the following data:\n\n[monthlyStats]\n\n[categoryStats]\n\nPlease analyze which categories account for the highest proportion and provide optimization suggestions. Please respond in English.",
+  "aiQuickCommandCategoryAnalysisTitle": "Category Analysis",
+  "aiQuickCommandCategoryAnalysisDesc": "Analyze spending distribution by category",
+  "aiQuickCommandCategoryAnalysisPrompt": "Please analyze my spending by category based on the following data:\n\n[categoryStats]\n\nPlease point out whether there are unreasonable spending ratios and provide optimization suggestions. Please respond in English.",
+  "aiQuickCommandBudgetPlanningTitle": "Budget Planning",
+  "aiQuickCommandBudgetPlanningDesc": "Smart budget recommendations",
+  "aiQuickCommandBudgetPlanningPrompt": "Please help me plan a reasonable budget based on the following data:\n\n[monthlyStats]\n\n[recentTrends]\n\nPlease provide specific budget amounts and execution suggestions for each category. Please respond in English.",
+  "aiQuickCommandAbnormalExpenseTitle": "Abnormal Expense Alert",
+  "aiQuickCommandAbnormalExpenseDesc": "Identify unusual spending",
+  "aiQuickCommandAbnormalExpensePrompt": "Please check if there are any abnormal expenses based on the following data:\n\n[recentTransactions]\n\n[monthlyStats]\n\nPlease identify significantly higher expenses than usual and provide analysis. Please respond in English.",
+  "aiQuickCommandSavingTipsTitle": "Saving Tips",
+  "aiQuickCommandSavingTipsDesc": "Personalized money-saving suggestions",
+  "aiQuickCommandSavingTipsPrompt": "Please provide practical money-saving suggestions based on the following data:\n\n[categoryStats]\n\n[recentTrends]\n\nPlease give 3-5 specific and actionable suggestions. Please respond in English.",
+  "billCardUnknownLedger": "Unknown Ledger",
+  "aiPromptEditTitle": "Prompt Editor",
+  "aiPromptEditSubtitle": "Customize AI bill recognition prompt",
+  "aiPromptAdvancedSettings": "Advanced Settings",
+  "aiAdvancedSettingsDesc": "Model selection, strategy, local model, prompt",
+  "aiPromptEditEntry": "Prompt Editor",
+  "aiPromptEditEntryDesc": "Customize AI bill recognition prompt, shareable with others",
+  "aiPromptVariables": "Variables",
+  "aiPromptVariablesHint": "Tap to view available variables",
+  "aiPromptContent": "Prompt Content",
+  "aiPromptUnsaved": "Unsaved",
+  "aiPromptInputHint": "Enter prompt...",
+  "aiPromptPreview": "Preview",
+  "aiPromptSave": "Save",
+  "aiPromptSaved": "Prompt saved",
+  "aiPromptResetDefault": "Reset to Default",
+  "aiPromptResetConfirmTitle": "Reset to Default",
+  "aiPromptResetConfirmMessage": "Are you sure you want to reset to default prompt? Your custom content will be lost.",
+  "aiPromptPasted": "Pasted",
+  "aiPromptPreviewTitle": "Prompt Preview",
+  "aiPromptPreviewNote": "Preview uses sample data for variables. Real data will be used at runtime.",
+  "aiPromptVarInputSource": "Input source description, e.g. \"From the following payment bill text\"",
+  "aiPromptVarCurrentTime": "Current date and time, e.g. \"2025-01-15 14:30\"",
+  "aiPromptVarCurrentDate": "Current date, e.g. \"2025-01-15\"",
+  "aiPromptVarOcrText": "User input text content",
+  "aiPromptVarCategories": "Expense and income category list",
+  "aiPromptVarAccounts": "User's account list (may be empty)",
+  "aiModelTitle": "Text Reasoning Model",
+  "aiVisionModelTitle": "Vision Model",
+  "aiModelFast": "Faster",
+  "aiModelAccurate": "Accurate",
+  "aiModelSwitched": "Switched to {modelName}",
+  "@aiModelSwitched": {
+    "placeholders": {
+      "modelName": {
+        "type": "String"
+      }
+    }
+  },
+  "aiCustomBaseUrlHelper": "Standard chat completion API URL, e.g. https://api.example.com/v1",
+  "aiTextModelTitle": "Text Model",
+  "aiAudioModelTitle": "Audio Model",
+  "tagManageTitle": "Tags",
+  "tagManageSubtitle": "Manage transaction tags",
+  "tagManageEmpty": "No tags yet",
+  "tagManageEmptyHint": "Tap + to add a tag",
+  "tagManageGenerateDefault": "Generate Default Tags",
+  "tagManageGenerateDefaultConfirm": "Generate default tags? Existing tags with the same name will not be overwritten.",
+  "tagManageGenerateDefaultSuccess": "Default tags generated",
+  "tagEditTitle": "Edit Tag",
+  "tagAddTitle": "Add Tag",
+  "tagNameLabel": "Tag Name",
+  "tagNameHint": "Enter tag name",
+  "tagNameRequired": "Tag name is required",
+  "tagNameDuplicate": "Tag name already exists",
+  "tagColorLabel": "Tag Color",
+  "tagCreateSuccess": "Tag created",
+  "tagUpdateSuccess": "Tag updated",
+  "tagDeleteConfirmTitle": "Delete Tag",
+  "tagDeleteConfirmMessage": "Delete tag \"{name}\"? This will not affect associated transactions.",
+  "@tagDeleteConfirmMessage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "tagDeleteSuccess": "Tag deleted",
+  "tagSelectTitle": "Select Tags",
+  "tagSelectHint": "Multiple selection",
+  "tagSelectCreateNew": "Create New Tag",
+  "tagSelectOwnerManaged": "Shared ledger tags are managed by the owner",
+  "tagSelectRecentlyUsed": "Recently Used",
+  "tagSelectAllTags": "All Tags",
+  "tagTransactionCount": "{count} transactions",
+  "@tagTransactionCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tagDetailTitle": "Tag Details",
+  "tagDetailTotalCount": "Transactions",
+  "tagDetailTotalExpense": "Total Expense",
+  "tagDetailTotalIncome": "Total Income",
+  "tagDetailTransactionList": "Related Transactions",
+  "tagDetailNoTransactions": "No related transactions",
+  "tagDetailNoTransactionsHint": "Transactions with this tag will appear here",
+  "tagNotFound": "Tag not found",
+  "tagDefaultMeituan": "Meituan",
+  "tagDefaultEleme": "Eleme",
+  "tagDefaultTaobao": "Taobao",
+  "tagDefaultJD": "JD.com",
+  "tagDefaultPDD": "Pinduoduo",
+  "tagDefaultStarbucks": "Starbucks",
+  "tagDefaultLuckin": "Luckin Coffee",
+  "tagDefaultMcDonalds": "McDonald's",
+  "tagDefaultKFC": "KFC",
+  "tagDefaultHema": "Hema",
+  "tagDefaultSams": "Sam's Club",
+  "tagDefaultCostco": "Costco",
+  "tagDefaultBusinessTrip": "Business Trip",
+  "tagDefaultTravel": "Travel",
+  "tagDefaultDining": "Dining Out",
+  "tagDefaultOnlineShopping": "Online Shopping",
+  "tagDefaultDaily": "Daily",
+  "tagDefaultReimbursement": "Reimbursable",
+  "tagDefaultRefundable": "Refundable",
+  "tagDefaultRefunded": "Refunded",
+  "tagDefaultVoiceBilling": "Voice",
+  "tagDefaultImageBilling": "Image",
+  "tagDefaultCameraBilling": "Camera",
+  "tagDefaultAiBilling": "AI",
+  "tagDefaultSmsBilling": "SMS",
+  "tagDefaultNotificationBilling": "Notification",
+  "tagDefaultScreenBilling": "Screen",
+  "tagShare": "Share Tags",
+  "tagImport": "Import Tags",
+  "tagClearUnused": "Clear Unused",
+  "tagShareSuccess": "Saved to {path}",
+  "@tagShareSuccess": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "tagShareSubject": "SmartBook Tags Configuration",
+  "tagShareFailed": "Share failed",
+  "tagImportInvalidFile": "Please select a YAML file",
+  "tagImportNoTags": "No tags found in file",
+  "tagImportModeTitle": "Select Import Mode",
+  "tagImportModeMerge": "Merge",
+  "tagImportModeMergeDesc": "Keep existing tags, add new ones",
+  "tagImportModeOverwrite": "Overwrite",
+  "tagImportModeOverwriteDesc": "Clear unused tags before import",
+  "tagImportSuccess": "Import successful",
+  "tagImportFailed": "Import failed",
+  "tagClearUnusedEmpty": "No unused tags",
+  "tagClearUnusedTitle": "Clear Unused Tags",
+  "tagClearUnusedMessage": "Delete {count} unused tags?",
+  "@tagClearUnusedMessage": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tagClearUnusedSuccess": "Deleted {count} tags",
+  "@tagClearUnusedSuccess": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tagClearUnusedFailed": "Clear failed",
+  "homeSwitchLedger": "Select Ledger",
+  "homeManageLedgers": "Manage Ledgers",
+  "budgetTitle": "Budget",
+  "budgetShowOnHome": "Show budget on home",
+  "budgetEmptyHint": "No budget set yet",
+  "budgetAddTotal": "Add Total Budget",
+  "budgetMonthlyBudget": "Monthly Budget",
+  "budgetUsed": "Used",
+  "budgetRemaining": "Remaining",
+  "budgetDaysRemaining": "{days} days remaining",
+  "@budgetDaysRemaining": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "budgetDailyAvailable": "Daily available {amount}",
+  "@budgetDailyAvailable": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "budgetCategoryBudgets": "Category Budgets",
+  "budgetEditTitle": "Edit Budget",
+  "budgetAddTitle": "Add Budget",
+  "budgetTypeTotalLabel": "Total Budget",
+  "budgetTypeCategoryLabel": "Category Budget",
+  "budgetAmountLabel": "Budget Amount",
+  "budgetAmountHint": "Enter budget amount",
+  "budgetCategoryLabel": "Select Category",
+  "budgetCategoryHint": "Select budget category",
+  "budgetStartDayLabel": "Start Day",
+  "budgetPeriodLabel": "Period",
+  "budgetSaveSuccess": "Budget saved",
+  "budgetDeleteConfirm": "Delete this budget?",
+  "budgetDeleteSuccess": "Budget deleted",
+  "attachmentAdd": "Add Image",
+  "attachmentTakePhoto": "Take Photo",
+  "attachmentChooseFromGallery": "Choose from Gallery",
+  "attachmentMaxReached": "Maximum attachments reached",
+  "attachmentDeleteConfirm": "Delete this attachment?",
+  "attachmentCount": "{count} images",
+  "@attachmentCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "commonDeleted": "Deleted",
+  "attachmentExportTitle": "Export Attachments",
+  "attachmentExportSubtitle": "Export all attachments as a compressed file",
+  "attachmentImportTitle": "Import Attachments",
+  "attachmentImportSubtitle": "Import attachments from a compressed file",
+  "attachmentExportEmpty": "No attachments to export",
+  "attachmentExportProgress": "Exporting attachments ({current}/{total})",
+  "@attachmentExportProgress": {
+    "placeholders": {
+      "current": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "attachmentExportProgressDetail": "Exporting {attachmentCount} attachment(s) + {iconCount} icon(s) ({current}/{total})",
+  "@attachmentExportProgressDetail": {
+    "placeholders": {
+      "attachmentCount": {
+        "type": "int"
+      },
+      "iconCount": {
+        "type": "int"
+      },
+      "current": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "attachmentExportSuccess": "Attachments exported successfully",
+  "attachmentExportSavedTo": "Saved to: {path}",
+  "@attachmentExportSavedTo": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "attachmentImportConflictStrategy": "Conflict Strategy",
+  "attachmentImportConflictSkip": "Skip existing attachments",
+  "attachmentImportConflictOverwrite": "Overwrite existing attachments",
+  "attachmentImportProgress": "Importing attachments ({current}/{total})",
+  "@attachmentImportProgress": {
+    "placeholders": {
+      "current": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "attachmentImportResult": "Imported {imported}, Skipped {skipped}, Overwritten {overwritten}, Failed {failed}",
+  "@attachmentImportResult": {
+    "placeholders": {
+      "imported": {
+        "type": "int"
+      },
+      "skipped": {
+        "type": "int"
+      },
+      "overwritten": {
+        "type": "int"
+      },
+      "failed": {
+        "type": "int"
+      }
+    }
+  },
+  "attachmentImportFailed": "Failed to import attachments",
+  "attachmentArchiveInfo": "{count} attachments, exported on {date}",
+  "@attachmentArchiveInfo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "attachmentStartImport": "Start Import",
+  "attachmentPreview": "Preview Attachments",
+  "attachmentPreviewSubtitle": "{count} images in total",
+  "@attachmentPreviewSubtitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "attachmentPreviewEmpty": "No attachments",
+  "attachmentExportPreviewTitle": "Export Preview",
+  "attachmentImportPreviewTitle": "Import Preview",
+  "shortcutsGuide": "Shortcuts",
+  "shortcutsGuideDesc": "Quick access to voice, camera billing, etc.",
+  "shortcutsIntroTitle": "Quick Billing",
+  "shortcutsIntroDesc": "Use shortcuts to directly open voice billing, camera billing, and other features from your home screen without opening the app first.",
+  "availableShortcuts": "Available Shortcuts",
+  "shortcutVoice": "Voice Billing",
+  "shortcutVoiceDesc": "Quickly record bills by voice",
+  "shortcutImage": "Image Billing",
+  "shortcutImageDesc": "Recognize bills from gallery images",
+  "shortcutCamera": "Camera Billing",
+  "shortcutCameraDesc": "Take photos to recognize bills",
+  "shortcutNewExpense": "Quick Expense",
+  "shortcutNewExpenseDesc": "Open expense entry page directly",
+  "shortcutNewIncome": "Quick Income",
+  "shortcutNewIncomeDesc": "Open income entry page directly",
+  "shortcutNewTransfer": "Quick Transfer",
+  "shortcutNewTransferDesc": "Open transfer entry page directly",
+  "shortcutUrlCopied": "URL copied to clipboard",
+  "howToAddShortcut": "How to Add Shortcuts",
+  "iosShortcutStep1": "Open the Shortcuts app",
+  "iosShortcutStep2": "Tap + in the upper right to create a new shortcut",
+  "iosShortcutStep3": "Add 'Open URL' action",
+  "iosShortcutStep4": "Paste the copied URL (e.g., smartbook://voice)",
+  "iosShortcutStep5": "Save and add to home screen",
+  "androidShortcutStep1": "Download a shortcut creator app (e.g., Shortcut Maker)",
+  "androidShortcutStep2": "Select 'URL Shortcut'",
+  "androidShortcutStep3": "Paste the copied URL (e.g., smartbook://voice)",
+  "androidShortcutStep4": "Set icon and name, then add to home screen",
+  "shortcutsTip": "Tips",
+  "shortcutsTipDesc": "Shortcuts require AI features. Make sure AI is enabled and API Key is configured.",
+  "shortcutOpenShortcutsApp": "Open Shortcuts App",
+  "shortcutAutoAdd": "Auto Billing API",
+  "shortcutAutoAddDesc": "Automatically create bills via URL parameters. Works great with Shortcuts and automation tools.",
+  "shortcutAutoAddExample": "Example URL:",
+  "shortcutAutoAddParams": "Supported parameters:",
+  "shortcutParamAmount": "Amount (required)",
+  "shortcutParamType": "Type: expense / income / transfer",
+  "shortcutParamCategory": "Category name (must match existing category)",
+  "shortcutParamNote": "Note",
+  "shortcutParamAccount": "Account name (must match existing account)",
+  "shortcutParamTags": "Tags (comma separated)",
+  "shortcutParamDate": "Date (ISO format, e.g., 2024-01-15)",
+  "quickActionImage": "Photo Billing",
+  "quickActionCamera": "Camera Billing",
+  "quickActionVoice": "Voice Billing",
+  "quickActionAiChat": "AI Assistant",
+  "calendarTitle": "Calendar",
+  "calendarToday": "Today",
+  "calendarNoTransactions": "No transactions",
+  "calendarAddTransaction": "Add entry on this day",
+  "calendarAddTransactionTooltip": "Add a record on the selected day",
+  "commonUncategorized": "Uncategorized",
+  "commonSaved": "Saved",
+  "aiProviderManageTitle": "Provider Management",
+  "aiProviderManageSubtitle": "Manage AI service providers",
+  "aiProviderAdd": "Add Provider",
+  "aiProviderBuiltIn": "Built-in",
+  "aiProviderEmpty": "No providers configured",
+  "aiProviderNoApiKey": "API Key not configured",
+  "aiProviderTapToEdit": "Tap to edit",
+  "aiProviderDeleteTitle": "Delete Provider",
+  "aiProviderDeleteConfirm": "Delete provider \"{name}\"? Capabilities using this provider will switch to default.",
+  "@aiProviderDeleteConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "aiProviderDeleted": "Provider deleted",
+  "aiProviderEditTitle": "Edit Provider",
+  "aiProviderAddTitle": "Add Provider",
+  "aiProviderBasicInfo": "Basic Info",
+  "aiProviderName": "Provider Name",
+  "aiProviderNameHint": "e.g., SiliconFlow, DeepSeek",
+  "aiProviderNameRequired": "Please enter provider name",
+  "aiProviderBaseUrlRequired": "Please enter Base URL",
+  "aiProviderModels": "Model Configuration",
+  "aiProviderModelsHint": "Empty capabilities cannot use this provider",
+  "aiCapabilityText": "Text",
+  "aiCapabilityVision": "Vision",
+  "aiCapabilitySpeech": "Speech",
+  "aiCapabilitySelectTitle": "Capability Binding",
+  "aiCapabilitySelectSubtitle": "Select provider for each AI capability",
+  "aiCapabilityTextChat": "Text Chat",
+  "aiCapabilityTextChatDesc": "For AI chat and text bill extraction",
+  "aiCapabilityImageUnderstand": "Image Understanding",
+  "aiCapabilityImageUnderstandDesc": "For image bill recognition",
+  "aiCapabilitySpeechToText": "Speech to Text",
+  "aiCapabilitySpeechToTextDesc": "For voice billing",
+  "aiProviderTestRun": "Tap to test",
+  "aiProviderTestRunning": "Testing...",
+  "aiProviderTestSuccess": "Test passed",
+  "aiProviderTestFailed": "Test failed",
+  "aiProviderTestAll": "Test All",
+  "aiProviderTestAllRetry": "Retry Test",
+  "aiModelInputHelper": "Leave empty to use default model",
+  "syncPreviewTitle": "Sync Preview",
+  "syncPreviewSelectAll": "Select All",
+  "syncPreviewDeselectAll": "Deselect All",
+  "syncPreviewAdded": "Added",
+  "syncPreviewModified": "Modified",
+  "syncPreviewDeleted": "Deleted",
+  "syncPreviewAddedCount": "{count} added",
+  "@syncPreviewAddedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "syncPreviewModifiedCount": "{count} modified",
+  "@syncPreviewModifiedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "syncPreviewDeletedCount": "{count} deleted",
+  "@syncPreviewDeletedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "syncPreviewApply": "Apply {count} items",
+  "@syncPreviewApply": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "syncPreviewEmpty": "Cloud data matches local, no sync needed",
+  "syncPreviewOldFormat": "Old cloud format, full replace required",
+  "syncPreviewOldFormatMessage": "Cloud data does not contain sync IDs. Local data will be cleared and re-imported from cloud.",
+  "syncPreviewApplied": "Applied {count} changes",
+  "@syncPreviewApplied": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "cloudSyncGuideTitle": "Cloud Sync Guide",
+  "cloudSyncGuideGotIt": "Got it",
+  "cloudSyncGuideHowItWorks": "How it works",
+  "cloudSyncGuideHowItem1": "Upload: packages all current ledger data and uploads to cloud, replacing old cloud data",
+  "cloudSyncGuideHowItem2": "Download: fetches cloud data and compares with local records one by one — you choose which changes to apply",
+  "cloudSyncGuideHowItem3": "The cloud always stores only the last uploaded snapshot, no version history",
+  "cloudSyncGuideCorrect": "Correct usage",
+  "cloudSyncGuideCorrectItem1": "Edit on one device at a time, upload when done",
+  "cloudSyncGuideCorrectItem2": "Download on the new device before starting to edit",
+  "cloudSyncGuideCorrectItem3": "Review the preview carefully before applying changes",
+  "cloudSyncGuideCorrectItem4": "Follow the pattern: edit → upload → switch device → download → edit",
+  "cloudSyncGuideWrong": "What to avoid",
+  "cloudSyncGuideWrongItem1": "Editing the same ledger on two devices simultaneously — the later upload overwrites the earlier one",
+  "cloudSyncGuideWrongItem2": "Downloading immediately after upload — cloud services may have seconds to minutes of sync delay, wait a moment",
+  "cloudSyncGuideWrongItem3": "Going long periods without syncing then downloading many changes at once — easy to miss important differences",
+  "cloudSyncGuideLimitations": "Known limitations",
+  "cloudSyncGuideLimitItem1": "Not real-time: requires manually tapping upload and download",
+  "cloudSyncGuideLimitItem2": "No conflict merging: does not auto-merge edits from both sides — last upload wins",
+  "cloudSyncGuideLimitItem3": "Cloud service delay: uploaded files may take seconds to minutes before other devices can read them, depending on your cloud provider",
+  "cloudSyncGuideLimitItem4": "Excludes attachments: transaction image attachments are not synced — export separately via Data Management",
+  "mineMultiDeviceSyncTitle": "Multi-device Sync",
+  "mineMultiDeviceSyncSubtitle": "Auto-check cloud changes when entering page",
+  "appLockTitle": "App Lock",
+  "appLockDesc": "PIN & biometric to protect privacy",
+  "appLockEnable": "Enable App Lock",
+  "appLockEnableDesc": "Require authentication on launch and resume",
+  "appLockSetPin": "Set PIN",
+  "appLockChangePin": "Change PIN",
+  "appLockVerifyPin": "Verify PIN",
+  "appLockVerifyCurrentPin": "Enter current PIN",
+  "appLockSetNewPin": "Set new PIN",
+  "appLockConfirmPin": "Confirm PIN",
+  "appLockEnterPin": "Enter PIN",
+  "appLockPinSetSuccess": "PIN set successfully",
+  "appLockDisabled": "App Lock disabled",
+  "appLockBiometric": "Biometric Unlock",
+  "appLockBiometricDesc": "Use Face ID or fingerprint to unlock",
+  "appLockBiometricReason": "Verify identity to unlock Bee Accounting",
+  "appLockTimeout": "Auto-lock Timeout",
+  "appLockTimeoutImmediate": "Immediately",
+  "appLockTimeout1Min": "After 1 minute",
+  "appLockTimeout5Min": "After 5 minutes",
+  "appLockTimeout15Min": "After 15 minutes",
+  "creditCardSettings": "Credit Card Settings",
+  "accountTabValuation": "Valuation",
+  "creditCardDaysRequired": "Please select billing & due dates",
+  "creditLimit": "Credit Limit",
+  "creditLimitHint": "Enter credit limit",
+  "billingDay": "Billing Day",
+  "paymentDueDay": "Payment Due Day",
+  "creditUsed": "Used",
+  "creditAvailable": "Available",
+  "creditCardOwed": "Owed",
+  "dayOfMonth": "{day}th of each month",
+  "@dayOfMonth": {
+    "placeholders": {
+      "day": {
+        "type": "int"
+      }
+    }
+  },
+  "creditCardReminderTitle": "Payment Reminder",
+  "creditCardReminderDesc": "Remind before payment due date",
+  "creditCardReminderDaysBefore": "{days} days before",
+  "@creditCardReminderDaysBefore": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "creditCardInitialBalanceHint": "Current debt (negative number)",
+  "selectDay": "Select Day",
+  "accountBankName": "Bank",
+  "accountBankNameHint": "e.g. ICBC",
+  "accountCardLastFour": "Last 4 Digits",
+  "accountCardLastFourHint": "e.g. 1234",
+  "accountNote": "Note",
+  "accountNoteHint": "Add a note",
+  "accountMetaInfo": "Account Info",
+  "accountBalanceTrend": "Balance Trend",
+  "accountCategoryBreakdown": "Category Breakdown",
+  "accountCategoryExpense": "Expense",
+  "accountCategoryIncome": "Income",
+  "accountNoMoreData": "No more data",
+  "totalAssets": "Total Assets",
+  "totalLiabilities": "Total Liabilities",
+  "assetAccounts": "Asset Accounts",
+  "liabilityAccounts": "Liability Accounts",
+  "assetComposition": "Asset Composition",
+  "accountTypeInvestment": "Investment",
+  "accountTypeLoan": "Loan",
+  "accountTypeReceivable": "Receivable",
+  "accountTypeRealEstate": "Real Estate",
+  "accountTypeVehicle": "Vehicle",
+  "accountTypeInsurance": "Insurance",
+  "accountTypeSocialFund": "Social Fund",
+  "valuationCurrentValue": "Current Valuation",
+  "valuationCurrentDebt": "Current Debt",
+  "valuationUpdateValue": "Update Valuation",
+  "valuationUpdateDebt": "Update Debt",
+  "valuationLastUpdated": "Last updated: {date}",
+  "@valuationLastUpdated": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "valuationAccountHint": "Enter current valuation",
+  "valuationDebtHint": "Enter current debt amount",
+  "accountGroupTradable": "Daily Accounts",
+  "accountGroupValuation": "Assets/Liabilities",
+  "adjustmentTransaction": "Valuation Adjustment",
+  "creditCardBillingInfo": "Bills on {billingDay}th · Due on {paymentDueDay}th",
+  "@creditCardBillingInfo": {
+    "placeholders": {
+      "billingDay": {
+        "type": "int"
+      },
+      "paymentDueDay": {
+        "type": "int"
+      }
+    }
+  },
+  "creditCardDaysUntilPayment": "{days} days until payment due",
+  "@creditCardDaysUntilPayment": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "creditCardPaymentDueToday": "Payment due today",
+  "creditCardQuickRepay": "Record Repayment",
+  "budgetManagement": "Budget",
+  "budgetManagementDesc": "Set monthly budget and control spending",
+  "budgetSetupHint": "Set a budget to control monthly spending",
+  "budgetSetupAction": "Set up",
+
+  "cloudCollabDevicesPageTitle": "Device Sessions",
+  "cloudCollabDevicesPageSubtitle": "Manage active devices",
+  "cloudCollabDevicesViewAllSessions": "Show all sessions",
+  "cloudCollabDevicesViewModeHint": "Default view shows deduped devices active in the last 30 days.",
+  "cloudCollabNoDevices": "No active devices",
+  "cloudCollabUnknownDeviceName": "Unknown Device",
+  "cloudCollabDeviceCurrentTag": "Current Device",
+  "cloudCollabCurrentDeviceCannotRevoke": "Current device cannot be revoked.",
+  "cloudCollabDeviceAppVersion": "App: {version}",
+  "@cloudCollabDeviceAppVersion": {
+    "placeholders": {
+      "version": { "type": "String" }
+    }
+  },
+  "cloudCollabDeviceOsVersion": "OS: {version}",
+  "@cloudCollabDeviceOsVersion": {
+    "placeholders": {
+      "version": { "type": "String" }
+    }
+  },
+  "cloudCollabDeviceModel": "Model: {model}",
+  "@cloudCollabDeviceModel": {
+    "placeholders": {
+      "model": { "type": "String" }
+    }
+  },
+  "cloudCollabDeviceLastIp": "IP: {ip}",
+  "@cloudCollabDeviceLastIp": {
+    "placeholders": {
+      "ip": { "type": "String" }
+    }
+  },
+  "cloudCollabDeviceSessionCount": "Sessions: {count}",
+  "@cloudCollabDeviceSessionCount": {
+    "placeholders": {
+      "count": { "type": "String" }
+    }
+  },
+  "cloudCollabDeviceLastSeen": "Last seen: {time}",
+  "@cloudCollabDeviceLastSeen": {
+    "placeholders": {
+      "time": { "type": "String" }
+    }
+  },
+  "cloudCollabDeviceCreatedAt": "Created: {time}",
+  "@cloudCollabDeviceCreatedAt": {
+    "placeholders": {
+      "time": { "type": "String" }
+    }
+  },
+  "cloudCollabDeviceRevokeTitle": "Revoke Device",
+  "cloudCollabDeviceRevokeMessage": "Revoke device {name} ({id})?",
+  "@cloudCollabDeviceRevokeMessage": {
+    "placeholders": {
+      "name": { "type": "String" },
+      "id": { "type": "String" }
+    }
+  },
+  "cloudCollabDeviceRevokeMultipleMessage": "Revoke {count} sessions for device {name}?",
+  "@cloudCollabDeviceRevokeMultipleMessage": {
+    "placeholders": {
+      "name": { "type": "String" },
+      "count": { "type": "String" }
+    }
+  },
+  "cloudCollabDeviceRevoked": "Device revoked",
+  "cloudCollabUnavailableMessage": "Cloud sync is unavailable.",
+  "cloudCollabScopeDeniedHint": "Server has not enabled ALLOW_APP_RW_SCOPES, so device sessions are unavailable.",
+  "cloudCollabScopeDeniedAction": "Set ALLOW_APP_RW_SCOPES=true in server .env, restart the service, then sign in again.",
+
+  "syncHealthTitle": "Sync status",
+  "cloudSyncHelpTitle": "How sync works · Why it sometimes stalls",
+  "cloudSyncHelpModesTitle": "Three sync modes",
+  "cloudSyncHelpModesBody": "• Incremental (automatic, everyday): after you add or edit an entry, only that change is uploaded/downloaded automatically — fast, no manual action. This is what runs all the time.\n• Full upload: the first time you enable cloud sync, or when the cloud has no data for this ledger yet, all local data is pushed to the cloud at once.\n• Full download: on a new device, after a reinstall, or when local is empty, all data is pulled down from the cloud.",
+  "cloudSyncHelpWhenFullTitle": "When does a full sync happen?",
+  "cloudSyncHelpWhenFullBody": "A full sync only triggers automatically when one side is empty (first enabling cloud sync / new device / reinstall / after clearing local or cloud data). As long as both sides have data, sync stays incremental and never restarts on its own. To force a full re-sync, you must first clear the data on the corresponding side.",
+  "cloudSyncHelpStuckTitle": "Why sync sometimes stalls",
+  "cloudSyncHelpStuckBody": "• Full upload/download does NOT support resume: if the network drops or the app is killed in the background, it starts over from scratch instead of continuing. For large data, use a stable network (Wi-Fi recommended) and let it finish without switching away.\n• Incremental sync is resume-safe and unaffected in everyday use.",
+  "cloudSyncHelpTroubleshootTitle": "Troubleshooting",
+  "cloudSyncHelpTroubleshootBody": "• First, pull down on this page to run a Deep Check and compare local vs cloud.\n• Still stuck? Open the Log Center to view sync logs (including failure reasons) for reporting.",
+  "cloudSyncHelpOpenLogCenter": "Open Log Center",
+  "syncHealthCheckFailed": "Check failed: {msg}",
+  "@syncHealthCheckFailed": {
+    "placeholders": {
+      "msg": { "type": "String" }
+    }
+  },
+  "syncHealthHasDiff": "Diff detected; auto-synced",
+  "syncHealthInSync": "Local matches cloud",
+  "syncHealthGroupCurrentLedger": "Current ledger",
+  "syncHealthGroupAll": "All ledgers",
+  "syncHealthRowTx": "Transactions",
+  "syncHealthRowAttachment": "Attachments",
+  "syncHealthRowCategoryIcon": "Category icons",
+  "syncHealthRowBudget": "Budgets",
+  "syncHealthRowAccount": "Accounts",
+  "syncHealthRowCategory": "Categories",
+  "syncHealthRowTag": "Tags",
+  "syncHealthRowUnpushed": "Pending pushes",
+  "syncHealthValue": "Local {local} · Cloud {remote}",
+  "@syncHealthValue": {
+    "placeholders": {
+      "local": { "type": "int" },
+      "remote": { "type": "int" }
+    }
+  },
+  "syncHealthValueRemoteMissing": "Local {local} · Cloud —",
+  "@syncHealthValueRemoteMissing": {
+    "placeholders": {
+      "local": { "type": "int" }
+    }
+  },
+  "syncForceRestoreTitle": "Restore from server",
+  "syncForceRestoreConfirmTitle": "Restore from server?",
+  "syncForceRestoreConfirmBody": "This will clear local transactions and budgets for the current ledger, then re-download them from the server. This cannot be undone.",
+  "syncForceRestoreSuccess": "Restored from server ({tx} transactions, {budget} budgets)",
+  "@syncForceRestoreSuccess": {
+    "placeholders": {
+      "tx": { "type": "int" },
+      "budget": { "type": "int" }
+    }
+  },
+  "syncForceRestoreFailed": "Restore failed",
+
+  "@twofaCountdown": {
+    "placeholders": {
+      "time": { "type": "String" }
+    }
+  },
+  "@twofaStatusEnabledAt": {
+    "placeholders": {
+      "date": { "type": "String" }
+    }
+  },
+  "sharedRoleOwner": "Owner",
+  "sharedRoleEditor": "Editor",
+  "sharedRoleViewer": "Viewer",
+  "commonCopied": "Copied",
+  "commonRemove": "Remove",
+  "sharedJoinPageTitle": "Join shared ledger",
+  "sharedJoinPageSubtitle": "Enter an invite code or tap a shared link",
+  "sharedJoinEnterCode": "Enter invite code",
+  "sharedJoinEnterCodeHint": "6 uppercase letters / digits. You can also tap a share link to skip this step.",
+  "sharedJoinPreviewButton": "Verify code",
+  "sharedJoinAcceptButton": "Join",
+  "sharedJoinInvitedBy": "{name} invited you to join",
+  "@sharedJoinInvitedBy": { "placeholders": { "name": { "type": "String" } } },
+  "sharedJoinRoleLine": "Role: {role}",
+  "@sharedJoinRoleLine": { "placeholders": { "role": { "type": "String" } } },
+  "sharedJoinExpiresInMinutes": "Expires in {n} min",
+  "@sharedJoinExpiresInMinutes": { "placeholders": { "n": { "type": "int" } } },
+  "sharedJoinExpiresInHours": "Expires in {n}h",
+  "@sharedJoinExpiresInHours": { "placeholders": { "n": { "type": "int" } } },
+  "sharedJoinExpiresInDays": "Expires in {n}d",
+  "@sharedJoinExpiresInDays": { "placeholders": { "n": { "type": "int" } } },
+  "sharedJoinSuccess": "Joined \"{name}\"",
+  "@sharedJoinSuccess": { "placeholders": { "name": { "type": "String" } } },
+  "sharedJoinCodeFormatError": "Invite code must be 6 letters/digits.",
+  "sharedJoinInvalidOrExpired": "Invite code is invalid or expired. Ask the inviter for a new one.",
+  "sharedJoinAlreadyMember": "You are already a member of this ledger.",
+  "sharedJoinMemberLimit": "This ledger has reached its member limit. Ask the owner.",
+  "sharedInvitePageTitle": "Invite new member",
+  "sharedInviteFormRole": "Role",
+  "sharedInviteFormExpiry": "Valid for",
+  "sharedInviteExpiryHours": "{n} h",
+  "@sharedInviteExpiryHours": { "placeholders": { "n": { "type": "int" } } },
+  "sharedInviteExpiryDays": "{n} day",
+  "@sharedInviteExpiryDays": { "placeholders": { "n": { "type": "int" } } },
+  "sharedInviteGenerate": "Generate invite code",
+  "sharedInviteGenerateAnother": "Generate another code",
+  "sharedInviteCopyCode": "Copy code",
+  "sharedInviteCopyLink": "Copy link",
+  "sharedInviteShareLink": "Share link",
+  "sharedInviteExpiresAt": "Expires at {dt}",
+  "@sharedInviteExpiresAt": { "placeholders": { "dt": { "type": "String" } } },
+  "sharedInviteWarning": "⚠️ Don't post invite codes to public groups / social. Anyone with the code can join. Revoke and regenerate from Members if leaked.",
+  "sharedInviteInstruction": "Send the code or short link to the other person. After they install SmartBook, they can tap the link or enter the code from \"Me → Join shared ledger\".",
+  "sharedInviteShareText": "I'm inviting you to SmartBook shared ledger \"{ledger}\".\n\nCode: {code}\nLink: {url}\n\nTap the link, or open SmartBook → Me → Join shared ledger and enter this code.",
+  "@sharedInviteShareText": {
+    "placeholders": {
+      "ledger": { "type": "String" },
+      "code": { "type": "String" },
+      "url": { "type": "String" }
+    }
+  },
+  "sharedMembersPageTitle": "Members",
+  "sharedMembersYou": "you",
+  "sharedMembersInviteCta": "Invite new member",
+  "sharedMembersLeaveCta": "Leave ledger",
+  "sharedMembersLeaveTitle": "Leave ledger",
+  "sharedMembersLeaveConfirm": "After leaving \"{name}\" you won't be able to access its transactions. Continue?",
+  "@sharedMembersLeaveConfirm": { "placeholders": { "name": { "type": "String" } } },
+  "sharedMembersLeaveDone": "Left the ledger",
+  "sharedMembersRemoveTitle": "Remove member",
+  "sharedMembersRemoveCta": "Remove this member",
+  "sharedMembersRemoveConfirm": "Remove {name}? They will immediately lose access to this ledger.",
+  "@sharedMembersRemoveConfirm": { "placeholders": { "name": { "type": "String" } } },
+  "sharedMembersRemoved": "Member removed",
+  "sharedMembersTransferTitle": "Transfer ownership",
+  "sharedMembersTransferTo": "Transfer to this member",
+  "sharedMembersTransferConfirm": "Transfer ownership to {name}? You will become an editor and can no longer invite, rename, or delete the ledger.",
+  "@sharedMembersTransferConfirm": { "placeholders": { "name": { "type": "String" } } },
+  "sharedMembersTransferConfirmCta": "Transfer",
+  "sharedMembersTransferDone": "Ownership transferred",
+  "sharedTxRecordedBy": "recorded by {name}",
+  "@sharedTxRecordedBy": { "placeholders": { "name": { "type": "String" } } },
+  "sharedTxCreatedBy": "Created by {name}",
+  "@sharedTxCreatedBy": { "placeholders": { "name": { "type": "String" } } },
+  "sharedTxEditedBy": "Last edited by {name}",
+  "@sharedTxEditedBy": { "placeholders": { "name": { "type": "String" } } },
+  "sharedTxCreatedAndEditedBy": "Created and edited by {name}",
+  "@sharedTxCreatedAndEditedBy": { "placeholders": { "name": { "type": "String" } } },
+  "sharedRequiresCloudSync": "Please enable cloud sync first",
+  "sharedMembersStatsTitle": "Member balances",
+  "sharedMembersStatsEmpty": "No transactions yet",
+  "sharedMembersStatsLoading": "Loading…",
+  "sharedMembersStatsIncome": "Income",
+  "sharedMembersStatsExpense": "Expense",
+  "sharedMembersStatsTxCount": "{count} tx",
+  "@sharedMembersStatsTxCount": { "placeholders": { "count": { "type": "int" } } },
+  "maintenanceOrphanCleanupTitle": "Data Cleanup",
+  "maintenanceOrphanCleanupSubtitle": "Detect and clean local orphan data",
+  "maintenanceOrphanRescan": "Rescan",
+  "maintenanceOrphanEmpty": "Local data is clean, no orphan data found",
+  "maintenanceOrphanGroupDb": "Database orphans",
+  "maintenanceOrphanGroupFile": "File orphans",
+  "maintenanceOrphanGroupSync": "Sync state orphans",
+  "maintenanceOrphanSummary": "Found {count} issue(s)",
+  "@maintenanceOrphanSummary": { "placeholders": { "count": { "type": "int" } } },
+  "maintenanceOrphanSummarySize": "Reclaimable space ~ {size}",
+  "@maintenanceOrphanSummarySize": { "placeholders": { "size": { "type": "String" } } },
+  "maintenanceOrphanSelectAll": "Select all",
+  "maintenanceOrphanDeselectAll": "Deselect all",
+  "maintenanceOrphanDeleteOne": "Delete this",
+  "maintenanceOrphanSelectedHint": "{count} selected",
+  "@maintenanceOrphanSelectedHint": { "placeholders": { "count": { "type": "int" } } },
+  "maintenanceOrphanCleanSelected": "Clean selected",
+  "maintenanceOrphanConfirmTitle": "Confirm cleanup",
+  "maintenanceOrphanConfirmDeleteOne": "Delete \"{title}\"? This cannot be undone.",
+  "@maintenanceOrphanConfirmDeleteOne": { "placeholders": { "title": { "type": "String" } } },
+  "maintenanceOrphanConfirmDeleteBatch": "Delete the {count} selected item(s)? This cannot be undone.",
+  "@maintenanceOrphanConfirmDeleteBatch": { "placeholders": { "count": { "type": "int" } } },
+  "maintenanceOrphanCleanSuccess": "Cleaned {count} item(s)",
+  "@maintenanceOrphanCleanSuccess": { "placeholders": { "count": { "type": "int" } } },
+  "maintenanceOrphanCleanPartial": "Cleaned {ok} item(s), {fail} failed",
+  "@maintenanceOrphanCleanPartial": { "placeholders": { "ok": { "type": "int" }, "fail": { "type": "int" } } },
+  "syncProgressTitle": "Syncing",
+  "syncProgressCount": "{applied} / {total}",
+  "@syncProgressCount": { "placeholders": { "applied": { "type": "int" }, "total": { "type": "int" } } },
+  "exchangeRatePageTitle": "Exchange Rates",
+  "exchangeRateEntrySubtitle": "Auto-fetched rates with manual override",
+  "baseCurrencyLabel": "Primary Currency",
+  "rateSourceAuto": "Auto",
+  "rateSourceManual": "Manual",
+  "rateUpdatedAt": "Updated {date}",
+  "@rateUpdatedAt": {"placeholders": {"date": {"type": "String"}}},
+  "rateNotFetched": "Not fetched",
+  "rateTapToSet": "Tap to set manually",
+  "rateEditTitle": "Edit Rate",
+  "rateInverseHint": "Inverse: 1 {base} ≈ {rate} {quote}",
+  "@rateInverseHint": {"placeholders": {"base": {"type": "String"}, "rate": {"type": "String"}, "quote": {"type": "String"}}},
+  "rateResetToAuto": "Reset to auto",
+  "rateRefreshSuccess": "Rates updated",
+  "rateRefreshFailed": "Fetch failed, you can set rates manually",
+  "ratesEmptyHint": "Rates appear here once your accounts use different currencies",
+  "rateDisclaimer": "Source: open exchange-rate data, updated daily. Conversion is for reference only and may differ from bank rates.",
+  "convertedNetWorth": "Net worth (in {currency})",
+  "@convertedNetWorth": {"placeholders": {"currency": {"type": "String"}}},
+  "convertedFootnote": "Converted at {date} rates, tap to manage",
+  "@convertedFootnote": {"placeholders": {"date": {"type": "String"}}},
+  "convertedPartialWarning": "{currencies} not converted, tap to set rates",
+  "@convertedPartialWarning": {"placeholders": {"currencies": {"type": "String"}}},
+  "unconvertedBadge": "Not converted",
+  "commonDetail": "Detail",
+  "conversionDetailTitle": "Conversion Details",
+  "assetConversionToggle": "Convert to primary currency",
+  "rateManualApplied": "Applied {count} manual rates",
+  "@rateManualApplied": {"placeholders": {"count": {"type": "int"}}},
+  "netWorthTrendTitle": "Net Worth Trend",
+  "netWorthTrend3M": "3M",
+  "netWorthTrend6M": "6M",
+  "netWorthTrend12M": "12M",
+  "netWorthTrendAll": "All",
+  "netWorthTrendLineNet": "Net Worth",
+  "netWorthTrendLineAssets": "Total Assets",
+  "netWorthTrendLineLiabilities": "Total Liabilities",
+  "netWorthTrendMultiCurrencyNote": "Historical net worth is the raw sum of each currency, not converted",
+  "txFlagExcludeFromStats": "Exclude from income/expense",
+  "txFlagExcludeFromBudget": "Exclude from budget",
+  "txFlagMoreOptions": "More options",
+  "txFlagDialogTitle": "Transaction flags",
+  "txFlagExcludeFromStatsHint": "Excluded from stats, still counts toward balance",
+  "txFlagExcludeFromBudgetHint": "Doesn't count against your budget",
+  "txFlagExcludedTag": "Excluded",
+  "txFlagBudgetExcludedTag": "No budget",
+  "txCurrencyLabel": "Currency",
+  "txRateLabel": "Rate",
+  "txConvertedPreview": "≈ {amount} {currency}",
+  "@txConvertedPreview": { "placeholders": { "amount": {}, "currency": {} } },
+  "txRateMissingHint": "Please enter the rate for this entry before saving",
+  "txCrossCurrencyTransferBlocked": "Cross-currency transfers are not supported yet. Record two entries or use same-currency accounts.",
+  "ledgerBaseCurrencyLabel": "Primary currency",
+  "statsConvertedFootnote": "Includes foreign currency, converted to {currency} at entry-time rates",
+  "@statsConvertedFootnote": { "placeholders": { "currency": {} } },
+  "ledgerCurrencyChangeRecalcHint": "Changing the base currency will reconvert all history at current rates",
+  "recalcForeignTxBanner": "Unconverted foreign-currency transactions detected in this ledger",
+  "recalcForeignTxAction": "Reconvert at current rates",
+  "recalcForeignTxDone": "Reconverted {count} foreign-currency transactions",
+  "@recalcForeignTxDone": { "placeholders": { "count": {} } },
+  "txCurrencyPickerTitle": "Select currency",
+  "recalcSyncCountHint": "{count} transactions will be reconverted and synced",
+  "@recalcSyncCountHint": { "placeholders": { "count": {} } },
+  "exportCsvHeaderCurrency": "Currency",
+  "importFieldCurrency": "Currency",
+  "currencyMOP": "Macau Pataca",
+  "currencyMNT": "Mongolian Tughrik",
+  "currencyKPW": "North Korean Won",
+  "currencyKHR": "Cambodian Riel",
+  "currencyLAK": "Lao Kip",
+  "currencyBND": "Bruneian Dollar",
+  "currencyNPR": "Nepalese Rupee",
+  "currencyBTN": "Bhutanese Ngultrum",
+  "currencyMVR": "Maldivian Rufiyaa",
+  "currencyAFN": "Afghan Afghani",
+  "currencyUZS": "Uzbekistani Som",
+  "currencyTJS": "Tajikistani Somoni",
+  "currencyTMT": "Turkmenistani Manat",
+  "currencyKGS": "Kyrgyzstani Som",
+  "currencyQAR": "Qatari Riyal",
+  "currencyKWD": "Kuwaiti Dinar",
+  "currencyBHD": "Bahraini Dinar",
+  "currencyOMR": "Omani Rial",
+  "currencyJOD": "Jordanian Dinar",
+  "currencyLBP": "Lebanese Pound",
+  "currencyIQD": "Iraqi Dinar",
+  "currencyIRR": "Iranian Rial",
+  "currencyYER": "Yemeni Rial",
+  "currencySYP": "Syrian Pound",
+  "currencyGEL": "Georgian Lari",
+  "currencyAMD": "Armenian Dram",
+  "currencyAZN": "Azerbaijan Manat",
+  "currencyRON": "Romanian Leu",
+  "currencyBGN": "Bulgarian Lev",
+  "currencyRSD": "Serbian Dinar",
+  "currencyISK": "Icelandic Krona",
+  "currencyMDL": "Moldovan Leu",
+  "currencyALL": "Albanian Lek",
+  "currencyMKD": "Macedonian Denar",
+  "currencyBAM": "Bosnian Convertible Mark",
+  "currencyGIP": "Gibraltar Pound",
+  "currencyGTQ": "Guatemalan Quetzal",
+  "currencyHNL": "Honduran Lempira",
+  "currencyNIO": "Nicaraguan Cordoba",
+  "currencyCRC": "Costa Rican Colon",
+  "currencyPAB": "Panamanian Balboa",
+  "currencyDOP": "Dominican Peso",
+  "currencyCUP": "Cuban Peso",
+  "currencyJMD": "Jamaican Dollar",
+  "currencyTTD": "Trinidadian Dollar",
+  "currencyBSD": "Bahamian Dollar",
+  "currencyBBD": "Barbadian or Bajan Dollar",
+  "currencyBZD": "Belizean Dollar",
+  "currencyHTG": "Haitian Gourde",
+  "currencyXCD": "East Caribbean Dollar",
+  "currencyKYD": "Caymanian Dollar",
+  "currencyAWG": "Aruban or Dutch Guilder",
+  "currencyANG": "Dutch Guilder",
+  "currencyBMD": "Bermudian Dollar",
+  "currencyUYU": "Uruguayan Peso",
+  "currencyPYG": "Paraguayan Guarani",
+  "currencyBOB": "Bolivian Bolíviano",
+  "currencyVES": "Venezuelan Bolívar",
+  "currencyGYD": "Guyanese Dollar",
+  "currencySRD": "Surinamese Dollar",
+  "currencyFJD": "Fijian Dollar",
+  "currencyPGK": "Papua New Guinean Kina",
+  "currencySBD": "Solomon Islander Dollar",
+  "currencyTOP": "Tongan Pa'anga",
+  "currencyVUV": "Ni-Vanuatu Vatu",
+  "currencyWST": "Samoan Tala",
+  "currencyXPF": "CFP Franc",
+  "currencyKES": "Kenyan Shilling",
+  "currencyGHS": "Ghanaian Cedi",
+  "currencyMAD": "Moroccan Dirham",
+  "currencyDZD": "Algerian Dinar",
+  "currencyTND": "Tunisian Dinar",
+  "currencyLYD": "Libyan Dinar",
+  "currencyETB": "Ethiopian Birr",
+  "currencyUGX": "Ugandan Shilling",
+  "currencyTZS": "Tanzanian Shilling",
+  "currencyRWF": "Rwandan Franc",
+  "currencyXAF": "Central African CFA Franc",
+  "currencyXOF": "West African CFA Franc",
+  "currencyMUR": "Mauritian Rupee",
+  "currencyBWP": "Botswana Pula",
+  "currencyNAD": "Namibian Dollar",
+  "currencyZMW": "Zambian Kwacha",
+  "currencyMWK": "Malawian Kwacha",
+  "currencyMZN": "Mozambican Metical",
+  "currencyAOA": "Angolan Kwanza",
+  "currencyCDF": "Congolese Franc",
+  "currencyGMD": "Gambian Dalasi",
+  "currencyGNF": "Guinean Franc",
+  "currencyLRD": "Liberian Dollar",
+  "currencySLE": "Sierra Leonean Leone",
+  "currencySDG": "Sudanese Pound",
+  "currencySSP": "South Sudanese Pound",
+  "currencySOS": "Somali Shilling",
+  "currencyDJF": "Djiboutian Franc",
+  "currencyERN": "Eritrean Nakfa",
+  "currencyBIF": "Burundian Franc",
+  "currencyCVE": "Cape Verdean Escudo",
+  "currencySTN": "Sao Tomean Dobra",
+  "currencySCR": "Seychellois Rupee",
+  "currencyKMF": "Comorian Franc",
+  "currencyLSL": "Basotho Loti",
+  "currencySZL": "Swazi Lilangeni",
+  "currencyMGA": "Malagasy Ariary",
+  "currencyMRU": "Mauritanian Ouguiya"
+}

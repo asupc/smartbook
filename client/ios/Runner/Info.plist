@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>$(APP_DISPLAY_NAME)</string>
+	<!-- 桌面图标 / 任务台显示的 app 名按系统语言本地化:简中显示「智记」、
+	     繁中「智記」、英文 / 其它语言 fallback 到「SmartBook」。
+	     真实文案在 Runner/{en,zh-Hans,zh-Hant}.lproj/InfoPlist.strings。
+	     解决 App Store 审核 2.3.8 — 英文环境下 marketplace 名 (SmartBook -
+	     Simple Ledger) 跟设备显示名 (智记) 不一致的问题。 -->
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>zh-Hans</string>
+		<string>zh-Hant</string>
+	</array>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(APP_DISPLAY_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(FLUTTER_BUILD_NAME)</string>
+	<key>CFBundleSignature</key>
+	<string>????</string>
+	<key>CFBundleVersion</key>
+	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
+	<key>UIMainStoryboardFile</key>
+	<string>Main</string>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
+	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<true/>
+	<!-- Allow arbitrary network loads for Supabase -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
+	<!-- Query URL Schemes - Required for opening other apps -->
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>weixin</string>
+		<string>wechat</string>
+	</array>
+	<!-- Privacy - Photo Library Usage Description -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>智记需要访问您的照片库，以便导入或分享账单数据文件</string>
+	<!-- Privacy - Photo Library Additions Usage Description -->
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>智记需要保存文件到您的照片库</string>
+	<!-- Privacy - Camera Usage Description -->
+	<key>NSCameraUsageDescription</key>
+	<string>智记需要使用相机拍摄支付凭证进行OCR识别</string>
+	<!-- Privacy - Microphone Usage Description -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>智记需要使用麦克风进行语音记账</string>
+	<!-- Privacy - Face ID Usage Description -->
+	<key>NSFaceIDUsageDescription</key>
+	<string>智记使用Face ID进行应用解锁</string>
+	<!-- Background Modes for Notifications -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>remote-notification</string>
+	</array>
+	<!-- URL Scheme for Shortcuts Integration -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.smartbook.zhi</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>smartbook</string>
+			</array>
+		</dict>
+	</array>
+	<!-- iCloud Document Storage Configuration -->
+	<key>NSUbiquitousContainers</key>
+	<dict>
+		<key>iCloud.com.smartbook.zhi</key>
+		<dict>
+			<key>NSUbiquitousContainerIsDocumentScopePublic</key>
+			<true/>
+			<key>NSUbiquitousContainerName</key>
+			<string>SmartBook</string>
+			<key>NSUbiquitousContainerSupportedFolderLevels</key>
+			<string>Any</string>
+		</dict>
+	</dict>
+</dict>
+</plist>

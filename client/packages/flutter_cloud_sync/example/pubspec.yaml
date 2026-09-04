@@ -1,0 +1,15 @@
+name: flutter_cloud_sync_example
+description: Example app demonstrating flutter_cloud_sync usage
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter_cloud_sync:
+    path: ../
+  crypto: ^3.0.3
+
+dev_dependencies:
+  flutter_lints: ^2.0.0

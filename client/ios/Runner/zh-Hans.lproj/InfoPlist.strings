@@ -1,0 +1,3 @@
+/* 简中环境下的 app 名称 — 桌面图标 + 任务台显示「智记」。(2026-09 品牌统一:只展示 智记) */
+"CFBundleDisplayName" = "智记";
+"CFBundleName" = "智记";

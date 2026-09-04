@@ -1,0 +1,326 @@
+import '../../utils/currencies.dart';
+import '../../utils/currency_aliases.dart';
+import 'ai_extraction_context.dart';
+
+/// 模板占位符登记表的一项。
+///
+/// 存在的意义:自定义 prompt 是**整段替换**默认模板的(A7 方案 a,我们不覆盖
+/// 用户模板),所以默认模板新增占位符时,老自定义模板拿不到对应能力。把占位符
+/// 登记成数据,编辑页就能算出「用户模板缺哪些能力」并给出提示 —— 而不是每加
+/// 一个占位符就写一遍 bespoke 检测 + bespoke 文案。
+class PromptPlaceholder {
+  /// 占位符本体,如 `{{CURRENCIES}}`。
+  final String token;
+
+  /// 缺失时是否值得提示用户。
+  ///
+  /// `false` 给**纯观感**的占位符:少了它 prompt 只是措辞怪一点,能力不受影响
+  /// (`{{INPUT_SOURCE}}` 少个前缀、`{{CURRENT_DATE}}` 只出现在示例里)。
+  /// 这条区分很重要 —— 把「不影响能力的差异」也报成警告,自定义模板用户就会
+  /// 看到一条永远消不掉的黄条,然后学会无视它。
+  final bool warnIfMissing;
+
+  /// 可**安全追加到模板末尾**的补丁片段;`null` = 位置有语义,不能自动插入。
+  ///
+  /// 例:`{{BILL_GUARD}}` 必须在最前面、`{{OCR_TEXT}}` 要在「文本:」之后,
+  /// 盲目追加会出错,这类只提示不代劳。
+  final String? appendSnippet;
+
+  const PromptPlaceholder(
+    this.token, {
+    this.warnIfMissing = true,
+    this.appendSnippet,
+  });
+}
+
+/// Prompt 模板拼装。纯函数,无副作用,易于单测。
+///
+/// 默认模板要求 AI 返回 JSON 数组(单笔也包成 `[{...}]`),通过占位符
+/// `{{INPUT_SOURCE}}` / `{{CURRENT_TIME}}` / `{{OCR_TEXT}}` /
+/// `{{BILL_GUARD}}` / `{{CATEGORIES}}` / `{{ACCOUNTS}}` 注入运行时变量。
+class PromptBuilder {
+  const PromptBuilder();
+
+  /// 默认模板。强制 JSON 数组 + 完整字段说明 + 多笔示例。
+  ///
+  /// 调用方可通过 [build] 的 [billGuard] 参数决定是否注入前置过滤段
+  /// （如 `[billGuardForImage]`），避免误伤聊天记账等主动输入路径。
+  static const String defaultTemplate =
+      '''{{BILL_GUARD}}{{INPUT_SOURCE}}提取记账信息，返回JSON数组。
+
+当前时间：{{CURRENT_TIME}}
+
+{{OCR_TEXT}}
+
+{{CATEGORIES}}{{ACCOUNTS}}{{CURRENCIES}}
+
+输出格式：
+- 始终返回 JSON 数组，即使只有一笔，也包成 [{...}]
+- 识别到多笔独立消费/收入/转账时，数组中每笔一个对象，按时间先后顺序排列
+- 「拆开 AA」「拆开报销」「拼单」等场景，每个独立支付/收款都算一笔
+- 同一商家的多件商品如果是一次性支付，合并为一笔
+
+字段说明：
+1. amount: 金额（支出负数，收入正数）
+2. time: ISO8601格式，尽量推断时间：
+   - 明确时间（如"14:30"、"2025-11-25"）→直接使用
+   - 相对日期（昨天、前天、上周）→推算具体日期
+   - 时间段（早上、中午、晚上）→使用合理时刻（早上09:00、中午12:00、晚上19:00）
+   - 完全没提时间→使用当前时间
+3. note: 备注（必须≤15字，超过则精简），提取优先级：
+   - 商家/店铺名（如"星巴克"、"肯德基"）
+   - 商品名称（长标题需简化，如"2025春季新款黑色斜纹格纹半身裙"→"黑色半身裙"）
+   - 用户描述（如"给女儿买"）
+   - 没有则留空
+4. category: 从分类列表选择（转账/还款可填对应分类）
+5. type: income、expense 或 transfer（信用卡还款/还贷等"还款"属 transfer，不属消费）
+6. account: 支付账户（收入/支出可用）
+7. from_account: 转出账户（仅转账可用）
+8. to_account: 转入账户（仅转账可用）
+9. tag/tags: 标签（可选，单个字符串或字符串数组）
+$_currencyFieldSpec
+
+示例：
+单笔"昨天中午吃饭50" → [{"amount":-50,"time":"2025-11-24T12:00:00","category":"餐饮","type":"expense"}]
+单笔"早上在星巴克买咖啡30" → [{"amount":-30,"time":"{{CURRENT_DATE}}T09:00:00","note":"星巴克","category":"咖啡","type":"expense"}]
+单笔"商品:2025春季新款黑色半身裙 金额:￥299" → [{"amount":-299,"note":"黑色半身裙","category":"服装","type":"expense"}]
+转账"从建行转800到零钱包" → [{"amount":800,"category":"转账","type":"transfer","from_account":"建行","to_account":"零钱包","tag":"自己"}]
+还款"信用卡还款5000元" → [{"amount":-5000,"category":"还款","type":"transfer","from_account":"建设银行","to_account":"信用卡"},{"amount":-2000,"note":"房贷还款","category":"还款","type":"transfer"}]
+外币"花了45美元" → [{"amount":-45,"currency":"USD","type":"expense"}]
+外币"在东京吃拉面1200日元" → [{"amount":-1200,"currency":"JPY","note":"拉面","category":"餐饮","type":"expense"}]
+外币"星巴克 \$6.5" → [{"amount":-6.5,"currency":"USD","note":"星巴克","category":"咖啡","type":"expense"}]
+外币"房租 1200 欧" → [{"amount":-1200,"currency":"EUR","note":"房租","category":"居家","type":"expense"}]
+多笔"早上地铁5元，中午吃饭40元，晚上买水果35元" → [{"amount":-5,"time":"{{CURRENT_DATE}}T09:00:00","note":"地铁","category":"交通","type":"expense"},{"amount":-40,"time":"{{CURRENT_DATE}}T12:00:00","category":"餐饮","type":"expense"},{"amount":-35,"time":"{{CURRENT_DATE}}T19:00:00","note":"水果","category":"购物","type":"expense"}]
+
+注意：只返回 JSON 数组（即使只有一笔也用数组包裹），尽量推断时间不要返回 null，note 必须 ≤15 字（长标题要精简）。外币的 currency 一律填 ISO 代码（USD，不是 \$ 或"美元"）''';
+
+  /// 币种字段说明。**默认模板与「插入币种段落」补丁共用同一份**,避免两处漂移。
+  ///
+  /// 写法上刻意做了三件事(2026-08-12 实测「日元能识别、美元不行」后调整):
+  /// 1. 显式列出中文名/符号 → ISO 代码的对应表 —— 只靠"填 ISO 代码"这句话,
+  ///    模型对没见过样例的币种容易漏填
+  /// 2. 明确禁止填符号或中文名 —— 原先字段说明里把 `\$45` 当输入例子写在紧邻
+  ///    位置,模型会直接把 `\$` 当**字段值**回来
+  /// 3. 强调"出现任何外币说法都要填",对冲其余示例(都没有 currency)带来的
+  ///    few-shot 偏置
+  static const String _currencyFieldSpec =
+      '''10. currency: 币种，必须是 3 位大写 ISO 4217 代码，**不要填货币符号，也不要填中文名**
+11. confidence: 识别置信度 0~1（填 0.9~1.0 表示完全确定；金额/动作明确但时间靠推断填 0.6~0.9；有歧义或仅猜测填 0.2~0.6）
+    - 中文说法与代码的对应见上面的「币种对照」；符号同样算外币说法：
+      \$ → USD，€ → EUR，£ → GBP，₩ → KRW，฿ → THB
+    - 与账本主币种相同时**省略此字段**（主币种是 CNY 时，"花了50元"不要填 currency）
+    - 原文出现任何外币说法（中文名、符号、代码都算）就必须填，别漏''';
+
+  /// 币种段落(A7)。给**自定义模板用户**的「插入币种段落」一键补丁用 ——
+  /// 我们不覆盖用户模板(方案 a),但让他们一次点击就能把这个能力补进自己的
+  /// 模板。内容与默认模板共用 [_currencyFieldSpec],不会漂移。
+  static const String currencySectionSnippet = '$_currencyFieldSpec\n{{CURRENCIES}}';
+
+  /// 默认模板用到的全部占位符。**新增占位符必须在此登记** ——
+  /// [placeholdersMatchDefaultTemplate] 会双向校验,漏登记或登记了模板里没有的
+  /// 都会让单测红。
+  static const List<PromptPlaceholder> placeholders = [
+    // 位置有语义(必须在最前),不能自动插入
+    PromptPlaceholder('{{BILL_GUARD}}'),
+    // 纯观感:少了只是少个「从以下支付账单文本中」前缀
+    PromptPlaceholder('{{INPUT_SOURCE}}', warnIfMissing: false),
+    // 时间锚点:少了「昨天」「上周」这类相对日期会算错
+    PromptPlaceholder('{{CURRENT_TIME}}'),
+    // 只出现在示例里,少了不影响能力
+    PromptPlaceholder('{{CURRENT_DATE}}', warnIfMissing: false),
+    // 待识别文本本体:文本类路径少了它 AI 根本看不到内容
+    PromptPlaceholder('{{OCR_TEXT}}'),
+    PromptPlaceholder('{{CATEGORIES}}'),
+    PromptPlaceholder('{{ACCOUNTS}}'),
+    PromptPlaceholder('{{CURRENCIES}}', appendSnippet: currencySectionSnippet),
+  ];
+
+  /// [template] 里缺失的、**值得提示**的占位符(即能力会失效的那些)。
+  /// 用默认模板调用应恒为空。
+  static List<PromptPlaceholder> missingPlaceholdersIn(String template) =>
+      placeholders
+          .where((p) => p.warnIfMissing && !template.contains(p.token))
+          .toList();
+
+  /// 登记表与默认模板是否一致(双向)。给单测当锁用。
+  static bool get placeholdersMatchDefaultTemplate {
+    final inTemplate = RegExp(r'\{\{[A-Z_]+\}\}')
+        .allMatches(defaultTemplate)
+        .map((m) => m.group(0)!)
+        .toSet();
+    final registered = placeholders.map((p) => p.token).toSet();
+    return inTemplate.difference(registered).isEmpty &&
+        registered.difference(inTemplate).isEmpty;
+  }
+
+  /// 截图/自动路径使用的账单过滤段。
+  ///
+  /// 拼在默认模板最前面，让 AI 先判断输入是否为真实账单，非账单直接返回 []。
+  /// 聊天记账、语音记账等主动输入路径不应注入此段（传空字符串即可）。
+  static const String billGuardForImage = '请先判断输入图片是否为账单。'
+      '以下情况通常不属于账单（仅供参考，不仅限于此）：\n'
+      '- 电脑/手机桌面截图\n'
+      '- 聊天记录、朋友圈、微博等社交页面\n'
+      '- 新闻、文章、网页浏览页\n'
+      '- 照片、自拍、风景图\n'
+      '- 应用主界面、设置页面\n'
+      '\n'
+      '判断后，不是账单则返回JSON空数组[]，是账单则继续。\n';
+
+  /// 短信路径的账单过滤段。
+  ///
+  /// 短信比截图噪点多(验证码/营销/余额提醒经 native 侧已在入队前剔除,
+  /// 这里是 AI 侧的二次兜底),明确要求:不含交易信息(金额+收支动作)时
+  /// 返回空数组,并用示例固定行为。
+  static const String billGuardForSms = '请先判断以下内容是否为银行/支付服务的交易短信。'
+      '以下情况通常不属于交易短信(仅供参考,不仅限于此):\n'
+      '- 验证码、密码、安全验证类短信\n'
+      '- 营销、活动、优惠类短信\n'
+      '- 余额/积分/账单日/还款日等纯提醒短信(没有具体交易金额和收支动作)\n'
+      '- 短信是没有金额的\n'
+      '\n'
+      '判断后,不是交易短信则返回JSON空数组[];是交易短信则按下面的格式输出。\n'
+      '注意:同一笔交易短信只输出一笔;金额必须取自短信原文,不要脑补。\n';
+
+  /// 支付通知路径的账单过滤段(billGuardForSms 的通知版)。
+  ///
+  /// 差异:通知文本混杂微信/支付宝的聊天、营销、安全提醒类消息,
+  /// 前置过滤侧重"非支付通知一律丢弃"。
+  static const String billGuardForNotification = '请先判断以下内容是否为支付/交易信息'
+      '(微信/支付宝/银行 App 推送的通知文本)。\n'
+      '以下情况通常不属于交易(仅供参考,不仅限于此):\n'
+      '- 聊天消息、群聊、公众号文章、朋友圈提醒\n'
+      '- 营销、活动、优惠类通知\n'
+      '- 验证码、密码、安全验证类通知\n'
+      '- 余额/积分/账单日/还款日等纯提醒(没有具体交易金额和收支动作)\n'
+      '- 通快递/物流/取件类通知\n'
+      '\n'
+      '判断后,不是交易通知则返回JSON空数组[];是则按下面的格式输出。'
+      '金额必须取自原文,不要脑补。\n';
+
+  /// 屏幕文本(账单详情页)路径的账单过滤段。
+  ///
+  /// 文本来自无障碍服务抓取的整棵页面文本树,噪音最多(按钮、导航栏、
+  /// 商品页、购物车页都可能带金额)。核心要求:只有「已成交的交易」才输出,
+  /// 待支付/浏览中的页面一律视为非账单。
+  static const String billGuardForScreen = '请先判断以下内容是否为「已支付/已成交交易」的'
+      '账单、订单详情或支付成功页面的文本(支付宝/抖音/京东/微信 App 页面)。\n'
+      '以下情况通常不属于交易(仅供参考,不仅限于此):\n'
+      '- 商品浏览、商品详情、首页、直播间、购物车(只有价格没有成交结果)\n'
+      '- 待支付/待付款/订单确认页(尚未成交,不应记账)\n'
+      '- 收件地址、物流、售后、评价等非交易页面\n'
+      '- 语音/图片/照片识别页(其他 App 页面通常也不会出现在这里)\n'
+      '- 聊天消息、公众号文章、朋友圈\n'
+      '\n'
+      '判断后,不是已成交交易则返回JSON空数组[];是则按下面的格式输出。\n'
+      '注意:同一笔交易只输出一笔;金额必须取自原文,不要脑补。\n';
+
+  /// Hardcoded fallback 分类(context 不提供时使用)
+  static const String _hardcodedCategoryHint = '分类列表：\n'
+      '支出：餐饮、交通、购物、娱乐、居家、通讯、水电、医疗、教育\n'
+      '收入：工资、理财、红包、奖金、报销、兼职';
+
+  /// 拼装最终 prompt。
+  ///
+  /// [inputSource] 输入源描述(如 "从以下支付账单文本中" / "分析支付账单截图，从中")
+  /// [billGuard] 前置过滤段，截图/自动路径传入 [billGuardForImage]，聊天等主动输入传空字符串。
+  /// [ocrText] 文本输入(图片场景留空)
+  /// [now] 时间锚点,默认 `DateTime.now()` (测试可注入固定时间)
+  String build({
+    required AiExtractionContext context,
+    required String inputSource,
+    String billGuard = '',
+    String ocrText = '',
+    DateTime? now,
+  }) {
+    final ts = now ?? DateTime.now();
+    final currentDate = '${ts.year}-${_pad(ts.month)}-${_pad(ts.day)}';
+    final currentTime = '$currentDate ${_pad(ts.hour)}:${_pad(ts.minute)}';
+
+    final template = (context.customPromptTemplate != null &&
+            context.customPromptTemplate!.trim().isNotEmpty)
+        ? context.customPromptTemplate!
+        : defaultTemplate;
+
+    return template
+        .replaceAll('{{BILL_GUARD}}', billGuard)
+        .replaceAll('{{INPUT_SOURCE}}', inputSource)
+        .replaceAll('{{CURRENT_TIME}}', currentTime)
+        .replaceAll('{{CURRENT_DATE}}', currentDate)
+        .replaceAll('{{OCR_TEXT}}', ocrText)
+        .replaceAll('{{CATEGORIES}}', _buildCategoryHint(context))
+        .replaceAll('{{ACCOUNTS}}', _buildAccountHint(context))
+        .replaceAll('{{CURRENCIES}}', _buildCurrencyHint(context));
+  }
+
+  String _buildCategoryHint(AiExtractionContext ctx) {
+    if (ctx.expenseCategories.isEmpty && ctx.incomeCategories.isEmpty) {
+      return _hardcodedCategoryHint;
+    }
+    final parts = <String>[];
+    if (ctx.expenseCategories.isNotEmpty) {
+      parts.add('支出：${ctx.expenseCategories.join('、')}');
+    }
+    if (ctx.incomeCategories.isNotEmpty) {
+      parts.add('收入：${ctx.incomeCategories.join('、')}');
+    }
+    return '分类列表：\n${parts.join('\n')}';
+  }
+
+  /// 账户清单。**只有币种 ≠ 账本本位币的账户才标注币种** —— 单币种账本渲染出
+  /// 的字符串与加多币种之前逐字相同(零噪声、零回归)。
+  String _buildAccountHint(AiExtractionContext ctx) {
+    if (ctx.accounts.isEmpty) return '';
+    final base = ctx.ledgerCurrency.toUpperCase();
+    final parts = ctx.accounts.map((a) {
+      final code = a.currency.toUpperCase();
+      return (code.isEmpty || code == base) ? a.name : '${a.name}($code)';
+    });
+    return '\n账户列表：${parts.join('、')}';
+  }
+
+  /// 币种提示 = 主币种 + 账本内的外币账户币种 + **「中文说法 → ISO 代码」对照表**。
+  ///
+  /// 对照表从 [zhAliasesForCode] 生成(与解析器同一份别名表),覆盖:
+  /// ① 账本自己在用的币种 —— 哪怕是 KES 这种长尾也带上,它对这个用户最相关;
+  /// ② [kCommonCurrencyCodes] 常用币种 —— 用户在单币种账本里说「花了 45 美元」
+  ///    同样要认得,所以不按「有没有外币账户」裁剪。
+  ///
+  /// 只靠一句「填 ISO 代码」是不够的:实测「日元」能识别而「美元」漏填,就是
+  /// 因为示例里只有 JPY 一个样例、模型没有可套的模式(见 [_currencyFieldSpec])。
+  String _buildCurrencyHint(AiExtractionContext ctx) {
+    final base = ctx.ledgerCurrency.toUpperCase();
+    final ledgerOthers = ctx.availableCurrencies
+        .map((c) => c.toUpperCase())
+        .where((c) => c.isNotEmpty && c != base)
+        .toSet()
+        .toList()
+      ..sort();
+
+    final buf = StringBuffer('\n账本主币种：$base');
+    if (ledgerOthers.isNotEmpty) {
+      buf.write('；账本内已有外币账户：${ledgerOthers.join('、')}');
+    }
+
+    // 账本在用的排前面(更相关),再补常用币种;主币种不需要(相同就省略字段)
+    final codes = <String>{
+      ...ledgerOthers,
+      ...kCommonCurrencyCodes.map((c) => c.toUpperCase()),
+    }..remove(base);
+    final rows = <String>[];
+    for (final code in codes) {
+      // limit:1 —— 对照表只给**一个规范名**。别名表里还登记了繁体变体(歐元/
+      // 港幣)和口语(美金/美刀),那些是给**解析**用的,写进 prompt 只是白烧
+      // token:模型自己就知道美金=美元,输出的都是 code。
+      final names = zhAliasesForCode(code, limit: 1);
+      rows.add(names.isEmpty ? code : '${names.first}=$code');
+    }
+    if (rows.isNotEmpty) {
+      buf.write('\n币种对照（原文出现左边说法时，currency 填右边代码）：'
+          '${rows.join('、')}');
+    }
+    return buf.toString();
+  }
+
+  static String _pad(int n) => n.toString().padLeft(2, '0');
+}

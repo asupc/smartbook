@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- 方案 C：SmartBook「S」徽章 —— 渐变 S 一笔成账，右下闪电收尾 -->
+  <defs>
+    <linearGradient id="bgC" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#171A20"/>
+      <stop offset="1" stop-color="#0C0E12"/>
+    </linearGradient>
+    <linearGradient id="sC" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3BE0C2"/>
+      <stop offset="1" stop-color="#18A6E8"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="116" fill="url(#bgC)"/>
+  <text x="256" y="330" font-family="Arial, Helvetica, sans-serif" font-size="320"
+        font-weight="800" text-anchor="middle" fill="url(#sC)">S</text>
+  <!-- 右下闪电折角 -->
+  <path d="M308 356 L286 388 L300 388 L288 416 L326 372 L308 372 Z"
+        fill="#FFC94D" stroke="#E8A500" stroke-width="5" stroke-linejoin="round"/>
+  <!-- 星光 -->
+  <path d="M344 108 L349 122 L363 127 L349 132 L344 146 L339 132 L325 127 L339 122 Z"
+        fill="#FFFFFF" opacity=".9"/>
+</svg>

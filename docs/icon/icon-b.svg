@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- 方案 B：智账本 —— 打开的账本被 AI 星与扫描线描绘，自动誊写 -->
+  <defs>
+    <linearGradient id="bgB" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0F3B44"/>
+      <stop offset="1" stop-color="#07222A"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="116" fill="url(#bgB)"/>
+  <!-- 账本两页 -->
+  <rect x="156" y="126" width="100" height="256" rx="16" fill="#FFFFFF"/>
+  <rect x="256" y="126" width="100" height="256" rx="16" fill="#FFFFFF"/>
+  <rect x="250" y="126" width="12" height="256" fill="#04262E"/>
+  <!-- 左页记账行 -->
+  <line x1="182" y1="182" x2="230" y2="182" stroke="#D6DEEA" stroke-width="12" stroke-linecap="round"/>
+  <line x1="182" y1="216" x2="230" y2="216" stroke="#D6DEEA" stroke-width="12" stroke-linecap="round"/>
+  <line x1="182" y1="250" x2="230" y2="250" stroke="#D6DEEA" stroke-width="12" stroke-linecap="round"/>
+  <line x1="182" y1="284" x2="216" y2="284" stroke="#46D9E6" stroke-width="12" stroke-linecap="round"/>
+  <!-- 右页 AI 四角星 -->
+  <path d="M306 164 L313 186 L335 193 L313 200 L306 222 L299 200 L277 193 L299 186 Z"
+        fill="#6EE7F0"/>
+  <line x1="278" y1="240" x2="334" y2="240" stroke="#D6DEEA" stroke-width="12" stroke-linecap="round"/>
+  <line x1="278" y1="274" x2="334" y2="274" stroke="#D6DEEA" stroke-width="12" stroke-linecap="round"/>
+  <!-- 扫描线：通知进来自动誊写 -->
+  <line x1="176" y1="404" x2="336" y2="404" stroke="#46D9E6" stroke-width="10" stroke-linecap="round" opacity=".95"/>
+  <line x1="176" y1="404" x2="336" y2="404" stroke="#46D9E6" stroke-width="26" stroke-linecap="round" opacity=".18"/>
+</svg>

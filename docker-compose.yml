@@ -1,0 +1,52 @@
+name: auto-ledger
+
+services:
+  smartbook-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${SMARTBOOK_DB_DATABASE:-smartbook}
+      POSTGRES_USER: ${SMARTBOOK_DB_USERNAME:-smartbook}
+      POSTGRES_PASSWORD: ${SMARTBOOK_DB_PASSWORD:-CHANGE_ME}
+    volumes:
+      - smartbook-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${SMARTBOOK_DB_USERNAME:-smartbook} -d ${SMARTBOOK_DB_DATABASE:-smartbook}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  smartbook-cloud:
+    image: smartbook-server:latest
+    restart: unless-stopped
+    depends_on:
+      smartbook-db:
+        condition: service_healthy
+    ports:
+      - "${SMARTBOOK_PORT:-8869}:8080"
+    environment:
+      APP_ENV: production
+      API_PREFIX: /api/v1
+      WEB_STATIC_DIR: /app/static
+      DATABASE_URL: ${SMARTBOOK_DATABASE_URL:-postgresql+psycopg://${SMARTBOOK_DB_USERNAME:-smartbook}:${SMARTBOOK_DB_PASSWORD:-CHANGE_ME}@smartbook-db:5432/${SMARTBOOK_DB_DATABASE:-smartbook}}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      ACCESS_TOKEN_EXPIRE_MINUTES: 60
+      REFRESH_TOKEN_EXPIRE_DAYS: 30
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8869}
+      RATE_LIMIT_WINDOW_SECONDS: 60
+      RATE_LIMIT_MAX_REQUESTS: 30
+      BACKUP_STORAGE_DIR: /data/backups
+      BACKUP_MAX_UPLOAD_BYTES: 67108864
+      ALLOW_APP_RW_SCOPES: "true"
+      # 可选：AI 文档 Q&A / 汇率代理。参考 .env.example 注释。
+      # EMBEDDING_BASE_URL: https://api.siliconflow.cn/v1
+      # EMBEDDING_MODEL: BAAI/bge-m3
+      # EMBEDDING_API_KEY: ""
+      # EXCHANGE_RATE_PROXY_ENABLED: "true"
+      # EXCHANGE_RATE_CACHE_TTL_HOURS: "12"
+    volumes:
+      - smartbook-data:/data
+
+volumes:
+  smartbook-db-data:
+  smartbook-data:

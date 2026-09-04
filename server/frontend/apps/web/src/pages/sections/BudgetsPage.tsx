@@ -1,0 +1,230 @@
+import { useCallback, useEffect, useMemo, useState } from 'react'
+
+import {
+  createBudget,
+  deleteBudget,
+  fetchReadBudgets,
+  fetchReadBudgetUsage,
+  fetchWorkspaceCategories,
+  updateBudget,
+  type ReadBudget,
+  type WorkspaceCategory,
+} from '@smartbook/api-client'
+import { Card } from 'antd'
+import { useT, useToast } from '@smartbook/ui'
+import {
+  BudgetsPanel,
+  budgetDefaults,
+  currentMonthRange,
+  type BudgetForm,
+  type BudgetUsage,
+} from '@smartbook/web-features'
+
+import { useAttachmentCache } from '../../context/AttachmentCacheContext'
+import { useAuth } from '../../context/AuthContext'
+import { useLedgers } from '../../context/LedgersContext'
+import { usePageCache } from '../../context/PageDataCacheContext'
+import { useSyncRefresh } from '../../context/SyncSocketContext'
+import { localizeError } from '../../i18n/errors'
+import { useLedgerWrite } from '../../app/useLedgerWrite'
+
+/**
+ * 预算页 —— budgets 按账本取(账本级实体);categories 是 user-global,
+ * 跨账本共享。新增字段:
+ *   - 用 fetchWorkspaceTransactions 拉本预算周期内 expense 累加 used
+ *   - 调 createBudget / updateBudget / deleteBudget(对齐 mobile 能力)
+ */
+
+export function BudgetsPage() {
+  const t = useT()
+  const toast = useToast()
+  const { token } = useAuth()
+  const { activeLedgerId, currency, currentLedger } = useLedgers()
+  const { previewMap: iconPreviewByFileId, ensureLoadedMany } = useAttachmentCache()
+  const { retryOnConflict, isWriteConflict } = useLedgerWrite()
+
+  const bucket = activeLedgerId || '__none__'
+  const [budgets, setBudgets] = usePageCache<ReadBudget[]>(`budgets:${bucket}:rows`, [])
+  const [categories, setCategories] = usePageCache<WorkspaceCategory[]>(
+    'budgets:categories',
+    [],
+  )
+  const [usageById, setUsageById] = useState<Record<string, BudgetUsage | undefined>>({})
+  const [form, setForm] = useState<BudgetForm>(budgetDefaults())
+
+  const notifyError = useCallback(
+    (err: unknown) => toast.error(localizeError(err, t), t('notice.error')),
+    [toast, t],
+  )
+  const notifySuccess = useCallback(
+    (msg: string) => toast.success(msg, t('notice.success')),
+    [toast, t],
+  )
+
+  /**
+   * 拉每个 budget 当前周期 used。聚合在 server SQL 完成 — 分类预算的 used
+   * 含子分类支出(对齐手机端 `local_budget_repository.getBudgetUsage`)。
+   * usage 接口失败时清空 — 各进度条显示 0%,不阻塞 budget 列表渲染。
+   */
+  const refreshUsages = useCallback(
+    async (budgetRows: ReadBudget[], _catRows: WorkspaceCategory[]) => {
+      if (!activeLedgerId || budgetRows.length === 0) {
+        setUsageById({})
+        return
+      }
+      try {
+        const resp = await fetchReadBudgetUsage(token, activeLedgerId)
+        const next: Record<string, BudgetUsage> = {}
+        for (const item of resp.items) {
+          next[item.budget_id] = { used: item.used }
+        }
+        setUsageById(next)
+      } catch (_err) {
+        setUsageById({})
+      }
+    },
+    [token, activeLedgerId],
+  )
+
+  const refresh = useCallback(async () => {
+    if (!activeLedgerId) {
+      setBudgets([])
+      setUsageById({})
+      return
+    }
+    try {
+      const [b, c] = await Promise.all([
+        fetchReadBudgets(token, activeLedgerId),
+        fetchWorkspaceCategories(token, {}),
+      ])
+      setBudgets(b)
+      setCategories(c)
+      void refreshUsages(b, c)
+    } catch (err) {
+      notifyError(err)
+    }
+    // setBudgets / setCategories 来自 usePageCache,引用稳定
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, activeLedgerId, notifyError, refreshUsages])
+
+  useEffect(() => {
+    void refresh()
+  }, [refresh])
+
+  useSyncRefresh(() => {
+    void refresh()
+  })
+
+  useEffect(() => {
+    const ids = categories
+      .map((c) => c.icon_cloud_file_id || '')
+      .filter((v) => v.trim().length > 0)
+    if (ids.length > 0) ensureLoadedMany(ids)
+  }, [categories, ensureLoadedMany])
+
+  // 总预算的"日均可用 / 剩余天数",对齐 mobile budget_page.dart 算法。
+  const totalSummary = useMemo(() => {
+    const total = budgets.find((b) => b.type === 'total')
+    if (!total) return null
+    const startDay = Math.max(1, Math.min(28, currentLedger?.month_start_day ?? 1))
+    const { end } = currentMonthRange(startDay)
+    const now = new Date()
+    const msPerDay = 1000 * 60 * 60 * 24
+    const daysRemaining = Math.max(0, Math.ceil((end.getTime() - now.getTime()) / msPerDay))
+    const used = usageById[total.id]?.used ?? 0
+    const remaining = Math.max(0, total.amount - used)
+    const dailyAvailable = daysRemaining > 0 ? remaining / daysRemaining : 0
+    return { daysRemaining, dailyAvailable }
+  }, [budgets, usageById, currentLedger])
+
+  const onSubmit = async (): Promise<boolean> => {
+    if (!activeLedgerId) {
+      toast.error(t('shell.selectLedgerFirst'), t('notice.error'))
+      return false
+    }
+    const amount = Number((form.amount || '').toString().trim())
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error(t('budgets.error.amountInvalid'), t('notice.error'))
+      return false
+    }
+    if (form.type === 'category' && !form.category_id.trim()) {
+      toast.error(t('budgets.error.categoryRequired'), t('notice.error'))
+      return false
+    }
+    const startDay = Math.round(Number(form.start_day || '1'))
+    if (!Number.isFinite(startDay) || startDay < 1 || startDay > 28) {
+      toast.error(t('budgets.error.startDayInvalid'), t('notice.error'))
+      return false
+    }
+    try {
+      if (form.editingId) {
+        await retryOnConflict(activeLedgerId, (base) =>
+          updateBudget(token, activeLedgerId, form.editingId!, base, {
+            amount,
+            period: form.period,
+            start_day: startDay,
+          }),
+        )
+        notifySuccess(t('budgets.notice.updated'))
+      } else {
+        await retryOnConflict(activeLedgerId, (base) =>
+          createBudget(token, activeLedgerId, base, {
+            type: form.type,
+            category_id: form.type === 'category' ? form.category_id : null,
+            amount,
+            period: form.period,
+            start_day: startDay,
+          }),
+        )
+        notifySuccess(t('budgets.notice.created'))
+      }
+      setForm(budgetDefaults())
+      await refresh()
+      return true
+    } catch (err) {
+      if (isWriteConflict(err)) await refresh()
+      notifyError(err)
+      return false
+    }
+  }
+
+  const onDelete = async (budget: ReadBudget): Promise<void> => {
+    if (!activeLedgerId) return
+    try {
+      await retryOnConflict(activeLedgerId, (base) =>
+        deleteBudget(token, activeLedgerId, budget.id, base),
+      )
+      notifySuccess(t('budgets.notice.deleted'))
+      await refresh()
+    } catch (err) {
+      if (isWriteConflict(err)) await refresh()
+      notifyError(err)
+    }
+  }
+
+  return (
+    <Card
+      size="small"
+      title={<span className="text-base">{t('nav.budgets')}</span>}
+      styles={{ body: { padding: '12px 16px 16px' } }}
+    >
+        {!activeLedgerId ? (
+          <p className="text-sm text-muted-foreground">{t('shell.selectLedgerFirst')}</p>
+        ) : (
+          <BudgetsPanel
+            budgets={budgets}
+            categories={categories}
+            usageById={usageById}
+            iconPreviewUrlByFileId={iconPreviewByFileId}
+            currency={currency}
+            form={form}
+            onFormChange={setForm}
+            onSubmit={onSubmit}
+            onDelete={onDelete}
+            canManage={Boolean(activeLedgerId)}
+            totalSummary={totalSummary}
+          />
+        )}
+    </Card>
+  )
+}

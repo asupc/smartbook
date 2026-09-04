@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- 方案 A 前景层：透明背景，票据+账单线+闪电（自适应图标） -->
+  <defs>
+    <mask id="holes">
+      <rect x="150" y="118" width="212" height="276" rx="18" fill="white"/>
+      <circle cx="188" cy="152" r="9" fill="black"/>
+      <circle cx="233" cy="152" r="9" fill="black"/>
+      <circle cx="279" cy="152" r="9" fill="black"/>
+      <circle cx="324" cy="152" r="9" fill="black"/>
+    </mask>
+  </defs>
+  <rect x="150" y="118" width="212" height="276" rx="18" fill="#FFFFFF" mask="url(#holes)"/>
+  <line x1="166" y1="196" x2="346" y2="196" stroke="#D6DEEA" stroke-width="14" stroke-linecap="round"/>
+  <line x1="166" y1="230" x2="306" y2="230" stroke="#D6DEEA" stroke-width="14" stroke-linecap="round"/>
+  <line x1="166" y1="264" x2="346" y2="264" stroke="#F3C94F" stroke-width="14" stroke-linecap="round"/>
+  <path d="M308 240 L264 306 L294 306 L276 362 L338 288 L306 288 Z"
+        fill="#FFC94D" stroke="#E8A500" stroke-width="6" stroke-linejoin="round"/>
+</svg>

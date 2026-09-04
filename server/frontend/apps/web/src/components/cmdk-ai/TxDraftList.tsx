@@ -1,0 +1,700 @@
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { AlertTriangle, Loader2, Tag as TagIcon, Trash2 } from 'lucide-react'
+
+import {
+  type ApiError,
+  type BatchTxItem,
+  type TxDraft,
+  type WorkspaceAccount,
+  type WorkspaceCategory,
+  batchCreateTransactions,
+  fetchWorkspaceAccounts,
+  fetchWorkspaceCategories,
+} from '@smartbook/api-client'
+import { Button, Input, Select } from 'antd'
+import {
+  useT,
+  useToast,
+} from '@smartbook/ui'
+import {
+  CategoryPickerDialog,
+  CurrencySelectorTrigger,
+  loadRatesToBase,
+  resolveCurrencyFields,
+} from '@smartbook/web-features'
+
+import { useAuth } from '../../context/AuthContext'
+import { useLedgers } from '../../context/LedgersContext'
+
+const fieldLabelStyle: CSSProperties = { fontWeight: 500, marginBottom: 4, display: 'block' }
+
+export type TxDraftListProps = {
+  drafts: TxDraft[]
+  ledgerId: string
+  imageId?: string | null
+  extraTagName: string
+  locale: string
+  onSaved: (createdSyncIds: string[]) => void
+  onCancel: () => void
+}
+
+/**
+ * B2 / B3 共享 — 渲染 N 张可编辑 tx 卡片 + 批量保存。
+ *
+ * 关键改进(v2):
+ * - 类目走 CategoryPickerDialog(跟单笔 tx editor 一致)
+ * - 账户走 Select(跟单笔 editor 一致)
+ * - 保存时按 LLM 给的名字在 ledger 候选里查 id,带上 category_id / account_id 给 server
+ *   → projection 表的 category_sync_id 正确关联,跟 mobile 创建的 tx 完全一致
+ */
+export function TxDraftList({
+  drafts: initialDrafts,
+  ledgerId,
+  imageId,
+  extraTagName,
+  locale,
+  onSaved,
+  onCancel,
+}: TxDraftListProps) {
+  const t = useT()
+  const { token } = useAuth()
+  const toast = useToast()
+  const { currentLedger } = useLedgers()
+
+  // v30 多币种:账本本位币 = 草稿币种的默认值与折算目标(.docs/multi-currency-ai)
+  const baseCurrency = (currentLedger?.currency || 'CNY').trim().toUpperCase()
+
+  const [categories, setCategories] = useState<WorkspaceCategory[]>([])
+  const [accounts, setAccounts] = useState<WorkspaceAccount[]>([])
+  const [editable, setEditable] = useState<Editable[]>([])
+  const [autoAiTag, setAutoAiTag] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [currencyRates, setCurrencyRates] = useState<Record<string, number>>({})
+
+  // 加载 ledger candidates(必须先加载,然后才能初始化 editable 把 LLM name 映射到 id)
+  useEffect(() => {
+    Promise.all([
+      fetchWorkspaceCategories(token, { ledgerId, limit: 500 }),
+      fetchWorkspaceAccounts(token, { ledgerId, limit: 200 }),
+    ])
+      .then(([cats, accts]) => {
+        setCategories(cats)
+        // 账户隐藏(issue #240):AI 快速记账新建的草稿不应落到隐藏账户上 ——
+        // 跟正常记账表单(TransactionsPanel)的选择器排除规则保持一致。
+        setAccounts(accts.filter((a) => !a.hidden))
+      })
+      .catch(() => {})
+  }, [token, ledgerId])
+
+  // 候选数据 ready 后初始化 editable;drafts 变化(重新解析)也重置
+  useEffect(() => {
+    setEditable(initialDrafts.map((d) => toEditable(d, categories, accounts, baseCurrency)))
+  }, [initialDrafts, categories, accounts, baseCurrency])
+
+  // 汇率只在真的沾多币种时才拉:账本里有外币账户,或某笔草稿选了外币。
+  // 纯单币种用户不会因为这个功能多一次网络请求(loadRatesToBase 自带 5min 缓存)。
+  const needRates = useMemo(
+    () =>
+      accounts.some((a) => (a.currency || baseCurrency).toUpperCase() !== baseCurrency) ||
+      editable.some((d) => d.currency && d.currency !== baseCurrency),
+    [accounts, editable, baseCurrency],
+  )
+  useEffect(() => {
+    if (!needRates) return
+    let alive = true
+    loadRatesToBase(token, baseCurrency)
+      .then((r) => {
+        if (alive) setCurrencyRates(r)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [needRates, token, baseCurrency])
+
+  const selected = useMemo(() => editable.filter((d) => d.selected), [editable])
+  const allChecked = editable.length > 0 && editable.every((d) => d.selected)
+  const toggleAll = () => {
+    setEditable((prev) => prev.map((d) => ({ ...d, selected: !allChecked })))
+  }
+
+  // 选中的笔里有没有「非转账 + 类目缺失」的 → 阻止保存。LLM 经常对小额、
+  // 模糊凭证识别不出类目;不强制让用户选,会落到一个 category_id=null 的
+  // 交易,projection 上分类列空,后面统计/筛选都不准。要求显式选完再保存。
+  const missingCategoryCount = useMemo(
+    () => selected.filter((d) => d.type !== 'transfer' && !d.categoryId).length,
+    [selected],
+  )
+
+  const updateOne = (idx: number, patch: Partial<Editable>) => {
+    setEditable((prev) => prev.map((d, i) => (i === idx ? { ...d, ...patch } : d)))
+  }
+  const removeOne = (idx: number) => {
+    setEditable((prev) => prev.filter((_, i) => i !== idx))
+  }
+
+  const handleSave = async () => {
+    if (selected.length === 0) return
+    if (missingCategoryCount > 0) {
+      toast.error(
+        t('cmdk.parseTx.missingCategoryHint', { count: missingCategoryCount }),
+        t('cmdk.parseTx.missingCategoryTitle'),
+      )
+      return
+    }
+    setSaving(true)
+    try {
+      // v30 多币种:逐笔折算到账本本位币。transfer 不带币种字段(跨币种转账
+      // 本就有守卫);拉不到汇率 → 阻断保存,绝不静默按 1:1 入账(App L8 同源)。
+      // Web 是有人值守的确认式交互,所以这里阻断而不像 App 无人值守通道那样降级。
+      let currencyByLocalId: Record<string, { currency_code: string; native_amount: number }> = {}
+      try {
+        const resolved = await Promise.all(
+          selected.map(async (d) => {
+            if (d.type === 'transfer') return null
+            const fields = await resolveCurrencyFields({
+              token,
+              ledgerBase: baseCurrency,
+              currency: d.currency,
+              amount: Number(d.amountText) || 0,
+            })
+            return fields ? ([d.localId, fields] as const) : null
+          }),
+        )
+        currencyByLocalId = Object.fromEntries(resolved.filter(Boolean) as [string, { currency_code: string; native_amount: number }][])
+      } catch {
+        // 复用单笔记账的同一句文案(三语已有),不新造 key
+        toast.error(t('transactions.error.rateMissing'), t('cmdk.parseTx.saveFailed'))
+        setSaving(false)
+        return
+      }
+
+      const items: BatchTxItem[] = selected.map((d) => ({
+        tx_type: d.type,
+        amount: Number(d.amountText) || 0,
+        happened_at: d.happenedAtIso,
+        note: d.note || null,
+        ...(currencyByLocalId[d.localId] || {}),
+        // 关键:同时传 name + id(server projection 用 id 关联,name 用作显示)
+        category_name: d.categoryName || null,
+        category_id: d.categoryId || null,
+        category_kind: d.type === 'transfer' ? null : d.type,
+        account_name: d.accountName || null,
+        account_id: d.accountId || null,
+        from_account_name: d.fromAccountName || null,
+        from_account_id: d.fromAccountId || null,
+        to_account_name: d.toAccountName || null,
+        to_account_id: d.toAccountId || null,
+        tags: d.tags,
+      }))
+      const result = await batchCreateTransactions(token, {
+        ledgerId,
+        transactions: items,
+        autoAiTag,
+        extraTagName,
+        attachImageId: imageId || null,
+        locale,
+      })
+      toast.success(t('cmdk.parseTx.saved', { count: result.created_sync_ids.length }))
+      onSaved(result.created_sync_ids)
+    } catch (err) {
+      const apiErr = err as ApiError
+      toast.error(apiErr.message || String(err), t('cmdk.parseTx.saveFailed'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (editable.length === 0) {
+    return (
+      <div className="rounded-md border border-border/40 bg-muted/20 px-4 py-8 text-center">
+        <AlertTriangle className="mx-auto mb-2 h-5 w-5 text-amber-500" />
+        <p className="text-sm text-muted-foreground">{t('cmdk.parseTx.empty')}</p>
+        <Button variant="outlined" size="small" className="mt-3" onClick={onCancel}>
+          {t('common.close')}
+        </Button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-2">
+        {editable.map((d, idx) => (
+          <TxCard
+            key={d.localId}
+            draft={d}
+            categories={categories}
+            accounts={accounts}
+            baseCurrency={baseCurrency}
+            currencyRates={currencyRates}
+            onChange={(patch) => updateOne(idx, patch)}
+            onRemove={() => removeOne(idx)}
+            t={t}
+          />
+        ))}
+      </div>
+
+      <div className="flex items-center justify-between border-t border-border/40 pt-3">
+        <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground hover:text-foreground">
+          <input
+            type="checkbox"
+            checked={autoAiTag}
+            onChange={(e) => setAutoAiTag(e.target.checked)}
+            className="h-3.5 w-3.5 cursor-pointer accent-primary"
+          />
+          <TagIcon className="h-3 w-3" />
+          {t('cmdk.parseTx.autoAiTag')}
+        </label>
+        <div className="flex items-center gap-2">
+          <Button type="text" size="small" onClick={toggleAll} disabled={saving}>
+            {allChecked ? t('cmdk.parseTx.deselectAll') : t('cmdk.parseTx.selectAll')}
+          </Button>
+          <Button type="text" size="small" onClick={onCancel} disabled={saving}>
+            {t('common.cancel')}
+          </Button>
+          <Button
+            onClick={handleSave}
+            disabled={saving || selected.length === 0 || missingCategoryCount > 0}
+            title={
+              missingCategoryCount > 0
+                ? t('cmdk.parseTx.missingCategoryHint', { count: missingCategoryCount })
+                : undefined
+            }
+            icon={saving ? <Loader2 className="h-3 w-3 animate-spin" /> : undefined}
+          >
+            {t('cmdk.parseTx.saveSelected', { count: selected.length })}
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// 单笔卡片
+// ────────────────────────────────────────────────────────────────────────
+
+type T = ReturnType<typeof useT>
+
+function TxCard({
+  draft,
+  categories,
+  accounts,
+  baseCurrency,
+  currencyRates,
+  onChange,
+  onRemove,
+  t,
+}: {
+  draft: Editable
+  categories: WorkspaceCategory[]
+  accounts: WorkspaceAccount[]
+  baseCurrency: string
+  currencyRates: Record<string, number>
+  onChange: (patch: Partial<Editable>) => void
+  onRemove: () => void
+  t: T
+}) {
+  const isTransfer = draft.type === 'transfer'
+  const lowConf = draft.confidence === 'low'
+  const missingCategory = !isTransfer && !draft.categoryId
+  const [catPickerOpen, setCatPickerOpen] = useState(false)
+
+  // v30 多币种:账户候选跟着**这笔的币种**走(与 TransactionsPanel 的
+  // 「选非本位币 → 账户下拉按币种过滤」同构)。单币种账本下该过滤是恒真的。
+  const txCurrency = draft.currency || baseCurrency
+  const accountNames = useMemo(
+    () =>
+      accounts
+        .filter((a) => (a.currency || baseCurrency).toUpperCase() === txCurrency.toUpperCase())
+        .map((a) => a.name)
+        .filter(Boolean),
+    [accounts, txCurrency, baseCurrency],
+  )
+
+  // type 变化时同步 categoryKind 候选
+  const pickerKind: 'expense' | 'income' = draft.type === 'income' ? 'income' : 'expense'
+
+  return (
+    <div
+      className={`rounded-lg border bg-card p-3 shadow-sm transition ${
+        draft.selected ? 'border-border' : 'border-border/30 opacity-50'
+      } ${
+        draft.selected && missingCategory
+          ? 'ring-1 ring-destructive/40'
+          : lowConf && draft.selected
+            ? 'ring-1 ring-amber-500/30'
+            : ''
+      }`}
+    >
+      {/* 头部:checkbox + type chip + 金额 + 删除 */}
+      <div className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          checked={draft.selected}
+          onChange={(e) => onChange({ selected: e.target.checked })}
+          className="h-4 w-4 cursor-pointer accent-primary"
+        />
+        <Select
+          value={draft.type}
+          onChange={(v) => {
+            const next = v as TxDraft['type']
+            // 切换 type 时,如果当前 categoryId 跟新 type 的 kind 不匹配 → 清掉
+            const cat = categories.find((c) => c.id === draft.categoryId)
+            const shouldClearCat = cat && cat.kind && cat.kind !== next && next !== 'transfer'
+            onChange({
+              type: next,
+              ...(shouldClearCat ? { categoryId: '', categoryName: '' } : {}),
+            })
+          }}
+          options={[
+            { value: 'expense', label: t('enum.txType.expense') },
+            { value: 'income', label: t('enum.txType.income') },
+            { value: 'transfer', label: t('enum.txType.transfer') },
+          ]}
+          style={{ width: 78 }}
+        />
+        <Input
+          type="number"
+          step="0.01"
+          inputMode="decimal"
+          value={draft.amountText}
+          onChange={(e) => onChange({ amountText: e.target.value })}
+          className="flex-1 text-sm font-medium"
+          placeholder="0.00"
+        />
+        <button
+          type="button"
+          onClick={onRemove}
+          className="rounded p-1 text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive"
+          aria-label={t('common.delete')}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      {/* v30 多币种:币种行,与 TransactionsPanel 的单笔表单同构(那边也是非
+          transfer 就常驻)。常驻而非「只在外币时显示」是因为 AI 有可能漏识别
+          币种 —— 用户必须能在保存前改回来,否则只能存完再逐笔编辑(#437)。 */}
+      {!isTransfer ? (
+        <div className="mt-2">
+          <CurrencySelectorTrigger
+            value={draft.currency || baseCurrency}
+            onChange={(code) => {
+              const next = code.trim().toUpperCase()
+              onChange({
+                currency: next === baseCurrency ? '' : next,
+                // 币种变了,原账户多半不再同币种 → 清空,让用户在新候选里重选
+                accountName: '',
+                accountId: '',
+              })
+            }}
+            ratesToBase={currencyRates}
+            rateBase={baseCurrency}
+          />
+        </div>
+      ) : null}
+
+      {/* 类目 + 账户(transfer 换 from/to) */}
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        {!isTransfer ? (
+          <>
+            <CategoryButton
+              label={t('cmdk.parseTx.category')}
+              value={draft.categoryName}
+              missing={missingCategory}
+              onClick={() => setCatPickerOpen(true)}
+              t={t}
+            />
+            <AccountSelect
+              label={t('cmdk.parseTx.account')}
+              value={draft.accountName}
+              accountNames={accountNames}
+              onChange={(name) => {
+                const matched = accounts.find((a) => a.name === name)
+                onChange({ accountName: name, accountId: matched?.id || '' })
+              }}
+              t={t}
+            />
+          </>
+        ) : (
+          <>
+            <AccountSelect
+              label={t('cmdk.parseTx.fromAccount')}
+              value={draft.fromAccountName}
+              accountNames={accountNames}
+              onChange={(name) => {
+                const matched = accounts.find((a) => a.name === name)
+                onChange({ fromAccountName: name, fromAccountId: matched?.id || '' })
+              }}
+              t={t}
+            />
+            <AccountSelect
+              label={t('cmdk.parseTx.toAccount')}
+              value={draft.toAccountName}
+              accountNames={accountNames}
+              onChange={(name) => {
+                const matched = accounts.find((a) => a.name === name)
+                onChange({ toAccountName: name, toAccountId: matched?.id || '' })
+              }}
+              t={t}
+            />
+          </>
+        )}
+      </div>
+
+      {/* 时间 + 备注 */}
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <FieldRow label={t('cmdk.parseTx.time')}>
+          <Input
+            type="datetime-local"
+            value={toLocalInput(draft.happenedAtIso)}
+            onChange={(e) => onChange({ happenedAtIso: fromLocalInput(e.target.value) })}
+            className="text-xs"
+          />
+        </FieldRow>
+        <FieldRow label={t('cmdk.parseTx.note')}>
+          <Input
+            value={draft.note}
+            onChange={(e) => onChange({ note: e.target.value })}
+            className="text-xs"
+            placeholder={t('cmdk.parseTx.notePlaceholder')}
+          />
+        </FieldRow>
+      </div>
+
+      {missingCategory ? (
+        <p className="mt-2 flex items-center gap-1 text-[10px] text-destructive">
+          <AlertTriangle className="h-3 w-3" />
+          {t('cmdk.parseTx.missingCategoryRow')}
+        </p>
+      ) : lowConf ? (
+        <p className="mt-2 flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400">
+          <AlertTriangle className="h-3 w-3" />
+          {t('cmdk.parseTx.lowConfidenceHint')}
+        </p>
+      ) : null}
+
+      {!isTransfer && (
+        <CategoryPickerDialog
+          open={catPickerOpen}
+          onClose={() => setCatPickerOpen(false)}
+          kind={pickerKind}
+          rows={categories}
+          selectedId={draft.categoryId || null}
+          title={t('cmdk.parseTx.pickCategory')}
+          onSelect={(c) => {
+            onChange({ categoryId: c.id ?? '', categoryName: c.name })
+            setCatPickerOpen(false)
+          }}
+          onClear={() => {
+            onChange({ categoryId: '', categoryName: '' })
+            setCatPickerOpen(false)
+          }}
+          clearLabel={t('cmdk.parseTx.clearCategory')}
+        />
+      )}
+    </div>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// 子组件
+// ────────────────────────────────────────────────────────────────────────
+
+
+function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <label className="text-[10px] uppercase tracking-wider text-muted-foreground" style={fieldLabelStyle}>
+        {label}
+      </label>
+      {children}
+    </div>
+  )
+}
+
+
+function CategoryButton({
+  label,
+  value,
+  missing,
+  onClick,
+  t: _t,
+}: {
+  label: string
+  value: string
+  missing?: boolean
+  onClick: () => void
+  t: T
+}) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <label className="text-[10px] uppercase tracking-wider text-muted-foreground" style={fieldLabelStyle}>
+        {label}
+      </label>
+      <Button
+        variant="outlined"
+        size="small"
+        onClick={onClick}
+        className={`text-xs ${
+          missing
+            ? 'border-destructive/60 text-destructive hover:text-destructive'
+            : value
+              ? ''
+              : 'text-muted-foreground'
+        }`}
+      >
+        {value || _t('cmdk.parseTx.pickCategory')}
+      </Button>
+    </div>
+  )
+}
+
+
+function AccountSelect({
+  label,
+  value,
+  accountNames,
+  onChange,
+  t,
+}: {
+  label: string
+  value: string
+  accountNames: string[]
+  onChange: (name: string) => void
+  t: T
+}) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <label className="text-[10px] uppercase tracking-wider text-muted-foreground" style={fieldLabelStyle}>
+        {label}
+      </label>
+      <Select
+        value={value || undefined}
+        onChange={onChange}
+        placeholder={t('cmdk.parseTx.pickAccount')}
+        options={accountNames.map((name) => ({ value: name, label: name }))}
+        style={{ width: '100%' }}
+      />
+    </div>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// 内部 state 类型 + 辅助
+// ────────────────────────────────────────────────────────────────────────
+
+
+type Editable = {
+  localId: string
+  selected: boolean
+  type: TxDraft['type']
+  amountText: string
+  happenedAtIso: string
+  note: string
+  /** 原币种 ISO;'' = 账本本位币(与 TxForm.currency 同约定) */
+  currency: string
+  tags: string[]
+  confidence: TxDraft['confidence']
+  categoryId: string
+  categoryName: string
+  accountId: string
+  accountName: string
+  fromAccountId: string
+  fromAccountName: string
+  toAccountId: string
+  toAccountName: string
+}
+
+function toEditable(
+  d: TxDraft,
+  categories: WorkspaceCategory[],
+  accounts: WorkspaceAccount[],
+  baseCurrency: string,
+): Editable {
+  // 「有子分类的父类」不能被作为交易分类(产品规则跟 mobile 一致)。如果 LLM 返
+  // 了这种父类名字,我们 lookup 时拒绝命中,categoryId 留空 → 用户在 Picker
+  // 里手动选具体子分类。否则保存的 tx 关联到一个不该被选的父类,projection
+  // 行为虽然 ok 但跟 mobile 行为不一致。
+  const parentNamesWithChildren = new Set<string>()
+  for (const c of categories) {
+    if (c.parent_name) parentNamesWithChildren.add(c.parent_name)
+  }
+  const isSelectableCategory = (c: WorkspaceCategory) => {
+    if (c.parent_name) return true   // 子分类,可选
+    return !parentNamesWithChildren.has(c.name)   // 父分类无子,可选
+  }
+
+  const matchCategory = (name: string, kind: 'expense' | 'income' | 'transfer'): WorkspaceCategory | null => {
+    if (!name) return null
+    const exact = categories.find((c) => c.name === name && c.kind === kind && isSelectableCategory(c))
+    if (exact) return exact
+    const anyKind = categories.find((c) => c.name === name && isSelectableCategory(c))
+    return anyKind || null
+  }
+  const matchAccount = (name: string): WorkspaceAccount | null => {
+    if (!name) return null
+    return accounts.find((a) => a.name === name) || null
+  }
+
+  // v30 多币种:LLM 给的币种(server 已校验成 ISO 或 "")。等于本位币就归一成
+  // '' —— 与 TxForm.currency 同约定,提交时才展开成显式 currency_code。
+  const draftCurrency = (d.currency || '').trim().toUpperCase()
+  const currency = draftCurrency === baseCurrency ? '' : draftCurrency
+  const txCurrency = currency || baseCurrency
+
+  const cat = matchCategory(d.category_name, d.type)
+  // 账户必须与这笔的币种一致 —— 卡片里的账户下拉就是按币种过滤的,匹配到一个
+  // 不在候选里的账户会让 Select 显示一个选不中的值。币种不符视为未匹配,
+  // 用户在过滤后的候选里重选(与 mobile BillCreationService 的匹配池同口径)。
+  const acctByName = matchAccount(d.account_name)
+  const acct =
+    acctByName && (acctByName.currency || baseCurrency).toUpperCase() === txCurrency
+      ? acctByName
+      : null
+  const fromAcct = d.from_account_name ? matchAccount(d.from_account_name) : null
+  const toAcct = d.to_account_name ? matchAccount(d.to_account_name) : null
+
+  return {
+    localId: Math.random().toString(36).slice(2),
+    selected: true,
+    type: d.type,
+    amountText: String(d.amount),
+    happenedAtIso: d.happened_at || new Date().toISOString(),
+    note: d.note || '',
+    currency,
+    tags: d.tags || [],
+    confidence: d.confidence,
+    categoryId: cat?.id || '',
+    categoryName: cat?.name || d.category_name || '',
+    accountId: acct?.id || '',
+    accountName: acct?.name || d.account_name || '',
+    fromAccountId: fromAcct?.id || '',
+    fromAccountName: fromAcct?.name || d.from_account_name || '',
+    toAccountId: toAcct?.id || '',
+    toAccountName: toAcct?.name || d.to_account_name || '',
+  }
+}
+
+function toLocalInput(iso: string): string {
+  if (!iso) return ''
+  try {
+    const d = new Date(iso)
+    if (isNaN(d.getTime())) return ''
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  } catch {
+    return ''
+  }
+}
+
+function fromLocalInput(local: string): string {
+  if (!local) return ''
+  try {
+    return new Date(local).toISOString()
+  } catch {
+    return local
+  }
+}

@@ -1,0 +1,6 @@
+/* Localized SmartBook app names — solves App Store reviewer hitting 2.3.8
+   when the device language is English but CFBundleDisplayName falls back
+   to the default Chinese "智记" (which doesn't match the App Store
+   marketplace name "SmartBook - Simple Ledger"). */
+"CFBundleDisplayName" = "智记";
+"CFBundleName" = "智记";

@@ -1,0 +1,275 @@
+import 'package:flutter_test/flutter_test.dart';
+
+import 'package:smartbook/ai/core/bill_info.dart';
+
+void main() {
+  group('BillInfo.fromJson', () {
+    test('完整字段', () {
+      final bill = BillInfo.fromJson({
+        'amount': -30.5,
+        'time': '2026-05-26T12:00:00',
+        'note': '星巴克',
+        'category': '咖啡',
+        'type': 'expense',
+        'account': '支付宝',
+      });
+      expect(bill.amount, -30.5);
+      expect(bill.time, DateTime.parse('2026-05-26T12:00:00'));
+      expect(bill.note, '星巴克');
+      expect(bill.category, '咖啡');
+      expect(bill.type, BillType.expense);
+      expect(bill.account, '支付宝');
+    });
+
+    test('time 内嵌空格自动 strip(strip 后仍是合法 ISO8601)', () {
+      // 原样 parse 失败,strip 全部空白后变成 "2026-05-26T12:00:00",可 parse
+      final bill = BillInfo.fromJson({
+        'amount': -30,
+        'time': '2026-05-26 T 12:00:00',
+      });
+      expect(bill.time, isNotNull);
+      expect(bill.time?.year, 2026);
+      expect(bill.time?.month, 5);
+      expect(bill.time?.day, 26);
+      expect(bill.time?.hour, 12);
+    });
+
+    test('time strip 后仍非法 → 返回 null(由下游 sanitize 兜底)', () {
+      // "2222 2-1-26T18:08:00" → strip 后 "22222-1-26T18:08:00" 仍非法
+      final bill = BillInfo.fromJson({
+        'amount': -30,
+        'time': '2222 2-1-26T18:08:00',
+      });
+      expect(bill.time, isNull);
+    });
+
+    test('time 非字符串 → null', () {
+      final bill = BillInfo.fromJson({'amount': -30, 'time': 12345});
+      expect(bill.time, isNull);
+    });
+
+    test('type 中英文兼容', () {
+      expect(
+        BillInfo.fromJson({'amount': -1, 'type': '收入'}).type,
+        BillType.income,
+      );
+      expect(
+        BillInfo.fromJson({'amount': -1, 'type': 'expense'}).type,
+        BillType.expense,
+      );
+      expect(
+        BillInfo.fromJson({'amount': -1, 'type': '轉帳'}).type,
+        BillType.transfer,
+      );
+      expect(
+        BillInfo.fromJson({'amount': -1, 'type': 'TRANSFER'}).type,
+        BillType.transfer,
+      );
+    });
+
+    test('tags 字符串和数组都支持', () {
+      final fromString = BillInfo.fromJson({
+        'amount': -1,
+        'tags': '日用,饮料、咖啡',
+      });
+      expect(fromString.tags, ['日用', '饮料', '咖啡']);
+
+      final fromArray = BillInfo.fromJson({
+        'amount': -1,
+        'tags': ['日用', '饮料', '咖啡'],
+      });
+      expect(fromArray.tags, ['日用', '饮料', '咖啡']);
+    });
+
+    test('tag (单数) 也支持', () {
+      final bill = BillInfo.fromJson({'amount': -1, 'tag': '自用'});
+      expect(bill.tags, ['自用']);
+    });
+
+    test('from_account / to_account camelCase 兼容', () {
+      final fromSnake = BillInfo.fromJson({
+        'amount': 100,
+        'from_account': '建行',
+        'to_account': '零钱',
+      });
+      expect(fromSnake.fromAccount, '建行');
+      expect(fromSnake.toAccount, '零钱');
+
+      final fromCamel = BillInfo.fromJson({
+        'amount': 100,
+        'fromAccount': '建行',
+        'toAccount': '零钱',
+      });
+      expect(fromCamel.fromAccount, '建行');
+      expect(fromCamel.toAccount, '零钱');
+    });
+
+    test('note 兼容老 merchant 字段', () {
+      final bill = BillInfo.fromJson({'amount': -30, 'merchant': '星巴克'});
+      expect(bill.note, '星巴克');
+    });
+
+    test('amount 字符串数值 → 正确解析(issue #297)', () {
+      // AI(如 qwen-vl-ocr)把金额输出成字符串 "-800.00",旧实现 `as num?`
+      // 强转抛 CastError,整笔被 JsonResponseParser 跳过、记账失败。
+      final bill = BillInfo.fromJson({
+        'amount': '-800.00',
+        'time': '2026-05-29T23:35:16',
+      });
+      expect(bill.amount, -800.0);
+    });
+
+    test('amount 带千分位字符串 → 去逗号解析', () {
+      expect(BillInfo.fromJson({'amount': '1,234.50'}).amount, 1234.5);
+    });
+
+    test('amount 数字仍正常 / 空串 / 非数值 → null', () {
+      expect(BillInfo.fromJson({'amount': -30.5}).amount, -30.5);
+      expect(BillInfo.fromJson({'amount': ''}).amount, isNull);
+      expect(BillInfo.fromJson({'amount': '无'}).amount, isNull);
+    });
+
+    test('confidence 字符串数值兼容,缺失回落 1.0(旧模型视同高置信)', () {
+      expect(
+        BillInfo.fromJson({'amount': -1, 'confidence': '0.9'}).confidence,
+        0.9,
+      );
+      expect(BillInfo.fromJson({'amount': -1}).confidence, 1.0);
+    });
+
+    test('time 中文格式解析(issue #297)', () {
+      final bill = BillInfo.fromJson({
+        'amount': -800,
+        'time': '2026年5月29日 23:35:16',
+      });
+      expect(bill.time, DateTime(2026, 5, 29, 23, 35, 16));
+    });
+
+    test('time 中文格式仅日期(无时分秒)', () {
+      final bill = BillInfo.fromJson({'amount': -1, 'time': '2026年5月29日'});
+      expect(bill.time, DateTime(2026, 5, 29));
+    });
+  });
+
+  group('BillInfo.copyWith', () {
+    test('替换指定字段,其余沿用', () {
+      const original = BillInfo(
+        amount: -30,
+        category: '餐饮',
+        account: '支付宝',
+        ledgerId: 1,
+      );
+      final updated = original.copyWith(
+        category: '咖啡',
+        ledgerId: 2,
+      );
+      expect(updated.amount, -30);
+      expect(updated.category, '咖啡');
+      expect(updated.account, '支付宝');
+      expect(updated.ledgerId, 2);
+    });
+
+    test('不传任何参数 → 等价副本', () {
+      const original = BillInfo(amount: -30, note: 'x');
+      final copy = original.copyWith();
+      expect(copy.amount, -30);
+      expect(copy.note, 'x');
+    });
+  });
+
+  group('BillInfo.toJson', () {
+    test('字段双向 roundtrip', () {
+      const bill = BillInfo(
+        amount: -30,
+        note: '星巴克',
+        category: '咖啡',
+        type: BillType.expense,
+        account: '支付宝',
+      );
+      final json = bill.toJson();
+      expect(json['amount'], -30);
+      expect(json['type'], 'expense');
+      final restored = BillInfo.fromJson(Map<String, dynamic>.from(json));
+      expect(restored.amount, bill.amount);
+      expect(restored.type, bill.type);
+      expect(restored.category, bill.category);
+    });
+  });
+
+  group('BillInfo.currency(智能记账多币种 A4)', () {
+    test('ISO 码大小写归一', () {
+      expect(BillInfo.fromJson({'amount': -1, 'currency': 'usd'}).currency, 'USD');
+      expect(BillInfo.fromJson({'amount': -1, 'currency': ' JPY '}).currency, 'JPY');
+    });
+
+    test('兼容 currency_code / currencyCode 键名', () {
+      expect(
+        BillInfo.fromJson({'amount': -1, 'currency_code': 'EUR'}).currency,
+        'EUR',
+      );
+      expect(
+        BillInfo.fromJson({'amount': -1, 'currencyCode': 'GBP'}).currency,
+        'GBP',
+      );
+    });
+
+    test('口语别名走 alias 表', () {
+      expect(BillInfo.fromJson({'amount': -1, 'currency': '美元'}).currency, 'USD');
+      expect(BillInfo.fromJson({'amount': -1, 'currency': '日元'}).currency, 'JPY');
+    });
+
+    test(r'AI 把 currency 回成 "$" 时仍解析成 USD(实测高频)', () {
+      expect(BillInfo.fromJson({'amount': -1, 'currency': r'$'}).currency, 'USD');
+    });
+
+    test('真歧义符号 ¥ 按缺失处理(CNY/JPY 猜错差 ~20 倍)', () {
+      expect(BillInfo.fromJson({'amount': -1, 'currency': '¥'}).currency, isNull);
+    });
+
+    test('非法币种按缺失处理,不抛异常', () {
+      expect(BillInfo.fromJson({'amount': -1, 'currency': 'XYZ'}).currency, isNull);
+      expect(BillInfo.fromJson({'amount': -1, 'currency': 123}).currency, isNull);
+    });
+
+    test('回归锁:老 payload 无 currency 键 → null,其余字段不受影响', () {
+      final bill = BillInfo.fromJson({
+        'amount': -30,
+        'type': 'expense',
+        'category': '餐饮',
+      });
+      expect(bill.currency, isNull);
+      expect(bill.amount, -30);
+      expect(bill.category, '餐饮');
+    });
+
+    test('copyWith / toJson 往返', () {
+      const bill = BillInfo(amount: -1, currency: 'JPY');
+      expect(bill.copyWith(note: 'x').currency, 'JPY');
+      expect(bill.toJson()['currency'], 'JPY');
+      expect(
+        BillInfo.fromJson(Map<String, dynamic>.from(bill.toJson())).currency,
+        'JPY',
+      );
+    });
+  });
+
+  group('BillInfo.isComplete', () {
+    test('amount + time 都有 → true', () {
+      final bill = BillInfo(
+        amount: -1,
+        time: DateTime(2026, 5, 26),
+      );
+      expect(bill.isComplete, isTrue);
+    });
+
+    test('缺 amount → false', () {
+      final bill = BillInfo(time: DateTime(2026, 5, 26));
+      expect(bill.isComplete, isFalse);
+    });
+
+    test('缺 time → false', () {
+      const bill = BillInfo(amount: -1);
+      expect(bill.isComplete, isFalse);
+    });
+  });
+}

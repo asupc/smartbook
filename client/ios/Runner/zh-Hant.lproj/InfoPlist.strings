@@ -1,0 +1,3 @@
+/* 繁中環境下的 app 名稱 — 桌面圖示 + 切換器顯示「智記」。(2026-09 品牌統一) */
+"CFBundleDisplayName" = "智記";
+"CFBundleName" = "智記";
