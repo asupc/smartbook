@@ -77,14 +77,18 @@ def test_scan_groups_exact_duplicates(session_factory):
         assert [i.sync_id for i in keepers] == ["tx-a"]
 
 
-def test_scan_requires_same_type(session_factory):
+def test_scan_ignores_tx_type(session_factory):
+    """收支类型不同、金额+分钟相同 → 仍判重(类型已从分组键移除)。"""
     with session_factory() as db:
         _seed(db)
         t = datetime(2025, 11, 29, 10, 44, 58, tzinfo=timezone.utc)
         _tx(db, "tx-a", amount=10.0, happened_at=t, tx_type="expense")
         _tx(db, "tx-b", amount=10.0, happened_at=t, tx_type="income")
         db.commit()
-        assert scan_duplicate_transactions(db) == []
+        groups = scan_duplicate_transactions(db)
+        assert len(groups) == 1
+        assert groups[0].count == 2
+        assert {i.sync_id for i in groups[0].items} == {"tx-a", "tx-b"}
 
 
 def test_scan_groups_same_minute_different_seconds(session_factory):

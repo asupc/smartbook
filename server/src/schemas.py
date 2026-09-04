@@ -483,13 +483,12 @@ class DuplicateRecord(BaseModel):
 
 
 class DuplicateGroup(BaseModel):
-    """同一账本内 (tx_type + 金额 + 时间) 相同的交易聚成一组。"""
+    """同一账本内 (金额 + 时间) 相同的交易聚成一组(不区分收支类型)。"""
 
     ledger_id: str
     ledger_name: str | None = None
     amount: float
     happened_at: datetime
-    tx_type: str
     count: int
     keep_sync_id: str
     items: list[DuplicateRecord]

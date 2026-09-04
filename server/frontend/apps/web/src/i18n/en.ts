@@ -342,7 +342,7 @@ const en = {
   'admin.dataCleanup.partial': 'Cleaned {ok}, {fail} failed',
   'nav.duplicates': 'Duplicates',
   'admin.duplicates.title': 'Duplicate transactions',
-  'admin.duplicates.subtitle': 'Detect transactions with same ledger, type, amount and minute',
+  'admin.duplicates.subtitle': 'Detect transactions with same ledger, amount and minute',
   'admin.duplicates.summary': '{groups} duplicate group(s) · {dupes} removable',
   'admin.duplicates.rescan': 'Rescan',
   'admin.duplicates.scanning': 'Scanning…',

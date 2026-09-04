@@ -341,7 +341,7 @@ const zhTW = {
   'admin.dataCleanup.partial': '成功 {ok} 項,失敗 {fail} 項',
   'nav.duplicates': '重複交易',
   'admin.duplicates.title': '重複交易清理',
-  'admin.duplicates.subtitle': '掃描「同帳本 + 同類型 + 同金額 + 同分鐘」的重複交易',
+  'admin.duplicates.subtitle': '掃描「同帳本 + 同金額 + 同分鐘」的重複交易',
   'admin.duplicates.summary': '發現 {groups} 組重複 · 可清理 {dupes} 筆',
   'admin.duplicates.rescan': '重新掃描',
   'admin.duplicates.scanning': '掃描中…',

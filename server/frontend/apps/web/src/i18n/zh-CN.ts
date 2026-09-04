@@ -810,7 +810,7 @@ const zhCN = {
   'admin.dataCleanup.partial': '成功 {ok} 项,失败 {fail} 项',
   'nav.duplicates': '重复交易',
   'admin.duplicates.title': '重复交易清理',
-  'admin.duplicates.subtitle': '扫描「同账本 + 同类型 + 同金额 + 同分钟」的重复交易',
+  'admin.duplicates.subtitle': '扫描「同账本 + 同金额 + 同分钟」的重复交易',
   'admin.duplicates.summary': '发现 {groups} 组重复 · 可清理 {dupes} 笔',
   'admin.duplicates.rescan': '重新扫描',
   'admin.duplicates.scanning': '扫描中…',

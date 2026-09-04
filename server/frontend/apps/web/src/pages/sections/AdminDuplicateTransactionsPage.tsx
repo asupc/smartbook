@@ -18,8 +18,8 @@ import { localizeError } from '../../i18n/errors'
 /**
  * 管理员 · 重复交易清理页。
  *
- * 扫描「同账本 + 同类型 + 同金额 + 同分钟」的交易分组,让 admin 逐笔勾选要
- * 删除的重复项(每组默认勾选非 keeper 的笔),批量删除后自动重扫。
+ * 扫描「同账本 + 同金额 + 同分钟」的交易分组,让 admin 逐笔勾选要删除的
+ * 重复项(每组默认勾选非 keeper 的笔),批量删除后自动重扫。
  */
 export function AdminDuplicateTransactionsPage() {
   const t = useT()
@@ -238,7 +238,7 @@ export function AdminDuplicateTransactionsPage() {
                         ) : null}
                       </p>
                       <p className="truncate text-xs text-muted-foreground">
-                        {r.account_name || '-'} · {r.category_name || '-'}
+                        {r.tx_type} · {r.account_name || '-'} · {r.category_name || '-'}
                         {r.tags_csv ? ` · ${r.tags_csv}` : ''}
                       </p>
                     </div>

@@ -514,7 +514,6 @@ export type DuplicateGroup = {
   ledger_name?: string | null
   amount: number
   happened_at: string
-  tx_type: string
   count: number
   keep_sync_id: string
   items: DuplicateRecord[]
