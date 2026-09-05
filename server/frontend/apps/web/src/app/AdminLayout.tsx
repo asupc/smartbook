@@ -64,6 +64,7 @@ const SECTION_ICONS: Record<string, LucideIcon> = {
   'settings-profile': User,
   'settings-ai': Bot,
   'settings-ai-logs': History,
+  'settings-raw-evidence': ScrollText,
   'settings-health': Activity,
   'settings-devices': Smartphone,
   'settings-developer': Key,

@@ -1208,6 +1208,7 @@ def _to_admin_item(row: AIAnalysisLog, email: str) -> AdminAIAnalysisLogItem:
         completion_tokens=row.completion_tokens,
         total_tokens=row.total_tokens,
         client_ip=row.client_ip,
+        dedup_hit=row.dedup_hit,
         called_at=row.called_at,
     )
 
@@ -1230,6 +1231,7 @@ def _to_admin_detail(row: AIAnalysisLog, email: str) -> AdminAIAnalysisLogDetail
         completion_tokens=row.completion_tokens,
         total_tokens=row.total_tokens,
         client_ip=row.client_ip,
+        dedup_hit=row.dedup_hit,
         called_at=row.called_at,
     )
 
@@ -1239,7 +1241,7 @@ def admin_list_ai_logs(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     user_id: str | None = Query(default=None),
-    entry_type: str | None = Query(default=None, pattern=r"^(ask|parse_tx_image|parse_tx_text)$"),
+    entry_type: str | None = Query(default=None, pattern=r"^(ask|parse_tx_image|parse_tx_text|chat|stt)$"),
     status: str | None = Query(default=None, pattern=r"^(ok|error)$"),
     _admin_user: User = Depends(require_admin_user),
     db: Session = Depends(get_db),

@@ -37,6 +37,18 @@ class Settings(BaseSettings):
     # AI 日志无自动保留期)。
     ai_log_image_dir: str = "./data/ai_log_images"
 
+    # ===== 中转识别的账单唯一标识去重(/ai/relay/*) =====
+    # App 识别请求到达后、调用 LLM 前,先在新请求文本里匹配该用户已识别过的
+    # 账单唯一标识(external_id/订单号/流水号);命中即判重复:记日志
+    # (dedup_hit)并返回 duplicate,**不调 LLM**,App 端不记账不通知。
+    # TTL 只为控制表体积(订单号本身全局唯一),按天。
+    ai_bill_identifier_dedup_enabled: bool = Field(
+        default=True, alias="AI_BILL_IDENTIFIER_DEDUP_ENABLED"
+    )
+    ai_bill_identifier_ttl_days: int = Field(
+        default=90, alias="AI_BILL_IDENTIFIER_TTL_DAYS"
+    )
+
     # ===== rclone 备份模块 =====
     # rclone.conf 路径(权限 0600,只 server 进程读写)。默认 `./data/rclone.conf`
     # 配合本地开发(WORKDIR 平级 ./data)。**生产 Docker 镜像必须通过

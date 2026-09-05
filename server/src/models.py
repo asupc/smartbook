@@ -219,6 +219,10 @@ class AIAnalysisLog(Base):
     # ai_log_image_dir(文件名 {log_id}.{ext}),随日志行手动删除时一并删除。
     image_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
     image_mime: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # 去重标记:非 null 表示这次调用**没有真正请求 LLM** —— /ai/relay 在识别前
+    # 命中账单唯一标识(订单号/流水号)判重,直接按重复处理('duplicate_identifier')。
+    # 正常 LLM 调用为 null。
+    dedup_hit: Mapped[str | None] = mapped_column(String(32), nullable=True)
     called_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, index=True
     )
@@ -228,6 +232,72 @@ Index(
     "ix_ai_log_user_time",
     AIAnalysisLog.user_id,
     AIAnalysisLog.called_at.desc(),
+)
+
+
+class AIBillIdentifier(Base):
+    """用户已识别过的账单唯一标识(订单号 / 交易号 / 流水号)。
+
+    来源:/ai/relay 的记账提取响应(chs/vision)收割 `external_id` 一类字段,
+    按 user 隔离存储。App 再发来包含同一标识的识别请求时,**先于 LLM** 判重:
+    直接记 ai_analysis_logs(dedup_hit='duplicate_identifier')并返回 duplicate,
+    不调 LLM、App 端不记账也不通知。设置 TTL(默认 90 天)只为了控制表体积,
+    不是业务语义 —— 订单号本身全局唯一。
+    """
+
+    __tablename__ = "ai_bill_identifiers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    # 归一化后的标识(仅字母数字、小写)。原样子串匹配新请求的归一化文本。
+    identifier: Mapped[str] = mapped_column(String(64))
+    # 首次收割来源:'parse_tx_text' | 'parse_tx_image'
+    source: Mapped[str] = mapped_column(String(32))
+    hit_count: Mapped[int] = mapped_column(Integer, default=0)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "identifier", name="uq_ai_bill_identifier_user_key"),
+    )
+
+
+class RawBookkeepingEvidence(Base):
+    """User-owned raw evidence captured by automatic bookkeeping.
+
+    This table is deliberately outside ``sync_changes``: raw SMS/notification
+    text is display-only evidence, not a synchronizable accounting entity.
+    """
+
+    __tablename__ = "raw_bookkeeping_evidence"
+    __table_args__ = (
+        UniqueConstraint("user_id", "event_key", name="uq_raw_evidence_user_event"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    ledger_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    event_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    source: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    source_channel: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    external_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    content_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    actor: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    occurred_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+Index(
+    "ix_raw_evidence_user_captured",
+    RawBookkeepingEvidence.user_id,
+    RawBookkeepingEvidence.captured_at.desc(),
 )
 
 

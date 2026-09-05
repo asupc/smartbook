@@ -260,6 +260,71 @@ class SmartBookCloudProvider implements CloudProvider {
     return storage.downloadMyAvatar(userId: userId, version: version);
   }
 
+  /// 上传一条原始记账证据。该数据走独立 evidence API，不进入 sync_changes，
+  /// 仅用于用户在客户端/服务端只读查看。
+  Future<SmartBookCloudRawEvidence> upsertRawEvidence({
+    required Map<String, dynamic> payload,
+  }) async {
+    final storage = _storage;
+    if (storage == null) {
+      throw CloudConfigurationException(
+          'SmartBook storage is not initialized.');
+    }
+    return storage.upsertRawEvidence(payload: payload);
+  }
+
+  Future<SmartBookCloudRawEvidenceList> listRawEvidence({
+    String? source,
+    String? ledgerId,
+    DateTime? from,
+    DateTime? to,
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    final storage = _storage;
+    if (storage == null) {
+      throw CloudConfigurationException(
+          'SmartBook storage is not initialized.');
+    }
+    return storage.listRawEvidence(
+      source: source,
+      ledgerId: ledgerId,
+      from: from,
+      to: to,
+      limit: limit,
+      offset: offset,
+    );
+  }
+
+  Future<SmartBookCloudRawEvidence> getRawEvidence({
+    required String evidenceId,
+  }) async {
+    final storage = _storage;
+    if (storage == null) {
+      throw CloudConfigurationException(
+          'SmartBook storage is not initialized.');
+    }
+    return storage.getRawEvidence(evidenceId: evidenceId);
+  }
+
+  Future<void> deleteRawEvidence({required String evidenceId}) async {
+    final storage = _storage;
+    if (storage == null) {
+      throw CloudConfigurationException(
+          'SmartBook storage is not initialized.');
+    }
+    return storage.deleteRawEvidence(evidenceId: evidenceId);
+  }
+
+  Future<int> cleanupRawEvidence({DateTime? before, String? source}) async {
+    final storage = _storage;
+    if (storage == null) {
+      throw CloudConfigurationException(
+          'SmartBook storage is not initialized.');
+    }
+    return storage.cleanupRawEvidence(before: before, source: source);
+  }
+
   /// 拉取增量变更。
   ///
   /// [persistCursor] 默认 true 兼容老 caller。传 false 时,本方法返回 cursor
@@ -308,7 +373,8 @@ class SmartBookCloudProvider implements CloudProvider {
     return storage.downloadFullSnapshot(path: path);
   }
 
-  Future<Map<String, SmartBookCloudAttachmentExistsItem>> attachmentBatchExists({
+  Future<Map<String, SmartBookCloudAttachmentExistsItem>>
+      attachmentBatchExists({
     required String ledgerId,
     required List<String> sha256List,
   }) async {
@@ -450,46 +516,58 @@ class SmartBookCloudProvider implements CloudProvider {
           'SmartBook storage is not initialized.');
     }
     return storage.createInvite(
-      ledgerId: ledgerId, role: role, expiresInHours: expiresInHours,
+      ledgerId: ledgerId,
+      role: role,
+      expiresInHours: expiresInHours,
     );
   }
 
-  Future<List<SmartBookCloudInvite>> listInvites({required String ledgerId}) async {
+  Future<List<SmartBookCloudInvite>> listInvites(
+      {required String ledgerId}) async {
     final storage = _storage;
     if (storage == null) {
-      throw CloudConfigurationException('SmartBook storage is not initialized.');
+      throw CloudConfigurationException(
+          'SmartBook storage is not initialized.');
     }
     return storage.listInvites(ledgerId: ledgerId);
   }
 
-  Future<void> revokeInvite({required String ledgerId, required String code}) async {
+  Future<void> revokeInvite(
+      {required String ledgerId, required String code}) async {
     final storage = _storage;
     if (storage == null) {
-      throw CloudConfigurationException('SmartBook storage is not initialized.');
+      throw CloudConfigurationException(
+          'SmartBook storage is not initialized.');
     }
     return storage.revokeInvite(ledgerId: ledgerId, code: code);
   }
 
-  Future<SmartBookCloudInvitePreview> previewInvite({required String code}) async {
+  Future<SmartBookCloudInvitePreview> previewInvite(
+      {required String code}) async {
     final storage = _storage;
     if (storage == null) {
-      throw CloudConfigurationException('SmartBook storage is not initialized.');
+      throw CloudConfigurationException(
+          'SmartBook storage is not initialized.');
     }
     return storage.previewInvite(code: code);
   }
 
-  Future<SmartBookCloudInviteAcceptResult> acceptInvite({required String code}) async {
+  Future<SmartBookCloudInviteAcceptResult> acceptInvite(
+      {required String code}) async {
     final storage = _storage;
     if (storage == null) {
-      throw CloudConfigurationException('SmartBook storage is not initialized.');
+      throw CloudConfigurationException(
+          'SmartBook storage is not initialized.');
     }
     return storage.acceptInvite(code: code);
   }
 
-  Future<List<SmartBookCloudLedgerMember>> listMembers({required String ledgerId}) async {
+  Future<List<SmartBookCloudLedgerMember>> listMembers(
+      {required String ledgerId}) async {
     final storage = _storage;
     if (storage == null) {
-      throw CloudConfigurationException('SmartBook storage is not initialized.');
+      throw CloudConfigurationException(
+          'SmartBook storage is not initialized.');
     }
     return storage.listMembers(ledgerId: ledgerId);
   }
@@ -501,23 +579,29 @@ class SmartBookCloudProvider implements CloudProvider {
   }) async {
     final storage = _storage;
     if (storage == null) {
-      throw CloudConfigurationException('SmartBook storage is not initialized.');
+      throw CloudConfigurationException(
+          'SmartBook storage is not initialized.');
     }
-    return storage.updateMemberRole(ledgerId: ledgerId, userId: userId, role: role);
+    return storage.updateMemberRole(
+        ledgerId: ledgerId, userId: userId, role: role);
   }
 
-  Future<void> removeMember({required String ledgerId, required String userId}) async {
+  Future<void> removeMember(
+      {required String ledgerId, required String userId}) async {
     final storage = _storage;
     if (storage == null) {
-      throw CloudConfigurationException('SmartBook storage is not initialized.');
+      throw CloudConfigurationException(
+          'SmartBook storage is not initialized.');
     }
     return storage.removeMember(ledgerId: ledgerId, userId: userId);
   }
 
-  Future<SmartBookCloudSharedResources> fetchSharedResources({required String ledgerId}) async {
+  Future<SmartBookCloudSharedResources> fetchSharedResources(
+      {required String ledgerId}) async {
     final storage = _storage;
     if (storage == null) {
-      throw CloudConfigurationException('SmartBook storage is not initialized.');
+      throw CloudConfigurationException(
+          'SmartBook storage is not initialized.');
     }
     return storage.fetchSharedResources(ledgerId: ledgerId);
   }
@@ -530,7 +614,8 @@ class SmartBookCloudProvider implements CloudProvider {
   }) async {
     final storage = _storage;
     if (storage == null) {
-      throw CloudConfigurationException('SmartBook storage is not initialized.');
+      throw CloudConfigurationException(
+          'SmartBook storage is not initialized.');
     }
     return storage.fetchMemberStats(
       ledgerId: ledgerId,
@@ -1069,7 +1154,7 @@ class SmartBookCloudAuthService implements CloudAuthService {
     required this.baseUrl,
     required this.apiPrefix,
     http.Client? httpClient,
-  })  : _httpClient = httpClient ?? http.Client();
+  }) : _httpClient = httpClient ?? http.Client();
 
   final String baseUrl;
   final String apiPrefix;
@@ -1126,7 +1211,8 @@ class SmartBookCloudAuthService implements CloudAuthService {
     var raw = prefs.getString(_sessionStorageKey);
     // 品牌更名前 key 前缀为 'beecount_cloud_session_',读旧 key 迁移,避免掉登录。
     if (raw == null || raw.isEmpty) {
-      final digest = sha1.convert(utf8.encode('$baseUrl|$apiPrefix')).toString();
+      final digest =
+          sha1.convert(utf8.encode('$baseUrl|$apiPrefix')).toString();
       raw = prefs.getString('beecount_cloud_session_$digest');
       if (raw != null && raw.isNotEmpty) {
         await prefs.setString(_sessionStorageKey, raw);
@@ -1223,8 +1309,7 @@ class SmartBookCloudAuthService implements CloudAuthService {
     }
     // 后台恢复:直接走登录,失败由调用方当作"恢复失败"处理,
     // 让用户在 sync page 主动点「重新登录」时再触发。
-    final future =
-        _signInWithEmailSilent(email: email, password: password);
+    final future = _signInWithEmailSilent(email: email, password: password);
     _recoveryInFlight = future;
     try {
       return await future;
@@ -1455,8 +1540,10 @@ class SmartBookCloudAuthService implements CloudAuthService {
     var existing = _trimOrNull(prefs.getString(_localDeviceIdStorageKey));
     // 旧 key 前缀 'beecount_cloud_local_device_id_'(品牌更名前),迁移避免设备换发。
     if (existing == null) {
-      final digest = sha1.convert(utf8.encode('$baseUrl|$apiPrefix')).toString();
-      existing = _trimOrNull(prefs.getString('beecount_cloud_local_device_id_$digest'));
+      final digest =
+          sha1.convert(utf8.encode('$baseUrl|$apiPrefix')).toString();
+      existing = _trimOrNull(
+          prefs.getString('beecount_cloud_local_device_id_$digest'));
       if (existing != null) {
         await prefs.setString(_localDeviceIdStorageKey, existing);
         await prefs.remove('beecount_cloud_local_device_id_$digest');
@@ -1545,8 +1632,7 @@ class SmartBookCloudAuthService implements CloudAuthService {
 
   @override
   Future<void> sendPasswordResetEmail({required String email}) async {
-    throw CloudAuthException(
-        'SmartBook v1 does not support password reset.');
+    throw CloudAuthException('SmartBook v1 does not support password reset.');
   }
 
   @override
@@ -1959,6 +2045,92 @@ class SmartBookCloudStorageService implements CloudStorageService {
     return null;
   }
 
+  Future<SmartBookCloudRawEvidence> upsertRawEvidence({
+    required Map<String, dynamic> payload,
+  }) async {
+    final response = await _authedRequest(
+      method: 'POST',
+      path: '/evidence/raw',
+      body: payload,
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw CloudStorageException(
+          'Raw evidence request failed (HTTP ${response.statusCode})', response.statusCode);
+    }
+    return SmartBookCloudRawEvidence.fromJson(_decodeJsonObject(response.body));
+  }
+
+  Future<SmartBookCloudRawEvidenceList> listRawEvidence({
+    String? source,
+    String? ledgerId,
+    DateTime? from,
+    DateTime? to,
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    final query = <String, String>{
+      'limit': '$limit',
+      'offset': '$offset',
+      if (source != null && source.trim().isNotEmpty) 'source': source.trim(),
+      if (ledgerId != null && ledgerId.trim().isNotEmpty)
+        'ledger_id': ledgerId.trim(),
+      if (from != null) 'from': from.toUtc().toIso8601String(),
+      if (to != null) 'to': to.toUtc().toIso8601String(),
+    };
+    final response = await _authedRequest(
+      method: 'GET',
+      path: '/evidence/raw',
+      query: query,
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw CloudStorageException(
+          'Raw evidence request failed (HTTP ${response.statusCode})', response.statusCode);
+    }
+    return SmartBookCloudRawEvidenceList.fromJson(
+        _decodeJsonObject(response.body));
+  }
+
+  Future<SmartBookCloudRawEvidence> getRawEvidence({
+    required String evidenceId,
+  }) async {
+    final response = await _authedRequest(
+      method: 'GET',
+      path: '/evidence/raw/$evidenceId',
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw CloudStorageException(
+          'Raw evidence request failed (HTTP ${response.statusCode})', response.statusCode);
+    }
+    return SmartBookCloudRawEvidence.fromJson(_decodeJsonObject(response.body));
+  }
+
+  Future<void> deleteRawEvidence({required String evidenceId}) async {
+    final response = await _authedRequest(
+      method: 'DELETE',
+      path: '/evidence/raw/$evidenceId',
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw CloudStorageException(
+          'Raw evidence request failed (HTTP ${response.statusCode})', response.statusCode);
+    }
+  }
+
+  Future<int> cleanupRawEvidence({DateTime? before, String? source}) async {
+    final response = await _authedRequest(
+      method: 'POST',
+      path: '/evidence/raw/cleanup',
+      body: {
+        if (before != null) 'before': before.toUtc().toIso8601String(),
+        if (source != null && source.trim().isNotEmpty) 'source': source.trim(),
+      },
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw CloudStorageException(
+          'Raw evidence request failed (HTTP ${response.statusCode})', response.statusCode);
+    }
+    return (_decodeJsonObject(response.body)['deleted'] as num?)?.toInt() ?? 0;
+  }
+
   Future<SmartBookCloudPullResult> pullChanges({
     int? since,
     int limit = 1000,
@@ -2042,7 +2214,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     // 先确保 session 有效（触发 token refresh），再读 deviceId
     await auth.requireAccessToken();
     final deviceId = auth.currentDeviceId;
-    debugPrint('[BCC] pushEntityChanges: ${changes.length} changes, deviceId=$deviceId');
+    debugPrint(
+        '[BCC] pushEntityChanges: ${changes.length} changes, deviceId=$deviceId');
     if (deviceId == null || deviceId.isEmpty) {
       debugPrint('[BCC] pushEntityChanges: deviceId 为空，抛出认证异常');
       throw CloudNotAuthenticatedException(
@@ -2059,14 +2232,16 @@ class SmartBookCloudStorageService implements CloudStorageService {
     final bodyPreview = response.body.length > 200
         ? response.body.substring(0, 200)
         : response.body;
-    debugPrint('[BCC] pushEntityChanges response: ${response.statusCode} $bodyPreview');
+    debugPrint(
+        '[BCC] pushEntityChanges response: ${response.statusCode} $bodyPreview');
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
           'Push entity changes failed (${response.statusCode}): ${_extractErrorMessage(response)}');
     }
   }
 
-  Future<Map<String, SmartBookCloudAttachmentExistsItem>> attachmentBatchExists({
+  Future<Map<String, SmartBookCloudAttachmentExistsItem>>
+      attachmentBatchExists({
     required String ledgerId,
     required List<String> sha256List,
   }) async {
@@ -2493,9 +2668,11 @@ class SmartBookCloudStorageService implements CloudStorageService {
     return SmartBookCloudInvite.fromJson(_decodeJsonObject(response.body));
   }
 
-  Future<List<SmartBookCloudInvite>> listInvites({required String ledgerId}) async {
+  Future<List<SmartBookCloudInvite>> listInvites(
+      {required String ledgerId}) async {
     final response = await _authedRequest(
-      method: 'GET', path: '/ledgers/$ledgerId/invites',
+      method: 'GET',
+      path: '/ledgers/$ledgerId/invites',
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
@@ -2509,9 +2686,11 @@ class SmartBookCloudStorageService implements CloudStorageService {
     ];
   }
 
-  Future<void> revokeInvite({required String ledgerId, required String code}) async {
+  Future<void> revokeInvite(
+      {required String ledgerId, required String code}) async {
     final response = await _authedRequest(
-      method: 'DELETE', path: '/ledgers/$ledgerId/invites/$code',
+      method: 'DELETE',
+      path: '/ledgers/$ledgerId/invites/$code',
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
@@ -2519,31 +2698,39 @@ class SmartBookCloudStorageService implements CloudStorageService {
     }
   }
 
-  Future<SmartBookCloudInvitePreview> previewInvite({required String code}) async {
+  Future<SmartBookCloudInvitePreview> previewInvite(
+      {required String code}) async {
     final response = await _authedRequest(
-      method: 'POST', path: '/invites/$code/preview',
+      method: 'POST',
+      path: '/invites/$code/preview',
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
           'Preview invite failed: ${_extractErrorMessage(response)}');
     }
-    return SmartBookCloudInvitePreview.fromJson(_decodeJsonObject(response.body));
+    return SmartBookCloudInvitePreview.fromJson(
+        _decodeJsonObject(response.body));
   }
 
-  Future<SmartBookCloudInviteAcceptResult> acceptInvite({required String code}) async {
+  Future<SmartBookCloudInviteAcceptResult> acceptInvite(
+      {required String code}) async {
     final response = await _authedRequest(
-      method: 'POST', path: '/invites/$code/accept',
+      method: 'POST',
+      path: '/invites/$code/accept',
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
           'Accept invite failed: ${_extractErrorMessage(response)}');
     }
-    return SmartBookCloudInviteAcceptResult.fromJson(_decodeJsonObject(response.body));
+    return SmartBookCloudInviteAcceptResult.fromJson(
+        _decodeJsonObject(response.body));
   }
 
-  Future<List<SmartBookCloudLedgerMember>> listMembers({required String ledgerId}) async {
+  Future<List<SmartBookCloudLedgerMember>> listMembers(
+      {required String ledgerId}) async {
     final response = await _authedRequest(
-      method: 'GET', path: '/ledgers/$ledgerId/members',
+      method: 'GET',
+      path: '/ledgers/$ledgerId/members',
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
@@ -2553,7 +2740,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     if (decoded is! List) return const [];
     return [
       for (final row in decoded)
-        if (row is Map<String, dynamic>) SmartBookCloudLedgerMember.fromJson(row),
+        if (row is Map<String, dynamic>)
+          SmartBookCloudLedgerMember.fromJson(row),
     ];
   }
 
@@ -2571,12 +2759,15 @@ class SmartBookCloudStorageService implements CloudStorageService {
       throw CloudStorageException(
           'Update member role failed: ${_extractErrorMessage(response)}');
     }
-    return SmartBookCloudLedgerMember.fromJson(_decodeJsonObject(response.body));
+    return SmartBookCloudLedgerMember.fromJson(
+        _decodeJsonObject(response.body));
   }
 
-  Future<void> removeMember({required String ledgerId, required String userId}) async {
+  Future<void> removeMember(
+      {required String ledgerId, required String userId}) async {
     final response = await _authedRequest(
-      method: 'DELETE', path: '/ledgers/$ledgerId/members/$userId',
+      method: 'DELETE',
+      path: '/ledgers/$ledgerId/members/$userId',
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
@@ -2585,15 +2776,18 @@ class SmartBookCloudStorageService implements CloudStorageService {
   }
 
   /// 拉 Owner 的 user-global 资源快照(§7 决策 — Editor 端 picker 用)。
-  Future<SmartBookCloudSharedResources> fetchSharedResources({required String ledgerId}) async {
+  Future<SmartBookCloudSharedResources> fetchSharedResources(
+      {required String ledgerId}) async {
     final response = await _authedRequest(
-      method: 'GET', path: '/ledgers/$ledgerId/shared-resources',
+      method: 'GET',
+      path: '/ledgers/$ledgerId/shared-resources',
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
           'Fetch shared resources failed: ${_extractErrorMessage(response)}');
     }
-    return SmartBookCloudSharedResources.fromJson(_decodeJsonObject(response.body));
+    return SmartBookCloudSharedResources.fromJson(
+        _decodeJsonObject(response.body));
   }
 
   /// 共享账本成员收支统计:server `/ledgers/{id}/member-stats`。
@@ -3291,7 +3485,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     required String token,
     String? mimeType,
   }) async {
-    final uri = Uri.parse('$baseUrl$apiPrefix/attachments/category-icons/upload');
+    final uri =
+        Uri.parse('$baseUrl$apiPrefix/attachments/category-icons/upload');
     final request = http.MultipartRequest('POST', uri);
     request.headers['Authorization'] = 'Bearer $token';
     request.files.add(
@@ -3349,7 +3544,8 @@ class _SmartBookCloudSession {
   final DateTime accessTokenExpiresAt;
   final String deviceId;
 
-  factory _SmartBookCloudSession.fromAuthResponse(Map<String, dynamic> payload) {
+  factory _SmartBookCloudSession.fromAuthResponse(
+      Map<String, dynamic> payload) {
     final user = payload['user'];
     if (user is! Map<String, dynamic>) {
       throw const FormatException('Invalid auth response: user missing');
@@ -3658,11 +3854,14 @@ class SmartBookCloudLedgerStats {
       if (v != null) return v;
       return readCount(countKey);
     }
+
     return SmartBookCloudLedgerStats(
       transactionCount: readCount('transaction_count'),
-      transactionTotal: readTotalOrFallback('transaction_total', 'transaction_count'),
+      transactionTotal:
+          readTotalOrFallback('transaction_total', 'transaction_count'),
       attachmentCount: readCount('attachment_count'),
-      attachmentTotal: readTotalOrFallback('attachment_total', 'attachment_count'),
+      attachmentTotal:
+          readTotalOrFallback('attachment_total', 'attachment_count'),
       categoryAttachmentTotal: readCount('category_attachment_total'),
       budgetCount: readCount('budget_count'),
       budgetTotal: readTotalOrFallback('budget_total', 'budget_count'),
@@ -3840,11 +4039,14 @@ class SmartBookCloudProfile {
   final int avatarVersion;
   final bool? incomeIsRed;
   final String? themePrimaryColor;
+
   /// 用户主币种(ISO code,如 `CNY`)。多币种 MVP user-level 字段,跨设备同步。
   final String? primaryCurrency;
+
   /// 外观类设置(header_decoration_style / compact_amount /
   /// show_transaction_time …)的 dict,跨设备同步的 user-level JSON。
   final Map<String, dynamic>? appearance;
+
   /// AI 配置(providers / binding / custom_prompt / strategy …)的 dict。
   final Map<String, dynamic>? aiConfig;
 
@@ -4022,6 +4224,91 @@ class SmartBookCloudReadTag {
   }
 }
 
+class SmartBookCloudRawEvidence {
+  const SmartBookCloudRawEvidence({
+    required this.id,
+    required this.eventKey,
+    required this.source,
+    required this.capturedAt,
+    this.ledgerId,
+    this.sourceChannel,
+    this.externalId,
+    this.contentHash,
+    this.actor,
+    this.title,
+    this.body,
+    this.metadata = const <String, dynamic>{},
+    this.occurredAt,
+    this.expiresAt,
+    this.createdAt,
+    this.updatedAt,
+  });
+
+  final String id;
+  final String eventKey;
+  final String? ledgerId;
+  final String source;
+  final String? sourceChannel;
+  final String? externalId;
+  final String? contentHash;
+  final String? actor;
+  final String? title;
+  final String? body;
+  final Map<String, dynamic> metadata;
+  final DateTime capturedAt;
+  final DateTime? occurredAt;
+  final DateTime? expiresAt;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
+
+  factory SmartBookCloudRawEvidence.fromJson(Map<String, dynamic> json) {
+    final metadata = json['metadata'];
+    return SmartBookCloudRawEvidence(
+      id: json['id'] as String? ?? '',
+      eventKey: json['event_key'] as String? ?? '',
+      ledgerId: json['ledger_id'] as String?,
+      source: json['source'] as String? ?? '',
+      sourceChannel: json['source_channel'] as String?,
+      externalId: json['external_id'] as String?,
+      contentHash: json['content_hash'] as String?,
+      actor: json['actor'] as String?,
+      title: json['title'] as String?,
+      body: json['body'] as String?,
+      metadata: metadata is Map
+          ? metadata.cast<String, dynamic>()
+          : const <String, dynamic>{},
+      capturedAt: DateTime.tryParse(json['captured_at'] as String? ?? '') ??
+          DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+      occurredAt: DateTime.tryParse(json['occurred_at'] as String? ?? ''),
+      expiresAt: DateTime.tryParse(json['expires_at'] as String? ?? ''),
+      createdAt: DateTime.tryParse(json['created_at'] as String? ?? ''),
+      updatedAt: DateTime.tryParse(json['updated_at'] as String? ?? ''),
+    );
+  }
+}
+
+class SmartBookCloudRawEvidenceList {
+  const SmartBookCloudRawEvidenceList(
+      {required this.total, required this.items});
+
+  final int total;
+  final List<SmartBookCloudRawEvidence> items;
+
+  factory SmartBookCloudRawEvidenceList.fromJson(Map<String, dynamic> json) {
+    final raw = json['items'];
+    return SmartBookCloudRawEvidenceList(
+      total: (json['total'] as num?)?.toInt() ?? 0,
+      items: raw is List
+          ? raw
+              .whereType<Map>()
+              .map((item) => SmartBookCloudRawEvidence.fromJson(
+                  item.cast<String, dynamic>()))
+              .toList(growable: false)
+          : const <SmartBookCloudRawEvidence>[],
+    );
+  }
+}
+
 class SmartBookCloudWriteCommitMeta {
   const SmartBookCloudWriteCommitMeta({
     required this.ledgerId,
@@ -4063,6 +4350,7 @@ class SmartBookCloudRealtimeEvent {
   final String type;
   final String? ledgerId;
   final int? serverCursor;
+
   /// 完整 payload(server 推过来的 dict)。新事件类型(member_change /
   /// shared_resource_change)字段从这里读,避免每加一种事件都改 RealtimeEvent
   /// 类。
@@ -4274,12 +4562,14 @@ class SmartBookCloudInvite {
 
   /// 6 位明文邀请码(`ABC123`)。
   final String code;
+
   /// 显示用 "ABC 123"(中间空格易读)。
   final String formattedCode;
   final String targetRole;
   final DateTime expiresAt;
   final DateTime createdAt;
   final String shareUrl;
+
   /// list endpoint 返回时带,create 不带(创建者自己即 caller)。
   final String? invitedByUserId;
 
@@ -4288,14 +4578,17 @@ class SmartBookCloudInvite {
       code: (json['code'] as String?)?.trim() ?? '',
       formattedCode: (json['formatted_code'] as String?)?.trim() ?? '',
       targetRole: (json['target_role'] as String?)?.trim() ?? 'editor',
-      expiresAt: DateTime.tryParse(json['expires_at'] as String? ?? '')?.toUtc()
-          ?? DateTime.now().toUtc(),
-      createdAt: DateTime.tryParse(json['created_at'] as String? ?? '')?.toUtc()
-          ?? DateTime.now().toUtc(),
+      expiresAt:
+          DateTime.tryParse(json['expires_at'] as String? ?? '')?.toUtc() ??
+              DateTime.now().toUtc(),
+      createdAt:
+          DateTime.tryParse(json['created_at'] as String? ?? '')?.toUtc() ??
+              DateTime.now().toUtc(),
       shareUrl: (json['share_url'] as String?)?.trim() ?? '',
-      invitedByUserId: (json['invited_by_user_id'] as String?)?.trim().isEmpty == true
-          ? null
-          : json['invited_by_user_id'] as String?,
+      invitedByUserId:
+          (json['invited_by_user_id'] as String?)?.trim().isEmpty == true
+              ? null
+              : json['invited_by_user_id'] as String?,
     );
   }
 }
@@ -4325,10 +4618,12 @@ class SmartBookCloudInvitePreview {
       ledgerExternalId: (json['ledger_external_id'] as String?)?.trim() ?? '',
       ledgerName: json['ledger_name'] as String?,
       ledgerCurrency: (json['ledger_currency'] as String?)?.trim() ?? 'CNY',
-      invitedByDisplay: (json['invited_by_display'] as String?)?.trim() ?? 'Unknown',
+      invitedByDisplay:
+          (json['invited_by_display'] as String?)?.trim() ?? 'Unknown',
       targetRole: (json['target_role'] as String?)?.trim() ?? 'editor',
-      expiresAt: DateTime.tryParse(json['expires_at'] as String? ?? '')?.toUtc()
-          ?? DateTime.now().toUtc(),
+      expiresAt:
+          DateTime.tryParse(json['expires_at'] as String? ?? '')?.toUtc() ??
+              DateTime.now().toUtc(),
     );
   }
 }
@@ -4379,6 +4674,7 @@ class SmartBookCloudLedgerMember {
   final DateTime joinedAt;
   final String? invitedByUserId;
   final bool isSelf;
+
   /// server-side relative path,例 "/api/v1/profile/avatar/{uid}?v=N"。null = 用户未上传头像。
   final String? avatarUrl;
   final int avatarVersion;
@@ -4389,8 +4685,9 @@ class SmartBookCloudLedgerMember {
       email: (json['email'] as String?)?.trim() ?? '',
       displayName: json['display_name'] as String?,
       role: (json['role'] as String?)?.trim() ?? 'editor',
-      joinedAt: DateTime.tryParse(json['joined_at'] as String? ?? '')?.toUtc()
-          ?? DateTime.now().toUtc(),
+      joinedAt:
+          DateTime.tryParse(json['joined_at'] as String? ?? '')?.toUtc() ??
+              DateTime.now().toUtc(),
       invitedByUserId: json['invited_by_user_id'] as String?,
       isSelf: json['is_self'] as bool? ?? false,
       avatarUrl: (json['avatar_url'] as String?)?.trim().isEmpty == true
@@ -4438,7 +4735,8 @@ class SmartBookCloudSharedResources {
       tags: tgs is List
           ? [
               for (final t in tgs)
-                if (t is Map<String, dynamic>) SmartBookCloudSharedTag.fromJson(t),
+                if (t is Map<String, dynamic>)
+                  SmartBookCloudSharedTag.fromJson(t),
             ]
           : const [],
     );
@@ -4571,9 +4869,11 @@ class SmartBookCloudMemberStatItem {
   final String userId;
   final String? email;
   final String? displayName;
+
   /// server-side relative path,例 "/api/v1/profile/avatar/{uid}?v=N"。null = 用户未上传头像。
   final String? avatarUrl;
   final int avatarVersion;
+
   /// 'owner' / 'editor' / 'removed'(被踢成员但 tx 仍有归属)。
   final String role;
   final double incomeTotal;
@@ -4612,8 +4912,10 @@ class SmartBookCloudMemberStats {
 
   final String ledgerId;
   final String ledgerCurrency;
+
   /// 'month' / 'year' / 'all'。
   final String scope;
+
   /// month → "YYYY-MM";year → "YYYY";all → null。
   final String? period;
   final DateTime? startAt;

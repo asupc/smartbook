@@ -371,7 +371,10 @@ class _AIProviderEditPageState extends ConsumerState<AIProviderEditPage> {
     super.initState();
     final p = widget.provider;
     _nameController = TextEditingController(text: p?.name ?? '');
-    _apiKeyController = TextEditingController(text: p?.apiKey ?? '');
+    // 中转架构后本地只持有掩码(`****1234`):编辑态清空展示,配「留空保持
+    // 不变」提示;真 key 不回显到任何输入框。
+    _apiKeyController =
+        TextEditingController(text: p == null || p.apiKey.startsWith('****') ? '' : p.apiKey);
     _baseUrlController = TextEditingController(text: p?.baseUrl ?? '');
     _textModelController = TextEditingController(text: p?.textModel ?? '');
     _visionModelController = TextEditingController(text: p?.visionModel ?? '');
@@ -500,7 +503,9 @@ class _AIProviderEditPageState extends ConsumerState<AIProviderEditPage> {
                           controller: _apiKeyController,
                           obscureText: _obscureApiKey,
                           decoration: InputDecoration(
-                            hintText: l10n.aiCloudApiKeyHintCustom,
+                            hintText: _isEditing
+                                ? l10n.aiProviderApiKeyKeepHint
+                                : l10n.aiCloudApiKeyHintCustom,
                             border: const OutlineInputBorder(),
                             isDense: true,
                             focusedBorder: OutlineInputBorder(
@@ -773,7 +778,7 @@ class _AIProviderEditPageState extends ConsumerState<AIProviderEditPage> {
   Future<void> _saveProvider() async {
     final l10n = AppLocalizations.of(context);
 
-    // 验证必填项
+    // 验证必填项。编辑态 key 留空 = 保持服务端原值;新建必须给 key。
     if (!_isBuiltIn) {
       if (_nameController.text.trim().isEmpty) {
         showToast(context, l10n.aiProviderNameRequired);
@@ -783,6 +788,10 @@ class _AIProviderEditPageState extends ConsumerState<AIProviderEditPage> {
         showToast(context, l10n.aiProviderBaseUrlRequired);
         return;
       }
+    }
+    if (!_isEditing && _apiKeyController.text.trim().isEmpty) {
+      showToast(context, l10n.aiProviderNoApiKey);
+      return;
     }
 
     setState(() => _saving = true);

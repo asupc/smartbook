@@ -4657,6 +4657,27 @@ class AppLocalizationsEn extends AppLocalizations {
   String get pendingCandidateReasonAnomaly => 'Anomalous - above recent baseline';
 
   @override
+  String get pendingConfirmationSimilarTransaction => 'Similar existing transaction';
+
+  @override
+  String get pendingConfirmationCompare => 'Compare';
+
+  @override
+  String get pendingConfirmationCandidate => 'Pending candidate';
+
+  @override
+  String get pendingConfirmationExisting => 'Existing transaction';
+
+  @override
+  String get pendingConfirmationMatchedMissing => 'This transaction no longer exists or was deleted';
+
+  @override
+  String get pendingConfirmationOpenMatched => 'Open existing transaction';
+
+  @override
+  String get pendingConfirmationMatchScoreLabel => 'Match';
+
+  @override
   String get autoDeleteScreenshotTitle => 'Auto-delete screenshot after billing';
 
   @override
@@ -6409,6 +6430,27 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiProviderNoApiKey => 'API Key not configured';
+
+  @override
+  String get aiProviderApiKeyKeepHint => 'Leave blank to keep the current key';
+
+  @override
+  String get automationDraftsDiscarded => 'Draft discarded';
+
+  @override
+  String get automationDraftsRetryQueued => 'Re-submitted for recognition';
+
+  @override
+  String get automationDraftsDiscard => 'Discard draft';
+
+  @override
+  String get automationDraftsRetry => 'Retry recognition';
+
+  @override
+  String get automationDraftsEmpty => 'No offline recognition drafts';
+
+  @override
+  String get automationDraftsTitle => 'Drafts';
 
   @override
   String get aiProviderTapToEdit => 'Tap to edit';

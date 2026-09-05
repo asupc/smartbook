@@ -5,6 +5,8 @@
 - /ai/parse-tx-text 成功后自动落一行(status=ok, 含 input/output/tokens)
 - /ai/parse-tx-text provider 失败也落一行(status=error)
 - /ai/ask(SSE)流完成后落一行(输出为 chunks 拼接全文)
+- App 自报通道(POST /ai/logs、/ai/logs/image)已删除 → 405
+  (中转路径 /ai/relay/* 的落库断言在 test_ai_relay.py)
 - /ai/logs:用户隔离、entry_type/status 过滤、预览截断、UTC tz 标记
 - /ai/logs/{id}:自己的全文可见,他人 404
 - DELETE /ai/logs/{id}:自己删行 + 删落盘图片,他人/不存在 404
@@ -456,195 +458,29 @@ def test_list_logs_user_isolation(monkeypatch) -> None:
 # ──────────────────────────────────────────────────────────────────────
 
 
-def test_post_log_app_report_and_list_visible(monkeypatch) -> None:
-    """App 上报一行后:本人列表可见(预览+详情),他人不可见(user_id 取 token)。"""
+def test_self_report_endpoints_removed(monkeypatch) -> None:
+    """App 自报日志通道已随「LLM 经服务端中转」改造删除:POST /ai/logs 与
+    POST /ai/logs/image 不再存在(405;路径被 GET 覆盖,不是 404)。"""
     _bootstrap(monkeypatch)
     try:
         client = TestClient(app)
-        token = _register(client, "report@example.com")
-
-        r = client.post(
-            "/api/v1/ai/logs",
-            headers={"Authorization": f"Bearer {token}"},
-            json={
-                "entry_type": "parse_tx_text",
-                "status": "ok",
-                "provider_id": "OpenAI",
-                "model": "gpt-4o",
-                "ledger_id": "ledger-1",
-                "input_text": "短信:您尾号6688的卡支出28.00元",
-                "output_text": '[{"amount": 28.0, "note": "短信支出"}]',
-                "duration_ms": 1234,
-                "prompt_tokens": 100,
-                "completion_tokens": 50,
-                "total_tokens": 150,
-            },
-        )
-        assert r.status_code == 201, r.text
-        assert r.json() == {"ok": True}
-
-        r2 = client.get(
-            "/api/v1/ai/logs", headers={"Authorization": f"Bearer {token}"},
-        )
-        assert r2.status_code == 200
-        body = r2.json()
-        assert body["total"] == 1
-        item = body["items"][0]
-        assert item["entry_type"] == "parse_tx_text"
-        assert item["status"] == "ok"
-        assert item["provider_id"] == "OpenAI"
-        assert item["model"] == "gpt-4o"
-        assert item["ledger_id"] == "ledger-1"
-        assert item["duration_ms"] == 1234
-        assert item["total_tokens"] == 150
-        assert "input_preview" in item
-
-        # 同一 token 名下可见,其他用户看到 0 条(归属不可伪造)
-        token_b = _register(client, "report-b@example.com")
-        r3 = client.get(
-            "/api/v1/ai/logs", headers={"Authorization": f"Bearer {token_b}"},
-        )
-        assert r3.json() == {"total": 0, "items": []}
-
-        # 详情返回全文
-        r4 = client.get(
-            f"/api/v1/ai/logs/{item['id']}",
-            headers={"Authorization": f"Bearer {token}"},
-        )
-        assert r4.status_code == 200
-        assert r4.json()["input_text"].startswith("短信:")
-        assert r4.json()["output_text"].startswith("[")
-    finally:
-        app.dependency_overrides.clear()
-
-
-def test_post_log_with_image_upload_and_view(monkeypatch, tmp_path) -> None:
-    """带图上报:multipart → 行落库(image_path)→ detail has_image → GET 图。
-    图片校验失败(非法 mime / 超 5MB)→ 4xx。"""
-    Session = _bootstrap(monkeypatch)
-    try:
-        from src.config import get_settings
-        monkeypatch.setattr(get_settings(), "ai_log_image_dir", str(tmp_path))
-
-        client = TestClient(app)
-        token = _register(client, "report-img@example.com")
-        img_bytes = b"\xff\xd8\xff\xe0" + b"fake-jpeg-content" * 10
-
-        r = client.post(
-            "/api/v1/ai/logs/image",
-            headers={"Authorization": f"Bearer {token}"},
-            data={
-                "entry_type": "parse_tx_image",
-                "status": "ok",
-                "provider_id": "OpenAI",
-                "model": "gpt-4o",
-                "ledger_id": "ledger-1",
-                "input_text": "image: Screenshot.jpg (186461 bytes)",
-                "output_text": '[{"amount": 28.0}]',
-                "duration_ms": "123",
-            },
-            files={"image": ("Screenshot_20260903_152911.jpg", img_bytes, "image/jpeg")},
-        )
-        assert r.status_code == 201, r.text
-        assert r.json() == {"ok": True}
-
-        with Session() as db:
-            row = db.scalar(select(AIAnalysisLog))
-            assert row is not None
-            assert row.image_path is not None
-            assert row.image_path.startswith(str(tmp_path))
-            stored = Path(row.image_path)
-            assert stored.read_bytes() == img_bytes
-
-        # 列表可见 + 详情 has_image=true
-        r2 = client.get("/api/v1/ai/logs", headers={"Authorization": f"Bearer {token}"})
-        assert r2.json()["total"] == 1
-        log_id = r2.json()["items"][0]["id"]
-        r3 = client.get(
-            f"/api/v1/ai/logs/{log_id}", headers={"Authorization": f"Bearer {token}"},
-        )
-        assert r3.status_code == 200
-        detail = r3.json()
-        assert detail["has_image"] is True
-        assert detail["input_text"].startswith("image: Screenshot")
-
-        # 图片下载:本人可拿到二进制 + content-type
-        r4 = client.get(
-            f"/api/v1/ai/logs/{log_id}/image",
-            headers={"Authorization": f"Bearer {token}"},
-        )
-        assert r4.status_code == 200
-        assert r4.content == img_bytes
-        assert r4.headers["content-type"] == "image/jpeg"
-
-        # 他人拿图 → 404(不泄露存在性)
-        token_b = _register(client, "report-img-b@example.com")
-        r5 = client.get(
-            f"/api/v1/ai/logs/{log_id}/image",
-            headers={"Authorization": f"Bearer {token_b}"},
-        )
-        assert r5.status_code == 404
-
-        # 无图记录拿图 → 404
-        r6 = client.post(
-            "/api/v1/ai/logs",
-            headers={"Authorization": f"Bearer {token}"},
-            json={"entry_type": "ask", "status": "ok", "output_text": "hi"},
-        )
-        assert r6.status_code == 201
-        r7 = client.get(
-            "/api/v1/ai/logs",
-            headers={"Authorization": f"Bearer {token}"},
-        )
-        text_log_id = [it["id"] for it in r7.json()["items"] if it["entry_type"] == "ask"][0]
-        r8 = client.get(
-            f"/api/v1/ai/logs/{text_log_id}/image",
-            headers={"Authorization": f"Bearer {token}"},
-        )
-        assert r8.status_code == 404
-    finally:
-        app.dependency_overrides.clear()
-
-
-def test_post_log_with_image_validates_mime_and_size(monkeypatch, tmp_path) -> None:
-    _bootstrap(monkeypatch)
-    try:
-        from src.config import get_settings
-        monkeypatch.setattr(get_settings(), "ai_log_image_dir", str(tmp_path))
-
-        client = TestClient(app)
-        token = _register(client, "report-img-valid@example.com")
+        token = _register(client, "report-gone@example.com")
         headers = {"Authorization": f"Bearer {token}"}
-        data = {"entry_type": "parse_tx_image", "status": "ok"}
 
-        # 非图片 mime → 400
-        r = client.post(
-            "/api/v1/ai/logs/image",
+        r = client.post(headers=headers, json={}, url="/api/v1/ai/logs")
+        assert r.status_code == 405
+        r2 = client.post(
             headers=headers,
-            data=data,
-            files={"image": ("file.txt", b"hello", "text/plain")},
+            url="/api/v1/ai/logs/image",
+            files={"image": ("x.jpg", b"xx", "image/jpeg")},
+            data={"entry_type": "parse_tx_image", "status": "ok"},
         )
-        assert r.status_code == 400, r.text
-        assert r.json()["error_code"] == "AI_IMAGE_TYPE_INVALID"
+        assert r2.status_code == 405
 
-        # 超 5MB → 413
-        r = client.post(
-            "/api/v1/ai/logs/image",
-            headers=headers,
-            data=data,
-            files={"image": ("big.jpg", b"\xff\xd8" + b"0" * (5 * 1024 * 1024), "image/jpeg")},
-        )
-        assert r.status_code == 413, r.text
-        assert r.json()["error_code"] == "AI_IMAGE_TOO_LARGE"
-
-        # multipart part 不带 content-type 但后缀正确 → 兜底接受
-        r = client.post(
-            "/api/v1/ai/logs/image",
-            headers=headers,
-            data=data,
-            files={"image": ("shot.png", b"\x89PNG\r\n\x1a\n" + b"0" * 10, None)},
-        )
-        assert r.status_code == 201, r.text
+        # 查询端点不受影响
+        r3 = client.get("/api/v1/ai/logs", headers=headers)
+        assert r3.status_code == 200
+        assert r3.json() == {"total": 0, "items": []}
     finally:
         app.dependency_overrides.clear()
 
@@ -763,13 +599,10 @@ def test_delete_log_removes_row_and_image(monkeypatch, tmp_path) -> None:
         )
         assert r3.status_code == 404
 
-        # 无图记录照样删
-        r4 = client.post(
-            "/api/v1/ai/logs",
-            headers={"Authorization": f"Bearer {token_a}"},
-            json={"entry_type": "ask", "status": "ok", "output_text": "hi"},
+        # 无图记录照样删(直接走写入函数 seed —— 自报接口已删)
+        write_ai_analysis_log(
+            user_id=uid_a, entry_type="ask", status="ok", output_text="hi",
         )
-        assert r4.status_code == 201
         with Session() as db:
             text_log_id = db.scalar(select(AIAnalysisLog.id))
         r5 = client.delete(
@@ -854,62 +687,6 @@ def test_batch_delete_removes_own_logs_only(monkeypatch, tmp_path) -> None:
             json={"ids": [id_b]},
         )
         assert r4.status_code == 401
-    finally:
-        app.dependency_overrides.clear()
-
-
-def test_post_log_validates_payload(monkeypatch) -> None:
-    """非法枚举/超列长字段拒绝;超长文本截断(reject 还是 truncate 与 Web
-    写入侧同语义)。"""
-    _bootstrap(monkeypatch)
-    try:
-        client = TestClient(app)
-        token = _register(client, "report-valid@example.com")
-        headers = {"Authorization": f"Bearer {token}"}
-
-        # 非法 entry_type / status → 422
-        for body in (
-            {"entry_type": "hack", "status": "ok"},
-            {"entry_type": "ask", "status": "maybe"},
-        ):
-            r = client.post("/api/v1/ai/logs", headers=headers, json=body)
-            assert r.status_code == 422, (body, r.text)
-
-        # 未登录 → 401
-        r = client.post(
-            "/api/v1/ai/logs", json={"entry_type": "ask", "status": "ok"},
-        )
-        assert r.status_code == 401
-
-        # provider_id 超列长(64)→ 422(PostgreSQL varchar 是 enforce 的)
-        r = client.post(
-            "/api/v1/ai/logs",
-            headers=headers,
-            json={"entry_type": "ask", "status": "ok", "provider_id": "x" * 65},
-        )
-        assert r.status_code == 422
-
-        # duration_ms / tokens 负值 → 422
-        r = client.post(
-            "/api/v1/ai/logs",
-            headers=headers,
-            json={"entry_type": "ask", "status": "ok", "duration_ms": -1},
-        )
-        assert r.status_code == 422
-        r = client.post(
-            "/api/v1/ai/logs",
-            headers=headers,
-            json={"entry_type": "ask", "status": "ok", "total_tokens": -5},
-        )
-        assert r.status_code == 422
-
-        # 超长文本 → 写入截断(50k),不拒绝
-        r = client.post(
-            "/api/v1/ai/logs",
-            headers=headers,
-            json={"entry_type": "ask", "status": "ok", "input_text": "记" * 60_000},
-        )
-        assert r.status_code == 201, r.text
     finally:
         app.dependency_overrides.clear()
 

@@ -320,6 +320,41 @@ class AutoBookEvents extends Table {
   TextColumn get billJson => text().nullable()();
   TextColumn get reason => text().nullable()();
   TextColumn get lastError => text().nullable()();
+
+  /// 原始记账证据(短信/通知/详情页文本等)。是否写入由
+  /// RawEvidencePolicyStore 控制；这些字段永不进入 transactions/sync_changes。
+  TextColumn get rawTitle => text().nullable()();
+  TextColumn get rawText => text().nullable()();
+  TextColumn get rawActor => text().nullable()();
+  TextColumn get rawMetadataJson => text().nullable()();
+
+  /// Capture-time policy snapshot. It keeps a later preference change from
+  /// unexpectedly deleting or uploading an already captured evidence item.
+  BoolColumn get rawEvidenceLocalEnabled =>
+      boolean().withDefault(const Constant(false))();
+  BoolColumn get rawEvidenceServerEnabled =>
+      boolean().withDefault(const Constant(false))();
+
+  /// Separate windows let local cleanup and server retention evolve independently.
+  /// [rawEvidenceRetentionUntil] is a compatibility/queue window (the later
+  /// of the two) and is not a sync_changes field.
+  DateTimeColumn get rawEvidenceLocalExpiresAt => dateTime().nullable()();
+  DateTimeColumn get rawEvidenceServerExpiresAt => dateTime().nullable()();
+  DateTimeColumn get rawEvidenceRetentionUntil => dateTime().nullable()();
+  TextColumn get rawEvidenceUploadState =>
+      text().withDefault(const Constant('not_requested'))();
+  DateTimeColumn get rawEvidenceUploadedAt => dateTime().nullable()();
+  IntColumn get rawEvidenceUploadAttempts =>
+      integer().withDefault(const Constant(0))();
+  TextColumn get rawEvidenceLastError => text().nullable()();
+  DateTimeColumn get rawEvidenceNextRetryAt => dateTime().nullable()();
+
+  /// 离线识别草稿(自动记账连不上服务端时保存的待重试输入)。
+  ///
+  /// 与 raw* 证据列相互独立:草稿是**待处理的临时输入**,识别成功/事件到终态
+  /// 后立即清除,不参与隐私面板的证据统计,也永不进入 evidence 上传通道。
+  /// JSON 结构见 AutoBookDraftPayload。
+  TextColumn get draftPayloadJson => text().nullable()();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
 }
 
@@ -511,7 +546,7 @@ class BeeDatabase extends _$BeeDatabase {
   BeeDatabase.forTesting(QueryExecutor executor) : super(executor);
 
   @override
-  int get schemaVersion => 33; // v33: 自动记账入口事件幂等/恢复表
+  int get schemaVersion => 38; // v38: 自动记账离线识别草稿(draft_payload_json)
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -1247,6 +1282,82 @@ class BeeDatabase extends _$BeeDatabase {
             await _createTableIfMissing(
                 migrator, 'auto_book_event_items', autoBookEventItems);
             logger.info('DBMigration', 'v33 迁移完成');
+          }
+          if (from < 34) {
+            logger.info('DBMigration', '开始迁移到 v34: 自动记账原始证据字段');
+            await _addColumnIfMissing('auto_book_events', 'raw_title',
+                'ALTER TABLE auto_book_events ADD COLUMN raw_title TEXT;');
+            await _addColumnIfMissing('auto_book_events', 'raw_text',
+                'ALTER TABLE auto_book_events ADD COLUMN raw_text TEXT;');
+            await _addColumnIfMissing('auto_book_events', 'raw_actor',
+                'ALTER TABLE auto_book_events ADD COLUMN raw_actor TEXT;');
+            await _addColumnIfMissing('auto_book_events', 'raw_metadata_json',
+                'ALTER TABLE auto_book_events ADD COLUMN raw_metadata_json TEXT;');
+            await _addColumnIfMissing(
+                'auto_book_events',
+                'raw_evidence_uploaded_at',
+                'ALTER TABLE auto_book_events ADD COLUMN raw_evidence_uploaded_at INTEGER;');
+            await _addColumnIfMissing(
+                'auto_book_events',
+                'raw_evidence_upload_attempts',
+                'ALTER TABLE auto_book_events ADD COLUMN raw_evidence_upload_attempts INTEGER NOT NULL DEFAULT 0;');
+            await _addColumnIfMissing(
+                'auto_book_events',
+                'raw_evidence_last_error',
+                'ALTER TABLE auto_book_events ADD COLUMN raw_evidence_last_error TEXT;');
+            logger.info('DBMigration', 'v34 迁移完成');
+          }
+          if (from < 35) {
+            logger.info('DBMigration', '开始迁移到 v35: 原始证据策略与上传状态');
+            await _addColumnIfMissing(
+                'auto_book_events',
+                'raw_evidence_local_enabled',
+                'ALTER TABLE auto_book_events ADD COLUMN raw_evidence_local_enabled INTEGER NOT NULL DEFAULT 0;');
+            await _addColumnIfMissing(
+                'auto_book_events',
+                'raw_evidence_server_enabled',
+                'ALTER TABLE auto_book_events ADD COLUMN raw_evidence_server_enabled INTEGER NOT NULL DEFAULT 0;');
+            await _addColumnIfMissing(
+                'auto_book_events',
+                'raw_evidence_retention_until',
+                'ALTER TABLE auto_book_events ADD COLUMN raw_evidence_retention_until INTEGER;');
+            await _addColumnIfMissing(
+                'auto_book_events',
+                'raw_evidence_upload_state',
+                "ALTER TABLE auto_book_events ADD COLUMN raw_evidence_upload_state TEXT NOT NULL DEFAULT 'not_requested';");
+            logger.info('DBMigration', 'v35 迁移完成');
+          }
+          if (from < 36) {
+            logger.info('DBMigration', '开始迁移到 v36: 原始证据独立保留窗口');
+            await _addColumnIfMissing(
+                'auto_book_events',
+                'raw_evidence_local_expires_at',
+                'ALTER TABLE auto_book_events ADD COLUMN raw_evidence_local_expires_at INTEGER;');
+            await _addColumnIfMissing(
+                'auto_book_events',
+                'raw_evidence_server_expires_at',
+                'ALTER TABLE auto_book_events ADD COLUMN raw_evidence_server_expires_at INTEGER;');
+            await customStatement(
+                'UPDATE auto_book_events SET raw_evidence_local_expires_at = raw_evidence_retention_until '
+                'WHERE raw_evidence_local_enabled = 1 AND raw_evidence_local_expires_at IS NULL;');
+            await customStatement(
+                'UPDATE auto_book_events SET raw_evidence_server_expires_at = raw_evidence_retention_until '
+                'WHERE raw_evidence_server_enabled = 1 AND raw_evidence_server_expires_at IS NULL;');
+            logger.info('DBMigration', 'v36 迁移完成');
+          }
+          if (from < 37) {
+            await _addColumnIfMissing(
+                'auto_book_events',
+                'raw_evidence_next_retry_at',
+                'ALTER TABLE auto_book_events ADD COLUMN raw_evidence_next_retry_at INTEGER;');
+          }
+          if (from < 38) {
+            // 自动记账离线识别草稿:瞬态失败(连不上服务端)时保存输入,
+            // 手动/联网恢复后重试;终态清除。
+            await _addColumnIfMissing(
+                'auto_book_events',
+                'draft_payload_json',
+                'ALTER TABLE auto_book_events ADD COLUMN draft_payload_json TEXT;');
           }
         },
         onCreate: (m) async {

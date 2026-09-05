@@ -4,6 +4,7 @@ import 'package:drift/drift.dart' as d;
 
 import '../../data/db.dart' as schema;
 import 'auto_book_event.dart';
+import '../privacy/raw_evidence_policy.dart';
 
 /// 一次事件 claim 的结果。
 class AutoBookClaim {
@@ -43,8 +44,20 @@ class AutoBookEventStore {
     }
 
     final existing = await findByEventKey(input.eventKey);
-    if (existing != null) return existing;
+    if (existing != null) {
+      return _attachRawEvidenceIfNeeded(existing, input);
+    }
 
+    final policy = await RawEvidencePolicyStore().load();
+    final plan = policy.planFor(input.sourceValue, input.capturedAt);
+    final rawMetadata = plan.shouldStore && input.rawMetadata != null
+        ? jsonEncode(input.rawMetadata)
+        : null;
+    final hasRaw = plan.shouldStore &&
+        (input.rawTitle?.isNotEmpty == true ||
+            input.rawText?.isNotEmpty == true ||
+            input.rawActor?.isNotEmpty == true ||
+            rawMetadata != null);
     final companion = schema.AutoBookEventsCompanion.insert(
       eventKey: input.eventKey,
       source: input.sourceValue,
@@ -56,6 +69,18 @@ class AutoBookEventStore {
       capturedAt: input.capturedAt,
       sourceOccurredAt: d.Value(input.sourceOccurredAt),
       expiresAt: d.Value(input.expiresAt),
+      rawTitle: d.Value(hasRaw ? input.rawTitle : null),
+      rawText: d.Value(hasRaw ? input.rawText : null),
+      rawActor: d.Value(hasRaw ? input.rawActor : null),
+      rawMetadataJson: d.Value(hasRaw ? rawMetadata : null),
+      rawEvidenceLocalEnabled: d.Value(hasRaw && plan.localEnabled),
+      rawEvidenceServerEnabled: d.Value(hasRaw && plan.serverEnabled),
+      rawEvidenceLocalExpiresAt: d.Value(hasRaw ? plan.localExpiresAt : null),
+      rawEvidenceServerExpiresAt: d.Value(hasRaw ? plan.serverExpiresAt : null),
+      rawEvidenceRetentionUntil: d.Value(hasRaw ? plan.retentionUntil : null),
+      rawEvidenceUploadState: d.Value(
+        hasRaw ? plan.uploadState : RawEvidenceUploadState.notRequested,
+      ),
     );
 
     try {
@@ -72,6 +97,38 @@ class AutoBookEventStore {
       if (raced != null) return raced;
       rethrow;
     }
+  }
+
+  Future<schema.AutoBookEvent> _attachRawEvidenceIfNeeded(
+      schema.AutoBookEvent event, AutoBookInput input) async {
+    if (!_hasRawInput(input)) return event;
+    if (event.rawEvidenceUploadState == RawEvidenceUploadState.cleared ||
+        event.rawEvidenceUploadState == RawEvidenceUploadState.expired ||
+        event.rawEvidenceUploadState == RawEvidenceUploadState.uploaded) {
+      return event;
+    }
+    final policy = await RawEvidencePolicyStore().load();
+    final plan = policy.planFor(input.sourceValue, input.capturedAt);
+    if (!plan.shouldStore || _hasRawEvent(event)) return event;
+
+    final metadata =
+        input.rawMetadata == null ? null : jsonEncode(input.rawMetadata);
+    final now = DateTime.now();
+    await (db.update(db.autoBookEvents)..where((t) => t.id.equals(event.id)))
+        .write(schema.AutoBookEventsCompanion(
+      rawTitle: d.Value(input.rawTitle),
+      rawText: d.Value(input.rawText),
+      rawActor: d.Value(input.rawActor),
+      rawMetadataJson: d.Value(metadata),
+      rawEvidenceLocalEnabled: d.Value(plan.localEnabled),
+      rawEvidenceServerEnabled: d.Value(plan.serverEnabled),
+      rawEvidenceLocalExpiresAt: d.Value(plan.localExpiresAt),
+      rawEvidenceServerExpiresAt: d.Value(plan.serverExpiresAt),
+      rawEvidenceRetentionUntil: d.Value(plan.retentionUntil),
+      rawEvidenceUploadState: d.Value(plan.uploadState),
+      updatedAt: d.Value(now),
+    ));
+    return await findById(event.id) ?? event;
   }
 
   /// 尝试取得事件处理租约。
@@ -115,12 +172,25 @@ class AutoBookEventStore {
 
   Future<void> mark(AutoBookEventUpdate update, {required int eventId}) async {
     final now = DateTime.now();
-    // null 的 transactionId 表示“本次没有新增交易”，不是清除之前已经
-    // 成功的子项关联；这对多笔部分成功后进入 retry 尤其重要。
+    // 终态(booked/duplicate/ignored/pending/failed/expired)同时清除离线
+    // 识别草稿:内容已被消化(入账/判重/进待确认)或不再可自动恢复;
+    // pending 是终态,因为草稿输入已变成待确认候选,由确认页接管。
+    final isTerminal = switch (update.state) {
+      AutoBookState.booked ||
+      AutoBookState.duplicate ||
+      AutoBookState.ignored ||
+      AutoBookState.pending ||
+      AutoBookState.failed ||
+      AutoBookState.expired => true,
+      _ => false,
+    };
     await (db.update(db.autoBookEvents)..where((t) => t.id.equals(eventId)))
         .write(
       schema.AutoBookEventsCompanion(
         state: d.Value(update.state.value),
+        draftPayloadJson: isTerminal
+            ? const d.Value(null)
+            : const d.Value.absent(),
         transactionId: update.transactionId == null
             ? const d.Value.absent()
             : d.Value(update.transactionId),
@@ -246,11 +316,11 @@ class AutoBookEventStore {
               ? const d.Constant(true)
               : t.ledgerId.equals(ledgerId)))
         .get();
-    final matchesChannel = (schema.AutoBookEvent event) {
+    bool matchesChannel(schema.AutoBookEvent event) {
       final requested = sourceChannel?.trim().toLowerCase();
       if (requested == null || requested.isEmpty) return true;
       return event.sourceChannel?.trim().toLowerCase() == requested;
-    };
+    }
 
     // Import/deep-link 事件在 parent 行即可提供 externalId。
     for (final event in events) {
@@ -343,13 +413,317 @@ class AutoBookEventStore {
     });
   }
 
+  /// 查询已保存的原始证据。默认只返回带正文/元数据的行。
+  /// 原始字段不会被 ChangeTracker 记录，也不会进入 sync_changes。
+  Future<List<schema.AutoBookEvent>> listRawEvidence({
+    String? source,
+    int? ledgerId,
+    int limit = 200,
+    int offset = 0,
+    bool uploadableOnly = false,
+  }) async {
+    final safeLimit = limit.clamp(1, 500).toInt();
+    final query = db.select(db.autoBookEvents)
+      ..where((t) =>
+          t.rawText.isNotNull() |
+          t.rawTitle.isNotNull() |
+          t.rawActor.isNotNull() |
+          t.rawMetadataJson.isNotNull())
+      ..orderBy([
+        (t) => d.OrderingTerm(
+              expression: t.capturedAt,
+              mode: d.OrderingMode.desc,
+            ),
+      ])
+      ..limit(safeLimit, offset: offset);
+    if (source != null && source.trim().isNotEmpty) {
+      query.where((t) => t.source.equals(source.trim()));
+    }
+    if (ledgerId != null) {
+      query.where((t) => t.ledgerId.equals(ledgerId));
+    }
+    if (uploadableOnly) {
+      final now = DateTime.now();
+      query.where((t) =>
+          t.rawEvidenceServerEnabled.equals(true) &
+          t.rawEvidenceUploadedAt.isNull() &
+          (t.rawEvidenceNextRetryAt.isNull() |
+              t.rawEvidenceNextRetryAt.isSmallerOrEqualValue(now)) &
+          (t.rawEvidenceServerExpiresAt.isNull() |
+              t.rawEvidenceServerExpiresAt.isBiggerThanValue(now)) &
+          t.rawEvidenceUploadState.isNotIn(const [
+            RawEvidenceUploadState.uploaded,
+            RawEvidenceUploadState.cleared,
+            RawEvidenceUploadState.expired,
+            RawEvidenceUploadState.rejected,
+          ]));
+    }
+    return query.get();
+  }
+
+  Future<int> countRawEvidence({String? source}) async {
+    final query = db.selectOnly(db.autoBookEvents)
+      ..addColumns([db.autoBookEvents.id.count()])
+      ..where(db.autoBookEvents.rawText.isNotNull() |
+          db.autoBookEvents.rawTitle.isNotNull() |
+          db.autoBookEvents.rawActor.isNotNull() |
+          db.autoBookEvents.rawMetadataJson.isNotNull());
+    if (source != null && source.trim().isNotEmpty) {
+      query.where(db.autoBookEvents.source.equals(source.trim()));
+    }
+    final row = await query.getSingle();
+    return row.read(db.autoBookEvents.id.count()) ?? 0;
+  }
+
+  Future<Map<String, int>> countRawEvidenceBySource() async {
+    final rows = await (db.select(db.autoBookEvents)
+          ..where((t) =>
+              t.rawText.isNotNull() |
+              t.rawTitle.isNotNull() |
+              t.rawActor.isNotNull() |
+              t.rawMetadataJson.isNotNull()))
+        .get();
+    final counts = <String, int>{};
+    for (final row in rows) {
+      counts[row.source] = (counts[row.source] ?? 0) + 1;
+    }
+    return counts;
+  }
+
+  Future<int> clearRawEvidence({String? source}) async {
+    final query = db.update(db.autoBookEvents)
+      ..where((t) =>
+          t.rawText.isNotNull() |
+          t.rawTitle.isNotNull() |
+          t.rawActor.isNotNull() |
+          t.rawMetadataJson.isNotNull());
+    if (source != null && source.trim().isNotEmpty) {
+      query.where((t) => t.source.equals(source.trim()));
+    }
+    return query.write(const schema.AutoBookEventsCompanion(
+      rawTitle: d.Value(null),
+      rawText: d.Value(null),
+      rawActor: d.Value(null),
+      rawMetadataJson: d.Value(null),
+      rawEvidenceUploadState: d.Value(RawEvidenceUploadState.cleared),
+      rawEvidenceLocalExpiresAt: d.Value(null),
+      rawEvidenceServerExpiresAt: d.Value(null),
+      rawEvidenceRetentionUntil: d.Value(null),
+      rawEvidenceUploadedAt: d.Value(null),
+      rawEvidenceLastError: d.Value(null),
+    ));
+  }
+
+  Future<void> markRawEvidenceUploading(int eventId) {
+    return markRawEvidenceUploadAttempt(eventId: eventId);
+  }
+
+  Future<void> markRawEvidenceUploadSucceeded(int eventId) async {
+    final event = await findById(eventId);
+    if (event == null) return;
+    final now = DateTime.now();
+    if (event.rawEvidenceUploadState == RawEvidenceUploadState.cleared ||
+        event.rawEvidenceUploadState == RawEvidenceUploadState.expired) return;
+    final clearAfterUpload = !event.rawEvidenceLocalEnabled ||
+        (event.rawEvidenceLocalExpiresAt != null &&
+            !event.rawEvidenceLocalExpiresAt!.isAfter(now));
+    await (db.update(db.autoBookEvents)..where((t) => t.id.equals(eventId)))
+        .write(schema.AutoBookEventsCompanion(
+      rawTitle: clearAfterUpload ? const d.Value(null) : d.Value.absent(),
+      rawText: clearAfterUpload ? const d.Value(null) : d.Value.absent(),
+      rawActor: clearAfterUpload ? const d.Value(null) : d.Value.absent(),
+      rawMetadataJson:
+          clearAfterUpload ? const d.Value(null) : d.Value.absent(),
+      rawEvidenceUploadState: const d.Value(RawEvidenceUploadState.uploaded),
+      rawEvidenceUploadedAt: d.Value(now),
+      rawEvidenceLastError: const d.Value(null),
+      rawEvidenceNextRetryAt: const d.Value(null),
+    ));
+  }
+
+  Future<void> markRawEvidenceUploadFailed(
+    int eventId,
+    String error, {
+    String state = RawEvidenceUploadState.retry,
+  }) async {
+    final now = DateTime.now();
+    final event = await findById(eventId);
+    if (event == null ||
+        event.rawEvidenceUploadState == RawEvidenceUploadState.cleared ||
+        event.rawEvidenceUploadState == RawEvidenceUploadState.expired) return;
+    // Never persist HTTP exceptions: validation responses can echo the body.
+    final clean = state == RawEvidenceUploadState.rejected
+        ? 'upload_rejected'
+        : 'upload_failed';
+    final delaySeconds =
+        (30 * (1 << (event.rawEvidenceUploadAttempts - 1).clamp(0, 10)))
+            .clamp(30, 21600);
+    await (db.update(db.autoBookEvents)..where((t) => t.id.equals(eventId)))
+        .write(schema.AutoBookEventsCompanion(
+      rawEvidenceUploadState: d.Value(state),
+      rawEvidenceLastError: d.Value(clean),
+      rawEvidenceNextRetryAt: d.Value(state == RawEvidenceUploadState.retry
+          ? now.add(Duration(seconds: delaySeconds))
+          : null),
+    ));
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  // 离线识别草稿(连不上服务端时保存,手动/联网恢复后重试)
+  // ────────────────────────────────────────────────────────────────────
+
+  /// 按事件 key 保存离线识别草稿(自动入口瞬态失败时调用)。
+  /// 返回 false = 找不到事件 / 事件已终态,无从重试。
+  Future<bool> saveDraftByEventKey(
+    String eventKey,
+    AutoBookDraftPayload payload,
+  ) async {
+    final row = await (db.select(db.autoBookEvents)
+          ..where((t) => t.eventKey.equals(eventKey)))
+        .getSingleOrNull();
+    if (row == null) return false;
+    // 防御终态被草稿复活(理论不可达:瞬态失败只发生在非终态事件上)
+    if (const {'booked', 'duplicate', 'ignored', 'pending', 'failed', 'expired'}
+        .contains(row.state)) {
+      return false;
+    }
+    await (db.update(db.autoBookEvents)..where((t) => t.id.equals(row.id)))
+        .write(schema.AutoBookEventsCompanion(
+      draftPayloadJson: d.Value(jsonEncode(payload.toJson())),
+      updatedAt: d.Value(DateTime.now()),
+    ));
+    return true;
+  }
+
+  /// 草稿列表(最新在前),供手动重试 UI。
+  Future<List<schema.AutoBookEvent>> listDrafts({int limit = 50}) {
+    return (db.select(db.autoBookEvents)
+          ..where((t) => t.draftPayloadJson.isNotNull())
+          ..where((t) => t.state.isIn(['captured', 'processing', 'retry', 'failed']))
+          ..orderBy([
+            (t) => d.OrderingTerm(
+                  expression: t.capturedAt,
+                  mode: d.OrderingMode.desc,
+                ),
+          ])
+          ..limit(limit.clamp(1, 200)))
+        .get();
+  }
+
+  /// 到期可自动重试的草稿(retry/failed 且退避时间已过)。
+  Future<List<schema.AutoBookEvent>> dueDrafts({int limit = 10}) {
+    final now = DateTime.now();
+    return (db.select(db.autoBookEvents)
+          ..where((t) => t.draftPayloadJson.isNotNull())
+          ..where((t) => t.state.isIn(['retry', 'failed']))
+          ..where((t) =>
+              t.nextRetryAt.isNull() | t.nextRetryAt.isSmallerOrEqualValue(now))
+          ..orderBy([
+            (t) => d.OrderingTerm(
+                  expression: t.capturedAt,
+                  mode: d.OrderingMode.asc,
+                ),
+          ])
+          ..limit(limit.clamp(1, 50)))
+        .get();
+  }
+
+  /// 清除草稿(手动丢弃 / 重试成功后的兜底清理)。
+  Future<void> clearDraft(int eventId) async {
+    await (db.update(db.autoBookEvents)..where((t) => t.id.equals(eventId)))
+        .write(schema.AutoBookEventsCompanion(
+      draftPayloadJson: const d.Value(null),
+      updatedAt: d.Value(DateTime.now()),
+    ));
+  }
+
+  /// 手动重试前解除退避闸门(nextRetryAt 置空,让 claim 立即可拿)。
+  Future<void> resetRetryGate(int eventId) async {
+    await (db.update(db.autoBookEvents)..where((t) => t.id.equals(eventId)))
+        .write(schema.AutoBookEventsCompanion(
+      nextRetryAt: const d.Value(null),
+      updatedAt: d.Value(DateTime.now()),
+    ));
+  }
+
+  Future<int> cleanupExpiredRawEvidence({DateTime? now}) async {
+    final cutoff = now ?? DateTime.now();
+    final rows = await (db.select(db.autoBookEvents)
+          ..where((t) =>
+              t.rawText.isNotNull() |
+              t.rawTitle.isNotNull() |
+              t.rawActor.isNotNull() |
+              t.rawMetadataJson.isNotNull()))
+        .get();
+    var cleared = 0;
+    for (final row in rows) {
+      final localDeadline = row.rawEvidenceLocalExpiresAt ??
+          (row.rawEvidenceLocalEnabled ? row.rawEvidenceRetentionUntil : null);
+      final serverDeadline = row.rawEvidenceServerExpiresAt ??
+          (row.rawEvidenceServerEnabled ? row.rawEvidenceRetentionUntil : null);
+      final localExpired =
+          localDeadline != null && !localDeadline.isAfter(cutoff);
+      final serverExpired =
+          serverDeadline != null && !serverDeadline.isAfter(cutoff);
+      final serverDone = row.rawEvidenceUploadedAt != null ||
+          !row.rawEvidenceServerEnabled ||
+          row.rawEvidenceUploadState == RawEvidenceUploadState.rejected;
+      final keepLocal = row.rawEvidenceLocalEnabled && !localExpired;
+      final keepQueue = !serverDone && !serverExpired;
+      if (keepLocal || keepQueue) continue;
+      await (db.update(db.autoBookEvents)..where((t) => t.id.equals(row.id)))
+          .write(const schema.AutoBookEventsCompanion(
+        rawTitle: d.Value(null),
+        rawText: d.Value(null),
+        rawActor: d.Value(null),
+        rawMetadataJson: d.Value(null),
+        rawEvidenceUploadState: d.Value(RawEvidenceUploadState.expired),
+        rawEvidenceLastError: d.Value(null),
+      ));
+      cleared++;
+    }
+    return cleared;
+  }
+
+  Future<void> markRawEvidenceUploadAttempt({required int eventId}) async {
+    final event = await findById(eventId);
+    if (event == null) return;
+    await (db.update(db.autoBookEvents)..where((t) => t.id.equals(eventId)))
+        .write(schema.AutoBookEventsCompanion(
+      rawEvidenceUploadAttempts: d.Value(event.rawEvidenceUploadAttempts + 1),
+      rawEvidenceUploadState: const d.Value(RawEvidenceUploadState.uploading),
+      rawEvidenceNextRetryAt: d.Value(DateTime.now().add(processingLease)),
+    ));
+  }
+
+  Future<void> markRawEvidenceUploaded({required int eventId}) =>
+      markRawEvidenceUploadSucceeded(eventId);
+
   Future<void> cleanupExpired() async {
+    await cleanupExpiredRawEvidence();
     final now = DateTime.now();
     await (db.delete(db.autoBookEvents)
           ..where((t) =>
-              t.expiresAt.isNotNull() & t.expiresAt.isSmallerThanValue(now)))
+              t.expiresAt.isNotNull() &
+              t.expiresAt.isSmallerThanValue(now) &
+              t.rawText.isNull() &
+              t.rawTitle.isNull() &
+              t.rawActor.isNull() &
+              t.rawMetadataJson.isNull()))
         .go();
   }
+
+  static bool _hasRawInput(AutoBookInput input) =>
+      input.rawTitle?.isNotEmpty == true ||
+      input.rawText?.isNotEmpty == true ||
+      input.rawActor?.isNotEmpty == true ||
+      input.rawMetadata?.isNotEmpty == true;
+
+  static bool _hasRawEvent(schema.AutoBookEvent event) =>
+      event.rawTitle?.isNotEmpty == true ||
+      event.rawText?.isNotEmpty == true ||
+      event.rawActor?.isNotEmpty == true ||
+      event.rawMetadataJson?.isNotEmpty == true;
 
   static bool _isTerminal(AutoBookState state) => switch (state) {
         AutoBookState.booked ||

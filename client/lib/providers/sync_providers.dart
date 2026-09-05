@@ -16,12 +16,19 @@ import '../cloud/sync/sync_providers.dart' as sync_p;
 import '../cloud/transactions_sync_manager.dart';
 import '../models/ledger_display_item.dart';
 import '../ai/providers/ai_provider_manager.dart';
+import '../ai/providers/ai_provider_factory.dart';
+import '../ai/relay/ai_relay_client.dart';
 import '../pages/ai/ai_provider_manage_page.dart'
     show aiProviderListRefreshProvider;
 import 'ai_config_providers.dart';
+import 'automation_providers.dart';
 import 'voice_billing_providers.dart';
 import '../services/attachment_service.dart' show attachmentListRefreshProvider;
 import '../services/system/logger_service.dart';
+import '../services/privacy/raw_evidence_sync_service.dart';
+import '../services/privacy/raw_evidence_remote_store.dart';
+import '../services/privacy/smartbook_raw_evidence_uploader.dart';
+import '../services/automation/auto_book_event_store.dart';
 import '../services/ui/avatar_service.dart';
 import '../models/note_history.dart';
 import '../styles/header_skins.dart'
@@ -301,8 +308,9 @@ final syncServiceProvider = Provider<SyncService>((ref) {
       return id > 0 ? id.toString() : '';
     };
 
-    // AI 配置变更时推到 server。包含 providers / binding / custom_prompt /
-    // strategy 等;调用在 AIProviderManager 的 save 点。
+    // AI 配置变更时推到 server。**只推 prefs**(custom_prompt / strategy /
+    // 开关等,见 snapshotForSync);providers/binding 的密钥只存服务端,不再
+    // 经 profile 上/下行。调用在 AIProviderManager 的 save 点。
     AIProviderManager.onConfigChanged = () {
       unawaited(() async {
         try {
@@ -310,13 +318,42 @@ final syncServiceProvider = Provider<SyncService>((ref) {
           if (cloud == null) return;
           final snapshot = await AIProviderManager.snapshotForSync();
           await cloud.updateMyProfileAiConfig(aiConfig: snapshot);
-          logger.info('CloudSync', 'AI 配置已推送到 server');
+          logger.info('CloudSync', 'AI prefs 已推送到 server');
         } catch (e, st) {
           logger.warning(
-              'CloudSync', 'AI 配置推送失败 (non-blocking): $e', st);
+              'CloudSync', 'AI prefs 推送失败 (non-blocking): $e', st);
         }
       }());
     };
+
+    // AI 中转注入:云服务就绪后把 AiRelayClient 挂到工厂(全部 LLM 调用经
+    // 服务端 /ai/relay/* 代理)与管理器(/ai/providers 配置 CRUD),并从服务端
+    // 拉一次服务商列表(掩码视图)。未登录时保持 null,AI 功能会报错引导登录。
+    ref.listen(smartbookCloudProviderInstance, (prev, next) {
+      final cloud = next.asData?.value;
+      if (cloud == null) return;
+      final auth = cloud.auth;
+      if (auth is! SmartBookCloudAuthService) return;
+      final relay = AiRelayClient(
+        baseUrl: cloud.baseUrl ?? '',
+        apiPrefix: cloud.apiPrefix ?? '/api/v1',
+        accessToken: () => auth.requireAccessToken(),
+        onUnauthorized: () async {
+          await auth.tryRefreshSession();
+        },
+      );
+      AIProviderFactory.relayClient = relay;
+      AIProviderManager.serverApi = relay;
+      unawaited(AIProviderManager.refreshFromServer());
+      // 服务端恢复可达:补发离线识别草稿(自动记账瞬态失败攒下的)
+      unawaited(() async {
+        try {
+          await ref.read(autoBillingServiceProvider).retryDueDrafts();
+        } catch (e) {
+          logger.warning('CloudSync', '离线识别草稿补发失败: $e');
+        }
+      }());
+    }, fireImmediately: true);
 
     engine.startListeningRealtime();
 
@@ -353,7 +390,24 @@ final syncServiceProvider = Provider<SyncService>((ref) {
       connectivityDebounce = Timer(const Duration(milliseconds: 500), () {
         logger.info('SyncProvider', 'connectivity 恢复, 触发 auto sync');
         engine.triggerAutoSync(reason: 'connectivity_restored');
+        // 网络恢复:补发离线识别草稿
+        unawaited(() async {
+          try {
+            await ref.read(autoBillingServiceProvider).retryDueDrafts();
+          } catch (e) {
+            logger.warning('SyncProvider', '离线识别草稿补发失败: $e');
+          }
+        }());
       });
+    });
+
+    // 周期兜底:App 存活期间每 15 分钟补发一次到期草稿(退避到期的)。
+    final draftRetryTimer = Timer.periodic(const Duration(minutes: 15), (_) {
+      unawaited(() async {
+        try {
+          await ref.read(autoBillingServiceProvider).retryDueDrafts();
+        } catch (_) {}
+      }());
     });
 
     // 当 Provider 被销毁时停止监听。engine.dispose 归 syncEngineProvider
@@ -362,6 +416,7 @@ final syncServiceProvider = Provider<SyncService>((ref) {
       eventSub.cancel();
       connectivityDebounce?.cancel();
       connectivitySubscription.cancel();
+      draftRetryTimer.cancel();
       coordinator.dispose();
     });
 
@@ -371,6 +426,12 @@ final syncServiceProvider = Provider<SyncService>((ref) {
     // pull 完成后调一次 reconcileProfileToServer,把"server 上缺而本地有"的
     // 字段补推上去(theme / income / appearance / ai_config) —— 用户之前
     // 一直用 A,升级到带同步的版本时本地早就有配置,server 却是空的。
+    // 冷启动补发:上次离线攒下的识别草稿(云服务已配置时)
+    Future(() async {
+      try {
+        await ref.read(autoBillingServiceProvider).retryDueDrafts();
+      } catch (_) {}
+    });
     Future(() async {
       // avatar bump 走 engine.onAvatarChanged 回调,不再用 changed 兜底
       // (changed=true 包含 theme/income/appearance/ai 等任意字段被 apply,
@@ -539,6 +600,47 @@ final smartbookCloudProviderInstance =
     logger.error('CloudSync', 'SmartBookCloudProvider 初始化失败', e, st);
   }
   return null;
+});
+
+final rawEvidenceRemoteStoreProvider = FutureProvider<RawEvidenceRemoteStore?>((ref) async {
+  final cloud = await ref.watch(smartbookCloudProviderInstance.future);
+  return cloud == null ? null : SmartBookRawEvidenceRemoteStore(cloud);
+});
+
+/// Eagerly watched by BeeApp. Evidence recovery must not depend on a normal
+/// transaction sync (there may be no new transactions at all).
+final rawEvidenceSyncServiceProvider = Provider<RawEvidenceSyncService>((ref) {
+  final db = ref.watch(databaseProvider);
+  final service = RawEvidenceSyncService(AutoBookEventStore(db));
+  var disposed = false;
+  void trigger() {
+    if (disposed) return;
+    unawaited(service.syncPending().catchError((Object _) {
+      // No exception text/stack: HTTP validation errors can contain raw input.
+      logger.warning('RawEvidence', 'sync status=failed');
+    }));
+  }
+
+  ref.listen(smartbookCloudProviderInstance, (_, next) {
+    final cloud = next.asData?.value;
+    service.uploader = cloud == null ? null : SmartBookRawEvidenceUploader(cloud, db);
+    trigger(); // cold start, sign-in or configuration/session restoration
+  }, fireImmediately: true);
+  // Table notifications also cover native capture with no transaction changes.
+  final events = db.select(db.autoBookEvents).watch().listen((_) => trigger());
+  final connectivity = Connectivity().onConnectivityChanged.listen((results) {
+    if (results.any((result) => result != ConnectivityResult.none)) trigger();
+  });
+  // Persisted nextRetryAt survives process death; timer handles backoff and GC.
+  final timer = Timer.periodic(const Duration(seconds: 30), (_) => trigger());
+  ref.onDispose(() {
+    disposed = true;
+    service.uploader = null;
+    timer.cancel();
+    unawaited(events.cancel());
+    unawaited(connectivity.cancel());
+  });
+  return service;
 });
 
 /// SmartBook Cloud 服务端版本号。Mine 页面 / 云同步页都能直接用;失败就

@@ -123,6 +123,9 @@ class NotifyMonitorService {
         final title = (raw['title'] ?? '').toString();
         final body = (raw['body'] ?? '').toString();
         final fingerprint = (raw['fingerprint'] ?? '').toString();
+        final notificationKey = (raw['notificationKey'] ?? '').toString();
+        final notificationId =
+            int.tryParse((raw['notificationId'] ?? '').toString());
 
         final alreadyWarned = _noAiNotified.contains(fingerprint);
         final timestamp = int.tryParse((raw['timestamp'] ?? '').toString());
@@ -140,6 +143,16 @@ class NotifyMonitorService {
                 : DateTime.fromMillisecondsSinceEpoch(timestamp),
             contentHash: fingerprint,
             sourceChannel: SourceChannelResolver.channelForPackage(pkg),
+            rawTitle: title,
+            rawText: body,
+            rawActor: pkg,
+            rawMetadata: {
+              'fingerprint': fingerprint,
+              if (notificationKey.isNotEmpty)
+                'notificationKey': notificationKey,
+              if (notificationId != null) 'notificationId': notificationId,
+              if (timestamp != null) 'timestamp': timestamp,
+            },
           ),
           action: () => _autoBillingService.processNotification(
             pkg,

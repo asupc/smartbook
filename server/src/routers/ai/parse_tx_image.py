@@ -182,7 +182,12 @@ async def _parse_and_log(
     result: object = None
     try:
         try:
-            resp = await call_chat_json(config=cfg, messages=messages)
+            resp = await call_chat_json(
+                config=cfg,
+                messages=messages,
+                # 记账解析是结构化识别,不需要模型额外进行深度思考。
+                disable_thinking=True,
+            )
             result = resp.parsed
             usage = resp.usage
         except JsonParseFailedError as exc:

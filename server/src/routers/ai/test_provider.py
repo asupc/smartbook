@@ -18,12 +18,16 @@ from typing import Literal
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from ...config import get_settings
-from ...deps import get_current_user
+from ...deps import get_current_user, require_any_scopes
 from ...models import User
-from ...services.ai.provider_client import _post_chat_adaptive
+from ...security import SCOPE_APP_WRITE, SCOPE_WEB_WRITE
+from ...services.ai.provider_client import (
+    _post_chat_adaptive,
+    with_disabled_thinking,
+)
 from ...services.ai.test_samples import (
     TEST_JPEG_DATA_URL,
     TEST_WAV_BYTES,
@@ -117,6 +121,7 @@ def _classify_error(status_code: int, body: str) -> str:
 @router.post("/test-provider", response_model=TestProviderResponse)
 async def test_provider(
     req: TestProviderRequest,
+    _scopes: set[str] = Depends(require_any_scopes(SCOPE_APP_WRITE, SCOPE_WEB_WRITE)),
     current_user: User = Depends(get_current_user),
 ) -> TestProviderResponse:
     if not _check_rate_limit(current_user.id):
@@ -220,12 +225,16 @@ class _UpstreamHTTPError(Exception):
 async def _test_text(base_url: str, api_key: str, model: str) -> str:
     """text capability:发个 'hi' 收第一段回复。"""
     url = f"{base_url}/chat/completions"
-    payload = {
-        "model": model,
-        "messages": [{"role": "user", "content": "hi"}],
-        "max_tokens": 16,
-        "temperature": 0.2,
-    }
+    payload = with_disabled_thinking(
+        {
+            "model": model,
+            "messages": [{"role": "user", "content": "hi"}],
+            "max_tokens": 16,
+            "temperature": 0.2,
+        },
+        model=model,
+        disable_thinking=True,
+    )
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
@@ -245,20 +254,24 @@ async def _test_text(base_url: str, api_key: str, model: str) -> str:
 async def _test_vision(base_url: str, api_key: str, model: str) -> str:
     """vision capability:发 64×64 红色 JPEG + 'describe' prompt。"""
     url = f"{base_url}/chat/completions"
-    payload = {
-        "model": model,
-        "messages": [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": "describe"},
-                    {"type": "image_url", "image_url": {"url": TEST_JPEG_DATA_URL}},
-                ],
-            }
-        ],
-        "max_tokens": 16,
-        "temperature": 0.2,
-    }
+    payload = with_disabled_thinking(
+        {
+            "model": model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "describe"},
+                        {"type": "image_url", "image_url": {"url": TEST_JPEG_DATA_URL}},
+                    ],
+                }
+            ],
+            "max_tokens": 16,
+            "temperature": 0.2,
+        },
+        model=model,
+        disable_thinking=True,
+    )
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",

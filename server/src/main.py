@@ -31,6 +31,7 @@ from .routers import invites as invites_router
 from .routers import members as members_router
 from .routers import member_stats as member_stats_router
 from .routers import shared_resources as shared_resources_router
+from .routers import evidence as evidence_router
 from .mcp import server as mcp_server
 from .websocket_manager import WSConnectionManager
 
@@ -182,6 +183,7 @@ app.include_router(invites_router.router, prefix=settings.api_prefix, tags=["inv
 app.include_router(members_router.router, prefix=settings.api_prefix, tags=["members"])
 app.include_router(shared_resources_router.router, prefix=settings.api_prefix, tags=["shared-resources"])
 app.include_router(member_stats_router.router, prefix=settings.api_prefix, tags=["member-stats"])
+app.include_router(evidence_router.router, prefix=f"{settings.api_prefix}/evidence", tags=["evidence"])
 
 _static_dir = Path(settings.web_static_dir)
 
@@ -372,3 +374,38 @@ async def _log_sync_changes_size() -> None:  # noqa: B008
         logging.getLogger(__name__).warning(
             "sync_changes size probe failed", exc_info=True,
         )
+
+
+@app.on_event("startup")
+async def _start_evidence_retention() -> None:
+    import asyncio
+    from .services.raw_evidence_retention import purge_expired_raw_evidence
+
+    def prune() -> None:
+        with SessionLocal() as db:
+            purge_expired_raw_evidence(db)
+            from .services.ai.bill_identifier import prune_expired as prune_bill_identifiers
+            prune_bill_identifiers(db)
+
+    async def loop() -> None:
+        while True:
+            try:
+                await asyncio.to_thread(prune)
+            except Exception:
+                # Do not log SQL parameters or raw evidence on failures.
+                logging.getLogger(__name__).warning("evidence.retention status=failed")
+            await asyncio.sleep(15 * 60)
+
+    app.state.evidence_retention_task = asyncio.create_task(loop())
+
+
+@app.on_event("shutdown")
+async def _stop_evidence_retention() -> None:
+    import asyncio
+    task = getattr(app.state, "evidence_retention_task", None)
+    if task is not None:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass

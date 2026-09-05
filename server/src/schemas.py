@@ -4,7 +4,6 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_serializer, field_validator
 
-
 # 6 位 hex，开头必须有 #；字母大小写都接受，validator 会归一化成大写。
 _HEX6_PATTERN = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
@@ -382,6 +381,7 @@ class _AIBaseOut(BaseModel):
     completion_tokens: int | None = None
     total_tokens: int | None = None
     client_ip: str | None = None
+    dedup_hit: str | None = None
     called_at: datetime
 
     @field_serializer("called_at")
@@ -1145,3 +1145,68 @@ class BackupRestoreOut(BaseModel):
 
 class BackupRestoreListOut(BaseModel):
     items: list[BackupRestoreOut]
+
+
+# Raw automatic-bookkeeping evidence. This is display-only data and is not a
+# sync entity. Limits keep accidental SMS/notification dumps bounded.
+class RawEvidenceUpsertRequest(BaseModel):
+    event_key: str = Field(min_length=1, max_length=255)
+    ledger_id: str | None = Field(default=None, max_length=128)
+    source: str = Field(min_length=1, max_length=32)
+    source_channel: str | None = Field(default=None, max_length=128)
+    external_id: str | None = Field(default=None, max_length=255)
+    content_hash: str | None = Field(default=None, max_length=128)
+    actor: str | None = Field(default=None, max_length=255)
+    title: str | None = Field(default=None, max_length=2048)
+    body: str | None = Field(default=None, max_length=65536)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    captured_at: datetime
+    occurred_at: datetime | None = None
+    expires_at: datetime | None = None
+
+    @field_validator("event_key", "source")
+    @classmethod
+    def _trim_required(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("value cannot be empty")
+        return value
+
+    @field_validator("metadata")
+    @classmethod
+    def _limit_metadata(cls, value: dict[str, Any]) -> dict[str, Any]:
+        # A shallow JSON-size guard prevents a client from turning this table
+        # into an unbounded blob store. The actual JSON column remains typed.
+        import json
+        if len(json.dumps(value, ensure_ascii=False, separators=(",", ":"))) > 16384:
+            raise ValueError("metadata too large")
+        return value
+
+
+class RawEvidenceOut(BaseModel):
+    id: str
+    event_key: str
+    ledger_id: str | None
+    source: str
+    source_channel: str | None
+    external_id: str | None
+    content_hash: str | None
+    actor: str | None
+    title: str | None
+    body: str | None
+    metadata: dict[str, Any]
+    captured_at: datetime
+    occurred_at: datetime | None
+    expires_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class RawEvidenceListOut(BaseModel):
+    total: int
+    items: list[RawEvidenceOut]
+
+
+class RawEvidenceCleanupRequest(BaseModel):
+    before: datetime | None = None
+    source: str | None = Field(default=None, max_length=32)

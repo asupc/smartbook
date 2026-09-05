@@ -151,6 +151,13 @@ class ScreenTextMonitorService {
                 : DateTime.fromMillisecondsSinceEpoch(timestamp),
             contentHash: fingerprint,
             sourceChannel: SourceChannelResolver.channelForPackage(pkg),
+            rawText: text,
+            rawActor: pkg,
+            rawMetadata: {
+              'fingerprint': fingerprint,
+              if (nativeEventKey.isNotEmpty) 'nativeEventKey': nativeEventKey,
+              if (timestamp != null) 'timestamp': timestamp,
+            },
           ),
           action: () => _autoBillingService.processScreenText(
             pkg,

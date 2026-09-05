@@ -22,11 +22,13 @@
 """
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import re
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import Any, AsyncIterator
+from typing import Any
 
 import httpx
 
@@ -76,17 +78,51 @@ async def embed_query(query: str) -> list[float]:
 
 @dataclass(frozen=True)
 class ChatProviderConfig:
-    """从 user.ai_config_json 解析出的 chat 配置。"""
+    """从 user.ai_config_json 解析出的 chat / vision / audio 配置。"""
 
     provider_id: str
     base_url: str
     api_key: str
-    model: str           # textModel
+    model: str           # textModel / visionModel / audioModel(按 kind)
     name: str | None = None
+    is_built_in: bool = False  # 内置智谱(音频走 input_audio 消息,非 /audio/transcriptions)
 
 
 class ChatProviderError(RuntimeError):
     """通用 provider 调用失败。"""
+
+
+def supports_disabled_thinking(model: str) -> bool:
+    """Return whether the model supports disabling GLM thinking.
+
+    GLM-4.5 (non-V), GLM-4.6, and supported GLM-5.x models can receive
+    ``thinking={\"type\": \"disabled\"}``.
+    Do not add the provider-specific field to older GLM models or unrelated
+    OpenAI-compatible models: several gateways reject unknown request fields.
+    """
+    normalized = (model or "").strip().lower().replace("_", "-")
+    # GLM-4.7 / GLM-4.5V / GLM-5.3 are forced-thinking or do not support
+    # disabled; do not send the field for them.
+    if any(marker in normalized for marker in ("glm-4.7", "glm-4.5v", "glm-5.3")):
+        return False
+    supports_glm5 = any(
+        marker in normalized
+        for marker in ("glm-5.2", "glm-5.1", "glm-5-turbo", "glm-5v-turbo")
+    ) or normalized in {"glm-5"} or normalized.endswith("/glm-5")
+    return "glm-4.5" in normalized or "glm-4.6" in normalized or supports_glm5
+
+
+def with_disabled_thinking(
+    payload: dict[str, object],
+    *,
+    model: str,
+    disable_thinking: bool,
+) -> dict[str, object]:
+    """Copy *payload* and disable GLM reasoning when requested."""
+    result = dict(payload)
+    if disable_thinking and supports_disabled_thinking(model):
+        result["thinking"] = {"type": "disabled"}
+    return result
 
 
 @dataclass(frozen=True)
@@ -126,10 +162,36 @@ def resolve_vision_provider(user: User, profile: UserProfile | None) -> ChatProv
     )
 
 
+class NoAudioProviderError(ChatProviderError):
+    """用户没绑语音转写模型 — App 语音记账中转专用。"""
+
+
+def resolve_audio_provider(user: User, profile: UserProfile | None) -> ChatProviderConfig:
+    """从 user profile 拿 audio(语音转写)provider 配置。
+
+    binding 字段沿用 mobile 的命名:`speechProviderId`(不是 audioProviderId),
+    模型字段是 provider 的 `audioModel`。
+    """
+    return _resolve_provider_by_kind(
+        profile,
+        kind="audio",
+        not_found_exc=NoAudioProviderError,
+    )
+
+
+# kind → (binding 字段名, provider 模型字段名)。binding 命名与 mobile
+# AICapabilityBinding.toJson() 对齐(语音叫 speechProviderId)。
+_KIND_FIELDS: dict[str, tuple[str, str]] = {
+    "text": ("textProviderId", "textModel"),
+    "vision": ("visionProviderId", "visionModel"),
+    "audio": ("speechProviderId", "audioModel"),
+}
+
+
 def _resolve_provider_by_kind(
     profile: UserProfile | None,
     *,
-    kind: str,  # "text" | "vision"
+    kind: str,  # "text" | "vision" | "audio"
     not_found_exc: type[ChatProviderError] = NoChatProviderError,
 ) -> ChatProviderConfig:
     """B2/B3 复用的 provider 解析 — 跟 resolve_chat_provider 同模式,只是
@@ -146,8 +208,7 @@ def _resolve_provider_by_kind(
     if not isinstance(cfg, dict):
         raise not_found_exc("ai_config not a dict")
 
-    binding_key = "textProviderId" if kind == "text" else "visionProviderId"
-    model_key = "textModel" if kind == "text" else "visionModel"
+    binding_key, model_key = _KIND_FIELDS[kind]
 
     binding = cfg.get("binding") if isinstance(cfg.get("binding"), dict) else {}
     provider_id = binding.get(binding_key)
@@ -180,6 +241,7 @@ def _resolve_provider_by_kind(
         api_key=api_key,
         model=model,
         name=matched.get("name"),
+        is_built_in=bool(matched.get("isBuiltIn")),
     )
 
 
@@ -332,6 +394,7 @@ async def call_chat_json(
     messages: list[dict[str, object]],
     timeout: float = 30.0,
     max_retries: int = 1,
+    disable_thinking: bool = False,
 ) -> ChatJSONResult:
     """调 OpenAI-compatible /chat/completions(非 stream),返 ChatJSONResult。
 
@@ -354,19 +417,23 @@ async def call_chat_json(
         # response_format。参数被模型拒绝(如推理模型锁 temperature、不支持 response_format)
         # 由 _post_chat_adaptive 在单次调用内自适应摘除,不依赖 attempt 切换。
         temperature = 0.2 if attempt == 0 else 0.05
-        payload: dict[str, object] = {
-            "model": config.model,
-            "messages": messages,
-            "temperature": temperature,
-        }
+        payload = with_disabled_thinking(
+            {
+                "model": config.model,
+                "messages": messages,
+                "temperature": temperature,
+            },
+            model=config.model,
+            disable_thinking=disable_thinking,
+        )
         if attempt == 0:
             payload["response_format"] = {"type": "json_object"}
 
         t0 = time.monotonic()
         logger.info(
-            "ai.call_chat_json provider=%s model=%s attempt=%d msgs=%d response_format=%s",
+            "ai.call_chat_json provider=%s model=%s attempt=%d msgs=%d response_format=%s disable_thinking=%s",
             config.provider_id, config.model, attempt + 1, len(messages),
-            attempt == 0,
+            attempt == 0, disable_thinking,
         )
         try:
             async with httpx.AsyncClient(
@@ -428,6 +495,200 @@ async def call_chat_json(
             raise ChatProviderError(f"network error: {exc}") from exc
     # 所有重试都解析失败
     raise last_exc or JsonParseFailedError("unknown JSON parse failure")
+
+
+# Plain-text chat call(非 streaming、非 JSON 模式,/ai/relay/* 中转用) ────
+
+
+@dataclass(frozen=True)
+class ChatTextResult:
+    """`call_chat_text` 的返回 — 原样 content + 上游 usage(可能没有)。"""
+
+    content: str
+    usage: dict | None = None
+
+
+async def call_chat_text(
+    *,
+    config: ChatProviderConfig,
+    messages: list[dict[str, object]],
+    temperature: float = 0.3,
+    disable_thinking: bool = False,
+    timeout: float = 120.0,
+) -> ChatTextResult:
+    """调 OpenAI-compatible /chat/completions(非 stream),返回原始 content。
+
+    与 `call_chat_json` 的区别:不附加 response_format、不做 JSON 抽取、不重试
+    —— 提示词与输出解析都是 App 端业务(/ai/relay/* 只做密钥代管 + 转发),
+    content 原样回给客户端,由客户端的 JsonResponseParser 鲁棒解析。
+    参数自适应摘除(_post_chat_adaptive)与 GLM thinking 关闭逻辑保持一致。
+    """
+    import time
+
+    url = f"{config.base_url}/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {config.api_key}",
+        "Content-Type": "application/json",
+    }
+    payload = with_disabled_thinking(
+        {
+            "model": config.model,
+            "messages": messages,
+            "temperature": temperature,
+        },
+        model=config.model,
+        disable_thinking=disable_thinking,
+    )
+
+    t0 = time.monotonic()
+    logger.info(
+        "ai.call_chat_text provider=%s model=%s msgs=%d disable_thinking=%s",
+        config.provider_id, config.model, len(messages), disable_thinking,
+    )
+    try:
+        async with httpx.AsyncClient(
+            timeout=timeout,
+            verify=get_settings().ai_http_verify_ssl,
+        ) as client:
+            resp = await _post_chat_adaptive(client, url, headers, payload)
+    except httpx.TimeoutException as exc:
+        elapsed = time.monotonic() - t0
+        logger.warning("ai.call_chat_text timeout provider=%s elapsed=%.2fs", config.provider_id, elapsed)
+        raise ChatProviderError(
+            f"provider {config.provider_id} timed out after {elapsed:.1f}s"
+        ) from exc
+    except httpx.HTTPError as exc:
+        logger.warning("ai.call_chat_text http error provider=%s err=%s", config.provider_id, exc)
+        raise ChatProviderError(f"network error: {exc}") from exc
+
+    elapsed = time.monotonic() - t0
+    logger.info(
+        "ai.call_chat_text done status=%d elapsed=%.2fs body_len=%d",
+        resp.status_code, elapsed, len(resp.text),
+    )
+    if resp.status_code >= 400:
+        raise ChatProviderError(
+            f"provider {config.provider_id} returned {resp.status_code}: {resp.text[:200]}"
+        )
+    data = resp.json()
+    content = (
+        data.get("choices", [{}])[0]
+        .get("message", {})
+        .get("content", "")
+    )
+    usage = data.get("usage")
+    return ChatTextResult(
+        content=content or "",
+        usage=usage if isinstance(usage, dict) else None,
+    )
+
+
+# Audio transcription(/ai/relay/stt 用) ────────────────────────────────────
+
+_STT_PROMPT = "请将语音内容转换为文字，只返回识别的文字内容，不要添加任何解释或标点修饰。"
+
+
+def _audio_format_for(audio_mime: str | None, filename: str | None) -> str:
+    """智谱 input_audio 的 format 字段:wav 或 mp3(与 mobile 端检测逻辑一致,
+    m4a/aac 等按 mp3 传)。"""
+    name = (filename or "").lower()
+    if name.endswith(".wav") or audio_mime == "audio/wav":
+        return "wav"
+    return "mp3"
+
+
+def _is_zhipu_audio(config: ChatProviderConfig) -> bool:
+    """内置智谱(或直填 bigmodel 域名的自定义 provider)没有 /audio/transcriptions,
+    语音转写走 chat/completions + input_audio 消息(与 mobile ZhipuGLMProvider 相同)。"""
+    if config.is_built_in:
+        return True
+    return "bigmodel.cn" in config.base_url.lower()
+
+
+async def transcribe_audio(
+    *,
+    config: ChatProviderConfig,
+    audio_bytes: bytes,
+    audio_mime: str | None = None,
+    filename: str | None = None,
+    timeout: float = 120.0,
+) -> str:
+    """语音转文字:按 provider 类型分派 OpenAI /audio/transcriptions 或
+    智谱 input_audio。返回识别文本(可能为空串)。失败抛 ChatProviderError。"""
+    headers = {"Authorization": f"Bearer {config.api_key}"}
+    try:
+        async with httpx.AsyncClient(
+            timeout=timeout,
+            verify=get_settings().ai_http_verify_ssl,
+        ) as client:
+            if _is_zhipu_audio(config):
+                logger.info(
+                    "ai.transcribe_audio path=input_audio provider=%s model=%s bytes=%d",
+                    config.provider_id, config.model, len(audio_bytes),
+                )
+                content = [
+                    {
+                        "type": "input_audio",
+                        "input_audio": {
+                            "data": base64.b64encode(audio_bytes).decode(),
+                            "format": _audio_format_for(audio_mime, filename),
+                        },
+                    },
+                    {"type": "text", "text": _STT_PROMPT},
+                ]
+                payload = {
+                    "model": config.model,
+                    "messages": [{"role": "user", "content": content}],
+                    "temperature": 0.1,
+                }
+                resp = await _post_chat_adaptive(
+                    client,
+                    f"{config.base_url}/chat/completions",
+                    {**headers, "Content-Type": "application/json"},
+                    payload,
+                )
+                if resp.status_code >= 400:
+                    raise ChatProviderError(
+                        f"provider {config.provider_id} returned {resp.status_code}: {resp.text[:200]}"
+                    )
+                data = resp.json()
+                text = (
+                    data.get("choices", [{}])[0]
+                    .get("message", {})
+                    .get("content", "")
+                )
+                return (text or "").strip()
+
+            logger.info(
+                "ai.transcribe_audio path=transcriptions provider=%s model=%s bytes=%d",
+                config.provider_id, config.model, len(audio_bytes),
+            )
+            resp = await client.post(
+                f"{config.base_url}/audio/transcriptions",
+                headers=headers,
+                files={
+                    "file": (
+                        filename or "audio",
+                        audio_bytes,
+                        audio_mime or "application/octet-stream",
+                    ),
+                },
+                data={"model": config.model},
+            )
+            if resp.status_code >= 400:
+                raise ChatProviderError(
+                    f"provider {config.provider_id} returned {resp.status_code}: {resp.text[:200]}"
+                )
+            body = resp.json()
+            return (body.get("text") or "").strip()
+    except httpx.TimeoutException as exc:
+        logger.warning("ai.transcribe_audio timeout provider=%s err=%s", config.provider_id, exc)
+        raise ChatProviderError(
+            f"provider {config.provider_id} timed out"
+        ) from exc
+    except httpx.HTTPError as exc:
+        logger.warning("ai.transcribe_audio http error provider=%s err=%s", config.provider_id, exc)
+        raise ChatProviderError(f"network error: {exc}") from exc
 
 
 # Streaming chat ────────────────────────────────────────────────────────────

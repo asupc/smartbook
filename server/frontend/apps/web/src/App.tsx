@@ -61,6 +61,9 @@ const SettingsDevicesPage = lazy(() =>
 const SettingsPatsPage = lazy(() =>
   import('./pages/sections/SettingsPatsPage').then((m) => ({ default: m.SettingsPatsPage })),
 )
+const RawEvidencePage = lazy(() =>
+  import('./pages/sections/RawEvidencePage').then((m) => ({ default: m.RawEvidencePage })),
+)
 const SettingsHealthPage = lazy(() =>
   import('./pages/sections/SettingsHealthPage').then((m) => ({ default: m.SettingsHealthPage })),
 )
@@ -359,6 +362,10 @@ function AppRoutes() {
               <AiLogsPage />
             </Suspense>
           }
+        />
+        <Route
+          path="settings/raw-evidence"
+          element={<Suspense fallback={<RouteFallback />}><RawEvidencePage /></Suspense>}
         />
         <Route
           path="settings/health"

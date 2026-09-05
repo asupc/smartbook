@@ -1,9 +1,7 @@
 import 'dart:io';
 
-import '../providers/ai_provider_config.dart';
-import '../providers/ai_provider_factory.dart';
-import '../providers/ai_provider_manager.dart';
 import '../../services/system/logger_service.dart';
+import '../providers/ai_provider_factory.dart';
 import 'ai_extraction_context.dart';
 import 'bill_info.dart';
 import 'json_response_parser.dart';
@@ -14,18 +12,24 @@ import 'prompt_builder.dart';
 /// 把 text / image / audio 输入 + [AiExtractionContext] 转换成
 /// `List<BillInfo>`。这一层是 Layer 1 底座的对外契约,不依赖 Repository /
 /// Riverpod / UI,可以独立单测。
+///
+/// LLM 调用经 [AIProviderFactory] 走自建服务端中转;AI 调用日志由服务端在
+/// 中转现场直接落库(`ai_analysis_logs`,截图原文随请求落盘),引擎层不再
+/// 事后上报。
 abstract class AiExtractionEngine {
-  /// 从文本提取账单信息。空 list 表示失败或无有效账单。
+  /// 从文本提取账单信息。[AiExtractionOutcome.bills] 空 list 表示失败或无
+  /// 有效账单;[AiExtractionOutcome.duplicate] = 服务端识别前判重命中
+  /// (订单号/流水号已存在),App 端应静默跳过 —— 不记账不通知。
+  ///
+  /// 可恢复的临时失败(连不上服务端/超时)会以 [AIException](transient=true)
+  /// 抛出,由自动入口保存草稿等待重试;其它失败返回空 outcome。
   ///
   /// [billGuard] 前置过滤段，截图/自动路径传入 [PromptBuilder.billGuardForImage]，
   /// 聊天等主动输入传空字符串。
-  /// [onCall] 每次真实 AI 调用完成(含失败)后回调一次,应用层借它上报
-  /// `ai_analysis_logs`(见 [AiCallReport])。
-  Future<List<BillInfo>> extractFromText(
+  Future<AiExtractionOutcome> extractFromText(
     String text,
     AiExtractionContext context, {
     String billGuard = '',
-    AiCallReporter? onCall,
   });
 
   /// 从图片提取账单信息。空 list 表示失败或无有效账单。
@@ -36,15 +40,13 @@ abstract class AiExtractionEngine {
     File image,
     AiExtractionContext context, {
     String billGuard = '',
-    AiCallReporter? onCall,
   });
 
   /// 从音频提取账单信息(语音转文字 → 文本提取)。
   Future<AudioExtractionResult> extractFromAudio(
     File audio,
-    AiExtractionContext context, {
-    AiCallReporter? onCall,
-  });
+    AiExtractionContext context,
+  );
 
   /// 仅语音转文字,不提取账单。
   Future<String?> speechToText(File audio);
@@ -61,57 +63,22 @@ class AudioExtractionResult {
   });
 }
 
-/// 一次 AI 调用(记账分析)的裸事实 —— 引擎层在每次真实调用后上报给
-/// observer(失败也上报,status='error')。
-///
-/// 只含引擎层知道的信息(时长/结果/原文);归属方补充业务元数据 —
-/// ledger_id 由应用层(AiBookkeeper)在回调里补上。
-/// [imageFile] 图片输入的原文(App 上报路径随日志一起 multipart 上传,
-/// 服务端落盘供 Web「AI 调用记录」详情查看;文本/语音为 null)。
-class AiCallReport {
-  /// 与 server `ai_analysis_logs.entry_type` 对齐(3 种,见项目 CLAUDE.md)。
-  final String entryType;
-  final String status; // 'ok' | 'error'
-  final String? providerId;
-  final String? model;
-  final String? ledgerId;
-  final String? inputText;
-  final String? outputText;
-  final String? errorMessage;
-  final int durationMs;
-  final File? imageFile;
+/// 一次文本提取的完整结果。
+class AiExtractionOutcome {
+  final List<BillInfo> bills;
 
-  const AiCallReport({
-    required this.entryType,
-    required this.status,
-    this.providerId,
-    this.model,
-    this.ledgerId,
-    this.inputText,
-    this.outputText,
-    this.errorMessage,
-    this.durationMs = 0,
-    this.imageFile,
+  /// 服务端识别前判重命中:该输入包含已识别过的账单唯一标识,
+  /// 本次没有调用 LLM, bills 为空。应用层按「重复账单」静默处理。
+  final bool duplicate;
+
+  /// 命中的归一化唯一标识(订单号/流水号)。
+  final String? matchedIdentifier;
+
+  const AiExtractionOutcome({
+    this.bills = const [],
+    this.duplicate = false,
+    this.matchedIdentifier,
   });
-
-  AiCallReport copyWith({String? ledgerId, File? imageFile}) => AiCallReport(
-        entryType: entryType,
-        status: status,
-        providerId: providerId,
-        model: model,
-        ledgerId: ledgerId ?? this.ledgerId,
-        inputText: inputText,
-        outputText: outputText,
-        errorMessage: errorMessage,
-        durationMs: durationMs,
-        imageFile: imageFile ?? this.imageFile,
-      );
-}
-
-/// AI 调用观察者。实现方拿到 report 后自行决定做什么(上报 server /
-/// 落本地/丢弃);实现契约与引擎层相同:不抛异常、不阻塞主流程。
-abstract class AiCallReporter {
-  void call(AiCallReport report);
 }
 
 /// 默认实现:`PromptBuilder` + `AIProviderFactory` + `JsonResponseParser`。
@@ -128,18 +95,15 @@ class DefaultAiExtractionEngine implements AiExtractionEngine {
         _parser = parser;
 
   @override
-  Future<List<BillInfo>> extractFromText(
+  Future<AiExtractionOutcome> extractFromText(
     String text,
     AiExtractionContext context, {
     String billGuard = '',
-    AiCallReporter? onCall,
   }) async {
     if (text.trim().isEmpty) {
       logger.warning(_tag, '输入文本为空');
-      return const [];
+      return const AiExtractionOutcome();
     }
-    final stopwatch = Stopwatch()..start();
-    String? outputText;
     try {
       final prompt = _promptBuilder.build(
         context: context,
@@ -148,51 +112,36 @@ class DefaultAiExtractionEngine implements AiExtractionEngine {
         ocrText: text,
       );
       logger.debug(_tag, '文本 prompt 长度: ${prompt.length}');
-      logger.debug(_tag, '完整 prompt:\n$prompt');
 
-      final config =
-          await AIProviderManager.getProviderForCapability(AICapabilityType.text);
-      final response = await AIProviderFactory.chat(
+      final response = await AIProviderFactory.chatWithMeta(
         prompt,
         temperature: 0.3,
+        // 记账提取是结构化识别,不需要模型额外进行深度思考。
+        disableThinking: true,
         logTag: _tag,
-      );
-      outputText = response;
-      _fireReport(
-        onCall,
-        stopwatch,
         entryType: 'parse_tx_text',
-        status: 'ok',
-        providerId: config?.name,
-        model: config?.textModel,
-        inputText: text,
-        outputText: response,
+        ledgerId: context.ledgerId?.toString(),
+        // 日志里展示原始用户输入,不含模板 / 分类上下文。
+        logInput: text,
       );
-      return _parser.parse(response);
+      if (response.duplicate) {
+        // 服务端识别前判重:同一笔账单(订单号/流水号)已识别过,
+        // 本次没有调用 LLM。应用层据此静默跳过(不记账不通知)。
+        return AiExtractionOutcome(
+          duplicate: true,
+          matchedIdentifier: response.matchedIdentifier,
+        );
+      }
+      return AiExtractionOutcome(bills: _parser.parse(response.content));
     } on AIException catch (e) {
+      // 可恢复的临时失败(连不上服务端等)向上抛,让自动入口保存草稿重试;
+      // 其它失败(参数/配置/上游拒绝)按"无有效账单"处理。
+      if (e.transient) rethrow;
       logger.warning(_tag, '文本账单提取失败: ${e.message}');
-      _fireReport(
-        onCall,
-        stopwatch,
-        entryType: 'parse_tx_text',
-        status: 'error',
-        inputText: text,
-        outputText: outputText,
-        errorMessage: e.message,
-      );
-      return const [];
+      return const AiExtractionOutcome();
     } catch (e, st) {
       logger.error(_tag, '文本账单提取异常', e, st);
-      _fireReport(
-        onCall,
-        stopwatch,
-        entryType: 'parse_tx_text',
-        status: 'error',
-        inputText: text,
-        outputText: outputText,
-        errorMessage: '$e',
-      );
-      return const [];
+      return const AiExtractionOutcome();
     }
   }
 
@@ -201,17 +150,14 @@ class DefaultAiExtractionEngine implements AiExtractionEngine {
     File image,
     AiExtractionContext context, {
     String billGuard = '',
-    AiCallReporter? onCall,
   }) async {
     if (!await image.exists()) {
       logger.warning(_tag, '图片文件不存在');
       return const [];
     }
-    // 服务端记录图片输入时不存 base64,只存元信息摘要(见 AIAnalysisLog 注释)。
+    // 服务端记录图片输入时只存元信息摘要 + 原图落盘(见 AIAnalysisLog 注释)。
     final caption = 'image: ${image.path.split(Platform.pathSeparator).last} '
         '(${image.lengthSync()} bytes)';
-    final stopwatch = Stopwatch()..start();
-    String? outputText;
     try {
       final prompt = _promptBuilder.build(
         context: context,
@@ -219,53 +165,22 @@ class DefaultAiExtractionEngine implements AiExtractionEngine {
         billGuard: billGuard,
       );
       logger.debug(_tag, '图片 prompt 长度: ${prompt.length}');
-      logger.debug(_tag, '完整 prompt:\n$prompt');
 
-      final config =
-          await AIProviderManager.getProviderForCapability(AICapabilityType.vision);
       final response = await AIProviderFactory.vision(
         image,
         prompt,
+        // 截图记账只需读取文字/金额并输出结构化结果。
+        disableThinking: true,
         logTag: _tag,
-      );
-      outputText = response;
-      _fireReport(
-        onCall,
-        stopwatch,
-        entryType: 'parse_tx_image',
-        status: 'ok',
-        providerId: config?.name,
-        model: config?.visionModel,
-        inputText: caption,
-        outputText: response,
-        imageFile: image,
+        ledgerId: context.ledgerId?.toString(),
+        logInput: caption,
       );
       return _parser.parse(response);
     } on AIException catch (e) {
       logger.warning(_tag, '图片账单提取失败: ${e.message}');
-      _fireReport(
-        onCall,
-        stopwatch,
-        entryType: 'parse_tx_image',
-        status: 'error',
-        inputText: caption,
-        outputText: outputText,
-        errorMessage: e.message,
-        imageFile: image,
-      );
       rethrow;
     } catch (e, st) {
       logger.error(_tag, '图片账单提取异常', e, st);
-      _fireReport(
-        onCall,
-        stopwatch,
-        entryType: 'parse_tx_image',
-        status: 'error',
-        inputText: caption,
-        outputText: outputText,
-        errorMessage: '$e',
-        imageFile: image,
-      );
       rethrow;
     }
   }
@@ -273,28 +188,15 @@ class DefaultAiExtractionEngine implements AiExtractionEngine {
   @override
   Future<AudioExtractionResult> extractFromAudio(
     File audio,
-    AiExtractionContext context, {
-    AiCallReporter? onCall,
-  }) async {
+    AiExtractionContext context,
+  ) async {
     if (!await audio.exists()) {
       logger.warning(_tag, '音频文件不存在');
       return const AudioExtractionResult();
     }
-    // 语音 = STT + 文本提取 两次 AI 调用,但对外只记一条(entry=parse_tx_text),
-    // 递归调 extractFromText 时不传 onCall,避免重复上报。
-    final stopwatch = Stopwatch()..start();
-    var status = 'ok';
-    String? errorMessage;
-    String? recognizedText;
-    // 在 try 内首次 await(getProviderForCapability 可能抛,var 放外面让
-    // finally 可见)。
-    AIServiceProviderConfig? speechConfig;
     try {
-      speechConfig = await AIProviderManager.getProviderForCapability(
-        AICapabilityType.speech,
-      );
       logger.info(_tag, '步骤1: 语音转文字');
-      recognizedText = await AIProviderFactory.speechToText(
+      final recognizedText = await AIProviderFactory.speechToText(
         audio,
         logTag: _tag,
       );
@@ -305,32 +207,17 @@ class DefaultAiExtractionEngine implements AiExtractionEngine {
       }
 
       logger.info(_tag, '步骤2: 提取账单信息');
-      final bills = await extractFromText(recognizedText, context);
+      final outcome = await extractFromText(recognizedText, context);
       return AudioExtractionResult(
-        bills: bills,
+        bills: outcome.bills,
         recognizedText: recognizedText,
       );
     } on AIException catch (e) {
       logger.warning(_tag, '语音账单提取失败: ${e.message}');
-      status = 'error';
-      errorMessage = e.message;
       return const AudioExtractionResult();
     } catch (e, st) {
       logger.error(_tag, '语音账单提取异常', e, st);
-      status = 'error';
-      errorMessage = '$e';
       return const AudioExtractionResult();
-    } finally {
-      _fireReport(
-        onCall,
-        stopwatch,
-        entryType: 'parse_tx_text',
-        status: status,
-        providerId: speechConfig?.name,
-        model: speechConfig?.audioModel,
-        inputText: recognizedText,
-        errorMessage: errorMessage,
-      );
     }
   }
 
@@ -349,38 +236,6 @@ class DefaultAiExtractionEngine implements AiExtractionEngine {
     } catch (e, st) {
       logger.error(_tag, '语音转文字异常', e, st);
       return null;
-    }
-  }
-
-  /// 触发一次调用上报。回调自身异常不向外传播(日志记一笔),上报失败不得
-  /// 影响记账主流程。
-  void _fireReport(
-    AiCallReporter? onCall,
-    Stopwatch stopwatch, {
-    required String entryType,
-    required String status,
-    String? providerId,
-    String? model,
-    String? inputText,
-    String? outputText,
-    String? errorMessage,
-    File? imageFile,
-  }) {
-    if (onCall == null) return;
-    try {
-      onCall(AiCallReport(
-        entryType: entryType,
-        status: status,
-        providerId: providerId,
-        model: model,
-        inputText: inputText,
-        outputText: outputText,
-        errorMessage: errorMessage,
-        durationMs: stopwatch.elapsedMilliseconds,
-        imageFile: imageFile,
-      ));
-    } catch (e) {
-      logger.warning(_tag, 'AI 调用上报回调异常(已忽略): $e');
     }
   }
 }

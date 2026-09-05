@@ -741,6 +741,8 @@ class _BeeAppState extends ConsumerState<BeeApp>
       _updateWidget();
       // 前台稳定后认领待处理深链(冷启动/主题变更重建后,在最终页面树上打开)
       _drainPendingDeepLink(trigger: 'resumed');
+      unawaited(ref.read(sp.rawEvidenceSyncServiceProvider).syncPending()
+          .catchError((Object _) {}));
     }
   }
 
@@ -791,6 +793,7 @@ class _BeeAppState extends ConsumerState<BeeApp>
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(sp.rawEvidenceSyncServiceProvider);
     final idx = ref.watch(bottomTabIndexProvider);
     final l10n = AppLocalizations.of(context);
     final primaryColor = ref.watch(primaryColorProvider);

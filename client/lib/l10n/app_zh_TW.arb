@@ -25,13 +25,17 @@
   "productPromoEmailSubject": "申請內測 - {productName}",
   "@productPromoEmailSubject": {
     "placeholders": {
-      "productName": { "type": "String" }
+      "productName": {
+        "type": "String"
+      }
     }
   },
   "productPromoEmailBody": "你好,\n\n我希望加入「{productName}」的 Google Play 內測,我的 Google 帳號信箱是:\n\n(請填寫你的 Gmail / Google 帳號信箱)\n\n謝謝!",
   "@productPromoEmailBody": {
     "placeholders": {
-      "productName": { "type": "String" }
+      "productName": {
+        "type": "String"
+      }
     }
   },
   "aboutDeveloperStoryTitle": "開發者的話",
@@ -254,6 +258,13 @@
   "pendingCandidateReasonLarge": "大額消費",
   "pendingCandidateReasonLowConfidence": "低置信度,請核對",
   "pendingCandidateReasonAnomaly": "異常消費:高於近期基線",
+  "pendingConfirmationSimilarTransaction": "相似已有交易",
+  "pendingConfirmationCompare": "查看對比",
+  "pendingConfirmationCandidate": "待確認候選",
+  "pendingConfirmationExisting": "已有交易",
+  "pendingConfirmationMatchedMissing": "這條已有交易已不存在或已刪除",
+  "pendingConfirmationOpenMatched": "開啟已有交易",
+  "pendingConfirmationMatchScoreLabel": "匹配度",
   "@spendAlertLargeBody": {
     "description": "M3:大額通知正文",
     "placeholders": {
@@ -306,23 +317,43 @@
   "autoBillingNotifyProcessFailedTitle": "❌ 處理失敗",
   "autoBillingNotifyProcessFailedBody": "錯誤：{error}",
   "@autoBillingNotifyProcessFailedBody": {
-    "placeholders": { "error": { "type": "String" } }
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
   },
   "autoBillingNotifySuccessSingleTitle": "✅ 自動記帳成功 ¥{amount}",
   "@autoBillingNotifySuccessSingleTitle": {
-    "placeholders": { "amount": { "type": "String" } }
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
   },
   "autoBillingNotifySuccessMultiTitle": "✅ 自動記帳成功 {count} 筆",
   "@autoBillingNotifySuccessMultiTitle": {
-    "placeholders": { "count": { "type": "int" } }
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
   },
   "autoBillingNotifySuccessMultiBody": "合計 ¥{amount}",
   "@autoBillingNotifySuccessMultiBody": {
-    "placeholders": { "amount": { "type": "String" } }
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
   },
   "autoBillingNotifySuccessSingleBodyNote": "備註：{note}",
   "@autoBillingNotifySuccessSingleBodyNote": {
-    "placeholders": { "note": { "type": "String" } }
+    "placeholders": {
+      "note": {
+        "type": "String"
+      }
+    }
   },
   "autoBillingNotifySuccessSingleBodyDefault": "已自動建立記錄",
   "aiOcrNoLedger": "未找到帳本",
@@ -1089,8 +1120,12 @@
   "cloudSyncComplete": "同步完成：推送 {pushed} 條，拉取 {pulled} 條",
   "@cloudSyncComplete": {
     "placeholders": {
-      "pushed": {"type": "int"},
-      "pulled": {"type": "int"}
+      "pushed": {
+        "type": "int"
+      },
+      "pulled": {
+        "type": "int"
+      }
     }
   },
   "cloudAutoSyncHint": "資料變更後自動同步到雲端",
@@ -1713,7 +1748,11 @@
   "headerSkinFixedPalette": "自帶配色",
   "personalizeLockedBySkin": "目前皮膚「{skin}」自帶配色,主題色已隨皮膚設定,暫不可更改。換回其它皮膚即可恢復你原來的顏色。",
   "@personalizeLockedBySkin": {
-    "placeholders": { "skin": { "type": "String" } }
+    "placeholders": {
+      "skin": {
+        "type": "String"
+      }
+    }
   },
   "personalizeFixedSkinAction": "換皮膚",
   "headerSkinAurora": "極光",
@@ -2531,6 +2570,13 @@
   "aiProviderBuiltIn": "內建",
   "aiProviderEmpty": "暫無服務商設定",
   "aiProviderNoApiKey": "未設定 API Key",
+  "aiProviderApiKeyKeepHint": "留空保持現有 Key 不變",
+  "automationDraftsDiscarded": "草稿已丟棄",
+  "automationDraftsRetryQueued": "已重新提交識別",
+  "automationDraftsDiscard": "丟棄草稿",
+  "automationDraftsRetry": "重試識別",
+  "automationDraftsEmpty": "暫無離線識別草稿",
+  "automationDraftsTitle": "草稿",
   "aiProviderTapToEdit": "點擊編輯",
   "aiProviderDeleteTitle": "刪除服務商",
   "aiProviderDeleteConfirm": "確定刪除服務商「{name}」嗎？使用該服務商的能力將自動切換到預設服務商。",
@@ -2710,7 +2756,6 @@
   "budgetManagementDesc": "設置月度預算，控制支出",
   "budgetSetupHint": "設置預算，輕鬆掌控每月開支",
   "budgetSetupAction": "去設置",
-
   "cloudCollabDevicesPageTitle": "裝置工作階段",
   "cloudCollabDevicesPageSubtitle": "管理目前帳號活躍裝置",
   "cloudCollabDevicesViewAllSessions": "顯示全部工作階段",
@@ -2733,7 +2778,6 @@
   "cloudCollabUnavailableMessage": "雲端同步功能暫時不可用。",
   "cloudCollabScopeDeniedHint": "伺服器尚未開啟 ALLOW_APP_RW_SCOPES，目前裝置工作階段不可用。",
   "cloudCollabScopeDeniedAction": "請在伺服器 .env 或部署環境設定 ALLOW_APP_RW_SCOPES=true，重啟服務後重新登入 App。",
-
   "syncHealthTitle": "同步狀態",
   "cloudSyncHelpTitle": "同步說明 · 為什麼有時同步不動？",
   "cloudSyncHelpModesTitle": "三種同步方式",
@@ -2748,7 +2792,9 @@
   "syncHealthCheckFailed": "檢測失敗：{msg}",
   "@syncHealthCheckFailed": {
     "placeholders": {
-      "msg": { "type": "String" }
+      "msg": {
+        "type": "String"
+      }
     }
   },
   "syncHealthHasDiff": "偵測到差異，已自動同步",
@@ -2766,25 +2812,34 @@
   "syncHealthValue": "本地 {local} · 雲端 {remote}",
   "@syncHealthValue": {
     "placeholders": {
-      "local": { "type": "int" },
-      "remote": { "type": "int" }
+      "local": {
+        "type": "int"
+      },
+      "remote": {
+        "type": "int"
+      }
     }
   },
   "syncHealthValueRemoteMissing": "本地 {local} · 雲端 —",
   "@syncHealthValueRemoteMissing": {
     "placeholders": {
-      "local": { "type": "int" }
+      "local": {
+        "type": "int"
+      }
     }
   },
-
   "@twofaCountdown": {
     "placeholders": {
-      "time": { "type": "String" }
+      "time": {
+        "type": "String"
+      }
     }
   },
   "@twofaStatusEnabledAt": {
     "placeholders": {
-      "date": { "type": "String" }
+      "date": {
+        "type": "String"
+      }
     }
   },
   "sharedRoleOwner": "所有者",
@@ -2799,17 +2854,53 @@
   "sharedJoinPreviewButton": "驗證邀請碼",
   "sharedJoinAcceptButton": "加入帳本",
   "sharedJoinInvitedBy": "{name} 邀請你加入",
-  "@sharedJoinInvitedBy": { "placeholders": { "name": { "type": "String" } } },
+  "@sharedJoinInvitedBy": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "sharedJoinRoleLine": "角色:{role}",
-  "@sharedJoinRoleLine": { "placeholders": { "role": { "type": "String" } } },
+  "@sharedJoinRoleLine": {
+    "placeholders": {
+      "role": {
+        "type": "String"
+      }
+    }
+  },
   "sharedJoinExpiresInMinutes": "有效期還剩 {n} 分鐘",
-  "@sharedJoinExpiresInMinutes": { "placeholders": { "n": { "type": "int" } } },
+  "@sharedJoinExpiresInMinutes": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
   "sharedJoinExpiresInHours": "有效期還剩 {n} 小時",
-  "@sharedJoinExpiresInHours": { "placeholders": { "n": { "type": "int" } } },
+  "@sharedJoinExpiresInHours": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
   "sharedJoinExpiresInDays": "有效期還剩 {n} 天",
-  "@sharedJoinExpiresInDays": { "placeholders": { "n": { "type": "int" } } },
+  "@sharedJoinExpiresInDays": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
   "sharedJoinSuccess": "已加入「{name}」",
-  "@sharedJoinSuccess": { "placeholders": { "name": { "type": "String" } } },
+  "@sharedJoinSuccess": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "sharedJoinCodeFormatError": "邀請碼格式不對,請輸入 6 位字母數字",
   "sharedJoinInvalidOrExpired": "邀請碼無效或已過期,請向邀請人索取新碼",
   "sharedJoinAlreadyMember": "你已經是該帳本成員",
@@ -2818,24 +2909,48 @@
   "sharedInviteFormRole": "角色",
   "sharedInviteFormExpiry": "有效期",
   "sharedInviteExpiryHours": "{n} 小時",
-  "@sharedInviteExpiryHours": { "placeholders": { "n": { "type": "int" } } },
+  "@sharedInviteExpiryHours": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
   "sharedInviteExpiryDays": "{n} 天",
-  "@sharedInviteExpiryDays": { "placeholders": { "n": { "type": "int" } } },
+  "@sharedInviteExpiryDays": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
   "sharedInviteGenerate": "生成邀請碼",
   "sharedInviteGenerateAnother": "生成另一個邀請碼",
   "sharedInviteCopyCode": "複製邀請碼",
   "sharedInviteCopyLink": "複製連結",
   "sharedInviteShareLink": "分享給好友",
   "sharedInviteExpiresAt": "邀請將在 {dt} 失效",
-  "@sharedInviteExpiresAt": { "placeholders": { "dt": { "type": "String" } } },
+  "@sharedInviteExpiresAt": {
+    "placeholders": {
+      "dt": {
+        "type": "String"
+      }
+    }
+  },
   "sharedInviteWarning": "⚠️ 不要把邀請碼發到公開群 / 朋友圈。拿到碼的任何人都可加入帳本;洩漏後請到成員管理頁撤銷並重新生成。",
   "sharedInviteInstruction": "把邀請碼或短連結發給對方。對方裝上智記 後,點擊連結或在「我的 → 加入共享帳本」輸入碼即可加入。",
   "sharedInviteShareText": "邀請你加入智記 共享帳本「{ledger}」\n\n邀請碼:{code}\n連結:{url}\n\n點擊連結或在智記 → 我的 → 加入共享帳本輸入此碼即可。",
   "@sharedInviteShareText": {
     "placeholders": {
-      "ledger": { "type": "String" },
-      "code": { "type": "String" },
-      "url": { "type": "String" }
+      "ledger": {
+        "type": "String"
+      },
+      "code": {
+        "type": "String"
+      },
+      "url": {
+        "type": "String"
+      }
     }
   },
   "sharedMembersPageTitle": "成員管理",
@@ -2844,27 +2959,69 @@
   "sharedMembersLeaveCta": "退出帳本",
   "sharedMembersLeaveTitle": "退出帳本",
   "sharedMembersLeaveConfirm": "退出「{name}」後將無法再訪問其中的交易。確定繼續嗎?",
-  "@sharedMembersLeaveConfirm": { "placeholders": { "name": { "type": "String" } } },
+  "@sharedMembersLeaveConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "sharedMembersLeaveDone": "已退出帳本",
   "sharedMembersRemoveTitle": "移除成員",
   "sharedMembersRemoveCta": "移除該成員",
   "sharedMembersRemoveConfirm": "確定移除 {name}?ta 將立即失去對該帳本的訪問。",
-  "@sharedMembersRemoveConfirm": { "placeholders": { "name": { "type": "String" } } },
+  "@sharedMembersRemoveConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "sharedMembersRemoved": "已移除成員",
   "sharedMembersTransferTitle": "轉讓所有權",
   "sharedMembersTransferTo": "轉讓給該成員",
   "sharedMembersTransferConfirm": "把帳本所有權轉給 {name}?你將變為編輯者,無法再邀請人 / 改帳本名 / 刪帳本。",
-  "@sharedMembersTransferConfirm": { "placeholders": { "name": { "type": "String" } } },
+  "@sharedMembersTransferConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "sharedMembersTransferConfirmCta": "確認轉讓",
   "sharedMembersTransferDone": "已轉讓所有權",
   "sharedTxRecordedBy": "{name} 記的",
-  "@sharedTxRecordedBy": { "placeholders": { "name": { "type": "String" } } },
+  "@sharedTxRecordedBy": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "sharedTxCreatedBy": "{name} 建立",
-  "@sharedTxCreatedBy": { "placeholders": { "name": { "type": "String" } } },
+  "@sharedTxCreatedBy": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "sharedTxEditedBy": "{name} 最後編輯",
-  "@sharedTxEditedBy": { "placeholders": { "name": { "type": "String" } } },
+  "@sharedTxEditedBy": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "sharedTxCreatedAndEditedBy": "{name} 建立並編輯",
-  "@sharedTxCreatedAndEditedBy": { "placeholders": { "name": { "type": "String" } } },
+  "@sharedTxCreatedAndEditedBy": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "sharedRequiresCloudSync": "請先啟用雲端同步",
   "sharedMembersStatsTitle": "成員收支",
   "sharedMembersStatsEmpty": "本期暫無記帳",
@@ -2872,7 +3029,13 @@
   "sharedMembersStatsIncome": "總收入",
   "sharedMembersStatsExpense": "總支出",
   "sharedMembersStatsTxCount": "{count}筆",
-  "@sharedMembersStatsTxCount": { "placeholders": { "count": { "type": "int" } } },
+  "@sharedMembersStatsTxCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "maintenanceOrphanCleanupTitle": "資料清理",
   "maintenanceOrphanCleanupSubtitle": "檢查並清理本地孤兒資料",
   "maintenanceOrphanRescan": "重新掃描",
@@ -2881,27 +3044,81 @@
   "maintenanceOrphanGroupFile": "磁碟檔案孤兒",
   "maintenanceOrphanGroupSync": "同步狀態孤兒",
   "maintenanceOrphanSummary": "發現 {count} 項異常",
-  "@maintenanceOrphanSummary": { "placeholders": { "count": { "type": "int" } } },
+  "@maintenanceOrphanSummary": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "maintenanceOrphanSummarySize": "可釋放空間約 {size}",
-  "@maintenanceOrphanSummarySize": { "placeholders": { "size": { "type": "String" } } },
+  "@maintenanceOrphanSummarySize": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
   "maintenanceOrphanSelectAll": "全選",
   "maintenanceOrphanDeselectAll": "取消全選",
   "maintenanceOrphanDeleteOne": "刪除此項",
   "maintenanceOrphanSelectedHint": "已選 {count} 項",
-  "@maintenanceOrphanSelectedHint": { "placeholders": { "count": { "type": "int" } } },
+  "@maintenanceOrphanSelectedHint": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "maintenanceOrphanCleanSelected": "清理已選",
   "maintenanceOrphanConfirmTitle": "確認清理",
   "maintenanceOrphanConfirmDeleteOne": "確定清理「{title}」嗎？操作不可撤銷。",
-  "@maintenanceOrphanConfirmDeleteOne": { "placeholders": { "title": { "type": "String" } } },
+  "@maintenanceOrphanConfirmDeleteOne": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
   "maintenanceOrphanConfirmDeleteBatch": "確定清理選中的 {count} 項嗎？操作不可撤銷。",
-  "@maintenanceOrphanConfirmDeleteBatch": { "placeholders": { "count": { "type": "int" } } },
+  "@maintenanceOrphanConfirmDeleteBatch": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "maintenanceOrphanCleanSuccess": "已清理 {count} 項",
-  "@maintenanceOrphanCleanSuccess": { "placeholders": { "count": { "type": "int" } } },
+  "@maintenanceOrphanCleanSuccess": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "maintenanceOrphanCleanPartial": "成功 {ok} 項,失敗 {fail} 項",
-  "@maintenanceOrphanCleanPartial": { "placeholders": { "ok": { "type": "int" }, "fail": { "type": "int" } } },
+  "@maintenanceOrphanCleanPartial": {
+    "placeholders": {
+      "ok": {
+        "type": "int"
+      },
+      "fail": {
+        "type": "int"
+      }
+    }
+  },
   "syncProgressTitle": "正在同步",
   "syncProgressCount": "{applied} / {total} 條",
-  "@syncProgressCount": { "placeholders": { "applied": { "type": "int" }, "total": { "type": "int" } } },
+  "@syncProgressCount": {
+    "placeholders": {
+      "applied": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
   "exchangeRatePageTitle": "匯率管理",
   "exchangeRateEntrySubtitle": "自動取得匯率，支援手動修正",
   "baseCurrencyLabel": "主幣種",
@@ -2945,20 +3162,37 @@
   "txCurrencyLabel": "幣種",
   "txRateLabel": "匯率",
   "txConvertedPreview": "≈ {amount} {currency}",
-  "@txConvertedPreview": { "placeholders": { "amount": {}, "currency": {} } },
+  "@txConvertedPreview": {
+    "placeholders": {
+      "amount": {},
+      "currency": {}
+    }
+  },
   "txRateMissingHint": "請手動填寫本筆匯率後儲存",
   "txCrossCurrencyTransferBlocked": "暫不支援跨幣種轉帳,請分別記兩筆或使用同幣種帳戶",
   "ledgerBaseCurrencyLabel": "主幣種",
   "statsConvertedFootnote": "含外幣,已按各筆記帳時匯率折算為 {currency}",
-  "@statsConvertedFootnote": { "placeholders": { "currency": {} } },
+  "@statsConvertedFootnote": {
+    "placeholders": {
+      "currency": {}
+    }
+  },
   "ledgerCurrencyChangeRecalcHint": "修改本位幣將按當前匯率重算全部歷史交易的折算值",
   "recalcForeignTxBanner": "偵測到該帳本有未折算的外幣交易",
   "recalcForeignTxAction": "按當前匯率重算折算",
   "recalcForeignTxDone": "已重算 {count} 筆外幣交易的折算值",
-  "@recalcForeignTxDone": { "placeholders": { "count": {} } },
+  "@recalcForeignTxDone": {
+    "placeholders": {
+      "count": {}
+    }
+  },
   "txCurrencyPickerTitle": "選擇幣種",
   "recalcSyncCountHint": "將重算並同步 {count} 筆交易",
-  "@recalcSyncCountHint": { "placeholders": { "count": {} } },
+  "@recalcSyncCountHint": {
+    "placeholders": {
+      "count": {}
+    }
+  },
   "exportCsvHeaderCurrency": "幣種",
   "importFieldCurrency": "幣種",
   "currencyMOP": "澳門元",

@@ -35,6 +35,10 @@ class AiExtractionContext {
   /// 用户自定义 prompt 模板。`null` 或空白 = 使用默认模板。
   final String? customPromptTemplate;
 
+  /// 归属账本的本地 id。中转请求带上它,服务端 AI 调用日志才能按账本归属;
+  /// fallback(无账本场景)为 null。
+  final int? ledgerId;
+
   const AiExtractionContext({
     this.expenseCategories = const [],
     this.incomeCategories = const [],
@@ -42,6 +46,7 @@ class AiExtractionContext {
     this.ledgerCurrency = 'CNY',
     this.availableCurrencies = const [],
     this.customPromptTemplate,
+    this.ledgerId,
   });
 
   /// 无账本场景的 fallback。prompt 走 hardcoded 默认分类,至少能识别金额。
@@ -96,6 +101,7 @@ class AiExtractionContext {
       ledgerCurrency: ledgerCurrency,
       availableCurrencies: currencies.toList()..sort(),
       customPromptTemplate: customTemplate,
+      ledgerId: ledgerId,
     );
   }
 }

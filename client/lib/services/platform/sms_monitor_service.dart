@@ -151,6 +151,13 @@ class SmsMonitorService {
                 : DateTime.fromMillisecondsSinceEpoch(timestamp),
             contentHash: fingerprint,
             sourceChannel: SourceChannelResolver.channelForSmsSender(sender),
+            rawText: body,
+            rawActor: sender,
+            rawMetadata: {
+              'fingerprint': fingerprint,
+              if (nativeEventKey.isNotEmpty) 'nativeEventKey': nativeEventKey,
+              if (timestamp != null) 'timestamp': timestamp,
+            },
           ),
           action: () => _autoBillingService.processSms(
             sender,

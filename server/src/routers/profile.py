@@ -22,6 +22,7 @@ from ..schemas import (
     UserProfilePatchRequest,
 )
 from ..security import SCOPE_APP_WRITE, SCOPE_OPS_WRITE, SCOPE_WEB_READ, SCOPE_WEB_WRITE
+from ..services.ai.ai_config_store import mask_ai_config, merge_ai_config_on_patch
 
 router = APIRouter()
 settings = get_settings()
@@ -145,7 +146,11 @@ def get_my_profile(
     income_is_red = profile.income_is_red if profile is not None else None
     theme_primary_color = profile.theme_primary_color if profile is not None else None
     appearance = _parse_appearance_json(profile.appearance_json) if profile is not None else None
-    ai_config = _parse_appearance_json(profile.ai_config_json) if profile is not None else None
+    # ai_config 对外一律掩码:providers[].apiKey 只回 `****+末4位`,真 key
+    # 永不出服务端(与 /ai/providers 列表同口径)。
+    ai_config = mask_ai_config(
+        _parse_appearance_json(profile.ai_config_json) if profile is not None else None
+    )
     primary_currency = profile.primary_currency if profile is not None else None
     return UserProfileOut(
         user_id=current_user.id,
@@ -180,16 +185,20 @@ async def patch_my_profile(
             income_is_red=req.income_is_red,
             theme_primary_color=req.theme_primary_color,
             appearance_json=_dump_appearance_json(req.appearance),
-            ai_config_json=_dump_appearance_json(req.ai_config),
+            ai_config_json=_dump_appearance_json(merge_ai_config_on_patch(None, req.ai_config))
+            if req.ai_config is not None
+            else None,
             primary_currency=(req.primary_currency.upper() if req.primary_currency is not None else None),
             updated_at=now,
         )
         db.add(profile)
     else:
         # 只更新显式提供的字段，None 表示不改。这样 mobile 切单项配色时
-        # 不会把其它字段清掉；反之亦然。appearance / ai_config 例外:客户端
-        # 传 {} 时视为清空（_dump_appearance_json 返回 None），传 dict 时
-        # 整体替换。
+        # 不会把其它字段清掉；反之亦然。appearance 例外:客户端传 {} 时视为
+        # 清空（_dump_appearance_json 返回 None），传 dict 时整体替换。
+        # ai_config:整体替换 + 密钥合并 —— 传入 providers[].apiKey 为空 /
+        # 掩码 = 保留服务端原值,不带 providers 段 = 原段整体保留(密钥
+        # 只存不吐后,客户端回传的 ai_config 不再含真 key)。
         if req.display_name is not None:
             profile.display_name = req.display_name
         if req.income_is_red is not None:
@@ -199,7 +208,10 @@ async def patch_my_profile(
         if req.appearance is not None:
             profile.appearance_json = _dump_appearance_json(req.appearance)
         if req.ai_config is not None:
-            profile.ai_config_json = _dump_appearance_json(req.ai_config)
+            existing_ai = _parse_appearance_json(profile.ai_config_json)
+            profile.ai_config_json = _dump_appearance_json(
+                merge_ai_config_on_patch(existing_ai, req.ai_config)
+            )
         if req.primary_currency is not None:
             profile.primary_currency = req.primary_currency.upper()
         profile.updated_at = now
@@ -217,7 +229,7 @@ async def patch_my_profile(
         profile.primary_currency,
     )
     appearance = _parse_appearance_json(profile.appearance_json)
-    ai_config = _parse_appearance_json(profile.ai_config_json)
+    ai_config = mask_ai_config(_parse_appearance_json(profile.ai_config_json))
     await _broadcast_profile_change(
         request,
         user_id=current_user.id,

@@ -14,6 +14,8 @@ from src.services.ai.provider_client import (
     ChatProviderConfig,
     _rejected_param,
     call_chat_json,
+    supports_disabled_thinking,
+    with_disabled_thinking,
 )
 
 _MOONSHOT_TEMP_ERR = (
@@ -57,6 +59,25 @@ def test_rejected_param_response_format():
     assert _rejected_param(payload, 400, body) == "response_format"
 
 
+def test_disabled_thinking_is_only_added_for_glm_45_or_46():
+    assert supports_disabled_thinking("glm-4.6v") is True
+    assert supports_disabled_thinking("Pro/GLM-4.5-Air") is True
+    assert supports_disabled_thinking("GLM-5.2") is True
+    assert supports_disabled_thinking("Pro/GLM-4.5V") is False
+    assert supports_disabled_thinking("GLM-4.7") is False
+    assert supports_disabled_thinking("glm-4v-flash") is False
+    assert supports_disabled_thinking("Qwen/Qwen3-VL-8B") is False
+
+    payload = {"model": "glm-4.6v", "messages": []}
+    assert with_disabled_thinking(
+        payload, model="glm-4.6v", disable_thinking=True
+    )["thinking"] == {"type": "disabled"}
+    assert payload == {"model": "glm-4.6v", "messages": []}
+    assert "thinking" not in with_disabled_thinking(
+        payload, model="glm-4v-flash", disable_thinking=True
+    )
+
+
 # ──────────────── call_chat_json 真实解析路径 ────────────────
 
 
@@ -87,3 +108,33 @@ def test_call_chat_json_strips_temperature_and_succeeds():
     assert len(calls) == 2                       # 带温度→被拒,不带温度→成功
     assert "temperature" in calls[0]
     assert "temperature" not in calls[1]
+
+
+
+def test_call_chat_json_sends_disabled_thinking_for_glm46():
+    calls: list[dict | None] = []
+
+    async def fake_post(self, url, headers=None, json=None, **_):
+        calls.append(dict(json) if json else None)
+        return httpx.Response(
+            200, json={"choices": [{"message": {"content": '{\"ok\": true}'}}]}
+        )
+
+    cfg = ChatProviderConfig(
+        provider_id="p-glm",
+        base_url="https://open.bigmodel.cn/api/paas/v4",
+        api_key="sk-x",
+        model="glm-4.6v",
+    )
+    with patch("httpx.AsyncClient.post", fake_post):
+        result = asyncio.run(
+            call_chat_json(
+                config=cfg,
+                messages=[{"role": "user", "content": "hi"}],
+                disable_thinking=True,
+            )
+        )
+
+    assert result.parsed == {"ok": True}
+    assert len(calls) == 1
+    assert calls[0]["thinking"] == {"type": "disabled"}

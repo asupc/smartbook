@@ -4,7 +4,6 @@ import 'package:drift/drift.dart';
 
 import '../ai/core/ai_extraction_engine.dart';
 import '../services/ai/ai_bookkeeper.dart';
-import '../services/ai/ai_call_reporter.dart';
 import '../services/ai/ai_chat_service.dart';
 import '../services/billing/bill_creation_service.dart';
 import '../providers.dart';
@@ -15,27 +14,8 @@ final aiExtractionEngineProvider = Provider<AiExtractionEngine>(
   (ref) => const DefaultAiExtractionEngine(),
 );
 
-/// AI 调用记录上报器 —— 把 App 本地 AI 记账调用(通知/短信/截图/对话/语音)
-/// 上报服务端 `ai_analysis_logs`,让 Web「AI 调用记录」页与 App 共用数据。
-/// SmartBook Cloud 未配置或未登录时返回 null(不上报,零影响)。
-final aiCallReporterProvider = Provider<AiCallReporter?>((ref) {
-  final async = ref.watch(smartbookCloudProviderInstance);
-  final provider = async.value;
-  if (provider == null) return null;
-  final auth = provider.auth;
-  // SmartBook provider 的 auth 就是 SmartBookCloudAuthService(见
-  // smartbook_cloud_provider.initialize);其它 auth 实现没有 token 获取接口,
-  // 不上报。
-  if (auth is! SmartBookCloudAuthService) return null;
-  return AiCallReporterHttp(
-    baseUrl: provider.baseUrl ?? '',
-    apiPrefix: provider.apiPrefix ?? '/api/v1',
-    accessToken: () => auth.requireAccessToken(),
-  );
-});
-
 /// AI 记账应用层 (Layer 2)。5 个调用渠道(对话/图片/语音/自动截图/自动文本)
-/// 的统一入口。
+/// 的统一入口。AI 调用日志由服务端在中转现场落库,客户端不再上报。
 final aiBookkeeperProvider = Provider<AiBookkeeper>((ref) {
   final repo = ref.watch(repositoryProvider);
   return AiBookkeeper(
@@ -50,7 +30,6 @@ final aiBookkeeperProvider = Provider<AiBookkeeper>((ref) {
       ensureRate: (code) =>
           refreshExchangeRates(ref, force: true, extraQuotes: {code}),
     ),
-    reporter: ref.watch(aiCallReporterProvider),
   );
 });
 

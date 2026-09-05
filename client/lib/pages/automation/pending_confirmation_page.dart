@@ -1,15 +1,36 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../ai/core/bill_info.dart';
+import '../../services/automation/auto_book_event.dart';
 import '../../data/db.dart' as schema;
+import '../../data/repositories/base_repository.dart';
+import '../../data/repositories/local/local_repository.dart';
 import '../../l10n/app_localizations.dart';
 import '../../providers.dart';
 import '../../providers/ai_chat_providers.dart';
+import '../../providers/automation_providers.dart';
 import '../../services/billing/pending_candidate.dart';
 import '../../services/data/tag_seed_service.dart';
 import '../../widgets/ui/primary_header.dart';
 import '../../widgets/ui/toast.dart';
+import '../../utils/transaction_edit_utils.dart';
 import 'auto_book_history_page.dart';
+
+class _MatchedTransactionDetails {
+  final schema.Transaction transaction;
+  final schema.Category? category;
+  final schema.Account? account;
+  final schema.Account? toAccount;
+
+  const _MatchedTransactionDetails({
+    required this.transaction,
+    this.category,
+    this.account,
+    this.toAccount,
+  });
+}
 
 /// 待确认记账队列页(自动记账 M2)。
 ///
@@ -33,6 +54,12 @@ class _PendingConfirmationPageState
   String _ledgerFilter = 'all';
   String _dateFilter = 'all';
   List<schema.Ledger> _ledgers = const [];
+  Map<int, _MatchedTransactionDetails?> _matchedTransactions = const {};
+  int _reloadToken = 0;
+
+  /// 离线识别草稿页签(自动记账连不上服务端时攒下的待重试输入)
+  bool _showDrafts = false;
+  List<schema.AutoBookEvent> _drafts = const [];
 
   @override
   void initState() {
@@ -41,6 +68,7 @@ class _PendingConfirmationPageState
   }
 
   Future<void> _reload() async {
+    final reloadToken = ++_reloadToken;
     final repo = ref.read(repositoryProvider);
     final list = await _store.loadForReview(
       ref.read(autoBookCoordinatorProvider).store,
@@ -52,13 +80,128 @@ class _PendingConfirmationPageState
         _ledgers = const [];
       }
     }
-    if (!mounted) return;
+    final matchedTransactions = await _loadMatchedTransactions(repo, list);
+    if (!mounted || reloadToken != _reloadToken) return;
+    final drafts = await ref.read(autoBookCoordinatorProvider).store.listDrafts();
+    if (!mounted || reloadToken != _reloadToken) return;
     setState(() {
       _candidates = list;
+      _matchedTransactions = matchedTransactions;
+      _drafts = drafts;
       _loading = false;
     });
     // M2 统计维度 M5?此处刷新交易列表 provider,确认入账后 UI 即时反映
     ref.read(statsRefreshProvider.notifier).state++;
+  }
+
+  Future<Map<int, _MatchedTransactionDetails?>> _loadMatchedTransactions(
+    BaseRepository repo,
+    List<PendingCandidate> candidates,
+  ) async {
+    final ids = candidates
+        .map((candidate) => candidate.matchedTransactionId)
+        .whereType<int>()
+        .toSet()
+        .toList();
+    if (ids.isEmpty) return const {};
+
+    final details = await Future.wait(
+      ids.map((id) => _loadMatchedTransaction(repo, id)),
+    );
+    return <int, _MatchedTransactionDetails?>{
+      for (var i = 0; i < ids.length; i++) ids[i]: details[i],
+    };
+  }
+
+  Future<_MatchedTransactionDetails?> _loadMatchedTransaction(
+    BaseRepository repo,
+    int transactionId,
+  ) async {
+    try {
+      final transaction = await repo.getTransactionById(transactionId);
+      if (transaction == null) return null;
+
+      schema.Category? category;
+      schema.Account? account;
+      schema.Account? toAccount;
+
+      // Local transactions use integer foreign keys. Shared-ledger transactions
+      // may instead keep the selected category/account in syncId overrides.
+      category = transaction.categoryId == null
+          ? null
+          : await repo.getCategoryById(transaction.categoryId!);
+      account = transaction.accountId == null
+          ? null
+          : await repo.getAccount(transaction.accountId!);
+      toAccount = transaction.toAccountId == null
+          ? null
+          : await repo.getAccount(transaction.toAccountId!);
+
+      // Resolve shared-ledger overrides when the local foreign keys are null.
+      if (repo is LocalRepository) {
+        if (category == null &&
+            transaction.categorySyncIdOverride != null &&
+            transaction.categorySyncIdOverride!.isNotEmpty) {
+          final shared = await (repo.db.select(repo.db.sharedLedgerCategories)
+                ..where((row) => row.syncId.equals(
+                      transaction.categorySyncIdOverride!,
+                    )))
+              .getSingleOrNull();
+          if (shared != null) {
+            category = schema.Category(
+              id: -1,
+              name: shared.name,
+              kind: shared.kind,
+              icon: shared.icon,
+              sortOrder: shared.sortOrder,
+              parentId: null,
+              level: shared.level,
+              iconType: shared.iconType,
+              customIconPath: null,
+              communityIconId: null,
+              syncId: shared.syncId,
+            );
+          }
+        }
+        Future<schema.Account?> sharedAccount(String? syncId) async {
+          if (syncId == null || syncId.isEmpty) return null;
+          final shared = await repo.getSharedAccountBySyncId(syncId);
+          if (shared == null) return null;
+          return schema.Account(
+            id: -1,
+            ledgerId: transaction.ledgerId,
+            name: shared.name,
+            type: shared.accountType,
+            currency: shared.currency,
+            initialBalance: shared.initialBalance ?? 0.0,
+            createdAt: null,
+            updatedAt: null,
+            sortOrder: 0,
+            creditLimit: shared.creditLimit,
+            billingDay: shared.billingDay,
+            paymentDueDay: shared.paymentDueDay,
+            bankName: shared.bankName,
+            cardLastFour: shared.cardLastFour,
+            note: shared.note,
+            syncId: shared.syncId,
+            hidden: false,
+          );
+        }
+
+        account ??= await sharedAccount(transaction.accountSyncIdOverride);
+        toAccount ??= await sharedAccount(transaction.toAccountSyncIdOverride);
+      }
+
+      return _MatchedTransactionDetails(
+        transaction: transaction,
+        category: category,
+        account: account,
+        toAccount: toAccount,
+      );
+    } catch (_) {
+      // A stale/deleted match should be visible as such, not break the queue.
+      return null;
+    }
   }
 
   List<PendingCandidate> get _visibleCandidates {
@@ -102,6 +245,160 @@ class _PendingConfirmationPageState
         return '周期交易';
       default:
         return source;
+    }
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  // 离线识别草稿(自动记账连不上服务端时攒下的待重试输入)
+  // ────────────────────────────────────────────────────────────────────
+
+  Widget _buildDraftsList(ThemeData theme) {
+    final l10n = AppLocalizations.of(context);
+    if (_drafts.isEmpty) {
+      return Center(
+        child: Text(
+          l10n.automationDraftsEmpty,
+          style:
+              TextStyle(color: theme.colorScheme.onSurface.withValues(alpha: 0.6)),
+        ),
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: _reload,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: _drafts.length,
+        itemBuilder: (context, index) {
+          final event = _drafts[index];
+          return _buildDraftCard(event, theme, l10n);
+        },
+      ),
+    );
+  }
+
+  Widget _buildDraftCard(
+    schema.AutoBookEvent event,
+    ThemeData theme,
+    AppLocalizations l10n,
+  ) {
+    final payload = _draftPayloadOf(event);
+    final preview = _draftPreviewText(event, payload);
+    final captured = event.capturedAt.toLocal();
+    final timeLabel =
+        '${captured.month}/${captured.day} ${captured.hour.toString().padLeft(2, '0')}:${captured.minute.toString().padLeft(2, '0')}';
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: ListTile(
+        leading: Icon(_draftIcon(event.source),
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.7)),
+        title: Text(
+          preview,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.bodyMedium,
+        ),
+        subtitle: Text(
+          '$timeLabel · ${_sourceLabel(event.source)}',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+          ),
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              tooltip: l10n.automationDraftsRetry,
+              icon: const Icon(Icons.refresh),
+              onPressed: () => _retryDraft(event),
+            ),
+            IconButton(
+              tooltip: l10n.automationDraftsDiscard,
+              icon: const Icon(Icons.delete_outline),
+              onPressed: () => _discardDraft(event),
+            ),
+          ],
+        ),
+        onTap: () => _retryDraft(event),
+      ),
+    );
+  }
+
+  AutoBookDraftPayload? _draftPayloadOf(schema.AutoBookEvent event) {
+    final raw = event.draftPayloadJson;
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      return AutoBookDraftPayload.fromJson(jsonDecode(raw));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _draftPreviewText(schema.AutoBookEvent event, AutoBookDraftPayload? payload) {
+    if (payload == null) return event.eventKey;
+    if (payload.isImage) return _copy('图片识别草稿', 'Image recognition draft');
+    final text = (payload.text ?? '').trim();
+    return text.isEmpty ? event.eventKey : text;
+  }
+
+  IconData _draftIcon(String source) {
+    switch (source) {
+      case 'sms':
+        return Icons.sms_outlined;
+      case 'notification':
+        return Icons.notifications_outlined;
+      case 'screenText':
+        return Icons.chrome_reader_mode_outlined;
+      case 'screenshot':
+      case 'sharedImage':
+        return Icons.image_outlined;
+      default:
+        return Icons.receipt_long_outlined;
+    }
+  }
+
+  String _draftSourceLabel(String source) {
+    switch (source) {
+      case 'sms':
+        return _copy('短信', 'SMS');
+      case 'notification':
+        return _copy('通知', 'Notification');
+      case 'screenText':
+        return _copy('屏幕文本', 'Screen text');
+      case 'screenshot':
+        return _copy('截图', 'Screenshot');
+      case 'sharedImage':
+        return _copy('分享图片', 'Shared image');
+      case 'deepLinkText':
+        return _copy('链接文本', 'Link text');
+      default:
+        return source;
+    }
+  }
+
+  String _copy(String zh, String en) {
+    final code = Localizations.localeOf(context).languageCode;
+    return code == 'zh' ? zh : en;
+  }
+
+  Future<void> _retryDraft(schema.AutoBookEvent event) async {
+    final l10n = AppLocalizations.of(context);
+    try {
+      final service = ref.read(autoBillingServiceProvider);
+      final replayed = await service.retryDraft(event);
+      if (!mounted) return;
+      showToast(context, replayed ? l10n.automationDraftsRetryQueued : l10n.automationDraftsDiscarded);
+      await _reload();
+    } catch (e) {
+      if (mounted) showToast(context, '$e');
+    }
+  }
+
+  Future<void> _discardDraft(schema.AutoBookEvent event) async {
+    try {
+      await ref.read(autoBookCoordinatorProvider).store.clearDraft(event.id);
+      await _reload();
+    } catch (e) {
+      if (mounted) showToast(context, '$e');
     }
   }
 
@@ -395,10 +692,32 @@ class _PendingConfirmationPageState
               ),
             ],
           ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: SegmentedButton<bool>(
+              segments: [
+                ButtonSegment(
+                  value: false,
+                  label: Text(l10n.pendingConfirmationTitle),
+                  icon: const Icon(Icons.fact_check_outlined),
+                ),
+                ButtonSegment(
+                  value: true,
+                  label: Text(l10n.automationDraftsTitle),
+                  icon: const Icon(Icons.schedule_send_outlined),
+                ),
+              ],
+              selected: {_showDrafts},
+              onSelectionChanged: (value) =>
+                  setState(() => _showDrafts = value.single),
+            ),
+          ),
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
-                : Column(
+                : _showDrafts
+                    ? _buildDraftsList(theme)
+                    : Column(
                     children: [
                       if (_candidates.isNotEmpty) _buildFilters(context),
                       Expanded(
@@ -513,17 +832,10 @@ class _PendingConfirmationPageState
                                               ],
                                             ),
                                           if (c.matchedTransactionId != null)
-                                            Padding(
-                                              padding:
-                                                  const EdgeInsets.only(top: 4),
-                                              child: Text(
-                                                '可能与已有交易 #${c.matchedTransactionId} 重复${c.matchScore == null ? '' : '（匹配度 ${(c.matchScore! * 100).round()}%）'}',
-                                                style: theme.textTheme.bodySmall
-                                                    ?.copyWith(
-                                                  color: theme
-                                                      .colorScheme.secondary,
-                                                ),
-                                              ),
+                                            _buildMatchedTransactionPreview(
+                                              context,
+                                              c,
+                                              l10n,
                                             ),
                                           Padding(
                                             padding:
@@ -580,6 +892,363 @@ class _PendingConfirmationPageState
         ],
       ),
     );
+  }
+
+  Widget _buildMatchedTransactionPreview(
+    BuildContext context,
+    PendingCandidate candidate,
+    AppLocalizations l10n,
+  ) {
+    final theme = Theme.of(context);
+    final transactionId = candidate.matchedTransactionId!;
+    final details = _matchedTransactions[transactionId];
+    final loaded = _matchedTransactions.containsKey(transactionId);
+
+    return Container(
+      key: ValueKey('matched_transaction_$transactionId'),
+      margin: const EdgeInsets.only(top: 8),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.34),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: theme.colorScheme.secondary.withValues(alpha: 0.28),
+        ),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: details == null
+            ? null
+            : () => _showTransactionComparison(
+                  candidate,
+                  details,
+                  l10n,
+                ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
+          child: !loaded
+              ? Row(
+                  children: [
+                    SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: theme.colorScheme.secondary,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(l10n.pendingConfirmationSimilarTransaction),
+                  ],
+                )
+              : details == null
+                  ? Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.warning_amber_rounded,
+                          size: 18,
+                          color: theme.colorScheme.error,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            '${l10n.pendingConfirmationSimilarTransaction} #$transactionId\n${l10n.pendingConfirmationMatchedMissing}',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.error,
+                            ),
+                          ),
+                        ),
+                      ],
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.compare_arrows,
+                              size: 17,
+                              color: theme.colorScheme.secondary,
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                '${l10n.pendingConfirmationSimilarTransaction} #$transactionId',
+                                style: theme.textTheme.labelLarge?.copyWith(
+                                  color: theme.colorScheme.secondary,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            if (candidate.matchScore != null)
+                              Text(
+                                '${l10n.pendingConfirmationMatchScoreLabel} ${(candidate.matchScore! * 100).round()}%',
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: theme.colorScheme.secondary,
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _matchedTransactionTitle(details, l10n),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          '${_amountText(details.transaction.amount, details.transaction.currencyCode)}  ·  ${_dateTimeText(details.transaction.happenedAt)}${_matchedCategoryText(details) == null ? '' : '  ·  ${_matchedCategoryText(details)}'}',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton.icon(
+                            onPressed: () => _showTransactionComparison(
+                              candidate,
+                              details,
+                              l10n,
+                            ),
+                            icon:
+                                const Icon(Icons.visibility_outlined, size: 16),
+                            label: Text(l10n.pendingConfirmationCompare),
+                            style: TextButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 4),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+        ),
+      ),
+    );
+  }
+
+  String _matchedTransactionTitle(
+    _MatchedTransactionDetails details,
+    AppLocalizations l10n,
+  ) {
+    final note = details.transaction.note?.trim();
+    if (note != null && note.isNotEmpty) return note;
+    final category = details.category?.name.trim();
+    if (category != null && category.isNotEmpty) return category;
+    return l10n.commonEmpty;
+  }
+
+  String? _matchedCategoryText(_MatchedTransactionDetails details) {
+    final category = details.category?.name.trim();
+    return category == null || category.isEmpty ? null : category;
+  }
+
+  String _amountText(double? amount, String? currencyCode) {
+    if (amount == null) return '-';
+    final value = amount.abs().toStringAsFixed(2);
+    final currency = currencyCode?.trim();
+    return currency == null || currency.isEmpty ? value : '$currency $value';
+  }
+
+  String _dateTimeText(DateTime? value) {
+    if (value == null) return '-';
+    final local = value.toLocal();
+    String pad(int number) => number.toString().padLeft(2, '0');
+    return '${local.year}-${pad(local.month)}-${pad(local.day)} '
+        '${pad(local.hour)}:${pad(local.minute)}';
+  }
+
+  String _candidateAccountText(PendingCandidate candidate) {
+    final bill = candidate.bill;
+    if (bill.type == BillType.transfer) {
+      final from = bill.fromAccount?.trim();
+      final to = bill.toAccount?.trim();
+      if (from != null && from.isNotEmpty && to != null && to.isNotEmpty) {
+        return '$from → $to';
+      }
+      return from ?? to ?? '';
+    }
+    return bill.account?.trim() ?? '';
+  }
+
+  String _matchedAccountText(_MatchedTransactionDetails details) {
+    final from = details.account?.name.trim();
+    final to = details.toAccount?.name.trim();
+    if (details.transaction.type == 'transfer' &&
+        from != null &&
+        from.isNotEmpty &&
+        to != null &&
+        to.isNotEmpty) {
+      return '$from → $to';
+    }
+    return from ?? to ?? '';
+  }
+
+  Widget _buildComparisonField(
+    BuildContext context,
+    String label,
+    String value,
+  ) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: 7),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 72,
+            child: Text(
+              label,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              value.isEmpty ? '-' : value,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildComparisonPanel(
+    BuildContext context, {
+    required AppLocalizations l10n,
+    required String title,
+    required String note,
+    required String amount,
+    required String time,
+    required String category,
+    required String account,
+  }) {
+    final theme = Theme.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+      decoration: BoxDecoration(
+        color:
+            theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          _buildComparisonField(context, l10n.pendingConfirmationNote, note),
+          _buildComparisonField(
+              context, l10n.pendingConfirmationAmount, amount),
+          _buildComparisonField(context, l10n.billCardTime, time),
+          _buildComparisonField(context, l10n.billCardCategory, category),
+          _buildComparisonField(context, l10n.billCardAccount, account),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showTransactionComparison(
+    PendingCandidate candidate,
+    _MatchedTransactionDetails details,
+    AppLocalizations l10n,
+  ) async {
+    final transaction = details.transaction;
+    final action = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        final bill = candidate.bill;
+        return AlertDialog(
+          title: Row(
+            children: [
+              const Icon(Icons.compare_arrows),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '${l10n.pendingConfirmationSimilarTransaction} #${transaction.id}',
+                ),
+              ),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildComparisonPanel(
+                  dialogContext,
+                  l10n: l10n,
+                  title: l10n.pendingConfirmationCandidate,
+                  note: bill.note ?? '',
+                  amount: _amountText(bill.amount, bill.currency),
+                  time: _dateTimeText(bill.time),
+                  category: bill.category ?? '',
+                  account: _candidateAccountText(candidate),
+                ),
+                const SizedBox(height: 10),
+                _buildComparisonPanel(
+                  dialogContext,
+                  l10n: l10n,
+                  title: l10n.pendingConfirmationExisting,
+                  note: transaction.note ?? '',
+                  amount: _amountText(
+                    transaction.amount,
+                    transaction.currencyCode,
+                  ),
+                  time: _dateTimeText(transaction.happenedAt),
+                  category: details.category?.name ?? '',
+                  account: _matchedAccountText(details),
+                ),
+                if (candidate.matchScore != null) ...[
+                  const SizedBox(height: 10),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      '${l10n.pendingConfirmationMatchScoreLabel} ${(candidate.matchScore! * 100).round()}%',
+                      style: Theme.of(dialogContext).textTheme.bodySmall,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: Text(l10n.commonClose),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              icon: const Icon(Icons.open_in_new, size: 17),
+              label: Text(l10n.pendingConfirmationOpenMatched),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (action == true && mounted) {
+      await TransactionEditUtils.editTransaction(
+        context,
+        ref,
+        transaction,
+        details.category,
+      );
+      await _reload();
+    }
   }
 
   Widget _chip(BuildContext context, String text) {

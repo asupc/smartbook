@@ -8918,6 +8918,48 @@ abstract class AppLocalizations {
   /// **'Anomalous - above recent baseline'**
   String get pendingCandidateReasonAnomaly;
 
+  /// No description provided for @pendingConfirmationSimilarTransaction.
+  ///
+  /// In en, this message translates to:
+  /// **'Similar existing transaction'**
+  String get pendingConfirmationSimilarTransaction;
+
+  /// No description provided for @pendingConfirmationCompare.
+  ///
+  /// In en, this message translates to:
+  /// **'Compare'**
+  String get pendingConfirmationCompare;
+
+  /// No description provided for @pendingConfirmationCandidate.
+  ///
+  /// In en, this message translates to:
+  /// **'Pending candidate'**
+  String get pendingConfirmationCandidate;
+
+  /// No description provided for @pendingConfirmationExisting.
+  ///
+  /// In en, this message translates to:
+  /// **'Existing transaction'**
+  String get pendingConfirmationExisting;
+
+  /// No description provided for @pendingConfirmationMatchedMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'This transaction no longer exists or was deleted'**
+  String get pendingConfirmationMatchedMissing;
+
+  /// No description provided for @pendingConfirmationOpenMatched.
+  ///
+  /// In en, this message translates to:
+  /// **'Open existing transaction'**
+  String get pendingConfirmationOpenMatched;
+
+  /// No description provided for @pendingConfirmationMatchScoreLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Match'**
+  String get pendingConfirmationMatchScoreLabel;
+
   /// No description provided for @autoDeleteScreenshotTitle.
   ///
   /// In en, this message translates to:
@@ -12253,6 +12295,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'API Key not configured'**
   String get aiProviderNoApiKey;
+
+  /// No description provided for @aiProviderApiKeyKeepHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave blank to keep the current key'**
+  String get aiProviderApiKeyKeepHint;
+
+  /// No description provided for @automationDraftsDiscarded.
+  ///
+  /// In en, this message translates to:
+  /// **'Draft discarded'**
+  String get automationDraftsDiscarded;
+
+  /// No description provided for @automationDraftsRetryQueued.
+  ///
+  /// In en, this message translates to:
+  /// **'Re-submitted for recognition'**
+  String get automationDraftsRetryQueued;
+
+  /// No description provided for @automationDraftsDiscard.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard draft'**
+  String get automationDraftsDiscard;
+
+  /// No description provided for @automationDraftsRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry recognition'**
+  String get automationDraftsRetry;
+
+  /// No description provided for @automationDraftsEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No offline recognition drafts'**
+  String get automationDraftsEmpty;
+
+  /// No description provided for @automationDraftsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Drafts'**
+  String get automationDraftsTitle;
 
   /// No description provided for @aiProviderTapToEdit.
   ///

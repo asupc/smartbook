@@ -115,6 +115,23 @@ class _PrivacyPolicyPageState extends ConsumerState<PrivacyPolicyPage> {
               showBack: true,
               compact: true,
             ),
+            ListTile(
+              leading: const Icon(Icons.privacy_tip_outlined),
+              title: Text(Localizations.localeOf(context).languageCode == 'zh'
+                  ? 'SmartBook 原始证据隐私补充说明'
+                  : 'SmartBook raw evidence privacy supplement'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => showDialog<void>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: Text(Localizations.localeOf(ctx).languageCode == 'zh' ? '原始证据 · 2026-09-05' : 'Raw evidence · 2026-09-05'),
+                  content: SingleChildScrollView(child: Text(Localizations.localeOf(ctx).languageCode == 'zh'
+                      ? '本机与服务端原始短信、通知和屏幕文本留存默认关闭，在隐私面板按来源分别开启并配置保留期。策略变更影响新采集事件，不追溯收集旧正文。\n\n仅服务端保存时，本机临时排队到上传成功或期限届满；上传成功清除临时原文。服务端证据按账号隔离，不随共享账本公开，不进入交易备注或普通同步。\n\n本机与服务端证据分别删除，不删除已生成的交易。查看不会再次调用 AI 或触发自动记账。本证据通道只支持文本和元数据，不支持截图原图。\n\nAI 授权、AI 调用记录、交易图片附件及备份是独立功能。关闭证据留存不等于停用 AI，也不清除这些独立记录。上游官网隐私页不包含本二开补充说明。'
+                      : 'Local and server retention of original SMS, notifications and screen text is disabled by default. Configure each source in the privacy panel. Policy changes affect new captures only.\n\nServer-only retention uses a temporary local queue until upload succeeds or expires. Server evidence is private to your account, not shared with ledger members, and stays out of transaction notes and normal sync.\n\nDelete local and server evidence separately; transactions are kept. Viewing never invokes AI or bookkeeping. This channel supports text/metadata, not original screenshots.\n\nAI consent, AI call history, image attachments and backups are separate features. Disabling evidence retention does not disable AI or delete those records. The upstream website does not include this fork-specific supplement.')),
+                  actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
+                ),
+              ),
+            ),
             Expanded(
               child: Stack(
                 children: [

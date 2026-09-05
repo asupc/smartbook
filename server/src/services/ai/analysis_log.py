@@ -65,6 +65,7 @@ def write_ai_analysis_log(
     completion_tokens: int | None = None,
     total_tokens: int | None = None,
     client_ip: str | None = None,
+    dedup_hit: str | None = None,
 ) -> None:
     """同步落库 — INSERT 单行,毫秒级。失败静默(打日志,不 raise)。"""
     try:
@@ -85,6 +86,7 @@ def write_ai_analysis_log(
                     completion_tokens=completion_tokens,
                     total_tokens=total_tokens,
                     client_ip=client_ip,
+                    dedup_hit=dedup_hit,
                 )
             )
             db.commit()

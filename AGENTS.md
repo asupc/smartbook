@@ -49,9 +49,10 @@ Web (React) frontend is `server/frontend/`. **UI stack: antd 5** (PC 管理后�
 
 - **Deployed server (default):** set `SMARTBOOK_APP_URL` / `CORS_ORIGINS` in your own `.env` (see `.env.example`), HTTPS only (plain `http://` returns 400).
 - **Auth:** JWT + Personal Access Token (PAT). Transaction writes support `Idempotency-Key` for dedup.
-- **Custom LLM = two independent paths:**
-  1. *Chat/Vision* → AI bookkeeping (client "AI 服务商管理" page; syncs to server).
-  2. *Embedding* → server-side "问 AI" document RAG (`EMBEDDING_*`). Optional.
+- **Custom LLM architecture (2026-09 中转改造后):**
+  1. *App AI 记账全部经服务端中转* — 客户端不再直连 LLM;API Key 只存服务端(`UserProfile.ai_config_json`),任何接口不下发明文(`GET /profile/me` 与 `/ai/providers` 均掩码)。App 调 `/api/v1/ai/relay/{chat,vision,stt}`,服务商配置走 `/api/v1/ai/providers` CRUD;AI 调用日志由服务端在中转现场落 `ai_analysis_logs`,旧客户端自报通道 `POST /ai/logs*` 已删除。
+  2. *Web 端* — `/ai/parse-tx-*`(贴图/贴文记账)、`/ai/ask`(RAG)、`/ai/test-provider`(内联配置测试)不变。
+  3. *Embedding* → server-side "问 AI" document RAG (`EMBEDDING_*`). Optional.
 - **Secrets:** `.env*` is git-ignored — never commit real values. `JWT_SECRET` / DB passwords must be strong.
 - **License:** BSL — free for personal/non-profit/research; commercial use needs a paid license.
 

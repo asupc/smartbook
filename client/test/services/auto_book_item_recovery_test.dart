@@ -21,29 +21,26 @@ class _FixedEngine implements AiExtractionEngine {
   const _FixedEngine(this.bills);
 
   @override
-  Future<List<BillInfo>> extractFromText(
+  Future<AiExtractionOutcome> extractFromText(
     String text,
     AiExtractionContext ctx, {
     String billGuard = '',
-    AiCallReporter? onCall,
   }) async =>
-      bills;
+      AiExtractionOutcome(bills: bills);
 
   @override
   Future<List<BillInfo>> extractFromImage(
     File image,
     AiExtractionContext ctx, {
     String billGuard = '',
-    AiCallReporter? onCall,
   }) async =>
       bills;
 
   @override
   Future<AudioExtractionResult> extractFromAudio(
     File audio,
-    AiExtractionContext ctx, {
-    AiCallReporter? onCall,
-  }) async =>
+    AiExtractionContext ctx,
+  ) async =>
       AudioExtractionResult(bills: bills);
 
   @override

@@ -36,6 +36,10 @@ class ZhipuGLMProvider implements AIProvider<String, String> {
   /// 温度参数（0.0 - 1.0，越低越确定性）
   final double temperature;
 
+  /// 是否请求关闭 GLM-4.6 系列的深度思考。
+  /// 仅由上层对已知支持该参数的模型开启。
+  final bool disableThinking;
+
   /// 图片文件（可选，用于GLM-4V视觉模型）
   final File? imageFile;
 
@@ -57,6 +61,7 @@ class ZhipuGLMProvider implements AIProvider<String, String> {
     required this.apiKey,
     this.model = 'glm-4.6v-flash',
     this.temperature = 0.1,
+    this.disableThinking = false,
     this.imageFile,
     this.audioFile,
     this.connectTimeout = const Duration(seconds: 30),
@@ -121,17 +126,22 @@ class ZhipuGLMProvider implements AIProvider<String, String> {
 
       print('🔍 [GLM] 请求: model=$model, messages=${simplifiedMessages.length}条, temperature=$temperature');
 
+      final requestData = <String, dynamic>{
+        'model': model,
+        'messages': messages,
+        'temperature': temperature,
+      };
+      if (disableThinking) {
+        requestData['thinking'] = {'type': 'disabled'};
+      }
+
       final response = await _dio.post(
         'https://open.bigmodel.cn/api/paas/v4/chat/completions',
         options: Options(headers: {
           'Authorization': 'Bearer $apiKey',
           'Content-Type': 'application/json',
         }),
-        data: {
-          'model': model,
-          'messages': messages,
-          'temperature': temperature,
-        },
+        data: requestData,
       );
 
       print('📦 [GLM] 响应数据: ${jsonEncode(response.data)}');

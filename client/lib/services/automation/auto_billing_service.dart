@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../ai/core/prompt_builder.dart';
 import '../../ai/providers/ai_provider_config.dart';
+import '../../ai/providers/ai_provider_factory.dart';
 import '../../ai/providers/ai_provider_manager.dart';
 import '../../data/db.dart';
 import '../../l10n/app_localizations.dart';
@@ -543,6 +544,13 @@ class AutoBillingService {
           '处理截图失败',
           {'pathHash': autoBookHash(imagePath, length: 12), 'stage': '未知阶段'},
           stackTrace);
+      if (_isTransientAiError(e)) {
+        // 连不上服务端:保留原图路径为草稿(文件被系统清理时重试会自动放弃)
+        await _saveDraftForEvent(
+            eventKey,
+            AutoBookDraftPayload(
+                isImage: true, imagePath: imagePath, actor: 'screenshot'));
+      }
       if (showNotification && !notifyOnlyOnSuccess) {
         try {
           final l10n =
@@ -683,6 +691,11 @@ class AutoBillingService {
       return result;
     } catch (e, st) {
       logger.error('AutoBilling', '文本处理失败', e, st);
+      if (_isTransientAiError(e)) {
+        // 连不上服务端:保存离线草稿,联网恢复/手动触发后重试
+        await _saveDraftForEvent(
+            eventKey, AutoBookDraftPayload(isImage: false, text: text));
+      }
       if (showNotification) {
         final l10n = lookupAppLocalizations(PlatformDispatcher.instance.locale);
         await _showNotification(
@@ -837,6 +850,10 @@ class AutoBillingService {
       return SmsProcessOutcome.success;
     } catch (e) {
       logger.error('AutoBilling', '短信处理失败', e);
+      if (_isTransientAiError(e)) {
+        await _saveDraftForEvent(eventKey,
+            AutoBookDraftPayload(isImage: false, text: body, actor: sender));
+      }
       if (showNotification) {
         await _showFinalNotification(
           progressId: notificationId,
@@ -875,6 +892,135 @@ class AutoBillingService {
         .convert(utf8.encode('$pkg|$text'))
         .toString()
         .substring(0, 16);
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  // 离线识别草稿:连不上服务端(瞬态失败)时保存输入,等重试
+  // ────────────────────────────────────────────────────────────────────
+
+  /// 可恢复的临时失败:中转超时/断连(AIException.transient)或进程内网络异常。
+  /// 只有这类失败才保存草稿;4xx 校验失败(未配置/参数不合法)重试也不会好。
+  bool _isTransientAiError(Object error) {
+    if (error is AIException) return error.transient;
+    if (error is SocketException || error is TimeoutException) return true;
+    return false;
+  }
+
+  /// 瞬态失败时把识别输入存为草稿(挂到事件行上),供手动/自动重试。
+  /// 任何失败都静默 —— 草稿是增强能力,不能影响失败路径本身。
+  Future<void> _saveDraftForEvent(
+    String? eventKey,
+    AutoBookDraftPayload payload,
+  ) async {
+    if (eventKey == null || eventKey.isEmpty) return;
+    final store = _eventStore;
+    if (store == null) return;
+    try {
+      final saved = await store.saveDraftByEventKey(eventKey, payload);
+      logger.info(
+        'AutoBilling',
+        saved ? '服务端不可达,已保存离线识别草稿' : '草稿保存跳过(事件不存在)',
+        'key=${autoBookHash(eventKey, length: 12)} kind=${payload.isImage ? "image" : "text"}',
+      );
+    } catch (e) {
+      logger.warning('AutoBilling', '保存离线识别草稿失败: $e');
+    }
+  }
+
+  /// 手动重试一个草稿(解除退避闸门后按原通道重跑识别)。
+  /// 返回 true = 事件被重新执行(结果由通道通知/待确认页体现)。
+  Future<bool> retryDraft(AutoBookEvent event) async {
+    final payload = AutoBookDraftPayload.fromJson(event.draftPayloadJson);
+    if (payload == null) return false;
+    // 手动重试无视退避窗口
+    await _eventStore?.resetRetryGate(event.id);
+    return _replayDraft(event, payload);
+  }
+
+  /// 自动重试所有到期草稿(联网恢复/登录就绪/周期触发)。
+  /// 返回重跑的事件数。并发触发用简单互斥挡掉。
+  bool _draftRetryRunning = false;
+  Future<int> retryDueDrafts({int limit = 10}) async {
+    if (_draftRetryRunning) return 0;
+    _draftRetryRunning = true;
+    try {
+      final store = _eventStore;
+      if (store == null) return 0;
+      final drafts = await store.dueDrafts(limit: limit);
+      var replayed = 0;
+      for (final event in drafts) {
+        final payload = AutoBookDraftPayload.fromJson(event.draftPayloadJson);
+        if (payload == null) {
+          await store.clearDraft(event.id);
+          continue;
+        }
+        final replayed0 = await _replayDraft(event, payload);
+        if (replayed0) replayed++;
+      }
+      if (drafts.isNotEmpty) {
+        logger.info('AutoBilling', '离线草稿自动重试完成', 'due=${drafts.length}, replayed=$replayed');
+      }
+      return replayed;
+    } catch (e) {
+      logger.warning('AutoBilling', '离线草稿自动重试失败: $e');
+      return 0;
+    } finally {
+      _draftRetryRunning = false;
+    }
+  }
+
+  /// 按事件原通道重跑识别(coordinator 复用同一 eventKey 幂等)。
+  Future<bool> _replayDraft(AutoBookEvent event, AutoBookDraftPayload payload) async {
+    final key = event.eventKey;
+    switch (event.source) {
+      case 'screenshot':
+      case 'sharedImage':
+        final path = payload.imagePath ?? '';
+        if (path.isEmpty || !File(path).existsSync()) {
+          // 原图已被清理,无法重跑:清草稿,用户可在草稿列表刷新后看到它消失
+          await _eventStore?.clearDraft(event.id);
+          return false;
+        }
+        await processScreenshot(path, showNotification: true, eventKey: key);
+        return true;
+      case 'sms':
+        await processSms(
+          payload.actor ?? event.rawActor ?? '',
+          payload.text ?? event.rawText ?? '',
+          showNotification: true,
+          skipDedup: true,
+          eventKey: key,
+        );
+        return true;
+      case 'notification':
+        await processNotification(
+          payload.actor ?? event.rawActor ?? '',
+          payload.title ?? event.rawTitle ?? '',
+          payload.text ?? event.rawText ?? '',
+          showNotification: true,
+          skipDedup: true,
+          eventKey: key,
+        );
+        return true;
+      case 'screenText':
+        await processScreenText(
+          payload.actor ?? event.rawActor ?? '',
+          payload.text ?? event.rawText ?? '',
+          showNotification: true,
+          skipDedup: true,
+          eventKey: key,
+        );
+        return true;
+      default:
+        // deepLinkText / 其它文本通道
+        final text = payload.text ?? event.rawText ?? '';
+        if (text.isEmpty) {
+          await _eventStore?.clearDraft(event.id);
+          return false;
+        }
+        await processTextResult(text, showNotification: true, eventKey: key);
+        return true;
+    }
   }
 
   /// 将统一结果映射为队列可理解的状态。失败优先于 pending，避免部分
@@ -1023,6 +1169,12 @@ class AutoBillingService {
       return SmsProcessOutcome.success;
     } catch (e) {
       logger.error('AutoBilling', '通知处理失败', e);
+      if (_isTransientAiError(e)) {
+        await _saveDraftForEvent(
+            eventKey,
+            AutoBookDraftPayload(
+                isImage: false, text: body, title: title, actor: pkg));
+      }
       if (showNotification) {
         await _showFinalNotification(
           progressId: notificationId,
@@ -1215,6 +1367,10 @@ class AutoBillingService {
       return SmsProcessOutcome.success;
     } catch (e) {
       logger.error('AutoBilling', '屏幕文本处理失败', e);
+      if (_isTransientAiError(e)) {
+        await _saveDraftForEvent(eventKey,
+            AutoBookDraftPayload(isImage: false, text: text, actor: pkg));
+      }
       if (showNotification) {
         await _showFinalNotification(
           progressId: notificationId,

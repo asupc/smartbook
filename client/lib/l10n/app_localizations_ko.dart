@@ -4657,6 +4657,27 @@ class AppLocalizationsKo extends AppLocalizations {
   String get pendingCandidateReasonAnomaly => '이상 지출: 최근 기준선 초과';
 
   @override
+  String get pendingConfirmationSimilarTransaction => '유사한 기존 거래';
+
+  @override
+  String get pendingConfirmationCompare => '비교 보기';
+
+  @override
+  String get pendingConfirmationCandidate => '확인 대기 후보';
+
+  @override
+  String get pendingConfirmationExisting => '기존 거래';
+
+  @override
+  String get pendingConfirmationMatchedMissing => '이 거래는 더 이상 존재하지 않거나 삭제되었습니다';
+
+  @override
+  String get pendingConfirmationOpenMatched => '기존 거래 열기';
+
+  @override
+  String get pendingConfirmationMatchScoreLabel => '일치도';
+
+  @override
   String get autoDeleteScreenshotTitle => '정산 성공 시 스크린샷 자동 삭제';
 
   @override
@@ -6409,6 +6430,27 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get aiProviderNoApiKey => 'API 키가 설정되지 않음';
+
+  @override
+  String get aiProviderApiKeyKeepHint => '비워 두면 현재 API 키 유지';
+
+  @override
+  String get automationDraftsDiscarded => '초안이 삭제되었습니다';
+
+  @override
+  String get automationDraftsRetryQueued => '인식이 다시 제출되었습니다';
+
+  @override
+  String get automationDraftsDiscard => '초안 버리기';
+
+  @override
+  String get automationDraftsRetry => '인식 재시도';
+
+  @override
+  String get automationDraftsEmpty => '오프라인 인식 초안이 없습니다';
+
+  @override
+  String get automationDraftsTitle => '초안';
 
   @override
   String get aiProviderTapToEdit => '눌러서 편집';

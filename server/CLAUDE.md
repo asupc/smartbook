@@ -30,6 +30,18 @@
 
 ## 代码约定(server 端)
 
+### AI 路由(2026-09 中转架构)
+
+- `routers/ai/relay.py` — App LLM 中转(`/ai/relay/{chat,vision,stt}`)。密钥只存
+  服务端(`UserProfile.ai_config_json`);日志在**中转现场**落 `ai_analysis_logs`
+  (图片经 `write_ai_analysis_log_with_image` 落盘),`POST /ai/logs*` 客户端自报
+  通道已删除。掩码/合并工具在 `services/ai/ai_config_store.py`(`****+末4位`,
+  写入见掩码保留原值)。
+- `routers/ai/providers.py` — 服务商配置 CRUD + stored test,返回的 apiKey 一律
+  掩码;`routers/evidence/raw.py` — 原始记账证据(独立表,不入 sync_changes)。
+- entry_type 合法值:`ask|parse_tx_image|parse_tx_text|chat|stt`(logs.py 与
+  admin.py 的 pattern 要同步改)。
+
 ### 路由组织
 
 每个 HTTP API 组是 `src/routers/<group>/` 包形式,结构:

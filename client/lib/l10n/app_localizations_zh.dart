@@ -4657,6 +4657,27 @@ class AppLocalizationsZh extends AppLocalizations {
   String get pendingCandidateReasonAnomaly => '异常消费:高于近期基线';
 
   @override
+  String get pendingConfirmationSimilarTransaction => '相似已有交易';
+
+  @override
+  String get pendingConfirmationCompare => '查看对比';
+
+  @override
+  String get pendingConfirmationCandidate => '待确认候选';
+
+  @override
+  String get pendingConfirmationExisting => '已有交易';
+
+  @override
+  String get pendingConfirmationMatchedMissing => '这条已有交易已不存在或已删除';
+
+  @override
+  String get pendingConfirmationOpenMatched => '打开已有交易';
+
+  @override
+  String get pendingConfirmationMatchScoreLabel => '匹配度';
+
+  @override
   String get autoDeleteScreenshotTitle => '记账成功自动删截图';
 
   @override
@@ -6409,6 +6430,27 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get aiProviderNoApiKey => '未配置 API Key';
+
+  @override
+  String get aiProviderApiKeyKeepHint => '留空保持现有 Key 不变';
+
+  @override
+  String get automationDraftsDiscarded => '草稿已丢弃';
+
+  @override
+  String get automationDraftsRetryQueued => '已重新提交识别';
+
+  @override
+  String get automationDraftsDiscard => '丢弃草稿';
+
+  @override
+  String get automationDraftsRetry => '重试识别';
+
+  @override
+  String get automationDraftsEmpty => '暂无离线识别草稿';
+
+  @override
+  String get automationDraftsTitle => '草稿';
 
   @override
   String get aiProviderTapToEdit => '点击编辑';
@@ -12512,6 +12554,27 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
   String get pendingCandidateReasonAnomaly => '異常消費:高於近期基線';
 
   @override
+  String get pendingConfirmationSimilarTransaction => '相似已有交易';
+
+  @override
+  String get pendingConfirmationCompare => '查看對比';
+
+  @override
+  String get pendingConfirmationCandidate => '待確認候選';
+
+  @override
+  String get pendingConfirmationExisting => '已有交易';
+
+  @override
+  String get pendingConfirmationMatchedMissing => '這條已有交易已不存在或已刪除';
+
+  @override
+  String get pendingConfirmationOpenMatched => '開啟已有交易';
+
+  @override
+  String get pendingConfirmationMatchScoreLabel => '匹配度';
+
+  @override
   String get autoDeleteScreenshotTitle => '記帳成功自動刪截圖';
 
   @override
@@ -14264,6 +14327,27 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
 
   @override
   String get aiProviderNoApiKey => '未設定 API Key';
+
+  @override
+  String get aiProviderApiKeyKeepHint => '留空保持現有 Key 不變';
+
+  @override
+  String get automationDraftsDiscarded => '草稿已丟棄';
+
+  @override
+  String get automationDraftsRetryQueued => '已重新提交識別';
+
+  @override
+  String get automationDraftsDiscard => '丟棄草稿';
+
+  @override
+  String get automationDraftsRetry => '重試識別';
+
+  @override
+  String get automationDraftsEmpty => '暫無離線識別草稿';
+
+  @override
+  String get automationDraftsTitle => '草稿';
 
   @override
   String get aiProviderTapToEdit => '點擊編輯';

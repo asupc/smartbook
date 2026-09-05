@@ -17,27 +17,41 @@ class _FakeEngine implements AiExtractionEngine {
   List<BillInfo> bills;
   AudioExtractionResult audio;
 
+  /// 服务端识别前判重命中(订单号已存在,本次没有调用 LLM)。
+  bool duplicate;
+  String? matchedIdentifier;
+
   _FakeEngine({
     this.bills = const [],
     this.audio = const AudioExtractionResult(),
+    this.duplicate = false,
+    this.matchedIdentifier,
   });
 
   @override
-  Future<List<BillInfo>> extractFromText(String text, AiExtractionContext ctx,
-          {String billGuard = '', AiCallReporter? onCall}) async =>
-      bills;
+  Future<AiExtractionOutcome> extractFromText(
+    String text,
+    AiExtractionContext ctx, {
+    String billGuard = '',
+  }) async =>
+      duplicate
+          ? AiExtractionOutcome(
+              duplicate: true, matchedIdentifier: matchedIdentifier)
+          : AiExtractionOutcome(bills: bills);
 
   @override
-  Future<List<BillInfo>> extractFromImage(File image, AiExtractionContext ctx,
-          {String billGuard = '', AiCallReporter? onCall}) async =>
+  Future<List<BillInfo>> extractFromImage(
+    File image,
+    AiExtractionContext ctx, {
+    String billGuard = '',
+  }) async =>
       bills;
 
   @override
   Future<AudioExtractionResult> extractFromAudio(
     File audio,
-    AiExtractionContext ctx, {
-    AiCallReporter? onCall,
-  }) async =>
+    AiExtractionContext ctx,
+  ) async =>
       this.audio;
 
   @override
@@ -137,6 +151,32 @@ void main() {
       expect(result.transactionIds, hasLength(3));
       expect(result.isMulti, isTrue);
       expect(result.totalAbsAmount, 80);
+    });
+
+    test('服务端判重命中 → duplicateCount=1 且不落库(静默不通知)', () async {
+      final engine = _FakeEngine(
+        bills: const [],
+        duplicate: true,
+        matchedIdentifier: '2026090512345678',
+      );
+      final bookkeeper = AiBookkeeper(
+        repository: repo,
+        engine: engine,
+        persister: persister,
+      );
+
+      final result = await bookkeeper.fromText(
+        text: '又买了一次 订单号2026090512345678',
+        ledgerId: ledgerId,
+        billingTypes: const ['ai_chat'],
+      );
+
+      // duplicateCount>0 → handled=true:自动通道不发通知、不进待确认
+      expect(result.duplicateCount, 1);
+      expect(result.handled, isTrue);
+      expect(result.success, isFalse);
+      expect(result.transactionIds, isEmpty);
+      expect(result.awaitingCount, 0);
     });
 
     test('engine 返回空 → success=false', () async {

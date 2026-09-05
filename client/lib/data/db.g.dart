@@ -10980,6 +10980,112 @@ class $AutoBookEventsTable extends AutoBookEvents
   late final GeneratedColumn<String> lastError = GeneratedColumn<String>(
       'last_error', aliasedName, true,
       type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _rawTitleMeta =
+      const VerificationMeta('rawTitle');
+  @override
+  late final GeneratedColumn<String> rawTitle = GeneratedColumn<String>(
+      'raw_title', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _rawTextMeta =
+      const VerificationMeta('rawText');
+  @override
+  late final GeneratedColumn<String> rawText = GeneratedColumn<String>(
+      'raw_text', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _rawActorMeta =
+      const VerificationMeta('rawActor');
+  @override
+  late final GeneratedColumn<String> rawActor = GeneratedColumn<String>(
+      'raw_actor', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _rawMetadataJsonMeta =
+      const VerificationMeta('rawMetadataJson');
+  @override
+  late final GeneratedColumn<String> rawMetadataJson = GeneratedColumn<String>(
+      'raw_metadata_json', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _rawEvidenceLocalEnabledMeta =
+      const VerificationMeta('rawEvidenceLocalEnabled');
+  @override
+  late final GeneratedColumn<bool> rawEvidenceLocalEnabled =
+      GeneratedColumn<bool>('raw_evidence_local_enabled', aliasedName, false,
+          type: DriftSqlType.bool,
+          requiredDuringInsert: false,
+          defaultConstraints: GeneratedColumn.constraintIsAlways(
+              'CHECK ("raw_evidence_local_enabled" IN (0, 1))'),
+          defaultValue: const Constant(false));
+  static const VerificationMeta _rawEvidenceServerEnabledMeta =
+      const VerificationMeta('rawEvidenceServerEnabled');
+  @override
+  late final GeneratedColumn<bool> rawEvidenceServerEnabled =
+      GeneratedColumn<bool>(
+          'raw_evidence_server_enabled', aliasedName, false,
+          type: DriftSqlType.bool,
+          requiredDuringInsert: false,
+          defaultConstraints: GeneratedColumn.constraintIsAlways(
+              'CHECK ("raw_evidence_server_enabled" IN (0, 1))'),
+          defaultValue: const Constant(false));
+  static const VerificationMeta _rawEvidenceLocalExpiresAtMeta =
+      const VerificationMeta('rawEvidenceLocalExpiresAt');
+  @override
+  late final GeneratedColumn<DateTime> rawEvidenceLocalExpiresAt =
+      GeneratedColumn<DateTime>(
+          'raw_evidence_local_expires_at', aliasedName, true,
+          type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  static const VerificationMeta _rawEvidenceServerExpiresAtMeta =
+      const VerificationMeta('rawEvidenceServerExpiresAt');
+  @override
+  late final GeneratedColumn<DateTime> rawEvidenceServerExpiresAt =
+      GeneratedColumn<DateTime>(
+          'raw_evidence_server_expires_at', aliasedName, true,
+          type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  static const VerificationMeta _rawEvidenceRetentionUntilMeta =
+      const VerificationMeta('rawEvidenceRetentionUntil');
+  @override
+  late final GeneratedColumn<DateTime> rawEvidenceRetentionUntil =
+      GeneratedColumn<DateTime>(
+          'raw_evidence_retention_until', aliasedName, true,
+          type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  static const VerificationMeta _rawEvidenceUploadStateMeta =
+      const VerificationMeta('rawEvidenceUploadState');
+  @override
+  late final GeneratedColumn<String> rawEvidenceUploadState =
+      GeneratedColumn<String>('raw_evidence_upload_state', aliasedName, false,
+          type: DriftSqlType.string,
+          requiredDuringInsert: false,
+          defaultValue: const Constant('not_requested'));
+  static const VerificationMeta _rawEvidenceUploadedAtMeta =
+      const VerificationMeta('rawEvidenceUploadedAt');
+  @override
+  late final GeneratedColumn<DateTime> rawEvidenceUploadedAt =
+      GeneratedColumn<DateTime>('raw_evidence_uploaded_at', aliasedName, true,
+          type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  static const VerificationMeta _rawEvidenceUploadAttemptsMeta =
+      const VerificationMeta('rawEvidenceUploadAttempts');
+  @override
+  late final GeneratedColumn<int> rawEvidenceUploadAttempts =
+      GeneratedColumn<int>('raw_evidence_upload_attempts', aliasedName, false,
+          type: DriftSqlType.int,
+          requiredDuringInsert: false,
+          defaultValue: const Constant(0));
+  static const VerificationMeta _rawEvidenceLastErrorMeta =
+      const VerificationMeta('rawEvidenceLastError');
+  @override
+  late final GeneratedColumn<String> rawEvidenceLastError =
+      GeneratedColumn<String>('raw_evidence_last_error', aliasedName, true,
+          type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _rawEvidenceNextRetryAtMeta =
+      const VerificationMeta('rawEvidenceNextRetryAt');
+  @override
+  late final GeneratedColumn<DateTime> rawEvidenceNextRetryAt =
+      GeneratedColumn<DateTime>('raw_evidence_next_retry_at', aliasedName, true,
+          type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  static const VerificationMeta _draftPayloadJsonMeta =
+      const VerificationMeta('draftPayloadJson');
+  @override
+  late final GeneratedColumn<String> draftPayloadJson = GeneratedColumn<String>(
+      'draft_payload_json', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _updatedAtMeta =
       const VerificationMeta('updatedAt');
   @override
@@ -11009,6 +11115,21 @@ class $AutoBookEventsTable extends AutoBookEvents
         billJson,
         reason,
         lastError,
+        rawTitle,
+        rawText,
+        rawActor,
+        rawMetadataJson,
+        rawEvidenceLocalEnabled,
+        rawEvidenceServerEnabled,
+        rawEvidenceLocalExpiresAt,
+        rawEvidenceServerExpiresAt,
+        rawEvidenceRetentionUntil,
+        rawEvidenceUploadState,
+        rawEvidenceUploadedAt,
+        rawEvidenceUploadAttempts,
+        rawEvidenceLastError,
+        rawEvidenceNextRetryAt,
+        draftPayloadJson,
         updatedAt
       ];
   @override
@@ -11123,6 +11244,97 @@ class $AutoBookEventsTable extends AutoBookEvents
       context.handle(_lastErrorMeta,
           lastError.isAcceptableOrUnknown(data['last_error']!, _lastErrorMeta));
     }
+    if (data.containsKey('raw_title')) {
+      context.handle(_rawTitleMeta,
+          rawTitle.isAcceptableOrUnknown(data['raw_title']!, _rawTitleMeta));
+    }
+    if (data.containsKey('raw_text')) {
+      context.handle(_rawTextMeta,
+          rawText.isAcceptableOrUnknown(data['raw_text']!, _rawTextMeta));
+    }
+    if (data.containsKey('raw_actor')) {
+      context.handle(_rawActorMeta,
+          rawActor.isAcceptableOrUnknown(data['raw_actor']!, _rawActorMeta));
+    }
+    if (data.containsKey('raw_metadata_json')) {
+      context.handle(
+          _rawMetadataJsonMeta,
+          rawMetadataJson.isAcceptableOrUnknown(
+              data['raw_metadata_json']!, _rawMetadataJsonMeta));
+    }
+    if (data.containsKey('raw_evidence_local_enabled')) {
+      context.handle(
+          _rawEvidenceLocalEnabledMeta,
+          rawEvidenceLocalEnabled.isAcceptableOrUnknown(
+              data['raw_evidence_local_enabled']!,
+              _rawEvidenceLocalEnabledMeta));
+    }
+    if (data.containsKey('raw_evidence_server_enabled')) {
+      context.handle(
+          _rawEvidenceServerEnabledMeta,
+          rawEvidenceServerEnabled.isAcceptableOrUnknown(
+              data['raw_evidence_server_enabled']!,
+              _rawEvidenceServerEnabledMeta));
+    }
+    if (data.containsKey('raw_evidence_local_expires_at')) {
+      context.handle(
+          _rawEvidenceLocalExpiresAtMeta,
+          rawEvidenceLocalExpiresAt.isAcceptableOrUnknown(
+              data['raw_evidence_local_expires_at']!,
+              _rawEvidenceLocalExpiresAtMeta));
+    }
+    if (data.containsKey('raw_evidence_server_expires_at')) {
+      context.handle(
+          _rawEvidenceServerExpiresAtMeta,
+          rawEvidenceServerExpiresAt.isAcceptableOrUnknown(
+              data['raw_evidence_server_expires_at']!,
+              _rawEvidenceServerExpiresAtMeta));
+    }
+    if (data.containsKey('raw_evidence_retention_until')) {
+      context.handle(
+          _rawEvidenceRetentionUntilMeta,
+          rawEvidenceRetentionUntil.isAcceptableOrUnknown(
+              data['raw_evidence_retention_until']!,
+              _rawEvidenceRetentionUntilMeta));
+    }
+    if (data.containsKey('raw_evidence_upload_state')) {
+      context.handle(
+          _rawEvidenceUploadStateMeta,
+          rawEvidenceUploadState.isAcceptableOrUnknown(
+              data['raw_evidence_upload_state']!, _rawEvidenceUploadStateMeta));
+    }
+    if (data.containsKey('raw_evidence_uploaded_at')) {
+      context.handle(
+          _rawEvidenceUploadedAtMeta,
+          rawEvidenceUploadedAt.isAcceptableOrUnknown(
+              data['raw_evidence_uploaded_at']!, _rawEvidenceUploadedAtMeta));
+    }
+    if (data.containsKey('raw_evidence_upload_attempts')) {
+      context.handle(
+          _rawEvidenceUploadAttemptsMeta,
+          rawEvidenceUploadAttempts.isAcceptableOrUnknown(
+              data['raw_evidence_upload_attempts']!,
+              _rawEvidenceUploadAttemptsMeta));
+    }
+    if (data.containsKey('raw_evidence_last_error')) {
+      context.handle(
+          _rawEvidenceLastErrorMeta,
+          rawEvidenceLastError.isAcceptableOrUnknown(
+              data['raw_evidence_last_error']!, _rawEvidenceLastErrorMeta));
+    }
+    if (data.containsKey('raw_evidence_next_retry_at')) {
+      context.handle(
+          _rawEvidenceNextRetryAtMeta,
+          rawEvidenceNextRetryAt.isAcceptableOrUnknown(
+              data['raw_evidence_next_retry_at']!,
+              _rawEvidenceNextRetryAtMeta));
+    }
+    if (data.containsKey('draft_payload_json')) {
+      context.handle(
+          _draftPayloadJsonMeta,
+          draftPayloadJson.isAcceptableOrUnknown(
+              data['draft_payload_json']!, _draftPayloadJsonMeta));
+    }
     if (data.containsKey('updated_at')) {
       context.handle(_updatedAtMeta,
           updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
@@ -11175,6 +11387,46 @@ class $AutoBookEventsTable extends AutoBookEvents
           .read(DriftSqlType.string, data['${effectivePrefix}reason']),
       lastError: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}last_error']),
+      rawTitle: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}raw_title']),
+      rawText: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}raw_text']),
+      rawActor: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}raw_actor']),
+      rawMetadataJson: attachedDatabase.typeMapping.read(
+          DriftSqlType.string, data['${effectivePrefix}raw_metadata_json']),
+      rawEvidenceLocalEnabled: attachedDatabase.typeMapping.read(
+          DriftSqlType.bool,
+          data['${effectivePrefix}raw_evidence_local_enabled'])!,
+      rawEvidenceServerEnabled: attachedDatabase.typeMapping.read(
+          DriftSqlType.bool,
+          data['${effectivePrefix}raw_evidence_server_enabled'])!,
+      rawEvidenceLocalExpiresAt: attachedDatabase.typeMapping.read(
+          DriftSqlType.dateTime,
+          data['${effectivePrefix}raw_evidence_local_expires_at']),
+      rawEvidenceServerExpiresAt: attachedDatabase.typeMapping.read(
+          DriftSqlType.dateTime,
+          data['${effectivePrefix}raw_evidence_server_expires_at']),
+      rawEvidenceRetentionUntil: attachedDatabase.typeMapping.read(
+          DriftSqlType.dateTime,
+          data['${effectivePrefix}raw_evidence_retention_until']),
+      rawEvidenceUploadState: attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}raw_evidence_upload_state'])!,
+      rawEvidenceUploadedAt: attachedDatabase.typeMapping.read(
+          DriftSqlType.dateTime,
+          data['${effectivePrefix}raw_evidence_uploaded_at']),
+      rawEvidenceUploadAttempts: attachedDatabase.typeMapping.read(
+          DriftSqlType.int,
+          data['${effectivePrefix}raw_evidence_upload_attempts'])!,
+      rawEvidenceLastError: attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}raw_evidence_last_error']),
+      rawEvidenceNextRetryAt: attachedDatabase.typeMapping.read(
+          DriftSqlType.dateTime,
+          data['${effectivePrefix}raw_evidence_next_retry_at']),
+      draftPayloadJson: attachedDatabase.typeMapping.read(
+          DriftSqlType.string, data['${effectivePrefix}draft_payload_json']),
       updatedAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
     );
@@ -11206,6 +11458,37 @@ class AutoBookEvent extends DataClass implements Insertable<AutoBookEvent> {
   final String? billJson;
   final String? reason;
   final String? lastError;
+
+  /// 原始记账证据(短信/通知/详情页文本等)。是否写入由
+  /// RawEvidencePolicyStore 控制；这些字段永不进入 transactions/sync_changes。
+  final String? rawTitle;
+  final String? rawText;
+  final String? rawActor;
+  final String? rawMetadataJson;
+
+  /// Capture-time policy snapshot. It keeps a later preference change from
+  /// unexpectedly deleting or uploading an already captured evidence item.
+  final bool rawEvidenceLocalEnabled;
+  final bool rawEvidenceServerEnabled;
+
+  /// Separate windows let local cleanup and server retention evolve independently.
+  /// [rawEvidenceRetentionUntil] is a compatibility/queue window (the later
+  /// of the two) and is not a sync_changes field.
+  final DateTime? rawEvidenceLocalExpiresAt;
+  final DateTime? rawEvidenceServerExpiresAt;
+  final DateTime? rawEvidenceRetentionUntil;
+  final String rawEvidenceUploadState;
+  final DateTime? rawEvidenceUploadedAt;
+  final int rawEvidenceUploadAttempts;
+  final String? rawEvidenceLastError;
+  final DateTime? rawEvidenceNextRetryAt;
+
+  /// 离线识别草稿(自动记账连不上服务端时保存的待重试输入)。
+  ///
+  /// 与 raw* 证据列相互独立:草稿是**待处理的临时输入**,识别成功/事件到终态
+  /// 后立即清除,不参与隐私面板的证据统计,也永不进入 evidence 上传通道。
+  /// JSON 结构见 AutoBookDraftPayload。
+  final String? draftPayloadJson;
   final DateTime updatedAt;
   const AutoBookEvent(
       {required this.id,
@@ -11227,6 +11510,21 @@ class AutoBookEvent extends DataClass implements Insertable<AutoBookEvent> {
       this.billJson,
       this.reason,
       this.lastError,
+      this.rawTitle,
+      this.rawText,
+      this.rawActor,
+      this.rawMetadataJson,
+      required this.rawEvidenceLocalEnabled,
+      required this.rawEvidenceServerEnabled,
+      this.rawEvidenceLocalExpiresAt,
+      this.rawEvidenceServerExpiresAt,
+      this.rawEvidenceRetentionUntil,
+      required this.rawEvidenceUploadState,
+      this.rawEvidenceUploadedAt,
+      required this.rawEvidenceUploadAttempts,
+      this.rawEvidenceLastError,
+      this.rawEvidenceNextRetryAt,
+      this.draftPayloadJson,
       required this.updatedAt});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -11274,6 +11572,50 @@ class AutoBookEvent extends DataClass implements Insertable<AutoBookEvent> {
     }
     if (!nullToAbsent || lastError != null) {
       map['last_error'] = Variable<String>(lastError);
+    }
+    if (!nullToAbsent || rawTitle != null) {
+      map['raw_title'] = Variable<String>(rawTitle);
+    }
+    if (!nullToAbsent || rawText != null) {
+      map['raw_text'] = Variable<String>(rawText);
+    }
+    if (!nullToAbsent || rawActor != null) {
+      map['raw_actor'] = Variable<String>(rawActor);
+    }
+    if (!nullToAbsent || rawMetadataJson != null) {
+      map['raw_metadata_json'] = Variable<String>(rawMetadataJson);
+    }
+    map['raw_evidence_local_enabled'] = Variable<bool>(rawEvidenceLocalEnabled);
+    map['raw_evidence_server_enabled'] =
+        Variable<bool>(rawEvidenceServerEnabled);
+    if (!nullToAbsent || rawEvidenceLocalExpiresAt != null) {
+      map['raw_evidence_local_expires_at'] =
+          Variable<DateTime>(rawEvidenceLocalExpiresAt);
+    }
+    if (!nullToAbsent || rawEvidenceServerExpiresAt != null) {
+      map['raw_evidence_server_expires_at'] =
+          Variable<DateTime>(rawEvidenceServerExpiresAt);
+    }
+    if (!nullToAbsent || rawEvidenceRetentionUntil != null) {
+      map['raw_evidence_retention_until'] =
+          Variable<DateTime>(rawEvidenceRetentionUntil);
+    }
+    map['raw_evidence_upload_state'] = Variable<String>(rawEvidenceUploadState);
+    if (!nullToAbsent || rawEvidenceUploadedAt != null) {
+      map['raw_evidence_uploaded_at'] =
+          Variable<DateTime>(rawEvidenceUploadedAt);
+    }
+    map['raw_evidence_upload_attempts'] =
+        Variable<int>(rawEvidenceUploadAttempts);
+    if (!nullToAbsent || rawEvidenceLastError != null) {
+      map['raw_evidence_last_error'] = Variable<String>(rawEvidenceLastError);
+    }
+    if (!nullToAbsent || rawEvidenceNextRetryAt != null) {
+      map['raw_evidence_next_retry_at'] =
+          Variable<DateTime>(rawEvidenceNextRetryAt);
+    }
+    if (!nullToAbsent || draftPayloadJson != null) {
+      map['draft_payload_json'] = Variable<String>(draftPayloadJson);
     }
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
@@ -11323,6 +11665,46 @@ class AutoBookEvent extends DataClass implements Insertable<AutoBookEvent> {
       lastError: lastError == null && nullToAbsent
           ? const Value.absent()
           : Value(lastError),
+      rawTitle: rawTitle == null && nullToAbsent
+          ? const Value.absent()
+          : Value(rawTitle),
+      rawText: rawText == null && nullToAbsent
+          ? const Value.absent()
+          : Value(rawText),
+      rawActor: rawActor == null && nullToAbsent
+          ? const Value.absent()
+          : Value(rawActor),
+      rawMetadataJson: rawMetadataJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(rawMetadataJson),
+      rawEvidenceLocalEnabled: Value(rawEvidenceLocalEnabled),
+      rawEvidenceServerEnabled: Value(rawEvidenceServerEnabled),
+      rawEvidenceLocalExpiresAt:
+          rawEvidenceLocalExpiresAt == null && nullToAbsent
+              ? const Value.absent()
+              : Value(rawEvidenceLocalExpiresAt),
+      rawEvidenceServerExpiresAt:
+          rawEvidenceServerExpiresAt == null && nullToAbsent
+              ? const Value.absent()
+              : Value(rawEvidenceServerExpiresAt),
+      rawEvidenceRetentionUntil:
+          rawEvidenceRetentionUntil == null && nullToAbsent
+              ? const Value.absent()
+              : Value(rawEvidenceRetentionUntil),
+      rawEvidenceUploadState: Value(rawEvidenceUploadState),
+      rawEvidenceUploadedAt: rawEvidenceUploadedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(rawEvidenceUploadedAt),
+      rawEvidenceUploadAttempts: Value(rawEvidenceUploadAttempts),
+      rawEvidenceLastError: rawEvidenceLastError == null && nullToAbsent
+          ? const Value.absent()
+          : Value(rawEvidenceLastError),
+      rawEvidenceNextRetryAt: rawEvidenceNextRetryAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(rawEvidenceNextRetryAt),
+      draftPayloadJson: draftPayloadJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(draftPayloadJson),
       updatedAt: Value(updatedAt),
     );
   }
@@ -11352,6 +11734,31 @@ class AutoBookEvent extends DataClass implements Insertable<AutoBookEvent> {
       billJson: serializer.fromJson<String?>(json['billJson']),
       reason: serializer.fromJson<String?>(json['reason']),
       lastError: serializer.fromJson<String?>(json['lastError']),
+      rawTitle: serializer.fromJson<String?>(json['rawTitle']),
+      rawText: serializer.fromJson<String?>(json['rawText']),
+      rawActor: serializer.fromJson<String?>(json['rawActor']),
+      rawMetadataJson: serializer.fromJson<String?>(json['rawMetadataJson']),
+      rawEvidenceLocalEnabled:
+          serializer.fromJson<bool>(json['rawEvidenceLocalEnabled']),
+      rawEvidenceServerEnabled:
+          serializer.fromJson<bool>(json['rawEvidenceServerEnabled']),
+      rawEvidenceLocalExpiresAt:
+          serializer.fromJson<DateTime?>(json['rawEvidenceLocalExpiresAt']),
+      rawEvidenceServerExpiresAt:
+          serializer.fromJson<DateTime?>(json['rawEvidenceServerExpiresAt']),
+      rawEvidenceRetentionUntil:
+          serializer.fromJson<DateTime?>(json['rawEvidenceRetentionUntil']),
+      rawEvidenceUploadState:
+          serializer.fromJson<String>(json['rawEvidenceUploadState']),
+      rawEvidenceUploadedAt:
+          serializer.fromJson<DateTime?>(json['rawEvidenceUploadedAt']),
+      rawEvidenceUploadAttempts:
+          serializer.fromJson<int>(json['rawEvidenceUploadAttempts']),
+      rawEvidenceLastError:
+          serializer.fromJson<String?>(json['rawEvidenceLastError']),
+      rawEvidenceNextRetryAt:
+          serializer.fromJson<DateTime?>(json['rawEvidenceNextRetryAt']),
+      draftPayloadJson: serializer.fromJson<String?>(json['draftPayloadJson']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
   }
@@ -11379,6 +11786,30 @@ class AutoBookEvent extends DataClass implements Insertable<AutoBookEvent> {
       'billJson': serializer.toJson<String?>(billJson),
       'reason': serializer.toJson<String?>(reason),
       'lastError': serializer.toJson<String?>(lastError),
+      'rawTitle': serializer.toJson<String?>(rawTitle),
+      'rawText': serializer.toJson<String?>(rawText),
+      'rawActor': serializer.toJson<String?>(rawActor),
+      'rawMetadataJson': serializer.toJson<String?>(rawMetadataJson),
+      'rawEvidenceLocalEnabled':
+          serializer.toJson<bool>(rawEvidenceLocalEnabled),
+      'rawEvidenceServerEnabled':
+          serializer.toJson<bool>(rawEvidenceServerEnabled),
+      'rawEvidenceLocalExpiresAt':
+          serializer.toJson<DateTime?>(rawEvidenceLocalExpiresAt),
+      'rawEvidenceServerExpiresAt':
+          serializer.toJson<DateTime?>(rawEvidenceServerExpiresAt),
+      'rawEvidenceRetentionUntil':
+          serializer.toJson<DateTime?>(rawEvidenceRetentionUntil),
+      'rawEvidenceUploadState':
+          serializer.toJson<String>(rawEvidenceUploadState),
+      'rawEvidenceUploadedAt':
+          serializer.toJson<DateTime?>(rawEvidenceUploadedAt),
+      'rawEvidenceUploadAttempts':
+          serializer.toJson<int>(rawEvidenceUploadAttempts),
+      'rawEvidenceLastError': serializer.toJson<String?>(rawEvidenceLastError),
+      'rawEvidenceNextRetryAt':
+          serializer.toJson<DateTime?>(rawEvidenceNextRetryAt),
+      'draftPayloadJson': serializer.toJson<String?>(draftPayloadJson),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
   }
@@ -11403,6 +11834,21 @@ class AutoBookEvent extends DataClass implements Insertable<AutoBookEvent> {
           Value<String?> billJson = const Value.absent(),
           Value<String?> reason = const Value.absent(),
           Value<String?> lastError = const Value.absent(),
+          Value<String?> rawTitle = const Value.absent(),
+          Value<String?> rawText = const Value.absent(),
+          Value<String?> rawActor = const Value.absent(),
+          Value<String?> rawMetadataJson = const Value.absent(),
+          bool? rawEvidenceLocalEnabled,
+          bool? rawEvidenceServerEnabled,
+          Value<DateTime?> rawEvidenceLocalExpiresAt = const Value.absent(),
+          Value<DateTime?> rawEvidenceServerExpiresAt = const Value.absent(),
+          Value<DateTime?> rawEvidenceRetentionUntil = const Value.absent(),
+          String? rawEvidenceUploadState,
+          Value<DateTime?> rawEvidenceUploadedAt = const Value.absent(),
+          int? rawEvidenceUploadAttempts,
+          Value<String?> rawEvidenceLastError = const Value.absent(),
+          Value<DateTime?> rawEvidenceNextRetryAt = const Value.absent(),
+          Value<String?> draftPayloadJson = const Value.absent(),
           DateTime? updatedAt}) =>
       AutoBookEvent(
         id: id ?? this.id,
@@ -11430,6 +11876,41 @@ class AutoBookEvent extends DataClass implements Insertable<AutoBookEvent> {
         billJson: billJson.present ? billJson.value : this.billJson,
         reason: reason.present ? reason.value : this.reason,
         lastError: lastError.present ? lastError.value : this.lastError,
+        rawTitle: rawTitle.present ? rawTitle.value : this.rawTitle,
+        rawText: rawText.present ? rawText.value : this.rawText,
+        rawActor: rawActor.present ? rawActor.value : this.rawActor,
+        rawMetadataJson: rawMetadataJson.present
+            ? rawMetadataJson.value
+            : this.rawMetadataJson,
+        rawEvidenceLocalEnabled:
+            rawEvidenceLocalEnabled ?? this.rawEvidenceLocalEnabled,
+        rawEvidenceServerEnabled:
+            rawEvidenceServerEnabled ?? this.rawEvidenceServerEnabled,
+        rawEvidenceLocalExpiresAt: rawEvidenceLocalExpiresAt.present
+            ? rawEvidenceLocalExpiresAt.value
+            : this.rawEvidenceLocalExpiresAt,
+        rawEvidenceServerExpiresAt: rawEvidenceServerExpiresAt.present
+            ? rawEvidenceServerExpiresAt.value
+            : this.rawEvidenceServerExpiresAt,
+        rawEvidenceRetentionUntil: rawEvidenceRetentionUntil.present
+            ? rawEvidenceRetentionUntil.value
+            : this.rawEvidenceRetentionUntil,
+        rawEvidenceUploadState:
+            rawEvidenceUploadState ?? this.rawEvidenceUploadState,
+        rawEvidenceUploadedAt: rawEvidenceUploadedAt.present
+            ? rawEvidenceUploadedAt.value
+            : this.rawEvidenceUploadedAt,
+        rawEvidenceUploadAttempts:
+            rawEvidenceUploadAttempts ?? this.rawEvidenceUploadAttempts,
+        rawEvidenceLastError: rawEvidenceLastError.present
+            ? rawEvidenceLastError.value
+            : this.rawEvidenceLastError,
+        rawEvidenceNextRetryAt: rawEvidenceNextRetryAt.present
+            ? rawEvidenceNextRetryAt.value
+            : this.rawEvidenceNextRetryAt,
+        draftPayloadJson: draftPayloadJson.present
+            ? draftPayloadJson.value
+            : this.draftPayloadJson,
         updatedAt: updatedAt ?? this.updatedAt,
       );
   AutoBookEvent copyWithCompanion(AutoBookEventsCompanion data) {
@@ -11469,6 +11950,45 @@ class AutoBookEvent extends DataClass implements Insertable<AutoBookEvent> {
       billJson: data.billJson.present ? data.billJson.value : this.billJson,
       reason: data.reason.present ? data.reason.value : this.reason,
       lastError: data.lastError.present ? data.lastError.value : this.lastError,
+      rawTitle: data.rawTitle.present ? data.rawTitle.value : this.rawTitle,
+      rawText: data.rawText.present ? data.rawText.value : this.rawText,
+      rawActor: data.rawActor.present ? data.rawActor.value : this.rawActor,
+      rawMetadataJson: data.rawMetadataJson.present
+          ? data.rawMetadataJson.value
+          : this.rawMetadataJson,
+      rawEvidenceLocalEnabled: data.rawEvidenceLocalEnabled.present
+          ? data.rawEvidenceLocalEnabled.value
+          : this.rawEvidenceLocalEnabled,
+      rawEvidenceServerEnabled: data.rawEvidenceServerEnabled.present
+          ? data.rawEvidenceServerEnabled.value
+          : this.rawEvidenceServerEnabled,
+      rawEvidenceLocalExpiresAt: data.rawEvidenceLocalExpiresAt.present
+          ? data.rawEvidenceLocalExpiresAt.value
+          : this.rawEvidenceLocalExpiresAt,
+      rawEvidenceServerExpiresAt: data.rawEvidenceServerExpiresAt.present
+          ? data.rawEvidenceServerExpiresAt.value
+          : this.rawEvidenceServerExpiresAt,
+      rawEvidenceRetentionUntil: data.rawEvidenceRetentionUntil.present
+          ? data.rawEvidenceRetentionUntil.value
+          : this.rawEvidenceRetentionUntil,
+      rawEvidenceUploadState: data.rawEvidenceUploadState.present
+          ? data.rawEvidenceUploadState.value
+          : this.rawEvidenceUploadState,
+      rawEvidenceUploadedAt: data.rawEvidenceUploadedAt.present
+          ? data.rawEvidenceUploadedAt.value
+          : this.rawEvidenceUploadedAt,
+      rawEvidenceUploadAttempts: data.rawEvidenceUploadAttempts.present
+          ? data.rawEvidenceUploadAttempts.value
+          : this.rawEvidenceUploadAttempts,
+      rawEvidenceLastError: data.rawEvidenceLastError.present
+          ? data.rawEvidenceLastError.value
+          : this.rawEvidenceLastError,
+      rawEvidenceNextRetryAt: data.rawEvidenceNextRetryAt.present
+          ? data.rawEvidenceNextRetryAt.value
+          : this.rawEvidenceNextRetryAt,
+      draftPayloadJson: data.draftPayloadJson.present
+          ? data.draftPayloadJson.value
+          : this.draftPayloadJson,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
   }
@@ -11495,33 +12015,64 @@ class AutoBookEvent extends DataClass implements Insertable<AutoBookEvent> {
           ..write('billJson: $billJson, ')
           ..write('reason: $reason, ')
           ..write('lastError: $lastError, ')
+          ..write('rawTitle: $rawTitle, ')
+          ..write('rawText: $rawText, ')
+          ..write('rawActor: $rawActor, ')
+          ..write('rawMetadataJson: $rawMetadataJson, ')
+          ..write('rawEvidenceLocalEnabled: $rawEvidenceLocalEnabled, ')
+          ..write('rawEvidenceServerEnabled: $rawEvidenceServerEnabled, ')
+          ..write('rawEvidenceLocalExpiresAt: $rawEvidenceLocalExpiresAt, ')
+          ..write('rawEvidenceServerExpiresAt: $rawEvidenceServerExpiresAt, ')
+          ..write('rawEvidenceRetentionUntil: $rawEvidenceRetentionUntil, ')
+          ..write('rawEvidenceUploadState: $rawEvidenceUploadState, ')
+          ..write('rawEvidenceUploadedAt: $rawEvidenceUploadedAt, ')
+          ..write('rawEvidenceUploadAttempts: $rawEvidenceUploadAttempts, ')
+          ..write('rawEvidenceLastError: $rawEvidenceLastError, ')
+          ..write('rawEvidenceNextRetryAt: $rawEvidenceNextRetryAt, ')
+          ..write('draftPayloadJson: $draftPayloadJson, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(
-      id,
-      eventKey,
-      source,
-      captureIntent,
-      ledgerId,
-      sourceChannel,
-      externalId,
-      contentHash,
-      state,
-      capturedAt,
-      sourceOccurredAt,
-      expiresAt,
-      attemptCount,
-      nextRetryAt,
-      transactionId,
-      duplicateOfTransactionId,
-      billJson,
-      reason,
-      lastError,
-      updatedAt);
+  int get hashCode => Object.hashAll([
+        id,
+        eventKey,
+        source,
+        captureIntent,
+        ledgerId,
+        sourceChannel,
+        externalId,
+        contentHash,
+        state,
+        capturedAt,
+        sourceOccurredAt,
+        expiresAt,
+        attemptCount,
+        nextRetryAt,
+        transactionId,
+        duplicateOfTransactionId,
+        billJson,
+        reason,
+        lastError,
+        rawTitle,
+        rawText,
+        rawActor,
+        rawMetadataJson,
+        rawEvidenceLocalEnabled,
+        rawEvidenceServerEnabled,
+        rawEvidenceLocalExpiresAt,
+        rawEvidenceServerExpiresAt,
+        rawEvidenceRetentionUntil,
+        rawEvidenceUploadState,
+        rawEvidenceUploadedAt,
+        rawEvidenceUploadAttempts,
+        rawEvidenceLastError,
+        rawEvidenceNextRetryAt,
+        draftPayloadJson,
+        updatedAt
+      ]);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -11545,6 +12096,21 @@ class AutoBookEvent extends DataClass implements Insertable<AutoBookEvent> {
           other.billJson == this.billJson &&
           other.reason == this.reason &&
           other.lastError == this.lastError &&
+          other.rawTitle == this.rawTitle &&
+          other.rawText == this.rawText &&
+          other.rawActor == this.rawActor &&
+          other.rawMetadataJson == this.rawMetadataJson &&
+          other.rawEvidenceLocalEnabled == this.rawEvidenceLocalEnabled &&
+          other.rawEvidenceServerEnabled == this.rawEvidenceServerEnabled &&
+          other.rawEvidenceLocalExpiresAt == this.rawEvidenceLocalExpiresAt &&
+          other.rawEvidenceServerExpiresAt == this.rawEvidenceServerExpiresAt &&
+          other.rawEvidenceRetentionUntil == this.rawEvidenceRetentionUntil &&
+          other.rawEvidenceUploadState == this.rawEvidenceUploadState &&
+          other.rawEvidenceUploadedAt == this.rawEvidenceUploadedAt &&
+          other.rawEvidenceUploadAttempts == this.rawEvidenceUploadAttempts &&
+          other.rawEvidenceLastError == this.rawEvidenceLastError &&
+          other.rawEvidenceNextRetryAt == this.rawEvidenceNextRetryAt &&
+          other.draftPayloadJson == this.draftPayloadJson &&
           other.updatedAt == this.updatedAt);
 }
 
@@ -11568,6 +12134,21 @@ class AutoBookEventsCompanion extends UpdateCompanion<AutoBookEvent> {
   final Value<String?> billJson;
   final Value<String?> reason;
   final Value<String?> lastError;
+  final Value<String?> rawTitle;
+  final Value<String?> rawText;
+  final Value<String?> rawActor;
+  final Value<String?> rawMetadataJson;
+  final Value<bool> rawEvidenceLocalEnabled;
+  final Value<bool> rawEvidenceServerEnabled;
+  final Value<DateTime?> rawEvidenceLocalExpiresAt;
+  final Value<DateTime?> rawEvidenceServerExpiresAt;
+  final Value<DateTime?> rawEvidenceRetentionUntil;
+  final Value<String> rawEvidenceUploadState;
+  final Value<DateTime?> rawEvidenceUploadedAt;
+  final Value<int> rawEvidenceUploadAttempts;
+  final Value<String?> rawEvidenceLastError;
+  final Value<DateTime?> rawEvidenceNextRetryAt;
+  final Value<String?> draftPayloadJson;
   final Value<DateTime> updatedAt;
   const AutoBookEventsCompanion({
     this.id = const Value.absent(),
@@ -11589,6 +12170,21 @@ class AutoBookEventsCompanion extends UpdateCompanion<AutoBookEvent> {
     this.billJson = const Value.absent(),
     this.reason = const Value.absent(),
     this.lastError = const Value.absent(),
+    this.rawTitle = const Value.absent(),
+    this.rawText = const Value.absent(),
+    this.rawActor = const Value.absent(),
+    this.rawMetadataJson = const Value.absent(),
+    this.rawEvidenceLocalEnabled = const Value.absent(),
+    this.rawEvidenceServerEnabled = const Value.absent(),
+    this.rawEvidenceLocalExpiresAt = const Value.absent(),
+    this.rawEvidenceServerExpiresAt = const Value.absent(),
+    this.rawEvidenceRetentionUntil = const Value.absent(),
+    this.rawEvidenceUploadState = const Value.absent(),
+    this.rawEvidenceUploadedAt = const Value.absent(),
+    this.rawEvidenceUploadAttempts = const Value.absent(),
+    this.rawEvidenceLastError = const Value.absent(),
+    this.rawEvidenceNextRetryAt = const Value.absent(),
+    this.draftPayloadJson = const Value.absent(),
     this.updatedAt = const Value.absent(),
   });
   AutoBookEventsCompanion.insert({
@@ -11611,6 +12207,21 @@ class AutoBookEventsCompanion extends UpdateCompanion<AutoBookEvent> {
     this.billJson = const Value.absent(),
     this.reason = const Value.absent(),
     this.lastError = const Value.absent(),
+    this.rawTitle = const Value.absent(),
+    this.rawText = const Value.absent(),
+    this.rawActor = const Value.absent(),
+    this.rawMetadataJson = const Value.absent(),
+    this.rawEvidenceLocalEnabled = const Value.absent(),
+    this.rawEvidenceServerEnabled = const Value.absent(),
+    this.rawEvidenceLocalExpiresAt = const Value.absent(),
+    this.rawEvidenceServerExpiresAt = const Value.absent(),
+    this.rawEvidenceRetentionUntil = const Value.absent(),
+    this.rawEvidenceUploadState = const Value.absent(),
+    this.rawEvidenceUploadedAt = const Value.absent(),
+    this.rawEvidenceUploadAttempts = const Value.absent(),
+    this.rawEvidenceLastError = const Value.absent(),
+    this.rawEvidenceNextRetryAt = const Value.absent(),
+    this.draftPayloadJson = const Value.absent(),
     this.updatedAt = const Value.absent(),
   })  : eventKey = Value(eventKey),
         source = Value(source),
@@ -11635,6 +12246,21 @@ class AutoBookEventsCompanion extends UpdateCompanion<AutoBookEvent> {
     Expression<String>? billJson,
     Expression<String>? reason,
     Expression<String>? lastError,
+    Expression<String>? rawTitle,
+    Expression<String>? rawText,
+    Expression<String>? rawActor,
+    Expression<String>? rawMetadataJson,
+    Expression<bool>? rawEvidenceLocalEnabled,
+    Expression<bool>? rawEvidenceServerEnabled,
+    Expression<DateTime>? rawEvidenceLocalExpiresAt,
+    Expression<DateTime>? rawEvidenceServerExpiresAt,
+    Expression<DateTime>? rawEvidenceRetentionUntil,
+    Expression<String>? rawEvidenceUploadState,
+    Expression<DateTime>? rawEvidenceUploadedAt,
+    Expression<int>? rawEvidenceUploadAttempts,
+    Expression<String>? rawEvidenceLastError,
+    Expression<DateTime>? rawEvidenceNextRetryAt,
+    Expression<String>? draftPayloadJson,
     Expression<DateTime>? updatedAt,
   }) {
     return RawValuesInsertable({
@@ -11658,6 +12284,31 @@ class AutoBookEventsCompanion extends UpdateCompanion<AutoBookEvent> {
       if (billJson != null) 'bill_json': billJson,
       if (reason != null) 'reason': reason,
       if (lastError != null) 'last_error': lastError,
+      if (rawTitle != null) 'raw_title': rawTitle,
+      if (rawText != null) 'raw_text': rawText,
+      if (rawActor != null) 'raw_actor': rawActor,
+      if (rawMetadataJson != null) 'raw_metadata_json': rawMetadataJson,
+      if (rawEvidenceLocalEnabled != null)
+        'raw_evidence_local_enabled': rawEvidenceLocalEnabled,
+      if (rawEvidenceServerEnabled != null)
+        'raw_evidence_server_enabled': rawEvidenceServerEnabled,
+      if (rawEvidenceLocalExpiresAt != null)
+        'raw_evidence_local_expires_at': rawEvidenceLocalExpiresAt,
+      if (rawEvidenceServerExpiresAt != null)
+        'raw_evidence_server_expires_at': rawEvidenceServerExpiresAt,
+      if (rawEvidenceRetentionUntil != null)
+        'raw_evidence_retention_until': rawEvidenceRetentionUntil,
+      if (rawEvidenceUploadState != null)
+        'raw_evidence_upload_state': rawEvidenceUploadState,
+      if (rawEvidenceUploadedAt != null)
+        'raw_evidence_uploaded_at': rawEvidenceUploadedAt,
+      if (rawEvidenceUploadAttempts != null)
+        'raw_evidence_upload_attempts': rawEvidenceUploadAttempts,
+      if (rawEvidenceLastError != null)
+        'raw_evidence_last_error': rawEvidenceLastError,
+      if (rawEvidenceNextRetryAt != null)
+        'raw_evidence_next_retry_at': rawEvidenceNextRetryAt,
+      if (draftPayloadJson != null) 'draft_payload_json': draftPayloadJson,
       if (updatedAt != null) 'updated_at': updatedAt,
     });
   }
@@ -11682,6 +12333,21 @@ class AutoBookEventsCompanion extends UpdateCompanion<AutoBookEvent> {
       Value<String?>? billJson,
       Value<String?>? reason,
       Value<String?>? lastError,
+      Value<String?>? rawTitle,
+      Value<String?>? rawText,
+      Value<String?>? rawActor,
+      Value<String?>? rawMetadataJson,
+      Value<bool>? rawEvidenceLocalEnabled,
+      Value<bool>? rawEvidenceServerEnabled,
+      Value<DateTime?>? rawEvidenceLocalExpiresAt,
+      Value<DateTime?>? rawEvidenceServerExpiresAt,
+      Value<DateTime?>? rawEvidenceRetentionUntil,
+      Value<String>? rawEvidenceUploadState,
+      Value<DateTime?>? rawEvidenceUploadedAt,
+      Value<int>? rawEvidenceUploadAttempts,
+      Value<String?>? rawEvidenceLastError,
+      Value<DateTime?>? rawEvidenceNextRetryAt,
+      Value<String?>? draftPayloadJson,
       Value<DateTime>? updatedAt}) {
     return AutoBookEventsCompanion(
       id: id ?? this.id,
@@ -11704,6 +12370,30 @@ class AutoBookEventsCompanion extends UpdateCompanion<AutoBookEvent> {
       billJson: billJson ?? this.billJson,
       reason: reason ?? this.reason,
       lastError: lastError ?? this.lastError,
+      rawTitle: rawTitle ?? this.rawTitle,
+      rawText: rawText ?? this.rawText,
+      rawActor: rawActor ?? this.rawActor,
+      rawMetadataJson: rawMetadataJson ?? this.rawMetadataJson,
+      rawEvidenceLocalEnabled:
+          rawEvidenceLocalEnabled ?? this.rawEvidenceLocalEnabled,
+      rawEvidenceServerEnabled:
+          rawEvidenceServerEnabled ?? this.rawEvidenceServerEnabled,
+      rawEvidenceLocalExpiresAt:
+          rawEvidenceLocalExpiresAt ?? this.rawEvidenceLocalExpiresAt,
+      rawEvidenceServerExpiresAt:
+          rawEvidenceServerExpiresAt ?? this.rawEvidenceServerExpiresAt,
+      rawEvidenceRetentionUntil:
+          rawEvidenceRetentionUntil ?? this.rawEvidenceRetentionUntil,
+      rawEvidenceUploadState:
+          rawEvidenceUploadState ?? this.rawEvidenceUploadState,
+      rawEvidenceUploadedAt:
+          rawEvidenceUploadedAt ?? this.rawEvidenceUploadedAt,
+      rawEvidenceUploadAttempts:
+          rawEvidenceUploadAttempts ?? this.rawEvidenceUploadAttempts,
+      rawEvidenceLastError: rawEvidenceLastError ?? this.rawEvidenceLastError,
+      rawEvidenceNextRetryAt:
+          rawEvidenceNextRetryAt ?? this.rawEvidenceNextRetryAt,
+      draftPayloadJson: draftPayloadJson ?? this.draftPayloadJson,
       updatedAt: updatedAt ?? this.updatedAt,
     );
   }
@@ -11769,6 +12459,61 @@ class AutoBookEventsCompanion extends UpdateCompanion<AutoBookEvent> {
     if (lastError.present) {
       map['last_error'] = Variable<String>(lastError.value);
     }
+    if (rawTitle.present) {
+      map['raw_title'] = Variable<String>(rawTitle.value);
+    }
+    if (rawText.present) {
+      map['raw_text'] = Variable<String>(rawText.value);
+    }
+    if (rawActor.present) {
+      map['raw_actor'] = Variable<String>(rawActor.value);
+    }
+    if (rawMetadataJson.present) {
+      map['raw_metadata_json'] = Variable<String>(rawMetadataJson.value);
+    }
+    if (rawEvidenceLocalEnabled.present) {
+      map['raw_evidence_local_enabled'] =
+          Variable<bool>(rawEvidenceLocalEnabled.value);
+    }
+    if (rawEvidenceServerEnabled.present) {
+      map['raw_evidence_server_enabled'] =
+          Variable<bool>(rawEvidenceServerEnabled.value);
+    }
+    if (rawEvidenceLocalExpiresAt.present) {
+      map['raw_evidence_local_expires_at'] =
+          Variable<DateTime>(rawEvidenceLocalExpiresAt.value);
+    }
+    if (rawEvidenceServerExpiresAt.present) {
+      map['raw_evidence_server_expires_at'] =
+          Variable<DateTime>(rawEvidenceServerExpiresAt.value);
+    }
+    if (rawEvidenceRetentionUntil.present) {
+      map['raw_evidence_retention_until'] =
+          Variable<DateTime>(rawEvidenceRetentionUntil.value);
+    }
+    if (rawEvidenceUploadState.present) {
+      map['raw_evidence_upload_state'] =
+          Variable<String>(rawEvidenceUploadState.value);
+    }
+    if (rawEvidenceUploadedAt.present) {
+      map['raw_evidence_uploaded_at'] =
+          Variable<DateTime>(rawEvidenceUploadedAt.value);
+    }
+    if (rawEvidenceUploadAttempts.present) {
+      map['raw_evidence_upload_attempts'] =
+          Variable<int>(rawEvidenceUploadAttempts.value);
+    }
+    if (rawEvidenceLastError.present) {
+      map['raw_evidence_last_error'] =
+          Variable<String>(rawEvidenceLastError.value);
+    }
+    if (rawEvidenceNextRetryAt.present) {
+      map['raw_evidence_next_retry_at'] =
+          Variable<DateTime>(rawEvidenceNextRetryAt.value);
+    }
+    if (draftPayloadJson.present) {
+      map['draft_payload_json'] = Variable<String>(draftPayloadJson.value);
+    }
     if (updatedAt.present) {
       map['updated_at'] = Variable<DateTime>(updatedAt.value);
     }
@@ -11797,6 +12542,21 @@ class AutoBookEventsCompanion extends UpdateCompanion<AutoBookEvent> {
           ..write('billJson: $billJson, ')
           ..write('reason: $reason, ')
           ..write('lastError: $lastError, ')
+          ..write('rawTitle: $rawTitle, ')
+          ..write('rawText: $rawText, ')
+          ..write('rawActor: $rawActor, ')
+          ..write('rawMetadataJson: $rawMetadataJson, ')
+          ..write('rawEvidenceLocalEnabled: $rawEvidenceLocalEnabled, ')
+          ..write('rawEvidenceServerEnabled: $rawEvidenceServerEnabled, ')
+          ..write('rawEvidenceLocalExpiresAt: $rawEvidenceLocalExpiresAt, ')
+          ..write('rawEvidenceServerExpiresAt: $rawEvidenceServerExpiresAt, ')
+          ..write('rawEvidenceRetentionUntil: $rawEvidenceRetentionUntil, ')
+          ..write('rawEvidenceUploadState: $rawEvidenceUploadState, ')
+          ..write('rawEvidenceUploadedAt: $rawEvidenceUploadedAt, ')
+          ..write('rawEvidenceUploadAttempts: $rawEvidenceUploadAttempts, ')
+          ..write('rawEvidenceLastError: $rawEvidenceLastError, ')
+          ..write('rawEvidenceNextRetryAt: $rawEvidenceNextRetryAt, ')
+          ..write('draftPayloadJson: $draftPayloadJson, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
@@ -17700,6 +18460,21 @@ typedef $$AutoBookEventsTableCreateCompanionBuilder = AutoBookEventsCompanion
   Value<String?> billJson,
   Value<String?> reason,
   Value<String?> lastError,
+  Value<String?> rawTitle,
+  Value<String?> rawText,
+  Value<String?> rawActor,
+  Value<String?> rawMetadataJson,
+  Value<bool> rawEvidenceLocalEnabled,
+  Value<bool> rawEvidenceServerEnabled,
+  Value<DateTime?> rawEvidenceLocalExpiresAt,
+  Value<DateTime?> rawEvidenceServerExpiresAt,
+  Value<DateTime?> rawEvidenceRetentionUntil,
+  Value<String> rawEvidenceUploadState,
+  Value<DateTime?> rawEvidenceUploadedAt,
+  Value<int> rawEvidenceUploadAttempts,
+  Value<String?> rawEvidenceLastError,
+  Value<DateTime?> rawEvidenceNextRetryAt,
+  Value<String?> draftPayloadJson,
   Value<DateTime> updatedAt,
 });
 typedef $$AutoBookEventsTableUpdateCompanionBuilder = AutoBookEventsCompanion
@@ -17723,6 +18498,21 @@ typedef $$AutoBookEventsTableUpdateCompanionBuilder = AutoBookEventsCompanion
   Value<String?> billJson,
   Value<String?> reason,
   Value<String?> lastError,
+  Value<String?> rawTitle,
+  Value<String?> rawText,
+  Value<String?> rawActor,
+  Value<String?> rawMetadataJson,
+  Value<bool> rawEvidenceLocalEnabled,
+  Value<bool> rawEvidenceServerEnabled,
+  Value<DateTime?> rawEvidenceLocalExpiresAt,
+  Value<DateTime?> rawEvidenceServerExpiresAt,
+  Value<DateTime?> rawEvidenceRetentionUntil,
+  Value<String> rawEvidenceUploadState,
+  Value<DateTime?> rawEvidenceUploadedAt,
+  Value<int> rawEvidenceUploadAttempts,
+  Value<String?> rawEvidenceLastError,
+  Value<DateTime?> rawEvidenceNextRetryAt,
+  Value<String?> draftPayloadJson,
   Value<DateTime> updatedAt,
 });
 
@@ -17793,6 +18583,63 @@ class $$AutoBookEventsTableFilterComposer
 
   ColumnFilters<String> get lastError => $composableBuilder(
       column: $table.lastError, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get rawTitle => $composableBuilder(
+      column: $table.rawTitle, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get rawText => $composableBuilder(
+      column: $table.rawText, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get rawActor => $composableBuilder(
+      column: $table.rawActor, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get rawMetadataJson => $composableBuilder(
+      column: $table.rawMetadataJson,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get rawEvidenceLocalEnabled => $composableBuilder(
+      column: $table.rawEvidenceLocalEnabled,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get rawEvidenceServerEnabled => $composableBuilder(
+      column: $table.rawEvidenceServerEnabled,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get rawEvidenceLocalExpiresAt => $composableBuilder(
+      column: $table.rawEvidenceLocalExpiresAt,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get rawEvidenceServerExpiresAt => $composableBuilder(
+      column: $table.rawEvidenceServerExpiresAt,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get rawEvidenceRetentionUntil => $composableBuilder(
+      column: $table.rawEvidenceRetentionUntil,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get rawEvidenceUploadState => $composableBuilder(
+      column: $table.rawEvidenceUploadState,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get rawEvidenceUploadedAt => $composableBuilder(
+      column: $table.rawEvidenceUploadedAt,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get rawEvidenceUploadAttempts => $composableBuilder(
+      column: $table.rawEvidenceUploadAttempts,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get rawEvidenceLastError => $composableBuilder(
+      column: $table.rawEvidenceLastError,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get rawEvidenceNextRetryAt => $composableBuilder(
+      column: $table.rawEvidenceNextRetryAt,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get draftPayloadJson => $composableBuilder(
+      column: $table.draftPayloadJson,
+      builder: (column) => ColumnFilters(column));
 
   ColumnFilters<DateTime> get updatedAt => $composableBuilder(
       column: $table.updatedAt, builder: (column) => ColumnFilters(column));
@@ -17870,6 +18717,64 @@ class $$AutoBookEventsTableOrderingComposer
   ColumnOrderings<String> get lastError => $composableBuilder(
       column: $table.lastError, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get rawTitle => $composableBuilder(
+      column: $table.rawTitle, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get rawText => $composableBuilder(
+      column: $table.rawText, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get rawActor => $composableBuilder(
+      column: $table.rawActor, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get rawMetadataJson => $composableBuilder(
+      column: $table.rawMetadataJson,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<bool> get rawEvidenceLocalEnabled => $composableBuilder(
+      column: $table.rawEvidenceLocalEnabled,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<bool> get rawEvidenceServerEnabled => $composableBuilder(
+      column: $table.rawEvidenceServerEnabled,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get rawEvidenceLocalExpiresAt => $composableBuilder(
+      column: $table.rawEvidenceLocalExpiresAt,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get rawEvidenceServerExpiresAt =>
+      $composableBuilder(
+          column: $table.rawEvidenceServerExpiresAt,
+          builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get rawEvidenceRetentionUntil => $composableBuilder(
+      column: $table.rawEvidenceRetentionUntil,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get rawEvidenceUploadState => $composableBuilder(
+      column: $table.rawEvidenceUploadState,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get rawEvidenceUploadedAt => $composableBuilder(
+      column: $table.rawEvidenceUploadedAt,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get rawEvidenceUploadAttempts => $composableBuilder(
+      column: $table.rawEvidenceUploadAttempts,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get rawEvidenceLastError => $composableBuilder(
+      column: $table.rawEvidenceLastError,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get rawEvidenceNextRetryAt => $composableBuilder(
+      column: $table.rawEvidenceNextRetryAt,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get draftPayloadJson => $composableBuilder(
+      column: $table.draftPayloadJson,
+      builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
       column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
 }
@@ -17940,6 +18845,53 @@ class $$AutoBookEventsTableAnnotationComposer
   GeneratedColumn<String> get lastError =>
       $composableBuilder(column: $table.lastError, builder: (column) => column);
 
+  GeneratedColumn<String> get rawTitle =>
+      $composableBuilder(column: $table.rawTitle, builder: (column) => column);
+
+  GeneratedColumn<String> get rawText =>
+      $composableBuilder(column: $table.rawText, builder: (column) => column);
+
+  GeneratedColumn<String> get rawActor =>
+      $composableBuilder(column: $table.rawActor, builder: (column) => column);
+
+  GeneratedColumn<String> get rawMetadataJson => $composableBuilder(
+      column: $table.rawMetadataJson, builder: (column) => column);
+
+  GeneratedColumn<bool> get rawEvidenceLocalEnabled => $composableBuilder(
+      column: $table.rawEvidenceLocalEnabled, builder: (column) => column);
+
+  GeneratedColumn<bool> get rawEvidenceServerEnabled => $composableBuilder(
+      column: $table.rawEvidenceServerEnabled, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get rawEvidenceLocalExpiresAt => $composableBuilder(
+      column: $table.rawEvidenceLocalExpiresAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get rawEvidenceServerExpiresAt =>
+      $composableBuilder(
+          column: $table.rawEvidenceServerExpiresAt,
+          builder: (column) => column);
+
+  GeneratedColumn<DateTime> get rawEvidenceRetentionUntil => $composableBuilder(
+      column: $table.rawEvidenceRetentionUntil, builder: (column) => column);
+
+  GeneratedColumn<String> get rawEvidenceUploadState => $composableBuilder(
+      column: $table.rawEvidenceUploadState, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get rawEvidenceUploadedAt => $composableBuilder(
+      column: $table.rawEvidenceUploadedAt, builder: (column) => column);
+
+  GeneratedColumn<int> get rawEvidenceUploadAttempts => $composableBuilder(
+      column: $table.rawEvidenceUploadAttempts, builder: (column) => column);
+
+  GeneratedColumn<String> get rawEvidenceLastError => $composableBuilder(
+      column: $table.rawEvidenceLastError, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get rawEvidenceNextRetryAt => $composableBuilder(
+      column: $table.rawEvidenceNextRetryAt, builder: (column) => column);
+
+  GeneratedColumn<String> get draftPayloadJson => $composableBuilder(
+      column: $table.draftPayloadJson, builder: (column) => column);
+
   GeneratedColumn<DateTime> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
 }
@@ -17990,6 +18942,21 @@ class $$AutoBookEventsTableTableManager extends RootTableManager<
             Value<String?> billJson = const Value.absent(),
             Value<String?> reason = const Value.absent(),
             Value<String?> lastError = const Value.absent(),
+            Value<String?> rawTitle = const Value.absent(),
+            Value<String?> rawText = const Value.absent(),
+            Value<String?> rawActor = const Value.absent(),
+            Value<String?> rawMetadataJson = const Value.absent(),
+            Value<bool> rawEvidenceLocalEnabled = const Value.absent(),
+            Value<bool> rawEvidenceServerEnabled = const Value.absent(),
+            Value<DateTime?> rawEvidenceLocalExpiresAt = const Value.absent(),
+            Value<DateTime?> rawEvidenceServerExpiresAt = const Value.absent(),
+            Value<DateTime?> rawEvidenceRetentionUntil = const Value.absent(),
+            Value<String> rawEvidenceUploadState = const Value.absent(),
+            Value<DateTime?> rawEvidenceUploadedAt = const Value.absent(),
+            Value<int> rawEvidenceUploadAttempts = const Value.absent(),
+            Value<String?> rawEvidenceLastError = const Value.absent(),
+            Value<DateTime?> rawEvidenceNextRetryAt = const Value.absent(),
+            Value<String?> draftPayloadJson = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
           }) =>
               AutoBookEventsCompanion(
@@ -18012,6 +18979,21 @@ class $$AutoBookEventsTableTableManager extends RootTableManager<
             billJson: billJson,
             reason: reason,
             lastError: lastError,
+            rawTitle: rawTitle,
+            rawText: rawText,
+            rawActor: rawActor,
+            rawMetadataJson: rawMetadataJson,
+            rawEvidenceLocalEnabled: rawEvidenceLocalEnabled,
+            rawEvidenceServerEnabled: rawEvidenceServerEnabled,
+            rawEvidenceLocalExpiresAt: rawEvidenceLocalExpiresAt,
+            rawEvidenceServerExpiresAt: rawEvidenceServerExpiresAt,
+            rawEvidenceRetentionUntil: rawEvidenceRetentionUntil,
+            rawEvidenceUploadState: rawEvidenceUploadState,
+            rawEvidenceUploadedAt: rawEvidenceUploadedAt,
+            rawEvidenceUploadAttempts: rawEvidenceUploadAttempts,
+            rawEvidenceLastError: rawEvidenceLastError,
+            rawEvidenceNextRetryAt: rawEvidenceNextRetryAt,
+            draftPayloadJson: draftPayloadJson,
             updatedAt: updatedAt,
           ),
           createCompanionCallback: ({
@@ -18034,6 +19016,21 @@ class $$AutoBookEventsTableTableManager extends RootTableManager<
             Value<String?> billJson = const Value.absent(),
             Value<String?> reason = const Value.absent(),
             Value<String?> lastError = const Value.absent(),
+            Value<String?> rawTitle = const Value.absent(),
+            Value<String?> rawText = const Value.absent(),
+            Value<String?> rawActor = const Value.absent(),
+            Value<String?> rawMetadataJson = const Value.absent(),
+            Value<bool> rawEvidenceLocalEnabled = const Value.absent(),
+            Value<bool> rawEvidenceServerEnabled = const Value.absent(),
+            Value<DateTime?> rawEvidenceLocalExpiresAt = const Value.absent(),
+            Value<DateTime?> rawEvidenceServerExpiresAt = const Value.absent(),
+            Value<DateTime?> rawEvidenceRetentionUntil = const Value.absent(),
+            Value<String> rawEvidenceUploadState = const Value.absent(),
+            Value<DateTime?> rawEvidenceUploadedAt = const Value.absent(),
+            Value<int> rawEvidenceUploadAttempts = const Value.absent(),
+            Value<String?> rawEvidenceLastError = const Value.absent(),
+            Value<DateTime?> rawEvidenceNextRetryAt = const Value.absent(),
+            Value<String?> draftPayloadJson = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
           }) =>
               AutoBookEventsCompanion.insert(
@@ -18056,6 +19053,21 @@ class $$AutoBookEventsTableTableManager extends RootTableManager<
             billJson: billJson,
             reason: reason,
             lastError: lastError,
+            rawTitle: rawTitle,
+            rawText: rawText,
+            rawActor: rawActor,
+            rawMetadataJson: rawMetadataJson,
+            rawEvidenceLocalEnabled: rawEvidenceLocalEnabled,
+            rawEvidenceServerEnabled: rawEvidenceServerEnabled,
+            rawEvidenceLocalExpiresAt: rawEvidenceLocalExpiresAt,
+            rawEvidenceServerExpiresAt: rawEvidenceServerExpiresAt,
+            rawEvidenceRetentionUntil: rawEvidenceRetentionUntil,
+            rawEvidenceUploadState: rawEvidenceUploadState,
+            rawEvidenceUploadedAt: rawEvidenceUploadedAt,
+            rawEvidenceUploadAttempts: rawEvidenceUploadAttempts,
+            rawEvidenceLastError: rawEvidenceLastError,
+            rawEvidenceNextRetryAt: rawEvidenceNextRetryAt,
+            draftPayloadJson: draftPayloadJson,
             updatedAt: updatedAt,
           ),
           withReferenceMapper: (p0) => p0

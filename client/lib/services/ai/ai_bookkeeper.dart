@@ -33,7 +33,6 @@ class AiBookkeeper {
   final BaseRepository _repo;
   final AiExtractionEngine _engine;
   final BillCreationService _persister;
-  final AiCallReporter? _reporter;
   final AutoBookEventStore? _eventStore;
   static const _semanticPolicy = AutoBookPolicy();
   static const _dedupMatcher = SemanticDedupMatcher();
@@ -42,12 +41,10 @@ class AiBookkeeper {
     required BaseRepository repository,
     required AiExtractionEngine engine,
     required BillCreationService persister,
-    AiCallReporter? reporter,
     AutoBookEventStore? eventStore,
   })  : _repo = repository,
         _engine = engine,
         _persister = persister,
-        _reporter = reporter,
         _eventStore = eventStore;
 
   /// 文本记账(对话 / 自动通知文本)
@@ -79,14 +76,24 @@ class AiBookkeeper {
       repository: _repo,
       ledgerId: ledgerId,
     );
-    final bills = await _engine.extractFromText(
+    final outcome = await _engine.extractFromText(
       text,
       context,
       billGuard: billGuard,
-      onCall: _withLedger(ledgerId),
     );
+    if (outcome.duplicate) {
+      // 服务端识别前判重命中(账单唯一标识已存在):本次没有调用 LLM。
+      // duplicateCount>0 → handled=true:自动通道静默(不发通知、不进待
+      // 确认队列),监控层把事件置为 duplicate 终态。
+      logger.info(
+        _tag,
+        '服务端判重命中,跳过记账',
+        'identifier=${outcome.matchedIdentifier}',
+      );
+      return const BookkeepingResult(duplicateCount: 1);
+    }
     return _persistAll(
-      bills: bills,
+      bills: outcome.bills,
       ledgerId: ledgerId,
       billingTypes: billingTypes,
       l10n: l10n,
@@ -127,7 +134,6 @@ class AiBookkeeper {
       image,
       context,
       billGuard: billGuard,
-      onCall: _withLedger(ledgerId),
     );
     return _persistAll(
       bills: bills,
@@ -156,7 +162,6 @@ class AiBookkeeper {
     final audioResult = await _engine.extractFromAudio(
       audio,
       context,
-      onCall: _withLedger(ledgerId),
     );
     final result = await _persistAll(
       bills: audioResult.bills,
@@ -290,10 +295,6 @@ class AiBookkeeper {
   // ============================================================
 
   /// 把引擎层的裸调用报告补上当前账本 id(本地 int → 字符串)后交给注入的
-  /// reporter。reporter 未注入时 no-op,零开销。
-  AiCallReporter _withLedger(int ledgerId) =>
-      _LedgerBoundReporter(_reporter, ledgerId);
-
   Future<BookkeepingResult> _persistAll({
     required List<BillInfo> bills,
     required int ledgerId,
@@ -778,14 +779,3 @@ class AiBookkeeper {
   }
 }
 
-/// [AiBookkeeper._withLedger] 的包装:给引擎层的裸报告补上账本 id。
-class _LedgerBoundReporter implements AiCallReporter {
-  _LedgerBoundReporter(this._inner, this.ledgerId);
-
-  final AiCallReporter? _inner;
-  final int ledgerId;
-
-  @override
-  void call(AiCallReport report) =>
-      _inner?.call(report.copyWith(ledgerId: '$ledgerId'));
-}

@@ -631,6 +631,8 @@ class AppLinkService {
             captureIntent: AutoBookCaptureIntent.automatic,
             capturedAt: DateTime.now(),
             externalId: params['idempotency_key'] ?? params['event_id'],
+            rawText: text,
+            rawMetadata: {'source': 'deeplink'},
           ),
           action: () => _autoBillingService.processTextResult(
             text!,

@@ -1,11 +1,10 @@
 """AI 分析调用历史的查询 endpoint。
 
-数据来源:`services/ai/analysis_log.py` 在每次 AI 分析调用完成后写入的
-`AIAnalysisLog` 表(ask / parse-tx-image / parse-tx-text)。
+数据来源:服务端各 AI 调用路径完成后写入的 `AIAnalysisLog` 表 ——
+/ai/parse-tx-*、/ai/ask、/ai/relay/*(App 中转)各自在调用完成时落行
+(App 端直连时代的 `POST /ai/logs` / `POST /ai/logs/image` 自报通道已随
+「LLM 经服务端中转」改造删除;写日志统一发生在服务端调用现场)。
 
-- `POST /ai/logs` — **客户端(App)上报自己发起的 AI 调用**(App 的 AI 记账是
-  本地直连 AI 服务商,不经 /ai/* 路由,此前服务端无感)。鉴权只认 token 里的
-  user_id,客户端字段只作业务元数据;client_ip 服务端自取。返回 201。
 - `GET /ai/logs` — 当前用户自己的记录,called_at 倒序,支持 entry_type /
   status 过滤。**列表只返截断预览**(全文字段可能很长,列表带全量会拖页面
   并把内容暴露进响应缓存);全文走详情 endpoint。
@@ -29,12 +28,8 @@ from pathlib import Path
 from fastapi import (
     APIRouter,
     Depends,
-    File,
-    Form,
     HTTPException,
     Query,
-    Request,
-    UploadFile,
     status,
 )
 from fastapi.responses import FileResponse
@@ -46,10 +41,6 @@ from ...database import get_db
 from ...deps import get_current_user, require_any_scopes
 from ...models import AIAnalysisLog, User
 from ...security import SCOPE_APP_WRITE, SCOPE_WEB_READ, SCOPE_WEB_WRITE
-from ...services.ai.analysis_log import (
-    write_ai_analysis_log,
-    write_ai_analysis_log_with_image,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -64,21 +55,8 @@ _AUTH_SCOPE_DEP = require_any_scopes(
 _PREVIEW_CHARS = 300
 
 # 同时是列表 / admin 列表的合法过滤值 —— 与 ai_analysis_logs.entry_type 写入侧一致
-_ENTRY_TYPE_PATTERN = "^(ask|parse_tx_image|parse_tx_text)$"
-
-# App 上报截图原图:白名单 + 大小上限与 /ai/parse-tx-image 同口径(5MB)
-_ALLOWED_IMAGE_MIMES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
-_MAX_IMAGE_BYTES = 5 * 1024 * 1024
-
-# multipart part 没带 content-type 时按文件后缀兜底(App 端 MultipartFile 默认
-# 没设置 Content-Type,不能因此把真图拒了)
-_SUFFIX_MIME = {
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".png": "image/png",
-    ".webp": "image/webp",
-    ".gif": "image/gif",
-}
+# (写入侧:ask=RAG 问答 / parse_tx_*=记账提取 / chat=App 自由对话 / stt=语音转写)
+_ENTRY_TYPE_PATTERN = "^(ask|parse_tx_image|parse_tx_text|chat|stt)$"
 
 
 def _utc_iso(value: datetime | None) -> str | None:
@@ -112,6 +90,8 @@ class AIAnalysisLogItem(BaseModel):
     completion_tokens: int | None
     total_tokens: int | None
     client_ip: str | None
+    # 非 null = 该行没有真正调用 LLM(识别前命中唯一标识判重跳过)
+    dedup_hit: str | None = None
     called_at: datetime
 
     @field_serializer("called_at")
@@ -140,6 +120,7 @@ class AIAnalysisLogDetail(BaseModel):
     completion_tokens: int | None
     total_tokens: int | None
     client_ip: str | None
+    dedup_hit: str | None = None
     has_image: bool = False
     called_at: datetime
 
@@ -151,26 +132,6 @@ class AIAnalysisLogDetail(BaseModel):
 class AIAnalysisLogListResponse(BaseModel):
     total: int
     items: list[AIAnalysisLogItem]
-
-
-class AIAnalysisLogCreate(BaseModel):
-    """客户端(App)上报自己的 AI 调用。字段上限与 models.AIAnalysisLog 列
-    类型对齐(PostgreSQL 对 varchar 长度是 enforce 的)。"""
-
-    entry_type: str = Field(pattern=_ENTRY_TYPE_PATTERN)
-    status: str = Field(pattern=r"^(ok|error)$")
-    provider_id: str | None = Field(default=None, max_length=64)
-    model: str | None = Field(default=None, max_length=128)
-    # App 端记账用的本地 ledger id(int);来自服务端 projection 的 external id
-    # / 本地 Drift id,两者都可能,原样存,只用于上下文定位。
-    ledger_id: str | None = Field(default=None, max_length=128)
-    input_text: str | None = None
-    output_text: str | None = None
-    error_message: str | None = None
-    duration_ms: int = Field(default=0, ge=0)
-    prompt_tokens: int | None = Field(default=None, ge=0)
-    completion_tokens: int | None = Field(default=None, ge=0)
-    total_tokens: int | None = Field(default=None, ge=0)
 
 
 def _to_item(row: AIAnalysisLog) -> AIAnalysisLogItem:
@@ -189,6 +150,7 @@ def _to_item(row: AIAnalysisLog) -> AIAnalysisLogItem:
         completion_tokens=row.completion_tokens,
         total_tokens=row.total_tokens,
         client_ip=row.client_ip,
+        dedup_hit=row.dedup_hit,
         called_at=row.called_at,
     )
 
@@ -209,6 +171,7 @@ def _to_detail(row: AIAnalysisLog) -> AIAnalysisLogDetail:
         completion_tokens=row.completion_tokens,
         total_tokens=row.total_tokens,
         client_ip=row.client_ip,
+        dedup_hit=row.dedup_hit,
         has_image=row.image_path is not None,
         called_at=row.called_at,
     )
@@ -223,109 +186,6 @@ def _filter_conditions(
     if status_:
         conds.append(AIAnalysisLog.status == status_)
     return conds
-
-
-@router.post("/logs", status_code=status.HTTP_201_CREATED)
-def create_ai_log(
-    payload: AIAnalysisLogCreate,
-    request: Request,
-    _scopes: set[str] = Depends(_AUTH_SCOPE_DEP),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-) -> dict[str, bool]:
-    """App 上报自己发起的 AI 调用(通知记账 / 对话 / 截图 / 语音等)。
-
-    user_id 取 token 身份,不信客户端;input/output 超长由 write 侧统一截断
-    (50k/100k),与 Web 端 /ai/* 写入路径同语义。失败静默在 write 内部,
-    上报方无感知 —— 与主流程解耦。
-    """
-    write_ai_analysis_log(
-        user_id=current_user.id,
-        entry_type=payload.entry_type,
-        status=payload.status,
-        provider_id=payload.provider_id,
-        model=payload.model,
-        ledger_id=payload.ledger_id,
-        input_text=payload.input_text,
-        output_text=payload.output_text,
-        error_message=payload.error_message,
-        duration_ms=payload.duration_ms,
-        prompt_tokens=payload.prompt_tokens,
-        completion_tokens=payload.completion_tokens,
-        total_tokens=payload.total_tokens,
-        client_ip=request.client.host if request.client else None,
-    )
-    return {"ok": True}
-
-
-@router.post("/logs/image", status_code=status.HTTP_201_CREATED)
-async def create_ai_log_with_image(
-    request: Request,
-    entry_type: str = Form(..., pattern=_ENTRY_TYPE_PATTERN),
-    status_: str = Form(..., alias="status", pattern=r"^(ok|error)$"),
-    provider_id: str | None = Form(default=None, max_length=64),
-    model: str | None = Form(default=None, max_length=128),
-    ledger_id: str | None = Form(default=None, max_length=128),
-    input_text: str | None = Form(default=None),
-    output_text: str | None = Form(default=None),
-    error_message: str | None = Form(default=None),
-    duration_ms: int = Form(default=0, ge=0),
-    prompt_tokens: int | None = Form(default=None, ge=0),
-    completion_tokens: int | None = Form(default=None, ge=0),
-    total_tokens: int | None = Form(default=None, ge=0),
-    image: UploadFile = File(...),
-    _scopes: set[str] = Depends(_AUTH_SCOPE_DEP),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-) -> dict[str, bool]:
-    """App 上报带输入图片的 AI 调用(截图记账原图,multipart 一次上传)。
-
-    与 `POST /logs` 的关系:该端点处理「图像输入」场景,JSON 端点处理纯
-    文本/语音;两者共用 write 侧(带图版调用
-    [write_ai_analysis_log_with_image])。图片只允许白名单 mime、≤5MB;
-    校验失败 → 4xx(客户端静默,不影响记账)。user_id 取 token 身份。
-    """
-    mime = (image.content_type or "").lower()
-    if mime not in _ALLOWED_IMAGE_MIMES:
-        suffix = Path(image.filename or "").suffix.lower()
-        mime = _SUFFIX_MIME.get(suffix, "")
-    if mime not in _ALLOWED_IMAGE_MIMES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "error_code": "AI_IMAGE_TYPE_INVALID",
-                "message": f"unsupported image type: {image.content_type!r}; "
-                f"allowed: {sorted(_ALLOWED_IMAGE_MIMES)}",
-            },
-        )
-    image_bytes = await image.read()
-    if len(image_bytes) > _MAX_IMAGE_BYTES:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail={
-                "error_code": "AI_IMAGE_TOO_LARGE",
-                "message": f"image size {len(image_bytes)} exceeds 5MB",
-            },
-        )
-    write_ai_analysis_log_with_image(
-        user_id=current_user.id,
-        entry_type=entry_type,
-        status=status_,
-        provider_id=provider_id,
-        model=model,
-        ledger_id=ledger_id,
-        input_text=input_text,
-        output_text=output_text,
-        error_message=error_message,
-        duration_ms=duration_ms,
-        prompt_tokens=prompt_tokens,
-        completion_tokens=completion_tokens,
-        total_tokens=total_tokens,
-        client_ip=request.client.host if request.client else None,
-        image_bytes=image_bytes,
-        image_mime=mime,
-    )
-    return {"ok": True}
 
 
 @router.get("/logs", response_model=AIAnalysisLogListResponse)
