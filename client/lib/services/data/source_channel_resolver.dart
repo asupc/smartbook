@@ -71,8 +71,9 @@ class SourceChannelResolver {
 
   /// 通知/屏幕文本包名 → 渠道名(与 native TRUSTED_PACKAGES 顺序镜像,更专门的在前)。
   /// 与 native 白名单保持一致;抖音/京东等新包名如需支持无障碍页面记账,
-  /// 需同时加入 android/.../ScreenTextWatcher.kt TRUSTED_PACKAGES 与
-  /// res/xml/accessibility_service_config.xml 的 packageNames。
+  /// 需同时加入 android/.../ScreenTextWatcher.kt TRUSTED_PACKAGES。
+  /// 银行包名 2026-09 已逐家经应用商店核验(同 NotificationWatcher 注释);
+  /// 原映射 com.chinabank.mobilebank(中行)/cn.pay.youjian(邮储)已证伪并修正。
   static const packageRules = <({String keyword, String channel})>[
     (keyword: 'com.ss.android.ugc.aweme.lite', channel: '抖音'),
     (keyword: 'com.ss.android.ugc.aweme', channel: '抖音'),
@@ -82,13 +83,22 @@ class SourceChannelResolver {
     (keyword: 'tencent.mm', channel: '微信'),
     (keyword: 'com.unionpay', channel: '云闪付'),
     (keyword: 'lianlian.trust', channel: '连连支付'),
-    (keyword: 'com.icbc', channel: '中国工商银行'),
+    (keyword: 'com.chinamworld.bocmbci', channel: '中国银行'),
     (keyword: 'com.chinamworld.main', channel: '中国建设银行'),
+    (keyword: 'com.icbc', channel: '中国工商银行'),
     (keyword: 'android.bankabc', channel: '中国农业银行'),
-    (keyword: 'com.chinabank.mobilebank', channel: '中国银行'),
     (keyword: 'com.bankcomm.Bankcomm', channel: '交通银行'),
     (keyword: 'cmb.pb', channel: '招商银行'),
-    (keyword: 'cn.pay.youjian', channel: '中国邮政储蓄银行'),
+    (keyword: 'com.yitong.mbank.psbc', channel: '中国邮政储蓄银行'),
+    (keyword: 'cn.com.cmbc.newmbank', channel: '中国民生银行'),
+    (keyword: 'com.ecitic.bank.mobile', channel: '中信银行'),
+    (keyword: 'cn.com.spdb.mobilebank.per', channel: '浦发银行'),
+    (keyword: 'com.cib.cibmb', channel: '兴业银行'),
+    (keyword: 'com.cgbchina.xpt', channel: '广发银行'),
+    (keyword: 'com.hxb.mobile.client', channel: '华夏银行'),
+    (keyword: 'com.pingan.paces.ccms', channel: '中国平安银行'),
+    (keyword: 'com.webank.wemoney', channel: '微众银行'),
+    (keyword: 'com.mybank.android.phone', channel: '网商银行'),
   ];
 
   /// 通知包名 → 渠道名(null = 未知)。

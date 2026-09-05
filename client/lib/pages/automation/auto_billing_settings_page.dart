@@ -38,10 +38,12 @@ class AndroidAutoBillingPage extends ConsumerStatefulWidget {
   const AndroidAutoBillingPage({super.key});
 
   @override
-  ConsumerState<AndroidAutoBillingPage> createState() => _AndroidAutoBillingPageState();
+  ConsumerState<AndroidAutoBillingPage> createState() =>
+      _AndroidAutoBillingPageState();
 }
 
-class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage> with WidgetsBindingObserver {
+class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
+    with WidgetsBindingObserver {
   late final ScreenshotMonitorService _screenshotMonitor;
   late final SmsMonitorService _smsMonitor;
   late final NotifyMonitorService _notifyMonitor;
@@ -54,6 +56,7 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
   bool _isScreenMonitorEnabled = false;
   bool _isScreenAccessibilityGranted = false;
   bool _autoBookCheckEnabled = true;
+  bool _shadowModeEnabled = false;
   int _pendingCount = 0;
   bool _isBatteryOptimizationIgnored = false;
   bool _isLoading = true;
@@ -99,12 +102,15 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
     final screenGranted = await _screenTextMonitor.isAccessibilityGranted();
     final prefs = await SharedPreferences.getInstance();
     final autoBookCheck = prefs.getBool('auto_book_enabled') ?? true;
+    final shadowMode =
+        await ref.read(autoBillingServiceProvider).isShadowModeEnabled();
     final pendingCount = await PendingCandidateStore().count();
 
     // 检查电池优化状态
     bool batteryOptimizationIgnored = false;
     try {
-      final androidUtil = NotificationFactory.getInstance() as AndroidNotificationUtil;
+      final androidUtil =
+          NotificationFactory.getInstance() as AndroidNotificationUtil;
       final batteryInfo = await androidUtil.getBatteryOptimizationInfo();
       batteryOptimizationIgnored = batteryInfo['isIgnoring'] == true;
     } catch (e) {
@@ -119,6 +125,7 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
       _isScreenMonitorEnabled = screenEnabled;
       _isScreenAccessibilityGranted = screenGranted;
       _autoBookCheckEnabled = autoBookCheck;
+      _shadowModeEnabled = shadowMode;
       _pendingCount = pendingCount;
       _isBatteryOptimizationIgnored = batteryOptimizationIgnored;
       _isLoading = false;
@@ -133,9 +140,23 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
       setState(() {
         _autoBookCheckEnabled = value;
       });
-      showToast(context,
-          value ? AppLocalizations.of(context).enableSuccess : AppLocalizations.of(context).disableSuccess);
+      showToast(
+          context,
+          value
+              ? AppLocalizations.of(context).enableSuccess
+              : AppLocalizations.of(context).disableSuccess);
     }
+  }
+
+  Future<void> _toggleShadowMode(bool value) async {
+    await ref.read(autoBillingServiceProvider).setShadowModeEnabled(value);
+    if (!mounted) return;
+    setState(() => _shadowModeEnabled = value);
+    showToast(
+      context,
+      value ? '影子模式已开启：自动入口只识别，不创建交易' : '影子模式已关闭',
+      duration: const Duration(seconds: 3),
+    );
   }
 
   Future<void> _toggleNotifyMonitor(bool value) async {
@@ -181,7 +202,8 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
         }
       } catch (e) {
         if (mounted) {
-          showToast(context, '${l10n.enableFailed}: $e', duration: const Duration(seconds: 3));
+          showToast(context, '${l10n.enableFailed}: $e',
+              duration: const Duration(seconds: 3));
         }
       }
     } else {
@@ -195,7 +217,8 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
         }
       } catch (e) {
         if (mounted) {
-          showToast(context, '${l10n.disableFailed}: $e', duration: const Duration(seconds: 3));
+          showToast(context, '${l10n.disableFailed}: $e',
+              duration: const Duration(seconds: 3));
         }
       }
     }
@@ -260,7 +283,8 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
         }
       } catch (e) {
         if (mounted) {
-          showToast(context, '${l10n.enableFailed}: $e', duration: const Duration(seconds: 3));
+          showToast(context, '${l10n.enableFailed}: $e',
+              duration: const Duration(seconds: 3));
         }
       }
     } else {
@@ -274,7 +298,8 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
         }
       } catch (e) {
         if (mounted) {
-          showToast(context, '${l10n.disableFailed}: $e', duration: const Duration(seconds: 3));
+          showToast(context, '${l10n.disableFailed}: $e',
+              duration: const Duration(seconds: 3));
         }
       }
     }
@@ -290,12 +315,12 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
         setState(() {
           _autoDeleteScreenshotEnabled = value;
         });
-        showToast(context,
-            value ? l10n.enableSuccess : l10n.disableSuccess);
+        showToast(context, value ? l10n.enableSuccess : l10n.disableSuccess);
       }
     } catch (e) {
       if (mounted) {
-        showToast(context, '${l10n.enableFailed}: $e', duration: const Duration(seconds: 3));
+        showToast(context, '${l10n.enableFailed}: $e',
+            duration: const Duration(seconds: 3));
       }
     }
   }
@@ -323,7 +348,8 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
         }
       } catch (e) {
         if (mounted) {
-          showToast(context, '${l10n.enableFailed}: $e', duration: const Duration(seconds: 3));
+          showToast(context, '${l10n.enableFailed}: $e',
+              duration: const Duration(seconds: 3));
         }
       }
     } else {
@@ -337,7 +363,8 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
         }
       } catch (e) {
         if (mounted) {
-          showToast(context, '${l10n.disableFailed}: $e', duration: const Duration(seconds: 3));
+          showToast(context, '${l10n.disableFailed}: $e',
+              duration: const Duration(seconds: 3));
         }
       }
     }
@@ -352,7 +379,8 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
       PermissionStatus status;
 
       // Android 13+ 使用 photos，Android 13以下使用 storage
-      if (await Permission.photos.isRestricted || await Permission.photos.isPermanentlyDenied) {
+      if (await Permission.photos.isRestricted ||
+          await Permission.photos.isPermanentlyDenied) {
         // 如果photos权限受限，尝试使用storage
         status = await Permission.storage.request();
         print('📸 [AutoBilling] 存储权限请求结果: $status');
@@ -387,7 +415,8 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
         }
       } catch (e) {
         if (mounted) {
-          showToast(context, '${l10n.enableFailed}: $e', duration: const Duration(seconds: 3));
+          showToast(context, '${l10n.enableFailed}: $e',
+              duration: const Duration(seconds: 3));
         }
       }
     } else {
@@ -401,7 +430,8 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
         }
       } catch (e) {
         if (mounted) {
-          showToast(context, '${l10n.disableFailed}: $e', duration: const Duration(seconds: 3));
+          showToast(context, '${l10n.disableFailed}: $e',
+              duration: const Duration(seconds: 3));
         }
       }
     }
@@ -502,9 +532,9 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
                   title: l10n.autoBillingNotifyTitle,
                   subtitle: _isNotifyMonitorEnabled
                       ? l10n.autoBillingNotifyDescEnabled
-                      : ( _isNotifyListenerGranted
-                            ? l10n.autoBillingNotifyDesc
-                            : l10n.autoBillingNotifyPermissionMissing),
+                      : (_isNotifyListenerGranted
+                          ? l10n.autoBillingNotifyDesc
+                          : l10n.autoBillingNotifyPermissionMissing),
                   value: _isNotifyMonitorEnabled,
                   onChanged: _isLoading ? null : _toggleNotifyMonitor,
                 ),
@@ -521,8 +551,8 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
                   subtitle: _isScreenMonitorEnabled
                       ? l10n.autoBillingScreenTextDescEnabled
                       : (_isScreenAccessibilityGranted
-                            ? l10n.autoBillingScreenTextDesc
-                            : l10n.autoBillingScreenTextPermissionMissing),
+                          ? l10n.autoBillingScreenTextDesc
+                          : l10n.autoBillingScreenTextPermissionMissing),
                   value: _isScreenMonitorEnabled,
                   onChanged: _isLoading ? null : _toggleScreenMonitor,
                 ),
@@ -545,6 +575,22 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
 
                 const SizedBox(height: 16),
 
+                // 影子/演练模式：用于新规则观察期，只识别并写入摘要，不写交易。
+                _buildSwitchCard(
+                  context,
+                  primaryColor,
+                  l10n,
+                  icon: Icons.visibility_outlined,
+                  title: '影子/演练模式',
+                  subtitle: _shadowModeEnabled
+                      ? '自动入口只识别和记录摘要，不创建交易或候选'
+                      : '关闭：自动入口按正常策略处理',
+                  value: _shadowModeEnabled,
+                  onChanged: _isLoading ? null : _toggleShadowMode,
+                ),
+
+                const SizedBox(height: 16),
+
                 // 渠道→账户映射入口(M4)
                 _buildChannelMappingCard(context, primaryColor, l10n),
 
@@ -561,7 +607,8 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
                 const SizedBox(height: 16),
 
                 // 电池优化状态卡片
-                _buildBatteryOptimizationStatusCard(context, primaryColor, l10n),
+                _buildBatteryOptimizationStatusCard(
+                    context, primaryColor, l10n),
 
                 const SizedBox(height: 16),
 
@@ -572,7 +619,6 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
 
                 // 电池优化设置引导卡片
                 _buildBatteryOptimizationCard(context, primaryColor, l10n),
-
               ],
             ),
           ),
@@ -664,7 +710,9 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
                   Text(
                     subtitle,
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: value ? primaryColor : theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                      color: value
+                          ? primaryColor
+                          : theme.colorScheme.onSurface.withValues(alpha: 0.6),
                     ),
                   ),
                 ],
@@ -690,7 +738,8 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
         title: Text(l10n.channelMappingTitle),
         subtitle: Text(l10n.channelMappingDesc),
         trailing: Icon(Icons.chevron_right,
-            color: theme.colorScheme.onSurface.withValues(alpha: 0.5), size: 20),
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+            size: 20),
         onTap: () {
           Navigator.of(context).push(
             MaterialPageRoute(
@@ -739,8 +788,7 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
         subtitle: Text(l10n.pendingConfirmationDesc),
         trailing: _pendingCount > 0
             ? Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
                   color: Colors.orange.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(10),
@@ -756,8 +804,7 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
                 size: 20),
         onTap: () async {
           await Navigator.of(context).push(
-            MaterialPageRoute(
-                builder: (_) => const PendingConfirmationPage()),
+            MaterialPageRoute(builder: (_) => const PendingConfirmationPage()),
           );
           // 返回后刷新计数徽标
           if (mounted) _loadMonitorStatus();
@@ -768,7 +815,8 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
 
   /// 手动模拟测试卡片:短信/通知两条链路各自可注入模拟数据,
   /// 直接走完整 AI 提取 → 落库流程,验证「自动记账是否正常」。
-  Widget _buildMockCard(BuildContext context, Color primaryColor, AppLocalizations l10n) {
+  Widget _buildMockCard(
+      BuildContext context, Color primaryColor, AppLocalizations l10n) {
     final theme = Theme.of(context);
 
     return Card(
@@ -811,7 +859,8 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: () => _sendMockNotify(l10n),
-                    icon: const Icon(Icons.notifications_active_outlined, size: 18),
+                    icon: const Icon(Icons.notifications_active_outlined,
+                        size: 18),
                     label: Text(l10n.autoBillingMockNotify),
                   ),
                 ),
@@ -845,7 +894,10 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
   /// 模拟短信:模板选择(测试数据为中文银行样文,仅用于验证链路)/ 自定义
   Future<void> _sendMockSms(AppLocalizations l10n) async {
     const templates = <(String, String)>[
-      ('银行消费短信', '您尾号1234的储蓄卡账户于03月28日14时32分消费人民币(卡内)45.00元,当前余额1,234.56元,商户:星巴克咖啡'),
+      (
+        '银行消费短信',
+        '您尾号1234的储蓄卡账户于03月28日14时32分消费人民币(卡内)45.00元,当前余额1,234.56元,商户:星巴克咖啡'
+      ),
       ('转账入账短信', '【招商银行】您尾号5678账户收到转账500.00元,余额5,500.00元'),
       ('验证码垃圾短信', '您正在登录招商银行APP,验证码123456,请勿泄露'),
     ];
@@ -887,9 +939,21 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
   /// 直接走完整 AI 提取 → 落库流程验证链路。
   Future<void> _sendMockScreen(AppLocalizations l10n) async {
     const templates = <(String, String, String)>[
-      ('支付宝账单详情', '账单详情\n交易时间:2026-09-03 12:00\n支付金额:30.00元\n对方:美团外卖\n商品:午餐', 'eg.android.AlipayGphone'),
-      ('京东订单详情', '订单详情\n订单编号:1234567890\n实付金额:¥ 245.00\n商品:小米充电宝\n交易时间:2026-09-03 18:20', 'com.jingdong.app.mall'),
-      ('抖音支付成功', '支付成功\n已支付 ¥ 19.90\n商品:抖音商城\n订单编号:9876543210', 'com.ss.android.ugc.aweme'),
+      (
+        '支付宝账单详情',
+        '账单详情\n交易时间:2026-09-03 12:00\n支付金额:30.00元\n对方:美团外卖\n商品:午餐',
+        'eg.android.AlipayGphone'
+      ),
+      (
+        '京东订单详情',
+        '订单详情\n订单编号:1234567890\n实付金额:¥ 245.00\n商品:小米充电宝\n交易时间:2026-09-03 18:20',
+        'com.jingdong.app.mall'
+      ),
+      (
+        '抖音支付成功',
+        '支付成功\n已支付 ¥ 19.90\n商品:抖音商城\n订单编号:9876543210',
+        'com.ss.android.ugc.aweme'
+      ),
     ];
     final result = await showDialog<(String, String)>(
       context: context,
@@ -898,7 +962,8 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
         children: [
           ...templates.map((t) => SimpleDialogOption(
                 onPressed: () => Navigator.pop(ctx, (t.$3, t.$2)),
-                child: Text('${t.$1}\n${t.$2}', maxLines: 3, overflow: TextOverflow.ellipsis),
+                child: Text('${t.$1}\n${t.$2}',
+                    maxLines: 3, overflow: TextOverflow.ellipsis),
               )),
           SimpleDialogOption(
             onPressed: () => Navigator.pop(ctx, ('__custom__', '__custom__')),
@@ -932,7 +997,8 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
         children: [
           ...templates.map((t) => SimpleDialogOption(
                 onPressed: () => Navigator.pop(ctx, t.$2),
-                child: Text('${t.$1}\n${t.$2}', maxLines: 3, overflow: TextOverflow.ellipsis),
+                child: Text('${t.$1}\n${t.$2}',
+                    maxLines: 3, overflow: TextOverflow.ellipsis),
               )),
           SimpleDialogOption(
             onPressed: () => Navigator.pop(ctx, '__custom__'),
@@ -957,7 +1023,8 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
         children: [
           ...templates.map((t) => SimpleDialogOption(
                 onPressed: () => Navigator.pop(ctx, (t.$3, t.$2)),
-                child: Text('${t.$1}\n${t.$2}', maxLines: 3, overflow: TextOverflow.ellipsis),
+                child: Text('${t.$1}\n${t.$2}',
+                    maxLines: 3, overflow: TextOverflow.ellipsis),
               )),
           SimpleDialogOption(
             onPressed: () => Navigator.pop(ctx, ('__custom__', '__custom__')),
@@ -1006,7 +1073,8 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
     return body;
   }
 
-  Widget _buildBatteryOptimizationStatusCard(BuildContext context, Color primaryColor, AppLocalizations l10n) {
+  Widget _buildBatteryOptimizationStatusCard(
+      BuildContext context, Color primaryColor, AppLocalizations l10n) {
     final theme = Theme.of(context);
 
     return Card(
@@ -1018,12 +1086,19 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                color: (_isBatteryOptimizationIgnored ? Colors.green : Colors.orange).withValues(alpha: 0.1),
+                color: (_isBatteryOptimizationIgnored
+                        ? Colors.green
+                        : Colors.orange)
+                    .withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
-                _isBatteryOptimizationIgnored ? Icons.check_circle : Icons.battery_saver,
-                color: _isBatteryOptimizationIgnored ? Colors.green : Colors.orange,
+                _isBatteryOptimizationIgnored
+                    ? Icons.check_circle
+                    : Icons.battery_saver,
+                color: _isBatteryOptimizationIgnored
+                    ? Colors.green
+                    : Colors.orange,
                 size: 28,
               ),
             ),
@@ -1054,7 +1129,8 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
             ),
             Icon(
               _isBatteryOptimizationIgnored ? Icons.check : Icons.warning_amber,
-              color: _isBatteryOptimizationIgnored ? Colors.green : Colors.orange,
+              color:
+                  _isBatteryOptimizationIgnored ? Colors.green : Colors.orange,
             ),
           ],
         ),
@@ -1062,7 +1138,8 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
     );
   }
 
-  Widget _buildBatteryOptimizationCard(BuildContext context, Color primaryColor, AppLocalizations l10n) {
+  Widget _buildBatteryOptimizationCard(
+      BuildContext context, Color primaryColor, AppLocalizations l10n) {
     final theme = Theme.of(context);
 
     return Card(
@@ -1074,7 +1151,8 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
           children: [
             Row(
               children: [
-                Icon(Icons.battery_charging_full, color: primaryColor, size: 24),
+                Icon(Icons.battery_charging_full,
+                    color: primaryColor, size: 24),
                 const SizedBox(width: 8),
                 Text(
                   l10n.autoBillingBatteryGuideTitle,
@@ -1096,8 +1174,10 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
               width: double.infinity,
               child: FilledButton.icon(
                 onPressed: () async {
-                  final androidUtil = NotificationFactory.getInstance() as AndroidNotificationUtil;
-                  final batteryInfo = await androidUtil.getBatteryOptimizationInfo();
+                  final androidUtil = NotificationFactory.getInstance()
+                      as AndroidNotificationUtil;
+                  final batteryInfo =
+                      await androidUtil.getBatteryOptimizationInfo();
                   if (mounted && context.mounted) {
                     showDialog(
                       context: context,
@@ -1107,16 +1187,21 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
                           mainAxisSize: MainAxisSize.min,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(l10n.reminderManufacturer(batteryInfo['manufacturer'] ?? 'Unknown')),
-                            Text(l10n.reminderModel(batteryInfo['model'] ?? 'Unknown')),
-                            Text(l10n.reminderAndroidVersion(batteryInfo['androidVersion'] ?? 'Unknown')),
+                            Text(l10n.reminderManufacturer(
+                                batteryInfo['manufacturer'] ?? 'Unknown')),
+                            Text(l10n.reminderModel(
+                                batteryInfo['model'] ?? 'Unknown')),
+                            Text(l10n.reminderAndroidVersion(
+                                batteryInfo['androidVersion'] ?? 'Unknown')),
                             const SizedBox(height: 8),
                             Text(
                               (batteryInfo['isIgnoring'] == true)
                                   ? l10n.reminderBatteryIgnored
                                   : l10n.reminderBatteryNotIgnored,
                               style: TextStyle(
-                                color: (batteryInfo['isIgnoring'] == true) ? Colors.green : Colors.orange,
+                                color: (batteryInfo['isIgnoring'] == true)
+                                    ? Colors.green
+                                    : Colors.orange,
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
@@ -1124,18 +1209,23 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
                               const SizedBox(height: 8),
                               Text(
                                 l10n.autoBillingBatteryWarning,
-                                style: const TextStyle(fontSize: 12, color: Colors.red),
+                                style: const TextStyle(
+                                    fontSize: 12, color: Colors.red),
                               ),
                             ],
                           ],
                         ),
                         actions: [
-                          if (batteryInfo['isIgnoring'] != true && batteryInfo['canRequest'] == true)
+                          if (batteryInfo['isIgnoring'] != true &&
+                              batteryInfo['canRequest'] == true)
                             TextButton(
                               onPressed: () async {
                                 Navigator.of(context).pop();
-                                final androidUtil = NotificationFactory.getInstance() as AndroidNotificationUtil;
-                                await androidUtil.requestIgnoreBatteryOptimizations();
+                                final androidUtil =
+                                    NotificationFactory.getInstance()
+                                        as AndroidNotificationUtil;
+                                await androidUtil
+                                    .requestIgnoreBatteryOptimizations();
                                 // 重新加载状态
                                 _loadMonitorStatus();
                               },
@@ -1190,14 +1280,14 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
             ),
             const SizedBox(height: 12),
             ...items.map((item) => Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Text(
-                item,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                ),
-              ),
-            )),
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    item,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                    ),
+                  ),
+                )),
           ],
         ),
       ),

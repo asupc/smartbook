@@ -11,6 +11,9 @@ import '../../styles/tokens.dart';
 import '../../services/billing/post_processor.dart';
 import '../../services/attachment_service.dart';
 import '../../services/data/tx_author_service.dart';
+import '../../services/automation/manual_duplicate_checker.dart';
+import '../../services/automation/semantic_dedup_matcher.dart';
+import '../../ai/core/bill_info.dart';
 import '../biz/amount_editor_sheet.dart';
 import '../../utils/account_type_utils.dart';
 import '../../utils/shared_ledger_picker_filter.dart';
@@ -166,14 +169,14 @@ class _TransferFormState extends ConsumerState<TransferForm> {
         onSubmit: (result) async {
           final attachmentService = ref.read(attachmentServiceProvider);
           // 获取虚拟转账分类ID
-          final transferCategory = await ref.read(transferCategoryProvider.future);
+          final transferCategory =
+              await ref.read(transferCategoryProvider.future);
           final transferCategoryId = transferCategory.id;
 
           // §7 共享账本:Editor picker 给的是 synthetic Account(负数 id)。
           // 写本地 Drift 时 accountId / toAccountId 留 null,override 字段
           // 走 Owner 的 syncId;push 序列化时按 override 输出 payload。
-          final isSyntheticFrom =
-              _fromAccountId != null && _fromAccountId! < 0;
+          final isSyntheticFrom = _fromAccountId != null && _fromAccountId! < 0;
           final isSyntheticTo = _toAccountId != null && _toAccountId! < 0;
           final fromAccountForAdd = isSyntheticFrom ? null : _fromAccountId;
           final toAccountForAdd = isSyntheticTo ? null : _toAccountId;
@@ -183,6 +186,47 @@ class _TransferFormState extends ConsumerState<TransferForm> {
           final toOverride = isSyntheticTo
               ? await _resolveSyncIdByAccountId(_toAccountId!, ledgerId)
               : null;
+
+          // 转账同样只做软重复提示；用户明确继续时仍允许创建。
+          if (widget.editingTransactionId == null) {
+            SemanticDedupMatch? duplicate;
+            try {
+              duplicate = await ManualDuplicateChecker.find(
+                repository: repo,
+                ledgerId: ledgerId,
+                amount: result.amount,
+                type: BillType.transfer,
+                time: result.date,
+                note: result.note,
+              );
+            } catch (_) {
+              duplicate = null;
+            }
+            if (duplicate != null && context.mounted) {
+              final proceed = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: Text(l10n.pendingConfirmationTitle),
+                  content: Text(
+                    '${l10n.pendingCandidateReasonDuplicate}\n'
+                    '已有交易 #${duplicate!.transactionId}，匹配度 ${(duplicate.score * 100).toStringAsFixed(0)}%。\n'
+                    '你仍可以选择继续记账。',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: Text(l10n.commonCancel),
+                    ),
+                    FilledButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: Text(l10n.commonConfirm),
+                    ),
+                  ],
+                ),
+              );
+              if (proceed != true) return;
+            }
+          }
 
           try {
             if (widget.editingTransactionId != null) {
@@ -217,7 +261,8 @@ class _TransferFormState extends ConsumerState<TransferForm> {
                 ref.read(tagListRefreshProvider.notifier).state++;
               } else {
                 // 编辑模式：如果没有选择标签，清除原有标签
-                await repo.removeAllTagsFromTransaction(widget.editingTransactionId!);
+                await repo
+                    .removeAllTagsFromTransaction(widget.editingTransactionId!);
                 ref.read(tagListRefreshProvider.notifier).state++;
               }
 
@@ -456,9 +501,8 @@ class _TransferFormState extends ConsumerState<TransferForm> {
       itemCount: accounts.length,
       itemBuilder: (context, index) {
         final account = accounts[index];
-        final isSelected = isFrom
-            ? _fromAccountId == account.id
-            : _toAccountId == account.id;
+        final isSelected =
+            isFrom ? _fromAccountId == account.id : _toAccountId == account.id;
 
         return _buildAccountCard(account, isSelected, isFrom, primary);
       },
@@ -551,5 +595,4 @@ class _TransferFormState extends ConsumerState<TransferForm> {
       ),
     );
   }
-
 }

@@ -6,6 +6,21 @@ class GenericBillParser implements BillParser {
   String get name => 'Generic';
 
   @override
+  String get providerKey => 'generic';
+
+  @override
+  String? normalizeStatus(String? raw) =>
+      raw?.trim().isEmpty == true ? null : raw?.trim();
+
+  @override
+  double? normalizeRefundAmount(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    return double.tryParse(
+      raw.replaceAll(RegExp(r'[¥￥$,+，]'), '').trim(),
+    )?.abs();
+  }
+
+  @override
   int findHeaderRow(List<List<String>> rows) {
     if (rows.isEmpty) return -1;
 
@@ -33,8 +48,7 @@ class GenericBillParser implements BillParser {
       // 描述行(如支付宝新版 CSV 第 1 行"支付宝交易记录明细查询")与数据行
       // 列数可能相同(都是 16 列),但只有 1 个非空字段 —— 排除这类行,
       // 否则被误认成表头后字段映射全空,导入失败。
-      final nonEmptyCount =
-          rows[i].where((c) => c.trim().isNotEmpty).length;
+      final nonEmptyCount = rows[i].where((c) => c.trim().isNotEmpty).length;
       if (nonEmptyCount < 3) continue;
 
       // 检查后续至少5行的列数是否一致
@@ -65,6 +79,12 @@ class GenericBillParser implements BillParser {
     //   否则"类型"(即时到账交易等渠道说明)先得,导入默认类型全错;
     // - "商品名称/商品说明"必须先于"交易对方/商家"占位 note,否则
     //   "商家订单号"会先命中"商家"把 note 占掉。
+    _tryMapByKeywords(mapping, headerRow,
+        ['交易号', '交易单号', '商家订单号', '商户订单号', '订单号', '流水号', '外部ID'], 'external_id');
+    _tryMapByKeywords(mapping, headerRow,
+        ['交易状态', '订单状态', '支付状态', '状态', 'state', 'status'], 'status');
+    _tryMapByKeywords(mapping, headerRow, ['退款金额', '退款金额(元)', 'refund_amount'],
+        'refund_amount');
     _tryMapByKeywords(mapping, headerRow, ['收/支', '收支'], 'type');
     _tryMapByKeywords(mapping, headerRow, ['商品名称', '商品说明', '商品描述'], 'note');
 
@@ -140,6 +160,25 @@ class GenericBillParser implements BillParser {
     if (noSpace == 'currency' || noSpace == 'currencycode') {
       return 'currency';
     }
+    if (noSpace == 'externalid' ||
+        noSpace == 'transactionid' ||
+        noSpace == 'transaction_id' ||
+        noSpace == 'orderid' ||
+        noSpace == 'order_id' ||
+        noSpace == 'tradeid' ||
+        noSpace == 'merchantorderid' ||
+        noSpace == '流水号') {
+      return 'external_id';
+    }
+    if (noSpace == 'status' || noSpace == 'state' || noSpace == 'result') {
+      return 'status';
+    }
+    if (noSpace == 'refundamount' || noSpace == 'refund_amount') {
+      return 'refund_amount';
+    }
+    if (noSpace == 'provider' || noSpace == 'platform' || noSpace == 'source') {
+      return 'provider';
+    }
     if (noSpace == 'category' ||
         noSpace == 'cate' ||
         noSpace == 'subject' ||
@@ -159,6 +198,16 @@ class GenericBillParser implements BillParser {
     if (_containsAny(s, ['日期', '时间', '交易时间', '账单时间', '创建时间'])) {
       return 'date';
     }
+    if (_containsAny(s, ['退款金额', '退款金额(元)'])) {
+      return 'refund_amount';
+    }
+    if (_containsAny(
+        s, ['交易号', '交易单号', '商家订单号', '商户订单号', '订单号', '流水号', '外部ID'])) {
+      return 'external_id';
+    }
+    if (_containsAny(s, ['交易状态', '订单状态', '支付状态', '状态'])) {
+      return 'status';
+    }
     if (_containsAny(s, ['金额', '金额(元)', '交易金额', '变动金额', '收支金额'])) {
       return 'amount';
     }
@@ -167,9 +216,13 @@ class GenericBillParser implements BillParser {
     if (_containsAny(s, ['币种', '幣種', '货币', '貨幣'])) {
       return 'currency';
     }
+    if (_containsAny(s, ['平台', '来源', '来源平台'])) {
+      return 'provider';
+    }
     // 先匹配"交易类型"等更具体的分类字段（避免被"类型"匹配为type）
     // 优先匹配二级分类相关字段（注意：必须先匹配更长的字符串，避免被短字符串提前匹配）
-    if (_containsAny(s, ['二级分类', '子分类', '次分类', 'Subcategory', 'Sub Category'])) {
+    if (_containsAny(
+        s, ['二级分类', '子分类', '次分类', 'Subcategory', 'Sub Category'])) {
       return 'sub_category';
     }
     if (_containsAny(s, ['分类', '类别', '账目名称', '科目', '交易分类', '交易类型'])) {
@@ -217,17 +270,8 @@ class GenericBillParser implements BillParser {
     }
 
     // 明确忽略的字段
-    if (_containsAny(s, [
-      '账目编号',
-      '编号',
-      '单号',
-      '流水号',
-      '交易号',
-      '相关图片',
-      '图片',
-      '交易单号',
-      '订单号'
-    ])) {
+    if (_containsAny(
+        s, ['账目编号', '编号', '单号', '流水号', '交易号', '相关图片', '图片', '交易单号', '订单号'])) {
       return null;
     }
 

@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:crypto/crypto.dart';
+
 import '../../services/system/logger_service.dart';
 import 'bill_info.dart';
 
@@ -22,7 +24,10 @@ class JsonResponseParser {
 
   /// 解析 AI 响应文本为 `List<BillInfo>`。返回空 list 表示无有效账单。
   List<BillInfo> parse(String response) {
-    logger.debug(_tag, '原始响应: $response');
+    final responseHash =
+        sha256.convert(utf8.encode(response)).toString().substring(0, 12);
+    logger.debug(
+        _tag, '解析 AI 响应', 'length=${response.length}, hash=$responseHash');
 
     // 数组路径优先 —— 新默认 prompt 期望此格式
     final arrayBlock = _extractBalancedBlock(response, '[', ']');
@@ -34,7 +39,7 @@ class JsonResponseParser {
           for (var i = 0; i < decoded.length; i++) {
             final item = decoded[i];
             if (item is! Map<String, dynamic>) {
-              logger.warning(_tag, '数组第 ${i + 1} 项不是对象,跳过: $item');
+              logger.warning(_tag, '数组第 ${i + 1} 项不是对象,跳过');
               continue;
             }
             try {
@@ -42,8 +47,7 @@ class JsonResponseParser {
               _warnIfCurrencyDropped(item, raw);
               final sanitized = _sanitize(raw);
               if (sanitized == null) {
-                logger
-                    .warning(_tag, '数组第 ${i + 1} 项金额无效,跳过: ${raw.toJson()}');
+                logger.warning(_tag, '数组第 ${i + 1} 项金额无效,跳过');
                 continue;
               }
               bills.add(sanitized);
@@ -66,19 +70,20 @@ class JsonResponseParser {
     // Fallback: 单对象(旧格式 / 用户自定义老 prompt)
     final objectBlock = _extractBalancedBlock(response, '{', '}');
     if (objectBlock == null) {
-      logger.warning(_tag, '响应中没有找到 JSON: $response');
+      logger.warning(_tag, '响应中没有找到 JSON');
       return const [];
     }
     try {
-      final json = jsonDecode(_cleanupJson(objectBlock)) as Map<String, dynamic>;
+      final json =
+          jsonDecode(_cleanupJson(objectBlock)) as Map<String, dynamic>;
       final raw = BillInfo.fromJson(json);
       _warnIfCurrencyDropped(json, raw);
       final sanitized = _sanitize(raw);
       if (sanitized == null) {
-        logger.warning(_tag, '单对象金额无效: ${raw.toJson()}');
+        logger.warning(_tag, '单对象金额无效');
         return const [];
       }
-      logger.info(_tag, '账单提取成功(单对象): $sanitized');
+      logger.info(_tag, '账单提取成功(单对象)');
       return [sanitized];
     } catch (e) {
       logger.warning(_tag, '单对象 JSON 解析失败: $e');
@@ -94,10 +99,10 @@ class JsonResponseParser {
   /// 模型回的是 `"$"`,被歧义保护丢掉了)。
   void _warnIfCurrencyDropped(Map<String, dynamic> json, BillInfo bill) {
     if (bill.currency != null) return;
-    final raw = json['currency'] ?? json['currency_code'] ?? json['currencyCode'];
+    final raw =
+        json['currency'] ?? json['currency_code'] ?? json['currencyCode'];
     if (raw == null || (raw is String && raw.trim().isEmpty)) return;
-    logger.warning(
-        _tag, '币种「$raw」无法解析成 ISO 代码,本笔按账本本位币入账');
+    logger.warning(_tag, '币种「$raw」无法解析成 ISO 代码,本笔按账本本位币入账');
   }
 
   /// 单笔统一校验 + 兜底。
@@ -108,7 +113,11 @@ class JsonResponseParser {
     final amt = bill.amount;
     if (amt == null || amt.abs() <= 0) return null;
     if (bill.time == null) {
-      return bill.copyWith(time: DateTime.now());
+      return bill.copyWith(
+        time: DateTime.now(),
+        timeInferred: true,
+        timePrecision: BillTimePrecision.inferred,
+      );
     }
     return bill;
   }

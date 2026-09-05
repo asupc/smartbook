@@ -3,11 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 
+import '../../ai/core/bill_info.dart';
+
 import '../../l10n/app_localizations.dart';
 import '../../providers.dart';
 import '../../providers/budget_providers.dart';
 import '../../data/db.dart';
 import '../../data/repositories/local/local_repository.dart';
+import '../../data/repositories/base_repository.dart';
 import '../../utils/shared_ledger_picker_filter.dart';
 import '../../widgets/ui/ui.dart';
 import '../../widgets/biz/amount_editor_sheet.dart';
@@ -17,6 +20,8 @@ import '../../styles/tokens.dart';
 import '../../services/billing/post_processor.dart';
 import '../../services/attachment_service.dart';
 import '../../services/data/tx_author_service.dart';
+import '../../services/automation/manual_duplicate_checker.dart';
+import '../../services/automation/semantic_dedup_matcher.dart';
 
 /// 交易编辑器页面
 /// 支持创建/编辑收入、支出和转账记录
@@ -57,7 +62,8 @@ class TransactionEditorPage extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<TransactionEditorPage> createState() => _TransactionEditorPageState();
+  ConsumerState<TransactionEditorPage> createState() =>
+      _TransactionEditorPageState();
 }
 
 class _TransactionEditorPageState extends ConsumerState<TransactionEditorPage>
@@ -80,7 +86,9 @@ class _TransactionEditorPageState extends ConsumerState<TransactionEditorPage>
 
     // 若需要自动打开金额输入，则在首帧后查询分类并触发
     // 注意：转账类型不走这个逻辑
-    if (widget.quickAdd && widget.initialCategoryId != null && widget.initialKind != 'transfer') {
+    if (widget.quickAdd &&
+        widget.initialCategoryId != null &&
+        widget.initialKind != 'transfer') {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted || _autoOpened) return;
         final repo = ref.read(repositoryProvider);
@@ -88,7 +96,8 @@ class _TransactionEditorPageState extends ConsumerState<TransactionEditorPage>
         // 共享账本下记的 tx,反查走 SharedLedger* 表。
         Category? c;
         if (widget.initialCategoryId! < 0 && repo is LocalRepository) {
-          c = await repo.db.findCategoryBySyntheticId(widget.initialCategoryId!);
+          c = await repo.db
+              .findCategoryBySyntheticId(widget.initialCategoryId!);
         } else {
           c = await repo.getCategoryById(widget.initialCategoryId!);
         }
@@ -128,16 +137,24 @@ class _TransactionEditorPageState extends ConsumerState<TransactionEditorPage>
                             controller: _tab,
                             isScrollable: false,
                             labelColor: BeeTokens.textPrimary(context),
-                            unselectedLabelColor: BeeTokens.textSecondary(context),
+                            unselectedLabelColor:
+                                BeeTokens.textSecondary(context),
                             indicator: UnderlineTabIndicator(
-                              borderSide:
-                                  BorderSide(width: 2, color: BeeTokens.textPrimary(context)),
+                              borderSide: BorderSide(
+                                  width: 2,
+                                  color: BeeTokens.textPrimary(context)),
                               insets: const EdgeInsets.symmetric(horizontal: 0),
                             ),
                             tabs: [
-                              Tab(text: AppLocalizations.of(context)!.categoryExpense),
-                              Tab(text: AppLocalizations.of(context)!.categoryIncome),
-                              Tab(text: AppLocalizations.of(context)!.transferTitle),
+                              Tab(
+                                  text: AppLocalizations.of(context)!
+                                      .categoryExpense),
+                              Tab(
+                                  text: AppLocalizations.of(context)!
+                                      .categoryIncome),
+                              Tab(
+                                  text: AppLocalizations.of(context)!
+                                      .transferTitle),
                             ],
                           ),
                         ),
@@ -145,7 +162,8 @@ class _TransactionEditorPageState extends ConsumerState<TransactionEditorPage>
                       TextButton(
                         onPressed: () => Navigator.pop(context),
                         child: Text(AppLocalizations.of(context)!.commonCancel,
-                            style: TextStyle(color: BeeTokens.textPrimary(context))),
+                            style: TextStyle(
+                                color: BeeTokens.textPrimary(context))),
                       )
                     ],
                   ),
@@ -159,12 +177,14 @@ class _TransactionEditorPageState extends ConsumerState<TransactionEditorPage>
               children: [
                 CategorySelector(
                   kind: 'expense',
-                  onCategorySelected: (c) => _onCategorySelected(context, c, 'expense'),
+                  onCategorySelected: (c) =>
+                      _onCategorySelected(context, c, 'expense'),
                   initialCategoryId: widget.initialCategoryId,
                 ),
                 CategorySelector(
                   kind: 'income',
-                  onCategorySelected: (c) => _onCategorySelected(context, c, 'income'),
+                  onCategorySelected: (c) =>
+                      _onCategorySelected(context, c, 'income'),
                   initialCategoryId: widget.initialCategoryId,
                 ),
                 TransferForm(
@@ -203,7 +223,8 @@ class _TransactionEditorPageState extends ConsumerState<TransactionEditorPage>
       if (ledger == null) return null;
 
       // 3. 获取默认账户信息
-      final account = await ref.read(accountByIdProvider(defaultAccountId).future);
+      final account =
+          await ref.read(accountByIdProvider(defaultAccountId).future);
       if (account == null) return null;
 
       // 账户隐藏 #240 E3:默认账户已被隐藏时按「无默认」处理(defensive 兜底,
@@ -219,7 +240,8 @@ class _TransactionEditorPageState extends ConsumerState<TransactionEditorPage>
     }
   }
 
-  Future<void> _onCategorySelected(BuildContext context, Category c, String kind) async {
+  Future<void> _onCategorySelected(
+      BuildContext context, Category c, String kind) async {
     if (!widget.quickAdd) {
       Navigator.pop(context, c);
       return;
@@ -228,7 +250,8 @@ class _TransactionEditorPageState extends ConsumerState<TransactionEditorPage>
 
     // 确定初始账户ID（新建时使用默认账户，编辑时保持原值）
     int? initialAccountId = widget.initialAccountId;
-    if (widget.editingTransactionId == null && widget.initialAccountId == null) {
+    if (widget.editingTransactionId == null &&
+        widget.initialAccountId == null) {
       // 新建模式：尝试获取默认账户
       initialAccountId = await _getDefaultAccountId(kind, ledgerId);
     }
@@ -259,6 +282,26 @@ class _TransactionEditorPageState extends ConsumerState<TransactionEditorPage>
         initialNativeAmount: widget.initialNativeAmount,
         onSubmit: (res) async {
           final repo = ref.read(repositoryProvider);
+          // 手动记账只做可解释的软提示；用户取消时保留表单，选择继续
+          // 时仍允许创建，不复用自动入口的硬闸门。
+          if (widget.editingTransactionId == null) {
+            final duplicate = await _findManualDuplicate(
+              repo: repo,
+              ledgerId: ledgerId,
+              kind: kind,
+              amount: res.amount,
+              date: res.date,
+              note: res.note,
+              currency: res.currencyCode,
+            );
+            if (duplicate != null && context.mounted) {
+              final proceed = await _confirmManualDuplicate(
+                context,
+                duplicate,
+              );
+              if (!proceed) return;
+            }
+          }
           final attachmentService = ref.read(attachmentServiceProvider);
           int transactionId;
           // §7 v25:Category 是来自 SharedLedger* 的 synthetic (id<0)时,
@@ -276,8 +319,9 @@ class _TransactionEditorPageState extends ConsumerState<TransactionEditorPage>
           final accountIdForAdd = isSyntheticAccount ? null : res.accountId;
           final accountIdForUpdate = d.Value<int?>(accountIdForAdd);
           final categoryOverride = isSyntheticCategory ? c.syncId : null;
-          final accountOverride =
-              isSyntheticAccount ? await _resolveSyncIdByAccountId(res.accountId!, ledgerId) : null;
+          final accountOverride = isSyntheticAccount
+              ? await _resolveSyncIdByAccountId(res.accountId!, ledgerId)
+              : null;
           if (widget.editingTransactionId != null) {
             // 编辑模式：使用repository更新交易
             await repo.updateTransaction(
@@ -369,12 +413,12 @@ class _TransactionEditorPageState extends ConsumerState<TransactionEditorPage>
                       await repo.db
                           .into(repo.db.transactionTagOverrides)
                           .insert(
-                        TransactionTagOverridesCompanion.insert(
-                          transactionSyncId: txSyncId,
-                          tagSyncId: s.syncId,
-                          createdAt: now,
-                        ),
-                      );
+                            TransactionTagOverridesCompanion.insert(
+                              transactionSyncId: txSyncId,
+                              tagSyncId: s.syncId,
+                              createdAt: now,
+                            ),
+                          );
                       break;
                     }
                   }
@@ -404,8 +448,10 @@ class _TransactionEditorPageState extends ConsumerState<TransactionEditorPage>
             updateAppWidget(ref, context);
           }
           // 先关闭页面，再播放反馈
-          if (ctx.mounted && Navigator.of(ctx).canPop()) Navigator.of(ctx).pop();
-          if (context.mounted && Navigator.of(context).canPop()) Navigator.of(context).pop();
+          if (ctx.mounted && Navigator.of(ctx).canPop())
+            Navigator.of(ctx).pop();
+          if (context.mounted && Navigator.of(context).canPop())
+            Navigator.of(context).pop();
           // 反馈：轻微触感 + 系统点击音
           HapticFeedback.lightImpact();
           SystemSound.play(SystemSoundType.click);
@@ -417,6 +463,60 @@ class _TransactionEditorPageState extends ConsumerState<TransactionEditorPage>
   /// §7 v25:account picker 返 synthetic Account(id<0)时,把 id 反查
   /// SharedLedgerAccounts 拿 syncId,写到 tx.accountSyncIdOverride。
   /// 失败返 null,调用方应回到 accountId int 路径(synthetic 不一致时的兜底)。
+  Future<SemanticDedupMatch?> _findManualDuplicate({
+    required BaseRepository repo,
+    required int ledgerId,
+    required String kind,
+    required double amount,
+    required DateTime date,
+    String? note,
+    String? currency,
+  }) async {
+    try {
+      return await ManualDuplicateChecker.find(
+        repository: repo,
+        ledgerId: ledgerId,
+        amount: amount,
+        type: kind == 'income' ? BillType.income : BillType.expense,
+        time: date,
+        note: note,
+        currency: currency,
+      );
+    } catch (_) {
+      // 软提示查询失败不能阻断手动记账。
+      return null;
+    }
+  }
+
+  Future<bool> _confirmManualDuplicate(
+    BuildContext context,
+    SemanticDedupMatch match,
+  ) async {
+    final l10n = AppLocalizations.of(context);
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l10n.pendingConfirmationTitle),
+        content: Text(
+          '${l10n.pendingCandidateReasonDuplicate}\n'
+          '已有交易 #${match.transactionId}，匹配度 ${(match.score * 100).toStringAsFixed(0)}%。\n'
+          '你仍可以选择继续记账。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(l10n.commonCancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(l10n.commonConfirm),
+          ),
+        ],
+      ),
+    );
+    return result == true;
+  }
+
   Future<String?> _resolveSyncIdByAccountId(int accountId, int ledgerId) async {
     if (accountId >= 0) return null;
     final repo = ref.read(repositoryProvider);

@@ -1,9 +1,14 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart' as d;
 import '../data/db.dart';
 import '../data/repositories/base_repository.dart';
-import '../data/repositories/transaction_repository.dart' show BatchAttachmentData;
+import '../data/repositories/transaction_repository.dart'
+    show BatchAttachmentData;
 import 'currency/rate_math.dart';
 import 'system/logger_service.dart';
+import 'automation/auto_book_event.dart';
+import 'automation/auto_book_event_store.dart';
 
 /// 统一的数据导入服务
 ///
@@ -103,6 +108,21 @@ class ImportTransaction {
   /// v30 多币种:CSV 币种列(反馈10)。null → 账户币种/账本本位币兜底。
   final String? currencyCode;
 
+  /// 支付平台/导入来源(如 alipay、wechat、bank_csv)。
+  final String? provider;
+
+  /// 交易号/订单号/流水号。只用于本地导入幂等，不写入 syncId。
+  final String? externalId;
+
+  /// 原始状态(成功/退款/待支付/关闭等)，非成功状态不直接落库。
+  final String? status;
+
+  /// 成功退款金额(部分平台会单独提供)，用于把退款行归一为收入。
+  final double? refundAmount;
+
+  /// 文件内稳定行 hash；无 externalId 时用于重复导入识别。
+  final String? sourceRowHash;
+
   const ImportTransaction({
     required this.type,
     required this.amount,
@@ -118,6 +138,11 @@ class ImportTransaction {
     this.categoryId,
     this.attachments,
     this.syncId,
+    this.provider,
+    this.externalId,
+    this.status,
+    this.refundAmount,
+    this.sourceRowHash,
   });
 }
 
@@ -130,6 +155,7 @@ class ImportData {
 
   /// 账本名称（可选，用于更新账本信息）
   final String? ledgerName;
+
   /// 货币（可选，用于更新账本信息）
   final String? currency;
 
@@ -147,11 +173,51 @@ class ImportData {
 class ImportResult {
   final int inserted;
   final int failed;
+  final int duplicated;
+  final int ignored;
+  final int invalid;
 
   const ImportResult({
     required this.inserted,
     required this.failed,
+    this.duplicated = 0,
+    this.ignored = 0,
+    this.invalid = 0,
   });
+
+  int get handled => inserted + duplicated + ignored + invalid;
+}
+
+enum ImportPreviewStatus { newRow, duplicate, ignored, invalid }
+
+class ImportPreviewRow {
+  final int index;
+  final ImportPreviewStatus status;
+  final String reason;
+  final String? eventKey;
+
+  const ImportPreviewRow({
+    required this.index,
+    required this.status,
+    required this.reason,
+    this.eventKey,
+  });
+}
+
+/// 导入前的只读差异预览。它不 claim、不写 event store，也不创建交易。
+class ImportPreview {
+  final List<ImportPreviewRow> rows;
+
+  const ImportPreview(this.rows);
+
+  int get newCount =>
+      rows.where((row) => row.status == ImportPreviewStatus.newRow).length;
+  int get duplicateCount =>
+      rows.where((row) => row.status == ImportPreviewStatus.duplicate).length;
+  int get ignoredCount =>
+      rows.where((row) => row.status == ImportPreviewStatus.ignored).length;
+  int get invalidCount =>
+      rows.where((row) => row.status == ImportPreviewStatus.invalid).length;
 }
 
 // --- 数据导入服务 ---
@@ -165,6 +231,84 @@ class ImportResult {
 /// - 交易插入（批量写入）
 /// - 标签关联
 class DataImportService {
+  /// 计算导入差异预览。只读，不会 claim 事件或写入交易。
+  Future<ImportPreview> previewTransactions(
+    BaseRepository repo,
+    int ledgerId,
+    List<ImportTransaction> transactions, {
+    AutoBookEventStore? eventStore,
+    String provider = 'import',
+    String? batchKey,
+  }) async {
+    final rows = <ImportPreviewRow>[];
+    final seen = <String>{};
+    for (var index = 0; index < transactions.length; index++) {
+      final tx = transactions[index];
+      final amount = tx.refundAmount != null && tx.refundAmount!.abs() > 0
+          ? tx.refundAmount!.abs()
+          : tx.amount.abs();
+      final effectiveType =
+          isRefundStatus(tx.status) || (tx.refundAmount?.abs() ?? 0) > 0
+              ? 'income'
+              : tx.type;
+      final validDate = tx.happenedAt.year > 1970 &&
+          tx.happenedAt.year <= DateTime.now().year + 1;
+      if (!tx.amount.isFinite ||
+          !amount.isFinite ||
+          amount <= 0 ||
+          !validDate ||
+          !const {'income', 'expense', 'transfer'}.contains(effectiveType)) {
+        rows.add(ImportPreviewRow(
+          index: index,
+          status: ImportPreviewStatus.invalid,
+          reason: 'invalid_amount_or_date',
+        ));
+        continue;
+      }
+      if (isNonBookableStatus(tx.status)) {
+        rows.add(ImportPreviewRow(
+          index: index,
+          status: ImportPreviewStatus.ignored,
+          reason: 'non_bookable_status',
+        ));
+        continue;
+      }
+
+      final eventKey = importEventKey(
+        ledgerId: ledgerId,
+        provider: tx.provider ?? provider,
+        transaction: tx,
+        batchKey: batchKey,
+      );
+      if (!seen.add(eventKey)) {
+        rows.add(ImportPreviewRow(
+          index: index,
+          status: ImportPreviewStatus.duplicate,
+          reason: 'duplicate_in_batch',
+          eventKey: eventKey,
+        ));
+        continue;
+      }
+      if (eventStore != null &&
+          await eventStore.findByEventKey(eventKey) != null) {
+        rows.add(ImportPreviewRow(
+          index: index,
+          status: ImportPreviewStatus.duplicate,
+          reason: 'already_imported',
+          eventKey: eventKey,
+        ));
+        continue;
+      }
+      rows.add(ImportPreviewRow(
+        index: index,
+        status: ImportPreviewStatus.newRow,
+        reason: 'new',
+        eventKey: eventKey,
+      ));
+    }
+    return ImportPreview(List.unmodifiable(rows));
+  }
+
   /// 导入数据到指定账本
   ///
   /// [repo] - 数据仓库
@@ -182,6 +326,9 @@ class DataImportService {
     String defaultCurrency = 'CNY',
     void Function(int done, int total)? onProgress,
     bool recordChanges = true,
+    AutoBookEventStore? eventStore,
+    String provider = 'import',
+    String? batchKey,
   }) async {
     // 1. 更新账本信息（如果提供）
     if (data.ledgerName != null || data.currency != null) {
@@ -217,6 +364,9 @@ class DataImportService {
       tagNameToId: tagNameToId,
       onProgress: onProgress,
       recordChanges: recordChanges,
+      eventStore: eventStore,
+      provider: provider,
+      batchKey: batchKey,
     );
 
     return result;
@@ -224,10 +374,8 @@ class DataImportService {
 
   /// 导入账户(全局按名称去重)。public — sync_diff_service 也复用,避免维护两套。
   Future<Map<String, int>> importAccounts(
-    BaseRepository repo,
-    List<ImportAccount> accounts,
-    {String defaultCurrency = 'CNY'}
-  ) async {
+      BaseRepository repo, List<ImportAccount> accounts,
+      {String defaultCurrency = 'CNY'}) async {
     final accountNameToId = <String, int>{};
 
     if (accounts.isEmpty) return accountNameToId;
@@ -291,8 +439,12 @@ class DataImportService {
       }
 
       // 分离一级和二级分类
-      final level1 = categories.where((c) => c.level == 1 || c.parentName == null).toList();
-      final level2 = categories.where((c) => c.level == 2 && c.parentName != null).toList();
+      final level1 = categories
+          .where((c) => c.level == 1 || c.parentName == null)
+          .toList();
+      final level2 = categories
+          .where((c) => c.level == 2 && c.parentName != null)
+          .toList();
 
       // 导入一级分类
       for (final cat in level1) {
@@ -410,6 +562,81 @@ class DataImportService {
     return tagNameToId;
   }
 
+  /// 生成导入行的本地幂等键。externalId 优先；没有外部 ID 时使用
+  /// provider + batchKey + row hash，避免重复导入同一文件，又不把来源键
+  /// 塞进 transactions.syncId。
+  static String importEventKey({
+    required int ledgerId,
+    required String provider,
+    required ImportTransaction transaction,
+    String? batchKey,
+  }) {
+    final external = transaction.externalId?.trim();
+    if (external != null && external.isNotEmpty) {
+      return 'import:v1:$ledgerId:${provider.trim().toLowerCase()}:external:${_keyHash(external)}';
+    }
+    final row = transaction.sourceRowHash?.trim().isNotEmpty == true
+        ? transaction.sourceRowHash!.trim()
+        : _keyHash(_canonicalRow(transaction));
+    final batch =
+        batchKey?.trim().isNotEmpty == true ? batchKey!.trim() : 'adhoc';
+    return 'import:v1:$ledgerId:${provider.trim().toLowerCase()}:$batch:$row';
+  }
+
+  static bool isNonBookableStatus(String? status) {
+    final raw = status?.trim().toLowerCase() ?? '';
+    if (raw.isEmpty) return false;
+    return [
+      '待支付',
+      '待付款',
+      '处理中',
+      '失败',
+      '关闭',
+      '取消',
+      '未支付',
+      '交易关闭',
+      '支付失败',
+      '付款失败',
+      '订单关闭',
+      '账单汇总',
+      '本期账单',
+      'pending',
+      'processing',
+      'failed',
+      'cancelled',
+      'canceled',
+      'closed',
+    ].any(raw.contains);
+  }
+
+  static bool isRefundStatus(String? status) {
+    final raw = status?.trim().toLowerCase() ?? '';
+    return raw.contains('退款') || raw.contains('退费') || raw.contains('refund');
+  }
+
+  static String _keyHash(String value) {
+    // 不依赖 Flutter crypto，导入服务在云恢复/测试环境也能使用。
+    var hash = 0xcbf29ce484222325;
+    for (final unit in value.codeUnits) {
+      hash ^= unit;
+      hash = (hash * 0x100000001b3) & 0x7fffffffffffffff;
+    }
+    return hash.toRadixString(16);
+  }
+
+  static String _canonicalRow(ImportTransaction tx) => [
+        tx.type,
+        tx.amount.toStringAsFixed(8),
+        tx.happenedAt.toIso8601String(),
+        tx.note ?? '',
+        tx.accountName ?? '',
+        tx.fromAccountName ?? '',
+        tx.toAccountName ?? '',
+        tx.currencyCode ?? '',
+        tx.status ?? '',
+        tx.refundAmount?.toStringAsFixed(8) ?? '',
+      ].join('|');
+
   /// 导入交易(统一 batch 路径,tag/attachment 跟 tx 一起 batch insert)
   ///
   /// **历史**:之前"有标签/附件"的 tx 走单条 await 路径,
@@ -431,22 +658,26 @@ class DataImportService {
     required Map<String, int> tagNameToId,
     void Function(int done, int total)? onProgress,
     bool recordChanges = true,
+    AutoBookEventStore? eventStore,
+    String provider = 'import',
+    String? batchKey,
   }) async {
     int inserted = 0;
+    int duplicated = 0;
+    int ignored = 0;
+    int invalid = 0;
     int failed = 0;
     int processed = 0;
     final total = transactions.length;
-    logger.info('TxImport',
-        '开始导入交易: $total 条 (recordChanges=$recordChanges)');
+    logger.info('TxImport', '开始导入交易: $total 条 (recordChanges=$recordChanges)');
 
     // v30 交易级多币种(02 §六导入修补):批量预取本位币/账户币种/有效汇率,
     // 逐条填 currencyCode + nativeAmount,不再落 NULL(NULL 行 L11 检测
     // 需 join 兜底,且外币账户导入折算会静默 1:1)。
     final ledger = await repo.getLedgerById(ledgerId);
-    final ledgerBase = ((ledger?.currency.isNotEmpty ?? false)
-            ? ledger!.currency
-            : 'CNY')
-        .toUpperCase();
+    final ledgerBase =
+        ((ledger?.currency.isNotEmpty ?? false) ? ledger!.currency : 'CNY')
+            .toUpperCase();
     final accountCurrencyById = <int, String>{
       for (final a in await repo.getAllAccounts())
         a.id: (a.currency.isNotEmpty ? a.currency : ledgerBase).toUpperCase(),
@@ -474,8 +705,71 @@ class DataImportService {
     final batchTx = <TransactionsCompanion>[];
     final batchTagsByIndex = <int, List<int>>{};
     final batchAttachmentsByIndex = <int, List<BatchAttachmentData>>{};
+    final batchEventRefs = <_ImportEventRef?>[];
+    final seenEventKeys = <String>{};
 
     final localCategoryCache = Map<String, int>.from(categoryCache);
+
+    Future<void> finishEvent(
+      _ImportEventRef? ref, {
+      required AutoBookState state,
+      int? transactionId,
+      String? reason,
+    }) async {
+      if (ref?.eventId == null || eventStore == null) return;
+      try {
+        await eventStore.mark(
+          AutoBookEventUpdate(
+            state: state,
+            transactionId: transactionId,
+            reason: reason,
+            billJson: ref!.transaction.externalId == null
+                ? null
+                : jsonEncode({'external_id': ref.transaction.externalId}),
+          ),
+          eventId: ref.eventId!,
+        );
+      } catch (e, st) {
+        logger.warning('TxImport', '更新导入事件状态失败(不影响批次)', '$e');
+        logger.debug('TxImport', '导入事件状态堆栈', st);
+      }
+    }
+
+    Future<void> finishEventItem(
+      _ImportEventRef ref, {
+      required int itemIndex,
+      required AutoBookState state,
+      int? transactionId,
+      String? reason,
+    }) async {
+      if (eventStore == null || ref.eventId == null) return;
+      final tx = ref.transaction;
+      final amount = tx.refundAmount != null && tx.refundAmount!.abs() > 0
+          ? tx.refundAmount!.abs()
+          : tx.amount.abs();
+      try {
+        await eventStore.upsertItem(
+          eventId: ref.eventId!,
+          itemIndex: itemIndex,
+          eventKind: isRefundStatus(tx.status) ? 'refund' : tx.type,
+          settlementStatus: tx.status,
+          amount: amount,
+          currency: tx.currencyCode,
+          merchant: tx.note,
+          transactionId: transactionId,
+          state: state.value,
+          bill: {
+            if (tx.externalId != null) 'external_id': tx.externalId,
+            if (tx.provider != null) 'provider': tx.provider,
+            if (tx.status != null) 'status': tx.status,
+          },
+          reason: reason,
+        );
+      } catch (e, st) {
+        logger.warning('TxImport', '写入导入事件子项失败(不影响交易)', '$e');
+        logger.debug('TxImport', '导入事件子项堆栈', st);
+      }
+    }
 
     // 把当前缓冲 flush 到 repo。捕获异常时整批算 failed,继续下一批。
     Future<void> flush() async {
@@ -490,20 +784,208 @@ class DataImportService {
           recordChanges: recordChanges,
         );
         inserted += ids.length;
+        if (ids.length < size) failed += size - ids.length;
+        for (var i = 0; i < batchEventRefs.length; i++) {
+          final ref = batchEventRefs[i];
+          if (ref == null) continue;
+          if (i < ids.length) {
+            await finishEventItem(
+              ref,
+              itemIndex: i,
+              state: AutoBookState.booked,
+              transactionId: ids[i],
+            );
+            await finishEvent(
+              ref,
+              state: AutoBookState.booked,
+              transactionId: ids[i],
+            );
+          } else {
+            await finishEventItem(
+              ref,
+              itemIndex: i,
+              state: AutoBookState.retry,
+              reason: 'batch_result_short',
+            );
+            await finishEvent(
+              ref,
+              state: AutoBookState.retry,
+              reason: 'batch_result_short',
+            );
+          }
+        }
         logger.info('TxImport',
             'flush 批次: size=$size 耗时=${batchSw.elapsedMilliseconds}ms 累计=${processed + size}/$total');
       } catch (e, st) {
         logger.error('TxImport', '批次 flush 失败,本批 $size 条算 failed', e, st);
         failed += size;
+        for (var i = 0; i < batchEventRefs.length; i++) {
+          final ref = batchEventRefs[i];
+          if (ref == null) continue;
+          await finishEventItem(
+            ref,
+            itemIndex: i,
+            state: AutoBookState.retry,
+            reason: 'batch_exception',
+          );
+          await finishEvent(
+            ref,
+            state: AutoBookState.retry,
+            reason: 'batch_exception',
+          );
+        }
       }
       processed += size;
       batchTx.clear();
       batchTagsByIndex.clear();
       batchAttachmentsByIndex.clear();
+      batchEventRefs.clear();
       if (onProgress != null) onProgress(processed, total);
     }
 
     for (final tx in transactions) {
+      _ImportEventRef? eventRef;
+      final amount = tx.refundAmount != null && tx.refundAmount!.abs() > 0
+          ? tx.refundAmount!.abs()
+          : tx.amount.abs();
+      final effectiveType =
+          isRefundStatus(tx.status) || (tx.refundAmount?.abs() ?? 0) > 0
+              ? 'income'
+              : tx.type;
+      final validDate = tx.happenedAt.year > 1970 &&
+          tx.happenedAt.year <= DateTime.now().year + 1;
+      if (!tx.amount.isFinite ||
+          !amount.isFinite ||
+          amount <= 0 ||
+          !validDate ||
+          !const {'income', 'expense', 'transfer'}.contains(effectiveType)) {
+        invalid++;
+        processed++;
+        onProgress?.call(processed, total);
+        continue;
+      }
+      if (isNonBookableStatus(tx.status)) {
+        ignored++;
+        processed++;
+        onProgress?.call(processed, total);
+        continue;
+      }
+
+      // 导入事件先 claim 再进入批次，重放时不会再次构造交易。
+      final eventKey = importEventKey(
+        ledgerId: ledgerId,
+        provider: tx.provider ?? provider,
+        transaction: tx,
+        batchKey: batchKey,
+      );
+      if (!seenEventKeys.add(eventKey)) {
+        duplicated++;
+        processed++;
+        onProgress?.call(processed, total);
+        continue;
+      }
+      if (eventStore != null) {
+        try {
+          final claim = await eventStore.claim(
+            AutoBookInput(
+              eventKey: eventKey,
+              source: AutoBookSource.import,
+              captureIntent: AutoBookCaptureIntent.importData,
+              ledgerId: ledgerId,
+              capturedAt: DateTime.now(),
+              sourceOccurredAt: tx.happenedAt,
+              sourceChannel: tx.provider ?? provider,
+              externalId: tx.externalId,
+              contentHash: tx.sourceRowHash,
+            ),
+          );
+          if (!claim.acquired) {
+            final state = AutoBookStateValue.parse(claim.event.state);
+            if (state == AutoBookState.ignored ||
+                state == AutoBookState.expired) {
+              ignored++;
+            } else if (state == AutoBookState.retry ||
+                state == AutoBookState.processing) {
+              failed++;
+            } else {
+              duplicated++;
+            }
+            processed++;
+            onProgress?.call(processed, total);
+            continue;
+          }
+          eventRef = _ImportEventRef(
+            eventId: claim.event.id,
+            transaction: tx,
+          );
+
+          // 批量导入也可能在交易已写入、父事件尚未更新时被中断。
+          // 先恢复该行已有的终态子项，避免 retry 再插入一笔；同时修复
+          // 单行父事件状态，保证下一次导入能直接识别为 duplicate。
+          try {
+            final priorItems = await eventStore.itemsForEvent(claim.event.id);
+            AutoBookEventItem? prior;
+            for (final item in priorItems) {
+              if (item.itemIndex == 0) {
+                prior = item;
+                break;
+              }
+            }
+            if (prior != null) {
+              final priorState = AutoBookStateValue.parse(prior.state);
+              final priorTxId = prior.transactionId;
+              if ((priorState == AutoBookState.booked ||
+                      priorState == AutoBookState.duplicate) &&
+                  priorTxId != null) {
+                duplicated++;
+                await finishEvent(
+                  eventRef,
+                  state: priorState,
+                  transactionId:
+                      priorState == AutoBookState.booked ? priorTxId : null,
+                  reason: priorState == AutoBookState.duplicate
+                      ? 'recovered_duplicate'
+                      : 'recovered_booked',
+                );
+                processed++;
+                onProgress?.call(processed, total);
+                continue;
+              }
+              if (priorState == AutoBookState.ignored) {
+                ignored++;
+                await finishEvent(
+                  eventRef,
+                  state: AutoBookState.ignored,
+                  reason: 'recovered_ignored',
+                );
+                processed++;
+                onProgress?.call(processed, total);
+                continue;
+              }
+            }
+          } catch (e, st) {
+            // 事件子项不可读时宁可保守重试，也不冒险创建无法追踪的重复交易。
+            failed++;
+            await finishEvent(
+              eventRef,
+              state: AutoBookState.retry,
+              reason: 'event_item_read_failed',
+            );
+            logger.error('TxImport', '读取导入事件子项失败,跳过该行', e, st);
+            processed++;
+            onProgress?.call(processed, total);
+            continue;
+          }
+        } catch (e, st) {
+          // 幂等状态不可用时宁可不导入，也不冒险生成无法追踪的重复交易。
+          failed++;
+          processed++;
+          logger.error('TxImport', '创建导入事件失败,跳过该行', e, st);
+          onProgress?.call(processed, total);
+          continue;
+        }
+      }
+
       // 解析分类ID
       int? categoryId;
       if (tx.categoryId != null) {
@@ -511,7 +993,7 @@ class DataImportService {
       } else if (tx.categoryName != null && tx.categoryKind != null) {
         final key = '${tx.categoryKind}|${tx.categoryName}';
         categoryId = localCategoryCache[key];
-        if (categoryId == null && tx.type != 'transfer') {
+        if (categoryId == null && effectiveType != 'transfer') {
           try {
             categoryId = await repo.upsertCategory(
               name: tx.categoryName!,
@@ -525,12 +1007,18 @@ class DataImportService {
       // 解析账户ID
       int? accountId;
       int? toAccountId;
-      if (tx.type == 'transfer') {
+      if (effectiveType == 'transfer') {
         if (tx.fromAccountName != null) {
           accountId = accountNameToId[tx.fromAccountName];
           if (accountId == null) {
             failed++;
+            await finishEvent(
+              eventRef,
+              state: AutoBookState.retry,
+              reason: 'missing_from_account',
+            );
             processed++;
+            onProgress?.call(processed, total);
             continue;
           }
         }
@@ -538,7 +1026,13 @@ class DataImportService {
           toAccountId = accountNameToId[tx.toAccountName];
           if (toAccountId == null) {
             failed++;
+            await finishEvent(
+              eventRef,
+              state: AutoBookState.retry,
+              reason: 'missing_to_account',
+            );
             processed++;
+            onProgress?.call(processed, total);
             continue;
           }
         }
@@ -573,26 +1067,25 @@ class DataImportService {
 
       // v30:交易币种 = CSV 币种列(显式,反馈10)?? 账户币种 ?? 本位币;
       // 折算快照同币种 = amount,外币按有效汇率,取不到 = amount(L11 可捞回)。
-      final txCurrency = ((tx.currencyCode?.isNotEmpty ?? false)
-              ? tx.currencyCode!
-              : null) ??
-          (accountId != null ? accountCurrencyById[accountId] : null) ??
-          ledgerBase;
+      final txCurrency =
+          ((tx.currencyCode?.isNotEmpty ?? false) ? tx.currencyCode! : null) ??
+              (accountId != null ? accountCurrencyById[accountId] : null) ??
+              ledgerBase;
       final txNative = txCurrency == ledgerBase
-          ? tx.amount
+          ? amount
           : (computeNativeAmount(
-                  amount: tx.amount,
+                  amount: amount,
                   accountCurrency: txCurrency,
                   ledgerBase: ledgerBase,
                   rates: importRates) ??
-              tx.amount);
+              amount);
 
       // 构建交易记录
       final txCompanion = TransactionsCompanion.insert(
         ledgerId: ledgerId,
-        type: tx.type,
-        amount: tx.amount,
-        categoryId: d.Value(tx.type == 'transfer' ? null : categoryId),
+        type: effectiveType,
+        amount: amount,
+        categoryId: d.Value(effectiveType == 'transfer' ? null : categoryId),
         accountId: d.Value(accountId),
         toAccountId: d.Value(toAccountId),
         happenedAt: d.Value(tx.happenedAt),
@@ -604,6 +1097,7 @@ class DataImportService {
 
       final indexInBatch = batchTx.length;
       batchTx.add(txCompanion);
+      batchEventRefs.add(eventRef);
       if (uniqueTagIds.isNotEmpty) {
         batchTagsByIndex[indexInBatch] = uniqueTagIds;
       }
@@ -631,9 +1125,22 @@ class DataImportService {
     await flush();
 
     logger.info('TxImport',
-        '交易导入完成: 总数=$total 成功=$inserted 失败=$failed 总耗时=${overallSw.elapsedMilliseconds}ms');
-    return ImportResult(inserted: inserted, failed: failed);
+        '交易导入完成: 总数=$total 成功=$inserted 失败=$failed 重复=$duplicated 忽略=$ignored 无效=$invalid 总耗时=${overallSw.elapsedMilliseconds}ms');
+    return ImportResult(
+      inserted: inserted,
+      failed: failed,
+      duplicated: duplicated,
+      ignored: ignored,
+      invalid: invalid,
+    );
   }
+}
+
+class _ImportEventRef {
+  final int? eventId;
+  final ImportTransaction transaction;
+
+  const _ImportEventRef({required this.eventId, required this.transaction});
 }
 
 /// 全局单例

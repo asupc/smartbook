@@ -63,6 +63,44 @@ void main() {
           '招商银行');
     });
 
+    test('核验后的银行包名(2026-09)→ 渠道', () {
+      // chinamworld 两家:bocmbci 在前,避免与 main 串道
+      expect(SourceChannelResolver.channelForPackage('com.chinamworld.main'),
+          '中国建设银行');
+      expect(
+          SourceChannelResolver.channelForPackage('com.chinamworld.bocmbci'),
+          '中国银行');
+      expect(
+          SourceChannelResolver.channelForPackage('com.yitong.mbank.psbc'),
+          '中国邮政储蓄银行');
+      expect(SourceChannelResolver.channelForPackage('cn.com.cmbc.newmbank'),
+          '中国民生银行');
+      expect(SourceChannelResolver.channelForPackage('com.ecitic.bank.mobile'),
+          '中信银行');
+      expect(
+          SourceChannelResolver.channelForPackage('cn.com.spdb.mobilebank.per'),
+          '浦发银行');
+      expect(SourceChannelResolver.channelForPackage('com.cib.cibmb'),
+          '兴业银行');
+      expect(SourceChannelResolver.channelForPackage('com.cgbchina.xpt'),
+          '广发银行');
+      expect(SourceChannelResolver.channelForPackage('com.hxb.mobile.client'),
+          '华夏银行');
+      expect(
+          SourceChannelResolver.channelForPackage('com.pingan.paces.ccms'),
+          '中国平安银行');
+      expect(SourceChannelResolver.channelForPackage('com.webank.wemoney'),
+          '微众银行');
+      expect(
+          SourceChannelResolver.channelForPackage('com.mybank.android.phone'),
+          '网商银行');
+      // 已证伪的旧包名不再命中(防止回退)
+      expect(
+          SourceChannelResolver.channelForPackage('com.chinabank.mobilebank'),
+          isNull);
+      expect(SourceChannelResolver.channelForPackage('cn.pay.youjian'), isNull);
+    });
+
     test('屏幕文本监听包名(抖音/京东)→ 渠道', () {
       expect(SourceChannelResolver.channelForPackage('com.ss.android.ugc.aweme'),
           '抖音');

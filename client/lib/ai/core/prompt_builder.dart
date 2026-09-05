@@ -62,7 +62,7 @@ class PromptBuilder {
 
 字段说明：
 1. amount: 金额（支出负数，收入正数）
-2. time: ISO8601格式，尽量推断时间：
+2. time: ISO8601格式，尽量推断时间；无法确认时允许为 null：
    - 明确时间（如"14:30"、"2025-11-25"）→直接使用
    - 相对日期（昨天、前天、上周）→推算具体日期
    - 时间段（早上、中午、晚上）→使用合理时刻（早上09:00、中午12:00、晚上19:00）
@@ -79,12 +79,18 @@ class PromptBuilder {
 8. to_account: 转入账户（仅转账可用）
 9. tag/tags: 标签（可选，单个字符串或字符串数组）
 $_currencyFieldSpec
+12. event_kind: purchase、income、refund、transfer、repayment、recharge、fee、statement、balanceReminder、pendingOrder 或 unknown
+13. settlement_status: settled、pending、failed、cancelled、reversed、summary 或 unknown
+14. external_id: 原文中的订单号/交易号/流水号；没有时填 null，不要编造
+15. merchant: 规范化商户名；没有时填 null
+16. card_last4: 原文明确出现的卡号后四位；没有时填 null
+17. time_precision: exact、minute、date、inferred 或 unknown
 
 示例：
 单笔"昨天中午吃饭50" → [{"amount":-50,"time":"2025-11-24T12:00:00","category":"餐饮","type":"expense"}]
-单笔"早上在星巴克买咖啡30" → [{"amount":-30,"time":"{{CURRENT_DATE}}T09:00:00","note":"星巴克","category":"咖啡","type":"expense"}]
+单笔"早上在星巴克买咖啡30" → [{"amount":-30,"time":"{{CURRENT_DATE}}T09:00:00","note":"星巴克","merchant":"星巴克","category":"咖啡","type":"expense","event_kind":"purchase","settlement_status":"settled","time_precision":"inferred","confidence":0.8}]
 单笔"商品:2025春季新款黑色半身裙 金额:￥299" → [{"amount":-299,"note":"黑色半身裙","category":"服装","type":"expense"}]
-转账"从建行转800到零钱包" → [{"amount":800,"category":"转账","type":"transfer","from_account":"建行","to_account":"零钱包","tag":"自己"}]
+转账"从建行转800到零钱包" → [{"amount":800,"category":"转账","type":"transfer","from_account":"建行","to_account":"零钱包","tag":"自己","event_kind":"transfer","settlement_status":"settled","time_precision":"inferred","confidence":0.8}]
 还款"信用卡还款5000元" → [{"amount":-5000,"category":"还款","type":"transfer","from_account":"建设银行","to_account":"信用卡"},{"amount":-2000,"note":"房贷还款","category":"还款","type":"transfer"}]
 外币"花了45美元" → [{"amount":-45,"currency":"USD","type":"expense"}]
 外币"在东京吃拉面1200日元" → [{"amount":-1200,"currency":"JPY","note":"拉面","category":"餐饮","type":"expense"}]
@@ -114,7 +120,8 @@ $_currencyFieldSpec
   /// 币种段落(A7)。给**自定义模板用户**的「插入币种段落」一键补丁用 ——
   /// 我们不覆盖用户模板(方案 a),但让他们一次点击就能把这个能力补进自己的
   /// 模板。内容与默认模板共用 [_currencyFieldSpec],不会漂移。
-  static const String currencySectionSnippet = '$_currencyFieldSpec\n{{CURRENCIES}}';
+  static const String currencySectionSnippet =
+      '$_currencyFieldSpec\n{{CURRENCIES}}';
 
   /// 默认模板用到的全部占位符。**新增占位符必须在此登记** ——
   /// [placeholdersMatchDefaultTemplate] 会双向校验,漏登记或登记了模板里没有的
@@ -180,7 +187,7 @@ $_currencyFieldSpec
       '- 短信是没有金额的\n'
       '\n'
       '判断后,不是交易短信则返回JSON空数组[];是交易短信则按下面的格式输出。\n'
-      '注意:同一笔交易短信只输出一笔;金额必须取自短信原文,不要脑补。\n';
+      '注意:同一笔交易短信只输出一笔;金额必须取自短信原文,不要脑补。账单汇总、最低还款、余额提醒不要输出普通消费。\n';
 
   /// 支付通知路径的账单过滤段(billGuardForSms 的通知版)。
   ///
@@ -196,7 +203,13 @@ $_currencyFieldSpec
       '- 通快递/物流/取件类通知\n'
       '\n'
       '判断后,不是交易通知则返回JSON空数组[];是则按下面的格式输出。'
-      '金额必须取自原文,不要脑补。\n';
+      '金额必须取自原文,不要脑补。账单汇总、余额提醒、待支付或失败通知不得创建 expense；退款、还款、充值、转账必须标注正确的 event_kind。\n';
+
+  /// 外部文本自动化路径的 Guard。与主动 AI 对话区分，避免任意带数字的
+  /// Deep Link 文本被当成消费；显式记账参数仍走 `smartbook://add`。
+  static const String billGuardForText = '请先判断以下文本是否明确描述一笔已经发生并完成的账务事件。'
+      '账单汇总、本期应还、余额/额度提醒、待付款、营销、说明文字不要创建普通消费；'
+      '退款、还款、充值、转账请标注正确的 event_kind 和 settlement_status。\n';
 
   /// 屏幕文本(账单详情页)路径的账单过滤段。
   ///
@@ -213,7 +226,7 @@ $_currencyFieldSpec
       '- 聊天消息、公众号文章、朋友圈\n'
       '\n'
       '判断后,不是已成交交易则返回JSON空数组[];是则按下面的格式输出。\n'
-      '注意:同一笔交易只输出一笔;金额必须取自原文,不要脑补。\n';
+      '注意:同一笔交易只输出一笔;金额必须取自原文,不要脑补。未确认成交的页面必须返回空数组或 pendingOrder，不得创建 expense。\n';
 
   /// Hardcoded fallback 分类(context 不提供时使用)
   static const String _hardcodedCategoryHint = '分类列表：\n'

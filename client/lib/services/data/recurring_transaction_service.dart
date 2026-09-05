@@ -1,12 +1,14 @@
 import '../../data/db.dart';
+import '../automation/auto_book_coordinator.dart';
+import '../automation/auto_book_event.dart';
 import '../system/logger_service.dart';
 
 /// 重复交易频率枚举
 enum RecurringFrequency {
-  daily('daily'),      // 每天
-  weekly('weekly'),    // 每周
-  monthly('monthly'),  // 每月
-  yearly('yearly');    // 每年
+  daily('daily'), // 每天
+  weekly('weekly'), // 每周
+  monthly('monthly'), // 每月
+  yearly('yearly'); // 每年
 
   final String value;
   const RecurringFrequency(this.value);
@@ -29,8 +31,9 @@ class RecurringTransactionService {
   static const _tag = 'Recurring';
 
   final dynamic repository;
+  final AutoBookCoordinator? coordinator;
 
-  RecurringTransactionService(this.repository);
+  RecurringTransactionService(this.repository, {this.coordinator});
 
   /// 静态方法：生成待处理的重复交易（供启动时和初始化时调用）
   ///
@@ -41,12 +44,16 @@ class RecurringTransactionService {
   static Future<Set<int>> generatePendingTransactionsStatic({
     required dynamic repository,
     bool verbose = false,
+    AutoBookCoordinator? coordinator,
   }) async {
     try {
       logger.info(_tag,
           '开始生成待处理的重复交易 (Repository=${repository.runtimeType}, verbose=$verbose)');
 
-      final service = RecurringTransactionService(repository);
+      final service = RecurringTransactionService(
+        repository,
+        coordinator: coordinator,
+      );
       final generatedTransactions = await service.generatePendingTransactions();
 
       if (generatedTransactions.isNotEmpty) {
@@ -101,8 +108,7 @@ class RecurringTransactionService {
     switch (frequency) {
       case RecurringFrequency.daily:
         // 首笔=基准日(含今天);之后=上次+interval 天
-        nextDate =
-            firstGen ? baseDate : baseDate.add(Duration(days: interval));
+        nextDate = firstGen ? baseDate : baseDate.add(Duration(days: interval));
         break;
 
       case RecurringFrequency.weekly:
@@ -124,7 +130,8 @@ class RecurringTransactionService {
           return DateTime(year, month, day);
         }
 
-        nextDate = buildMonthly(baseDate.year, baseDate.month + (firstGen ? 0 : interval));
+        nextDate = buildMonthly(
+            baseDate.year, baseDate.month + (firstGen ? 0 : interval));
         // 首笔:若当月目标日早于基准(本月已过)→ 顺延一个 interval 月,避免回溯
         if (firstGen && nextDate.isBefore(baseDate)) {
           nextDate = buildMonthly(baseDate.year, baseDate.month + interval);
@@ -214,8 +221,8 @@ class RecurringTransactionService {
         while (true) {
           // 防御:任何情况下单条周期交易一次扫描不应生成上千笔 —— 拦截死循环
           if (++loopGuard > 1000) {
-            logger.warning(_tag,
-                '周期交易 id=${recurring.id} 单次生成超过 1000 笔,强制中止以防死循环');
+            logger.warning(
+                _tag, '周期交易 id=${recurring.id} 单次生成超过 1000 笔,强制中止以防死循环');
             break;
           }
           final nextDate = calculateNextDate(currentRecurring);
@@ -236,27 +243,21 @@ class RecurringTransactionService {
           final txCurrency = currentRecurring.accountId != null
               ? null
               : currentRecurring.currencyCode;
-          final transactionId = await repository.addTransaction(
-            ledgerId: currentRecurring.ledgerId,
-            type: currentRecurring.type,
-            amount: currentRecurring.amount,
-            categoryId: currentRecurring.categoryId,
-            accountId: currentRecurring.accountId,
-            toAccountId: currentRecurring.toAccountId,
-            happenedAt: nextDate,
-            note: currentRecurring.note,
-            currencyCode: txCurrency,
+          final occurrenceKey = occurrenceEventKey(
+            recurringId: currentRecurring.id,
+            occurrenceDate: nextDate,
           );
-
-          // 更新最后生成日期
-          await repository.updateLastGeneratedDate(
-            currentRecurring.id,
-            nextDate,
+          final transactionId = await _createOccurrence(
+            recurring: currentRecurring,
+            nextDate: nextDate,
+            currencyCode: txCurrency,
+            occurrenceKey: occurrenceKey,
           );
 
           // 使用流式查询获取生成的交易（取第一个）
-          final transactionsWithCategory =
-              await repository.transactionsWithCategoryAll(ledgerId: ledger.id).first;
+          final transactionsWithCategory = await repository
+              .transactionsWithCategoryAll(ledgerId: ledger.id)
+              .first;
           final matchedTransactions = transactionsWithCategory
               .where((e) => e.t.id == transactionId)
               .toList();
@@ -280,6 +281,98 @@ class RecurringTransactionService {
     }
 
     return generatedTransactions;
+  }
+
+  Future<int> _createOccurrence({
+    required RecurringTransaction recurring,
+    required DateTime nextDate,
+    required String? currencyCode,
+    required String occurrenceKey,
+  }) async {
+    Future<int> createAndAdvance(AutoBookEventContext? context) async {
+      final existing = context?.existingTransactionId;
+      if (existing != null) {
+        // 进程可能在写入交易后、更新周期模板前被杀；重试时复用
+        // parent event 的 transactionId，并把模板游标补到同一 occurrence。
+        await repository.updateLastGeneratedDate(recurring.id, nextDate);
+        return existing;
+      }
+
+      final transactionId = await repository.addTransaction(
+        ledgerId: recurring.ledgerId,
+        type: recurring.type,
+        amount: recurring.amount,
+        categoryId: recurring.categoryId,
+        accountId: recurring.accountId,
+        toAccountId: recurring.toAccountId,
+        happenedAt: nextDate,
+        note: recurring.note,
+        currencyCode: currencyCode,
+      );
+
+      if (context != null) {
+        // 先把已创建的 transaction ID 写进事件，再执行可能失败的
+        // lastGeneratedDate 更新，避免 retry 重新创建同一 occurrence。
+        await context.store.mark(
+          AutoBookEventUpdate(
+            state: AutoBookState.processing,
+            transactionId: transactionId,
+          ),
+          eventId: context.eventId,
+        );
+      }
+      await repository.updateLastGeneratedDate(recurring.id, nextDate);
+      return transactionId;
+    }
+
+    final c = coordinator;
+    if (c == null) {
+      return createAndAdvance(null);
+    }
+
+    final execution = await c.executeWithContext<int>(
+      input: AutoBookInput(
+        eventKey: occurrenceKey,
+        source: AutoBookSource.recurring,
+        captureIntent: AutoBookCaptureIntent.recurring,
+        ledgerId: recurring.ledgerId,
+        capturedAt: DateTime.now(),
+        sourceOccurredAt: nextDate,
+        sourceChannel: 'recurring:${recurring.id}',
+        externalId: occurrenceKey,
+      ),
+      action: createAndAdvance,
+      updateFor: (transactionId) => AutoBookEventUpdate(
+        state: AutoBookState.booked,
+        transactionId: transactionId,
+      ),
+    );
+    if (execution.skipped) {
+      final existing = execution.existingTransactionId;
+      if (existing != null) {
+        await repository.updateLastGeneratedDate(recurring.id, nextDate);
+        return existing;
+      }
+      // processing/retry 尚未可执行；让外层停止本次 occurrence 扫描，
+      // 下次启动由 event store 继续，不冒险生成第二笔。
+      throw StateError('周期 occurrence 尚未完成: $occurrenceKey');
+    }
+    final transactionId = execution.value;
+    if (transactionId == null) {
+      throw StateError('周期 occurrence 未返回交易 ID: $occurrenceKey');
+    }
+    return transactionId;
+  }
+
+  /// 周期模板 + occurrence 日期的稳定事件键；不使用 transaction.syncId。
+  static String occurrenceEventKey({
+    required int recurringId,
+    required DateTime occurrenceDate,
+  }) {
+    final date = '${occurrenceDate.year.toString().padLeft(4, '0')}-'
+        '${occurrenceDate.month.toString().padLeft(2, '0')}-'
+        '${occurrenceDate.day.toString().padLeft(2, '0')}';
+    return 'recurring:v1:$recurringId:$date';
   }
 
   /// 获取重复交易的描述文字

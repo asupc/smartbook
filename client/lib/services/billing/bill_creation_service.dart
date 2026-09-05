@@ -70,13 +70,14 @@ class BillCreationService {
     List<String>? customTagNames,
     AppLocalizations? l10n,
     bool autoAddTags = true,
+
     /// M4:来源渠道(短信 sender / 通知 pkg 解析出的渠道名),AI 账户名未匹配
     /// 时按「渠道→账户映射」回退。手动/主动路径传 null。
     String? sourceChannel,
   }) async {
     final amount = bill.amount;
     if (amount == null || amount.abs() <= 0) {
-      logger.warning(_tag, '[校验] amount 无效,跳过: ${bill.toJson()}');
+      logger.warning(_tag, '[校验] amount 无效,跳过');
       return null;
     }
 
@@ -143,7 +144,8 @@ class BillCreationService {
 
     // 4.5 定交易币种:命中账户 → 随账户(账户内不混币,L7/L12 的不变量);
     //     否则用 AI 给的;都没有 → 账本本位币。
-    final matchedAccount = accountId == null ? null : await repo.getAccount(accountId);
+    final matchedAccount =
+        accountId == null ? null : await repo.getAccount(accountId);
     final accountCurrency = (matchedAccount?.currency.isNotEmpty ?? false)
         ? matchedAccount!.currency.toUpperCase()
         : null;
@@ -152,8 +154,8 @@ class BillCreationService {
         accountCurrency != null &&
         requestedCurrency != accountCurrency) {
       // 池已按币种筛过,正常走不到这里;留日志防未来改动引入静默错币种
-      logger.warning(_tag,
-          '[币种] AI 给 $requestedCurrency 但命中账户是 $accountCurrency,以账户为准');
+      logger.warning(
+          _tag, '[币种] AI 给 $requestedCurrency 但命中账户是 $accountCurrency,以账户为准');
     }
     // 外币且**本地还没有**有效汇率时才拉(A6)。本地已有就直接用 —— 否则
     // 多笔外币账单(一张图 10 笔)会各打一次 force 网络请求,后台自动记账
@@ -197,7 +199,8 @@ class BillCreationService {
     String? categoryName;
     String? accountName;
     if (categoryId != null) {
-      categoryName = categories.firstWhereOrNull((c) => c.id == categoryId)?.name;
+      categoryName =
+          categories.firstWhereOrNull((c) => c.id == categoryId)?.name;
     }
     if (accountId != null) {
       accountName = (await repo.getAccount(accountId))?.name;
@@ -213,7 +216,7 @@ class BillCreationService {
       _tag,
       '[自动记账] 成功 | ID:$transactionId | ${amount.abs()}元 | $typeStr | '
       '分类:${categoryName ?? '未设置'} | 账户:${accountName ?? '未设置'} | '
-      '时间:${_formatDateTime(happenedAt)} | 备注:${bill.note ?? '无'} | '
+      '时间:${_formatDateTime(happenedAt)} | 备注已脱敏 | '
       '标签:${tagSources.isNotEmpty ? tagSources.join(',') : '无'}',
     );
 
@@ -345,8 +348,8 @@ class BillCreationService {
         (aiAccountName == null || aiAccountName.isEmpty)) {
       final rule = await ChannelAccountStore().ruleFor(sourceChannel);
       if (rule != null) {
-        logger.debug(_tag,
-            '[账户匹配-渠道] 来源"$sourceChannel" → 账户(映射,ID:${rule.accountId})');
+        logger.debug(
+            _tag, '[账户匹配-渠道] 来源"$sourceChannel" → 账户(映射,ID:${rule.accountId})');
         return rule.accountId;
       }
     }
@@ -377,16 +380,14 @@ class BillCreationService {
     final wanted = currency?.toUpperCase();
     final pool = allAccounts
         .where((a) =>
-            !a.hidden &&
-            (wanted == null || a.currency.toUpperCase() == wanted))
+            !a.hidden && (wanted == null || a.currency.toUpperCase() == wanted))
         .toList();
     final target = accountName.toLowerCase().trim();
 
     // 完全匹配
     for (final a in pool) {
       if (a.name.toLowerCase().trim() == target) {
-        logger.debug(_tag,
-            '[账户匹配-完全] "$accountName" → ${a.name}(ID:${a.id})');
+        logger.debug(_tag, '[账户匹配-完全] "$accountName" → ${a.name}(ID:${a.id})');
         return a.id;
       }
     }
@@ -394,8 +395,7 @@ class BillCreationService {
     for (final a in pool) {
       final n = a.name.toLowerCase().trim();
       if (n.contains(target) || target.contains(n)) {
-        logger.debug(_tag,
-            '[账户匹配-模糊] "$accountName" → ${a.name}(ID:${a.id})');
+        logger.debug(_tag, '[账户匹配-模糊] "$accountName" → ${a.name}(ID:${a.id})');
         return a.id;
       }
     }
@@ -413,8 +413,8 @@ class BillCreationService {
       final n = a.name.toLowerCase().trim();
       for (final r in related) {
         if (n.contains(r.toLowerCase())) {
-          logger.debug(_tag,
-              '[账户匹配-类型] "$accountName" → ${a.name}(ID:${a.id})');
+          logger.debug(
+              _tag, '[账户匹配-类型] "$accountName" → ${a.name}(ID:${a.id})');
           return a.id;
         }
       }
@@ -440,8 +440,7 @@ class BillCreationService {
     final account = await repo.getAccount(defaultId);
     if (account == null) return null;
     if (account.currency.toUpperCase() != txCurrency.toUpperCase()) {
-      logger.debug(_tag,
-          '[默认账户] 币种不匹配: ${account.currency} vs $txCurrency');
+      logger.debug(_tag, '[默认账户] 币种不匹配: ${account.currency} vs $txCurrency');
       return null;
     }
     logger.debug(_tag, '[默认账户] → ${account.name}(ID:${account.id})');
@@ -461,13 +460,13 @@ class BillCreationService {
     bool valid(String rate) => (double.tryParse(rate) ?? 0) > 0;
     try {
       final overrides = await repo.getOverrides(base);
-      if (overrides.any((o) =>
-          o.quoteCurrency.toUpperCase() == quote && valid(o.rate))) {
+      if (overrides.any(
+          (o) => o.quoteCurrency.toUpperCase() == quote && valid(o.rate))) {
         return true;
       }
       final autos = await repo.getLatestAutoRates(base);
-      return autos.any(
-          (r) => r.quoteCurrency.toUpperCase() == quote && valid(r.rate));
+      return autos
+          .any((r) => r.quoteCurrency.toUpperCase() == quote && valid(r.rate));
     } catch (e) {
       // 查不了就当没有,交给 _ensureRateAvailable 兜(它自己也吞异常)
       logger.debug(_tag, '[汇率] 本地汇率检查失败,按「无」处理: $e');
@@ -507,9 +506,8 @@ class BillCreationService {
         names.addAll(TagSeedService.getBillingTagNames(billingTypes, l10n));
       }
       if (customTagNames != null && customTagNames.isNotEmpty) {
-        names.addAll(customTagNames
-            .map((n) => n.trim())
-            .where((n) => n.isNotEmpty));
+        names.addAll(
+            customTagNames.map((n) => n.trim()).where((n) => n.isNotEmpty));
       }
       if (names.isEmpty) return;
 

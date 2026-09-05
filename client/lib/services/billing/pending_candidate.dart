@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../ai/core/bill_info.dart';
+import '../automation/auto_book_event_store.dart';
 
 /// 待确认候选(自动记账 M2)。
 ///
@@ -17,6 +18,18 @@ class PendingCandidate {
   final String source; // sms / notification / image / audio / chat …
   final DateTime capturedAt;
   final String? reason; // 进候选的原因(给用户看:"疑似重复"/"大额"等文案 key)
+  /// 原始入口事件 key。与 candidate id 分离，便于同一事件重试时幂等。
+  final String? eventKey;
+
+  /// event store 中的解析子项索引。旧版 SharedPreferences 候选可为空。
+  final int? eventItemIndex;
+
+  /// 跨来源交易级语义 key（若已能生成）。
+  final String? semanticKey;
+
+  /// 疑似重复时命中的已有交易。
+  final int? matchedTransactionId;
+  final double? matchScore;
 
   const PendingCandidate({
     required this.id,
@@ -25,6 +38,11 @@ class PendingCandidate {
     this.source = 'auto',
     required this.capturedAt,
     this.reason,
+    this.eventKey,
+    this.eventItemIndex,
+    this.semanticKey,
+    this.matchedTransactionId,
+    this.matchScore,
   });
 
   static String candidateId(BillInfo bill) {
@@ -41,6 +59,11 @@ class PendingCandidate {
         'source': source,
         'capturedAt': capturedAt.toIso8601String(),
         'reason': reason,
+        'eventKey': eventKey,
+        'eventItemIndex': eventItemIndex,
+        'semanticKey': semanticKey,
+        'matchedTransactionId': matchedTransactionId,
+        'matchScore': matchScore,
       };
 
   static PendingCandidate? fromJson(Map<String, dynamic> json) {
@@ -50,25 +73,47 @@ class PendingCandidate {
       return PendingCandidate(
         id: json['id'] as String? ?? '',
         bill: BillInfo.fromJson(Map<String, dynamic>.from(billJson)),
-        billingTypes: (json['billingTypes'] as List?)?.map((e) => e.toString()).toList() ?? const [],
+        billingTypes: (json['billingTypes'] as List?)
+                ?.map((e) => e.toString())
+                .toList() ??
+            const [],
         source: json['source'] as String? ?? 'auto',
-        capturedAt:
-            DateTime.tryParse(json['capturedAt'] as String? ?? '') ?? DateTime.now(),
+        capturedAt: DateTime.tryParse(json['capturedAt'] as String? ?? '') ??
+            DateTime.now(),
         reason: json['reason'] as String?,
+        eventKey: json['eventKey'] as String?,
+        eventItemIndex: (json['eventItemIndex'] as num?)?.toInt(),
+        semanticKey: json['semanticKey'] as String?,
+        matchedTransactionId: (json['matchedTransactionId'] as num?)?.toInt(),
+        matchScore: (json['matchScore'] as num?)?.toDouble(),
       );
     } catch (_) {
       return null;
     }
   }
 
-  PendingCandidate copyWith({BillInfo? bill, String? reason}) {
+  PendingCandidate copyWith({
+    String? candidateId,
+    BillInfo? bill,
+    String? reason,
+    String? eventKey,
+    int? eventItemIndex,
+    String? semanticKey,
+    int? matchedTransactionId,
+    double? matchScore,
+  }) {
     return PendingCandidate(
-      id: bill != null ? candidateId(bill) : id,
+      id: candidateId ?? id,
       bill: bill ?? this.bill,
       billingTypes: billingTypes,
       source: source,
       capturedAt: capturedAt,
       reason: reason ?? this.reason,
+      eventKey: eventKey ?? this.eventKey,
+      eventItemIndex: eventItemIndex ?? this.eventItemIndex,
+      semanticKey: semanticKey ?? this.semanticKey,
+      matchedTransactionId: matchedTransactionId ?? this.matchedTransactionId,
+      matchScore: matchScore ?? this.matchScore,
     );
   }
 }
@@ -106,9 +151,8 @@ class AutoBookRule {
           amount.abs() * duplicateTolerance + 0.01) {
         continue;
       }
-      final sameNote = bill.note != null &&
-          bill.note!.isNotEmpty &&
-          bill.note == other.note;
+      final sameNote =
+          bill.note != null && bill.note!.isNotEmpty && bill.note == other.note;
       final diff = (bill.time == null || other.time == null)
           ? Duration.zero
           : bill.time!.difference(other.time!).abs();
@@ -147,8 +191,22 @@ class AutoBookRule {
 /// 候选制分流流的运行时参数(由自动路径构造传入 AiBookkeeper)。
 class AutoBookFlow {
   final PendingCandidateStore store;
+  final String? eventKey;
 
-  const AutoBookFlow({required this.store});
+  /// Coordinator 的本地事件表；主动路径可为空，自动路径由共享 provider 注入。
+  final AutoBookEventStore? eventStore;
+  final bool strictSemantic;
+
+  /// 影子模式：执行识别/策略/判重，但不创建交易或候选。
+  final bool shadowMode;
+
+  const AutoBookFlow({
+    required this.store,
+    this.eventKey,
+    this.eventStore,
+    this.strictSemantic = true,
+    this.shadowMode = false,
+  });
 }
 
 /// 待确认候选队列存储(SharedPreferences,cap [maxCandidates])。
@@ -156,7 +214,17 @@ class PendingCandidateStore {
   static const _key = 'pending_candidates_v1';
   static const int maxCandidates = 100;
 
-  Future<List<PendingCandidate>> load() async {
+  // SharedPreferences 的 read-modify-write 不是原子的；AI 自动入口、候选页
+  // 和确认操作可能同时触发，统一串行化避免互相覆盖候选。
+  static Future<void> _tail = Future<void>.value();
+
+  Future<T> _serial<T>(Future<T> Function() action) {
+    final next = _tail.then((_) => action());
+    _tail = next.then<void>((_) {}, onError: (_) {});
+    return next;
+  }
+
+  Future<List<PendingCandidate>> _loadUnlocked() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getStringList(_key) ?? const [];
     return raw
@@ -167,33 +235,115 @@ class PendingCandidateStore {
         .toList();
   }
 
-  Future<void> save(List<PendingCandidate> list) async {
+  Future<void> _saveUnlocked(List<PendingCandidate> list) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(
         _key, list.map((c) => jsonEncode(c.toJson())).toList());
   }
 
+  Future<List<PendingCandidate>> load() => _serial(_loadUnlocked);
+
+  Future<void> save(List<PendingCandidate> list) =>
+      _serial(() => _saveUnlocked(list));
+
   /// 追加候选;同一 id 已存在则幂等跳过。超出容量删最旧(0 为最旧)。
-  Future<bool> add(PendingCandidate candidate) async {
-    final list = await load();
-    if (list.any((c) => c.id == candidate.id)) return false;
-    list.add(candidate);
-    while (list.length > maxCandidates) {
-      list.removeAt(0);
+  Future<bool> add(PendingCandidate candidate) => _serial(() async {
+        final list = await _loadUnlocked();
+        if (list.any((c) => c.id == candidate.id)) return false;
+        list.add(candidate);
+        while (list.length > maxCandidates) {
+          list.removeAt(0);
+        }
+        await _saveUnlocked(list);
+        return true;
+      });
+
+  Future<bool> remove(String id) => _serial(() async {
+        final list = await _loadUnlocked();
+        final next = list.where((c) => c.id != id).toList();
+        if (next.length == list.length) return false;
+        await _saveUnlocked(next);
+        return true;
+      });
+
+  Future<int> count() => _serial(() async => (await _loadUnlocked()).length);
+
+  /// 从 event store 投影待确认候选，并与旧 SharedPreferences 候选合并。
+  ///
+  /// event store 是自动入口的事实来源；SharedPreferences 仅作为旧版本和
+  /// event item 尚未写入时的兼容兜底。相同 (eventKey,itemIndex) 以 event store
+  /// 版本为准，避免候选页展示已经被恢复/更新前的旧副本。
+  Future<List<PendingCandidate>> loadForReview(
+    AutoBookEventStore eventStore,
+  ) async {
+    final legacy = await load();
+    final merged = <String, PendingCandidate>{};
+
+    try {
+      final events = await eventStore.listPending(limit: 500);
+      for (final event in events) {
+        final items = await eventStore.itemsForEvent(event.id);
+        for (final item in items) {
+          if (item.state != 'pending') continue;
+          final payload = _tryMap(item.billJson);
+          if (payload == null) continue;
+          final billPayload = payload['bill'] is Map
+              ? Map<String, dynamic>.from(payload['bill'] as Map)
+              : payload;
+          final bill = BillInfo.fromJson(billPayload);
+          if (bill.amount == null || bill.time == null) continue;
+
+          final candidate = PendingCandidate(
+            id: payload['candidate_id']?.toString() ??
+                '${event.eventKey}:${item.itemIndex}',
+            bill: bill,
+            billingTypes: (payload['billing_types'] as List?)
+                    ?.map((value) => value.toString())
+                    .toList() ??
+                const [],
+            source: payload['source']?.toString() ?? event.source,
+            capturedAt: DateTime.tryParse(
+                  payload['captured_at']?.toString() ?? '',
+                ) ??
+                event.capturedAt,
+            reason: item.reason ?? payload['candidate_reason']?.toString(),
+            eventKey: event.eventKey,
+            eventItemIndex: item.itemIndex,
+            semanticKey: item.semanticKey,
+            matchedTransactionId:
+                (payload['matched_transaction_id'] as num?)?.toInt() ??
+                    item.transactionId,
+            matchScore: (payload['match_score'] as num?)?.toDouble(),
+          );
+          merged['event:${event.eventKey}:${item.itemIndex}'] = candidate;
+        }
+      }
+    } catch (_) {
+      // event store 不可用时保留旧候选页，不能阻断用户处理已有候选。
     }
-    await save(list);
-    return true;
-  }
 
-  Future<bool> remove(String id) async {
-    final list = await load();
-    final next = list.where((c) => c.id != id).toList();
-    if (next.length == list.length) return false;
-    await save(next);
-    return true;
-  }
+    for (final candidate in legacy) {
+      final key = candidate.eventKey == null
+          ? 'legacy:${candidate.id}'
+          : 'event:${candidate.eventKey}:${candidate.eventItemIndex ?? 0}';
+      merged.putIfAbsent(key, () => candidate);
+    }
 
-  Future<int> count() async => (await load()).length;
+    final result = merged.values.toList()
+      ..sort((a, b) => b.capturedAt.compareTo(a.capturedAt));
+    return result;
+  }
+}
+
+Map<String, dynamic>? _tryMap(String? raw) {
+  if (raw == null || raw.trim().isEmpty) return null;
+  try {
+    final value = jsonDecode(raw);
+    if (value is! Map) return null;
+    return Map<String, dynamic>.from(value.cast<String, dynamic>());
+  } catch (_) {
+    return null;
+  }
 }
 
 Map<String, dynamic>? _tryJson(String s) {

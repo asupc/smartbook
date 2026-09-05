@@ -21,6 +21,21 @@ abstract class BillParser {
   /// 验证是否为该类型的账单
   /// 用于自动识别账单类型
   bool validateBillType(List<List<String>> rows);
+
+  /// provider 归一化后的短名称，写入 ImportTransaction.provider。
+  String get providerKey => name.toLowerCase();
+
+  /// 将平台状态归一为统一状态词，供导入服务过滤非成功行。
+  String? normalizeStatus(String? raw) =>
+      raw?.trim().isEmpty == true ? null : raw?.trim();
+
+  /// 将平台退款金额归一为正数；空值/非法值返回 null。
+  double? normalizeRefundAmount(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    return double.tryParse(
+      raw.replaceAll(RegExp(r'[¥￥$,+，]'), '').trim(),
+    )?.abs();
+  }
 }
 
 /// 解析结果

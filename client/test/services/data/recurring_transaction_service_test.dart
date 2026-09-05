@@ -12,6 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:smartbook/data/db.dart';
 import 'package:smartbook/data/repositories/local/local_repository.dart';
 import 'package:smartbook/services/data/recurring_transaction_service.dart';
+import 'package:smartbook/services/automation/auto_book_coordinator.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -101,6 +102,43 @@ void main() {
     // 昨天 → 今天一笔(daily);明天还没到,停在这。
     expect(generated, hasLength(1));
     expectIsToday(generated.first.happenedAt);
+  });
+
+  test('occurrence event 已落库但模板游标丢失时复用已有交易', () async {
+    await repo.addRecurringTransaction(
+      ledgerId: ledgerId,
+      type: 'expense',
+      amount: 10,
+      frequency: 'daily',
+      interval: 1,
+      startDate: DateTime.now().subtract(const Duration(days: 1)),
+    );
+    final coordinator = AutoBookCoordinator(db);
+    final service = RecurringTransactionService(
+      repo,
+      coordinator: coordinator,
+    );
+
+    final first = await service.generatePendingTransactions();
+    expect(first, hasLength(1));
+    final firstId = first.single.id;
+
+    // 模拟“交易/事件已经成功，但周期模板 lastGeneratedDate 未持久化”的
+    // 恢复边界。第二次扫描必须补游标而不是创建第二笔。
+    await db.customStatement(
+      'UPDATE recurring_transactions SET last_generated_date = NULL',
+    );
+    final second = await service.generatePendingTransactions();
+    final transactions = await repo.transactionsWithCategoryAll(
+      ledgerId: ledgerId,
+    ).first;
+
+    expect(transactions, hasLength(1));
+    expect(transactions.single.t.id, firstId);
+    expect(second.map((t) => t.id), contains(firstId));
+    final recurring = (await repo.getAllRecurringTransactions()).single;
+    expect(recurring.lastGeneratedDate, isNotNull);
+    coordinator.dispose();
   });
 
   test('今天已生成过(lastGeneratedDate=今天)→ 不重复生成', () async {

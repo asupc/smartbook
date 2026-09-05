@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
+
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers.dart';
@@ -13,6 +16,7 @@ import '../../services/import/parsers/alipay_parser.dart';
 import '../../services/import/parsers/wechat_parser.dart';
 import '../../services/billing/post_processor.dart';
 import '../../services/data_import_service.dart';
+
 import '../../utils/date_parser.dart';
 import '../../styles/tokens.dart';
 import 'import_page.dart';
@@ -41,15 +45,19 @@ class _ImportConfirmPageState extends ConsumerState<ImportConfirmPage> {
     'date': null,
     'type': null,
     'amount': null,
-    'currency': null,            // v30 多币种:币种列(反馈10)
+    'currency': null, // v30 多币种:币种列(反馈10)
+    'external_id': null, // 交易号/订单号/流水号
+    'status': null, // 交易状态
+    'provider': null, // 平台/来源
+    'refund_amount': null, // 退款金额
     'category': null,
-    'sub_category': null,       // 二级分类
+    'sub_category': null, // 二级分类
     'account': null,
     'from_account': null,
     'to_account': null,
     'note': null,
-    'tags': null,                // 标签（逗号分隔）
-    'attachments': null,         // 附件文件名（逗号分隔）
+    'tags': null, // 标签（逗号分隔）
+    'attachments': null, // 附件文件名（逗号分隔）
   };
   bool importing = false;
   int ok = 0, fail = 0, skipped = 0; // skipped: 跳过的非收支类型记录
@@ -58,6 +66,8 @@ class _ImportConfirmPageState extends ConsumerState<ImportConfirmPage> {
   List<String> distinctCategories = [];
   Map<String, int?> categoryMapping = {}; // 源分类名 -> 目标分类ID（null表示保持原名）
   Future<List<schema.Category>>? allCategoriesFuture;
+  ImportPreview? _preview;
+  bool _previewLoading = false;
   late final BillParser _billParser;
 
   @override
@@ -174,22 +184,38 @@ class _ImportConfirmPageState extends ConsumerState<ImportConfirmPage> {
                           'amount', items()),
                       _mapRow(AppLocalizations.of(context)!.importFieldCurrency,
                           'currency', items()),
+                      _mapRow('交易号/订单号', 'external_id', items()),
+                      _mapRow('交易状态', 'status', items()),
+                      _mapRow('平台/来源', 'provider', items()),
+                      _mapRow('退款金额', 'refund_amount', items()),
                       _mapRow(AppLocalizations.of(context)!.importFieldCategory,
                           'category', items()),
-                      _mapRow(AppLocalizations.of(context)!.exportCsvHeaderSubCategory,
-                          'sub_category', items()),
+                      _mapRow(
+                          AppLocalizations.of(context)!
+                              .exportCsvHeaderSubCategory,
+                          'sub_category',
+                          items()),
                       _mapRow(AppLocalizations.of(context)!.importFieldAccount,
                           'account', items()),
-                      _mapRow(AppLocalizations.of(context)!.exportCsvHeaderFromAccount,
-                          'from_account', items()),
-                      _mapRow(AppLocalizations.of(context)!.exportCsvHeaderToAccount,
-                          'to_account', items()),
+                      _mapRow(
+                          AppLocalizations.of(context)!
+                              .exportCsvHeaderFromAccount,
+                          'from_account',
+                          items()),
+                      _mapRow(
+                          AppLocalizations.of(context)!
+                              .exportCsvHeaderToAccount,
+                          'to_account',
+                          items()),
                       _mapRow(AppLocalizations.of(context)!.importFieldNote,
                           'note', items()),
                       _mapRow(AppLocalizations.of(context)!.exportCsvHeaderTags,
                           'tags', items()),
-                      _mapRow(AppLocalizations.of(context)!.exportCsvHeaderAttachments,
-                          'attachments', items()),
+                      _mapRow(
+                          AppLocalizations.of(context)!
+                              .exportCsvHeaderAttachments,
+                          'attachments',
+                          items()),
                     ],
                   ),
                   const SizedBox(height: 12),
@@ -233,7 +259,9 @@ class _ImportConfirmPageState extends ConsumerState<ImportConfirmPage> {
                                   style: Theme.of(context)
                                       .textTheme
                                       .bodySmall
-                                      ?.copyWith(color: BeeTokens.textTertiary(context)),
+                                      ?.copyWith(
+                                          color:
+                                              BeeTokens.textTertiary(context)),
                                 ),
                               ),
                           ],
@@ -241,12 +269,14 @@ class _ImportConfirmPageState extends ConsumerState<ImportConfirmPage> {
                       }),
                     ),
                   ),
+                  _buildPreviewSummary(context),
                 ] else ...[
                   if (mapping['category'] == null)
                     Text(AppLocalizations.of(context)!
                         .importCategoryNotSelected),
                   Text(AppLocalizations.of(context)!
                       .importCategoryMappingDescription),
+                  _buildPreviewSummary(context),
                   const SizedBox(height: 8),
                   FutureBuilder<List<schema.Category>>(
                     future: allCategoriesFuture,
@@ -334,11 +364,12 @@ class _ImportConfirmPageState extends ConsumerState<ImportConfirmPage> {
                         // 映射分类列时,交易可不挂分类(数据模型允许 null),
                         // 跳过分类映射步骤直接导入,避免导入流程卡死。
                         if (mapping['category'] == null) {
-                          _startImport();
+                          _previewAndStartWithoutCategory();
                           return;
                         }
                         _buildDistinctCategories();
                         setState(() => step = 1);
+                        _preparePreview();
                       },
                       child: Text(AppLocalizations.of(context)!.importNextStep),
                     )
@@ -383,6 +414,131 @@ class _ImportConfirmPageState extends ConsumerState<ImportConfirmPage> {
         ),
       ],
     );
+  }
+
+  String _importBatchKey() =>
+      sha256.convert(utf8.encode(widget.csvText)).toString().substring(0, 32);
+
+  Future<void> _preparePreview() async {
+    if (_previewLoading || rows.isEmpty) return;
+    setState(() => _previewLoading = true);
+    try {
+      final repo = ref.read(repositoryProvider);
+      final ledgerId = ref.read(currentLedgerIdProvider);
+      final ledger = await repo.getLedgerById(ledgerId);
+      final ledgerCurrency = ledger?.currency ?? 'CNY';
+      final importData = _buildImportDataFromCsv(
+        rows: rows,
+        dataStart: widget.hasHeader ? headerRow + 1 : 0,
+        mapping: mapping,
+        categoryMapping: categoryMapping,
+        skippedTypes: {},
+        ledgerCurrency: ledgerCurrency,
+      );
+      final preview = await dataImportService.previewTransactions(
+        repo,
+        ledgerId,
+        importData.transactions,
+        eventStore: ref.read(autoBookCoordinatorProvider).store,
+        provider: widget.billType.name,
+        batchKey: _importBatchKey(),
+      );
+      if (mounted) setState(() => _preview = preview);
+    } catch (_) {
+      // 预览失败不阻断正式导入，正式路径仍会再次校验。
+    } finally {
+      if (mounted) setState(() => _previewLoading = false);
+    }
+  }
+
+  Widget _buildPreviewSummary(BuildContext context) {
+    final theme = Theme.of(context);
+    if (_previewLoading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 12),
+        child: LinearProgressIndicator(),
+      );
+    }
+    final preview = _preview;
+    if (preview == null) return const SizedBox.shrink();
+    Widget item(String label, int value, Color color) => Chip(
+          avatar: CircleAvatar(
+            backgroundColor: color,
+            child: Text('$value', style: const TextStyle(color: Colors.white)),
+          ),
+          label: Text(label),
+        );
+    return Card(
+      margin: const EdgeInsets.only(top: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.preview_outlined, size: 18),
+                const SizedBox(width: 6),
+                Text('导入前预览', style: theme.textTheme.titleSmall),
+                const Spacer(),
+                TextButton(
+                  onPressed: _preparePreview,
+                  child: const Text('刷新'),
+                ),
+              ],
+            ),
+            Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              children: [
+                item('新增', preview.newCount, Colors.green),
+                item('已存在/重复', preview.duplicateCount, Colors.orange),
+                item('忽略', preview.ignoredCount, Colors.blueGrey),
+                item('无效', preview.invalidCount, Colors.red),
+              ],
+            ),
+            if (preview.duplicateCount > 0 ||
+                preview.ignoredCount > 0 ||
+                preview.invalidCount > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  '正式导入时将跳过已存在、非成功状态和非法数据，不会重复创建交易。',
+                  style: theme.textTheme.bodySmall,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _previewAndStartWithoutCategory() async {
+    await _preparePreview();
+    if (!mounted || _preview == null) return;
+    final preview = _preview!;
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('导入预览'),
+        content: Text(
+          '新增 ${preview.newCount} 条，已存在/重复 ${preview.duplicateCount} 条，'
+          '忽略 ${preview.ignoredCount} 条，无效 ${preview.invalidCount} 条。\n\n'
+          '确认后只会创建新增数据。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('继续导入'),
+          ),
+        ],
+      ),
+    );
+    if (proceed == true && mounted) await _startImport();
   }
 
   Future<void> _startImport() async {
@@ -451,8 +607,10 @@ class _ImportConfirmPageState extends ConsumerState<ImportConfirmPage> {
                   // 返回到数据管理页面继续后台导入
                   if (mounted) {
                     // Pop回DataManagementPage: ImportConfirmPage -> ImportPage
-                    Navigator.of(currentContext).pop(); // Close ImportConfirmPage
-                    Navigator.of(currentContext).pop(); // Close ImportPage, back to DataManagementPage
+                    Navigator.of(currentContext)
+                        .pop(); // Close ImportConfirmPage
+                    Navigator.of(currentContext)
+                        .pop(); // Close ImportPage, back to DataManagementPage
                   }
                 },
                 child:
@@ -495,10 +653,17 @@ class _ImportConfirmPageState extends ConsumerState<ImportConfirmPage> {
         ledgerId,
         importData,
         defaultCurrency: ledgerCurrency,
+        eventStore: ref.read(autoBookCoordinatorProvider).store,
+        provider: widget.billType.name,
+        batchKey: sha256
+            .convert(utf8.encode(widget.csvText))
+            .toString()
+            .substring(0, 32),
         onProgress: (processed, progressTotal) {
           done = processed;
           // 更新全局进度
-          container.read(importProgressProvider.notifier).state = ImportProgress(
+          container.read(importProgressProvider.notifier).state =
+              ImportProgress(
             running: true,
             total: total,
             done: done,
@@ -511,7 +676,10 @@ class _ImportConfirmPageState extends ConsumerState<ImportConfirmPage> {
 
       ok = result.inserted;
       fail = result.failed;
-      skipped = skippedTypes.values.fold(0, (a, b) => a + b);
+      skipped = skippedTypes.values.fold(0, (a, b) => a + b) +
+          result.duplicated +
+          result.ignored +
+          result.invalid;
       done = total;
 
       // 显式触发一次同步上推。SyncCoordinator 监听 local_changes 表已经会
@@ -527,7 +695,8 @@ class _ImportConfirmPageState extends ConsumerState<ImportConfirmPage> {
     } catch (e) {
       // 导入失败
       if (mounted) {
-        showToast(context, AppLocalizations.of(context)!.importTransactionFailed('$e'));
+        showToast(context,
+            AppLocalizations.of(context)!.importTransactionFailed('$e'));
       }
       fail = total - ok; // 更新失败数
     }
@@ -587,10 +756,10 @@ class _ImportConfirmPageState extends ConsumerState<ImportConfirmPage> {
       final typeSkipped = skippedTypes.values.fold(0, (a, b) => a + b);
 
       if (typeSkipped > 0) {
-        final skippedList = skippedTypes.entries
-            .map((e) => '${e.key}(${e.value})')
-            .join('、');
-        message += '\n${l10nToast.importSkippedNonTransactionTypes(typeSkipped)}\n$skippedList';
+        final skippedList =
+            skippedTypes.entries.map((e) => '${e.key}(${e.value})').join('、');
+        message +=
+            '\n${l10nToast.importSkippedNonTransactionTypes(typeSkipped)}\n$skippedList';
       }
     }
 
@@ -606,7 +775,8 @@ class _ImportConfirmPageState extends ConsumerState<ImportConfirmPage> {
       // 关闭确认页 -> 返回到数据管理页面
       // Pop回DataManagementPage: ImportConfirmPage -> ImportPage
       Navigator.of(currentContext).pop(); // Close ImportConfirmPage
-      Navigator.of(currentContext).pop(); // Close ImportPage, back to DataManagementPage
+      Navigator.of(currentContext)
+          .pop(); // Close ImportPage, back to DataManagementPage
     } else {
       // 有失败或跳过: 使用弹窗显示详细信息,等待用户确认后再关闭页面
       await showDialog(
@@ -626,7 +796,8 @@ class _ImportConfirmPageState extends ConsumerState<ImportConfirmPage> {
       // 用户确认后再关闭页面
       if (currentContext.mounted) {
         Navigator.of(currentContext).pop(); // Close ImportConfirmPage
-        Navigator.of(currentContext).pop(); // Close ImportPage, back to DataManagementPage
+        Navigator.of(currentContext)
+            .pop(); // Close ImportPage, back to DataManagementPage
       }
     }
     // 返回后再显式刷新一次全局统计，确保顶部汇总即时更新
@@ -661,7 +832,8 @@ class _ImportConfirmPageState extends ConsumerState<ImportConfirmPage> {
     final uniqueAccountNames = <String>{};
     final uniqueTagNames = <String>{};
     // 收集分类信息（用于创建分类）
-    final categoryInfoMap = <String, ({String kind, String? icon, String? parentName})>{};
+    final categoryInfoMap =
+        <String, ({String kind, String? icon, String? parentName})>{};
 
     // 第一遍：收集账户、标签、分类信息
     for (int i = dataStart; i < rows.length; i++) {
@@ -705,16 +877,30 @@ class _ImportConfirmPageState extends ConsumerState<ImportConfirmPage> {
       final typeRaw = getBy('type') ?? 'expense';
       final typeStr = typeRaw.trim().toLowerCase();
       String? type;
-      if (typeStr == '收入' || typeStr == '收' || typeStr == '入账' || typeStr == '进账' ||
-          typeStr == '入帳' || typeStr == '進帳' ||  // 繁体
-          typeStr == 'income' || typeStr == 'revenue' || typeStr == 'earning') {
+      if (typeStr == '收入' ||
+          typeStr == '收' ||
+          typeStr == '入账' ||
+          typeStr == '进账' ||
+          typeStr == '入帳' ||
+          typeStr == '進帳' || // 繁体
+          typeStr == 'income' ||
+          typeStr == 'revenue' ||
+          typeStr == 'earning') {
         type = 'income';
-      } else if (typeStr == '支出' || typeStr == '支' || typeStr == '出账' ||
-                 typeStr == '消费' || typeStr == '花费' ||
-                 typeStr == '出帳' || typeStr == '消費' || typeStr == '花費' ||  // 繁体
-                 typeStr == 'expense' || typeStr == 'spending' || typeStr == 'expenditure') {
+      } else if (typeStr == '支出' ||
+          typeStr == '支' ||
+          typeStr == '出账' ||
+          typeStr == '消费' ||
+          typeStr == '花费' ||
+          typeStr == '出帳' ||
+          typeStr == '消費' ||
+          typeStr == '花費' || // 繁体
+          typeStr == 'expense' ||
+          typeStr == 'spending' ||
+          typeStr == 'expenditure') {
         type = 'expense';
-      } else if (typeStr == '转账' || typeStr == '轉帳' || typeStr == 'transfer') {  // 添加繁体
+      } else if (typeStr == '转账' || typeStr == '轉帳' || typeStr == 'transfer') {
+        // 添加繁体
         type = 'transfer';
       }
 
@@ -728,27 +914,33 @@ class _ImportConfirmPageState extends ConsumerState<ImportConfirmPage> {
         if (subCategoryName != null && categoryName != null) {
           // 有二级分类
           final parentKey = '$categoryName:$type';
-          categoryInfoMap.putIfAbsent(parentKey, () => (
-            kind: type!,
-            icon: categoryIcon,
-            parentName: null,
-          ));
+          categoryInfoMap.putIfAbsent(
+              parentKey,
+              () => (
+                    kind: type!,
+                    icon: categoryIcon,
+                    parentName: null,
+                  ));
           final subKey = '$subCategoryName:$type:$categoryName';
-          categoryInfoMap.putIfAbsent(subKey, () => (
-            kind: type!,
-            icon: subCategoryIcon,
-            parentName: categoryName,
-          ));
+          categoryInfoMap.putIfAbsent(
+              subKey,
+              () => (
+                    kind: type!,
+                    icon: subCategoryIcon,
+                    parentName: categoryName,
+                  ));
         } else if (categoryName != null) {
           // 只有一级分类（仅当用户选择"保持原名"时才需要创建）
           final chosen = categoryMapping[categoryName];
           if (chosen == null) {
             final key = '$categoryName:$type';
-            categoryInfoMap.putIfAbsent(key, () => (
-              kind: type!,
-              icon: categoryIcon,
-              parentName: null,
-            ));
+            categoryInfoMap.putIfAbsent(
+                key,
+                () => (
+                      kind: type!,
+                      icon: categoryIcon,
+                      parentName: null,
+                    ));
           }
         }
       }
@@ -818,6 +1010,12 @@ class _ImportConfirmPageState extends ConsumerState<ImportConfirmPage> {
       final typeRaw = getBy('type') ?? 'expense';
       final amountStr = getBy('amount');
       final currencyStr = getBy('currency')?.trim().toUpperCase();
+      final externalId = getBy('external_id');
+      final status = _billParser.normalizeStatus(getBy('status'));
+      final provider = getBy('provider') ?? _billParser.providerKey;
+      final refundAmountStr = getBy('refund_amount');
+      final normalizedRefundAmount =
+          _billParser.normalizeRefundAmount(refundAmountStr);
       final categoryName = getBy('category');
       final subCategoryName = getBy('sub_category');
       final accountName = getBy('account');
@@ -830,16 +1028,30 @@ class _ImportConfirmPageState extends ConsumerState<ImportConfirmPage> {
       // 类型识别
       final typeStr = typeRaw.trim().toLowerCase();
       String? type;
-      if (typeStr == '收入' || typeStr == '收' || typeStr == '入账' || typeStr == '进账' ||
-          typeStr == '入帳' || typeStr == '進帳' ||  // 繁体
-          typeStr == 'income' || typeStr == 'revenue' || typeStr == 'earning') {
+      if (typeStr == '收入' ||
+          typeStr == '收' ||
+          typeStr == '入账' ||
+          typeStr == '进账' ||
+          typeStr == '入帳' ||
+          typeStr == '進帳' || // 繁体
+          typeStr == 'income' ||
+          typeStr == 'revenue' ||
+          typeStr == 'earning') {
         type = 'income';
-      } else if (typeStr == '支出' || typeStr == '支' || typeStr == '出账' ||
-                 typeStr == '消费' || typeStr == '花费' ||
-                 typeStr == '出帳' || typeStr == '消費' || typeStr == '花費' ||  // 繁体
-                 typeStr == 'expense' || typeStr == 'spending' || typeStr == 'expenditure') {
+      } else if (typeStr == '支出' ||
+          typeStr == '支' ||
+          typeStr == '出账' ||
+          typeStr == '消费' ||
+          typeStr == '花费' ||
+          typeStr == '出帳' ||
+          typeStr == '消費' ||
+          typeStr == '花費' || // 繁体
+          typeStr == 'expense' ||
+          typeStr == 'spending' ||
+          typeStr == 'expenditure') {
         type = 'expense';
-      } else if (typeStr == '转账' || typeStr == '轉帳' || typeStr == 'transfer') {  // 添加繁体
+      } else if (typeStr == '转账' || typeStr == '轉帳' || typeStr == 'transfer') {
+        // 添加繁体
         type = 'transfer';
       } else {
         // 未识别的类型：记录并跳过
@@ -847,28 +1059,42 @@ class _ImportConfirmPageState extends ConsumerState<ImportConfirmPage> {
         continue;
       }
 
-      // 金额解析
-      final amountClean = (amountStr ?? '0').replaceAll(RegExp(r'[¥$,+-]'), '');
+      // 金额解析：非法值保留为 0，由导入服务计入 invalid，不允许落库。
+      final amountClean = (amountStr ?? '').replaceAll(RegExp(r'[¥$,+-]'), '');
       final amount = double.tryParse(amountClean)?.abs() ?? 0.0;
+      final refundAmount = normalizedRefundAmount;
 
-      // 日期解析
-      final date = DateParser.parse(dateStr);
+      // 日期解析：非法/空日期使用 epoch sentinel，导入服务会拒绝该行，
+      // 不再用当前时间伪造一笔交易。
+      final date = DateParser.tryParse(dateStr) ?? DateTime(1970, 1, 1);
 
       // 解析标签名称列表
       List<String>? tagNames;
       if (tagsStr != null && tagsStr.isNotEmpty) {
-        tagNames = tagsStr.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+        tagNames = tagsStr
+            .split(',')
+            .map((s) => s.trim())
+            .where((s) => s.isNotEmpty)
+            .toList();
       }
 
       // 解析附件文件名列表
       List<ImportAttachment>? attachments;
       if (attachmentsStr != null && attachmentsStr.isNotEmpty) {
-        final fileNames = attachmentsStr.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+        final fileNames = attachmentsStr
+            .split(',')
+            .map((s) => s.trim())
+            .where((s) => s.isNotEmpty)
+            .toList();
         if (fileNames.isNotEmpty) {
-          attachments = fileNames.asMap().entries.map((entry) => ImportAttachment(
-            fileName: entry.value,
-            sortOrder: entry.key,
-          )).toList();
+          attachments = fileNames
+              .asMap()
+              .entries
+              .map((entry) => ImportAttachment(
+                    fileName: entry.value,
+                    sortOrder: entry.key,
+                  ))
+              .toList();
         }
       }
 
@@ -914,6 +1140,14 @@ class _ImportConfirmPageState extends ConsumerState<ImportConfirmPage> {
         toAccountName: type == 'transfer' ? toAccountName : null,
         tagNames: tagNames,
         attachments: attachments,
+        provider: provider,
+        externalId: externalId,
+        status: status,
+        refundAmount: refundAmount,
+        sourceRowHash: sha256
+            .convert(utf8.encode('$i|${r.join('\u001f')}'))
+            .toString()
+            .substring(0, 32),
       ));
     }
 
