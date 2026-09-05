@@ -10852,6 +10852,1607 @@ class ExchangeRateOverridesCompanion
   }
 }
 
+class $AutoBookEventsTable extends AutoBookEvents
+    with TableInfo<$AutoBookEventsTable, AutoBookEvent> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $AutoBookEventsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+      'id', aliasedName, false,
+      hasAutoIncrement: true,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('PRIMARY KEY AUTOINCREMENT'));
+  static const VerificationMeta _eventKeyMeta =
+      const VerificationMeta('eventKey');
+  @override
+  late final GeneratedColumn<String> eventKey = GeneratedColumn<String>(
+      'event_key', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: true,
+      defaultConstraints: GeneratedColumn.constraintIsAlways('UNIQUE'));
+  static const VerificationMeta _sourceMeta = const VerificationMeta('source');
+  @override
+  late final GeneratedColumn<String> source = GeneratedColumn<String>(
+      'source', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _captureIntentMeta =
+      const VerificationMeta('captureIntent');
+  @override
+  late final GeneratedColumn<String> captureIntent = GeneratedColumn<String>(
+      'capture_intent', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      defaultValue: const Constant('automatic'));
+  static const VerificationMeta _ledgerIdMeta =
+      const VerificationMeta('ledgerId');
+  @override
+  late final GeneratedColumn<int> ledgerId = GeneratedColumn<int>(
+      'ledger_id', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _sourceChannelMeta =
+      const VerificationMeta('sourceChannel');
+  @override
+  late final GeneratedColumn<String> sourceChannel = GeneratedColumn<String>(
+      'source_channel', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _externalIdMeta =
+      const VerificationMeta('externalId');
+  @override
+  late final GeneratedColumn<String> externalId = GeneratedColumn<String>(
+      'external_id', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _contentHashMeta =
+      const VerificationMeta('contentHash');
+  @override
+  late final GeneratedColumn<String> contentHash = GeneratedColumn<String>(
+      'content_hash', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _stateMeta = const VerificationMeta('state');
+  @override
+  late final GeneratedColumn<String> state = GeneratedColumn<String>(
+      'state', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      defaultValue: const Constant('captured'));
+  static const VerificationMeta _capturedAtMeta =
+      const VerificationMeta('capturedAt');
+  @override
+  late final GeneratedColumn<DateTime> capturedAt = GeneratedColumn<DateTime>(
+      'captured_at', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  static const VerificationMeta _sourceOccurredAtMeta =
+      const VerificationMeta('sourceOccurredAt');
+  @override
+  late final GeneratedColumn<DateTime> sourceOccurredAt =
+      GeneratedColumn<DateTime>('source_occurred_at', aliasedName, true,
+          type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  static const VerificationMeta _expiresAtMeta =
+      const VerificationMeta('expiresAt');
+  @override
+  late final GeneratedColumn<DateTime> expiresAt = GeneratedColumn<DateTime>(
+      'expires_at', aliasedName, true,
+      type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  static const VerificationMeta _attemptCountMeta =
+      const VerificationMeta('attemptCount');
+  @override
+  late final GeneratedColumn<int> attemptCount = GeneratedColumn<int>(
+      'attempt_count', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
+  static const VerificationMeta _nextRetryAtMeta =
+      const VerificationMeta('nextRetryAt');
+  @override
+  late final GeneratedColumn<DateTime> nextRetryAt = GeneratedColumn<DateTime>(
+      'next_retry_at', aliasedName, true,
+      type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  static const VerificationMeta _transactionIdMeta =
+      const VerificationMeta('transactionId');
+  @override
+  late final GeneratedColumn<int> transactionId = GeneratedColumn<int>(
+      'transaction_id', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _duplicateOfTransactionIdMeta =
+      const VerificationMeta('duplicateOfTransactionId');
+  @override
+  late final GeneratedColumn<int> duplicateOfTransactionId =
+      GeneratedColumn<int>('duplicate_of_transaction_id', aliasedName, true,
+          type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _billJsonMeta =
+      const VerificationMeta('billJson');
+  @override
+  late final GeneratedColumn<String> billJson = GeneratedColumn<String>(
+      'bill_json', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _reasonMeta = const VerificationMeta('reason');
+  @override
+  late final GeneratedColumn<String> reason = GeneratedColumn<String>(
+      'reason', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _lastErrorMeta =
+      const VerificationMeta('lastError');
+  @override
+  late final GeneratedColumn<String> lastError = GeneratedColumn<String>(
+      'last_error', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _updatedAtMeta =
+      const VerificationMeta('updatedAt');
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+      'updated_at', aliasedName, false,
+      type: DriftSqlType.dateTime,
+      requiredDuringInsert: false,
+      defaultValue: currentDateAndTime);
+  @override
+  List<GeneratedColumn> get $columns => [
+        id,
+        eventKey,
+        source,
+        captureIntent,
+        ledgerId,
+        sourceChannel,
+        externalId,
+        contentHash,
+        state,
+        capturedAt,
+        sourceOccurredAt,
+        expiresAt,
+        attemptCount,
+        nextRetryAt,
+        transactionId,
+        duplicateOfTransactionId,
+        billJson,
+        reason,
+        lastError,
+        updatedAt
+      ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'auto_book_events';
+  @override
+  VerificationContext validateIntegrity(Insertable<AutoBookEvent> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('event_key')) {
+      context.handle(_eventKeyMeta,
+          eventKey.isAcceptableOrUnknown(data['event_key']!, _eventKeyMeta));
+    } else if (isInserting) {
+      context.missing(_eventKeyMeta);
+    }
+    if (data.containsKey('source')) {
+      context.handle(_sourceMeta,
+          source.isAcceptableOrUnknown(data['source']!, _sourceMeta));
+    } else if (isInserting) {
+      context.missing(_sourceMeta);
+    }
+    if (data.containsKey('capture_intent')) {
+      context.handle(
+          _captureIntentMeta,
+          captureIntent.isAcceptableOrUnknown(
+              data['capture_intent']!, _captureIntentMeta));
+    }
+    if (data.containsKey('ledger_id')) {
+      context.handle(_ledgerIdMeta,
+          ledgerId.isAcceptableOrUnknown(data['ledger_id']!, _ledgerIdMeta));
+    }
+    if (data.containsKey('source_channel')) {
+      context.handle(
+          _sourceChannelMeta,
+          sourceChannel.isAcceptableOrUnknown(
+              data['source_channel']!, _sourceChannelMeta));
+    }
+    if (data.containsKey('external_id')) {
+      context.handle(
+          _externalIdMeta,
+          externalId.isAcceptableOrUnknown(
+              data['external_id']!, _externalIdMeta));
+    }
+    if (data.containsKey('content_hash')) {
+      context.handle(
+          _contentHashMeta,
+          contentHash.isAcceptableOrUnknown(
+              data['content_hash']!, _contentHashMeta));
+    }
+    if (data.containsKey('state')) {
+      context.handle(
+          _stateMeta, state.isAcceptableOrUnknown(data['state']!, _stateMeta));
+    }
+    if (data.containsKey('captured_at')) {
+      context.handle(
+          _capturedAtMeta,
+          capturedAt.isAcceptableOrUnknown(
+              data['captured_at']!, _capturedAtMeta));
+    } else if (isInserting) {
+      context.missing(_capturedAtMeta);
+    }
+    if (data.containsKey('source_occurred_at')) {
+      context.handle(
+          _sourceOccurredAtMeta,
+          sourceOccurredAt.isAcceptableOrUnknown(
+              data['source_occurred_at']!, _sourceOccurredAtMeta));
+    }
+    if (data.containsKey('expires_at')) {
+      context.handle(_expiresAtMeta,
+          expiresAt.isAcceptableOrUnknown(data['expires_at']!, _expiresAtMeta));
+    }
+    if (data.containsKey('attempt_count')) {
+      context.handle(
+          _attemptCountMeta,
+          attemptCount.isAcceptableOrUnknown(
+              data['attempt_count']!, _attemptCountMeta));
+    }
+    if (data.containsKey('next_retry_at')) {
+      context.handle(
+          _nextRetryAtMeta,
+          nextRetryAt.isAcceptableOrUnknown(
+              data['next_retry_at']!, _nextRetryAtMeta));
+    }
+    if (data.containsKey('transaction_id')) {
+      context.handle(
+          _transactionIdMeta,
+          transactionId.isAcceptableOrUnknown(
+              data['transaction_id']!, _transactionIdMeta));
+    }
+    if (data.containsKey('duplicate_of_transaction_id')) {
+      context.handle(
+          _duplicateOfTransactionIdMeta,
+          duplicateOfTransactionId.isAcceptableOrUnknown(
+              data['duplicate_of_transaction_id']!,
+              _duplicateOfTransactionIdMeta));
+    }
+    if (data.containsKey('bill_json')) {
+      context.handle(_billJsonMeta,
+          billJson.isAcceptableOrUnknown(data['bill_json']!, _billJsonMeta));
+    }
+    if (data.containsKey('reason')) {
+      context.handle(_reasonMeta,
+          reason.isAcceptableOrUnknown(data['reason']!, _reasonMeta));
+    }
+    if (data.containsKey('last_error')) {
+      context.handle(_lastErrorMeta,
+          lastError.isAcceptableOrUnknown(data['last_error']!, _lastErrorMeta));
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(_updatedAtMeta,
+          updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  AutoBookEvent map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return AutoBookEvent(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
+      eventKey: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}event_key'])!,
+      source: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}source'])!,
+      captureIntent: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}capture_intent'])!,
+      ledgerId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}ledger_id']),
+      sourceChannel: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}source_channel']),
+      externalId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}external_id']),
+      contentHash: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}content_hash']),
+      state: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}state'])!,
+      capturedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}captured_at'])!,
+      sourceOccurredAt: attachedDatabase.typeMapping.read(
+          DriftSqlType.dateTime, data['${effectivePrefix}source_occurred_at']),
+      expiresAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}expires_at']),
+      attemptCount: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}attempt_count'])!,
+      nextRetryAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}next_retry_at']),
+      transactionId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}transaction_id']),
+      duplicateOfTransactionId: attachedDatabase.typeMapping.read(
+          DriftSqlType.int,
+          data['${effectivePrefix}duplicate_of_transaction_id']),
+      billJson: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}bill_json']),
+      reason: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}reason']),
+      lastError: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}last_error']),
+      updatedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
+    );
+  }
+
+  @override
+  $AutoBookEventsTable createAlias(String alias) {
+    return $AutoBookEventsTable(attachedDatabase, alias);
+  }
+}
+
+class AutoBookEvent extends DataClass implements Insertable<AutoBookEvent> {
+  final int id;
+  final String eventKey;
+  final String source;
+  final String captureIntent;
+  final int? ledgerId;
+  final String? sourceChannel;
+  final String? externalId;
+  final String? contentHash;
+  final String state;
+  final DateTime capturedAt;
+  final DateTime? sourceOccurredAt;
+  final DateTime? expiresAt;
+  final int attemptCount;
+  final DateTime? nextRetryAt;
+  final int? transactionId;
+  final int? duplicateOfTransactionId;
+  final String? billJson;
+  final String? reason;
+  final String? lastError;
+  final DateTime updatedAt;
+  const AutoBookEvent(
+      {required this.id,
+      required this.eventKey,
+      required this.source,
+      required this.captureIntent,
+      this.ledgerId,
+      this.sourceChannel,
+      this.externalId,
+      this.contentHash,
+      required this.state,
+      required this.capturedAt,
+      this.sourceOccurredAt,
+      this.expiresAt,
+      required this.attemptCount,
+      this.nextRetryAt,
+      this.transactionId,
+      this.duplicateOfTransactionId,
+      this.billJson,
+      this.reason,
+      this.lastError,
+      required this.updatedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['event_key'] = Variable<String>(eventKey);
+    map['source'] = Variable<String>(source);
+    map['capture_intent'] = Variable<String>(captureIntent);
+    if (!nullToAbsent || ledgerId != null) {
+      map['ledger_id'] = Variable<int>(ledgerId);
+    }
+    if (!nullToAbsent || sourceChannel != null) {
+      map['source_channel'] = Variable<String>(sourceChannel);
+    }
+    if (!nullToAbsent || externalId != null) {
+      map['external_id'] = Variable<String>(externalId);
+    }
+    if (!nullToAbsent || contentHash != null) {
+      map['content_hash'] = Variable<String>(contentHash);
+    }
+    map['state'] = Variable<String>(state);
+    map['captured_at'] = Variable<DateTime>(capturedAt);
+    if (!nullToAbsent || sourceOccurredAt != null) {
+      map['source_occurred_at'] = Variable<DateTime>(sourceOccurredAt);
+    }
+    if (!nullToAbsent || expiresAt != null) {
+      map['expires_at'] = Variable<DateTime>(expiresAt);
+    }
+    map['attempt_count'] = Variable<int>(attemptCount);
+    if (!nullToAbsent || nextRetryAt != null) {
+      map['next_retry_at'] = Variable<DateTime>(nextRetryAt);
+    }
+    if (!nullToAbsent || transactionId != null) {
+      map['transaction_id'] = Variable<int>(transactionId);
+    }
+    if (!nullToAbsent || duplicateOfTransactionId != null) {
+      map['duplicate_of_transaction_id'] =
+          Variable<int>(duplicateOfTransactionId);
+    }
+    if (!nullToAbsent || billJson != null) {
+      map['bill_json'] = Variable<String>(billJson);
+    }
+    if (!nullToAbsent || reason != null) {
+      map['reason'] = Variable<String>(reason);
+    }
+    if (!nullToAbsent || lastError != null) {
+      map['last_error'] = Variable<String>(lastError);
+    }
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  AutoBookEventsCompanion toCompanion(bool nullToAbsent) {
+    return AutoBookEventsCompanion(
+      id: Value(id),
+      eventKey: Value(eventKey),
+      source: Value(source),
+      captureIntent: Value(captureIntent),
+      ledgerId: ledgerId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(ledgerId),
+      sourceChannel: sourceChannel == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sourceChannel),
+      externalId: externalId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(externalId),
+      contentHash: contentHash == null && nullToAbsent
+          ? const Value.absent()
+          : Value(contentHash),
+      state: Value(state),
+      capturedAt: Value(capturedAt),
+      sourceOccurredAt: sourceOccurredAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sourceOccurredAt),
+      expiresAt: expiresAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(expiresAt),
+      attemptCount: Value(attemptCount),
+      nextRetryAt: nextRetryAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(nextRetryAt),
+      transactionId: transactionId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(transactionId),
+      duplicateOfTransactionId: duplicateOfTransactionId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(duplicateOfTransactionId),
+      billJson: billJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(billJson),
+      reason:
+          reason == null && nullToAbsent ? const Value.absent() : Value(reason),
+      lastError: lastError == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastError),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory AutoBookEvent.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return AutoBookEvent(
+      id: serializer.fromJson<int>(json['id']),
+      eventKey: serializer.fromJson<String>(json['eventKey']),
+      source: serializer.fromJson<String>(json['source']),
+      captureIntent: serializer.fromJson<String>(json['captureIntent']),
+      ledgerId: serializer.fromJson<int?>(json['ledgerId']),
+      sourceChannel: serializer.fromJson<String?>(json['sourceChannel']),
+      externalId: serializer.fromJson<String?>(json['externalId']),
+      contentHash: serializer.fromJson<String?>(json['contentHash']),
+      state: serializer.fromJson<String>(json['state']),
+      capturedAt: serializer.fromJson<DateTime>(json['capturedAt']),
+      sourceOccurredAt:
+          serializer.fromJson<DateTime?>(json['sourceOccurredAt']),
+      expiresAt: serializer.fromJson<DateTime?>(json['expiresAt']),
+      attemptCount: serializer.fromJson<int>(json['attemptCount']),
+      nextRetryAt: serializer.fromJson<DateTime?>(json['nextRetryAt']),
+      transactionId: serializer.fromJson<int?>(json['transactionId']),
+      duplicateOfTransactionId:
+          serializer.fromJson<int?>(json['duplicateOfTransactionId']),
+      billJson: serializer.fromJson<String?>(json['billJson']),
+      reason: serializer.fromJson<String?>(json['reason']),
+      lastError: serializer.fromJson<String?>(json['lastError']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'eventKey': serializer.toJson<String>(eventKey),
+      'source': serializer.toJson<String>(source),
+      'captureIntent': serializer.toJson<String>(captureIntent),
+      'ledgerId': serializer.toJson<int?>(ledgerId),
+      'sourceChannel': serializer.toJson<String?>(sourceChannel),
+      'externalId': serializer.toJson<String?>(externalId),
+      'contentHash': serializer.toJson<String?>(contentHash),
+      'state': serializer.toJson<String>(state),
+      'capturedAt': serializer.toJson<DateTime>(capturedAt),
+      'sourceOccurredAt': serializer.toJson<DateTime?>(sourceOccurredAt),
+      'expiresAt': serializer.toJson<DateTime?>(expiresAt),
+      'attemptCount': serializer.toJson<int>(attemptCount),
+      'nextRetryAt': serializer.toJson<DateTime?>(nextRetryAt),
+      'transactionId': serializer.toJson<int?>(transactionId),
+      'duplicateOfTransactionId':
+          serializer.toJson<int?>(duplicateOfTransactionId),
+      'billJson': serializer.toJson<String?>(billJson),
+      'reason': serializer.toJson<String?>(reason),
+      'lastError': serializer.toJson<String?>(lastError),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  AutoBookEvent copyWith(
+          {int? id,
+          String? eventKey,
+          String? source,
+          String? captureIntent,
+          Value<int?> ledgerId = const Value.absent(),
+          Value<String?> sourceChannel = const Value.absent(),
+          Value<String?> externalId = const Value.absent(),
+          Value<String?> contentHash = const Value.absent(),
+          String? state,
+          DateTime? capturedAt,
+          Value<DateTime?> sourceOccurredAt = const Value.absent(),
+          Value<DateTime?> expiresAt = const Value.absent(),
+          int? attemptCount,
+          Value<DateTime?> nextRetryAt = const Value.absent(),
+          Value<int?> transactionId = const Value.absent(),
+          Value<int?> duplicateOfTransactionId = const Value.absent(),
+          Value<String?> billJson = const Value.absent(),
+          Value<String?> reason = const Value.absent(),
+          Value<String?> lastError = const Value.absent(),
+          DateTime? updatedAt}) =>
+      AutoBookEvent(
+        id: id ?? this.id,
+        eventKey: eventKey ?? this.eventKey,
+        source: source ?? this.source,
+        captureIntent: captureIntent ?? this.captureIntent,
+        ledgerId: ledgerId.present ? ledgerId.value : this.ledgerId,
+        sourceChannel:
+            sourceChannel.present ? sourceChannel.value : this.sourceChannel,
+        externalId: externalId.present ? externalId.value : this.externalId,
+        contentHash: contentHash.present ? contentHash.value : this.contentHash,
+        state: state ?? this.state,
+        capturedAt: capturedAt ?? this.capturedAt,
+        sourceOccurredAt: sourceOccurredAt.present
+            ? sourceOccurredAt.value
+            : this.sourceOccurredAt,
+        expiresAt: expiresAt.present ? expiresAt.value : this.expiresAt,
+        attemptCount: attemptCount ?? this.attemptCount,
+        nextRetryAt: nextRetryAt.present ? nextRetryAt.value : this.nextRetryAt,
+        transactionId:
+            transactionId.present ? transactionId.value : this.transactionId,
+        duplicateOfTransactionId: duplicateOfTransactionId.present
+            ? duplicateOfTransactionId.value
+            : this.duplicateOfTransactionId,
+        billJson: billJson.present ? billJson.value : this.billJson,
+        reason: reason.present ? reason.value : this.reason,
+        lastError: lastError.present ? lastError.value : this.lastError,
+        updatedAt: updatedAt ?? this.updatedAt,
+      );
+  AutoBookEvent copyWithCompanion(AutoBookEventsCompanion data) {
+    return AutoBookEvent(
+      id: data.id.present ? data.id.value : this.id,
+      eventKey: data.eventKey.present ? data.eventKey.value : this.eventKey,
+      source: data.source.present ? data.source.value : this.source,
+      captureIntent: data.captureIntent.present
+          ? data.captureIntent.value
+          : this.captureIntent,
+      ledgerId: data.ledgerId.present ? data.ledgerId.value : this.ledgerId,
+      sourceChannel: data.sourceChannel.present
+          ? data.sourceChannel.value
+          : this.sourceChannel,
+      externalId:
+          data.externalId.present ? data.externalId.value : this.externalId,
+      contentHash:
+          data.contentHash.present ? data.contentHash.value : this.contentHash,
+      state: data.state.present ? data.state.value : this.state,
+      capturedAt:
+          data.capturedAt.present ? data.capturedAt.value : this.capturedAt,
+      sourceOccurredAt: data.sourceOccurredAt.present
+          ? data.sourceOccurredAt.value
+          : this.sourceOccurredAt,
+      expiresAt: data.expiresAt.present ? data.expiresAt.value : this.expiresAt,
+      attemptCount: data.attemptCount.present
+          ? data.attemptCount.value
+          : this.attemptCount,
+      nextRetryAt:
+          data.nextRetryAt.present ? data.nextRetryAt.value : this.nextRetryAt,
+      transactionId: data.transactionId.present
+          ? data.transactionId.value
+          : this.transactionId,
+      duplicateOfTransactionId: data.duplicateOfTransactionId.present
+          ? data.duplicateOfTransactionId.value
+          : this.duplicateOfTransactionId,
+      billJson: data.billJson.present ? data.billJson.value : this.billJson,
+      reason: data.reason.present ? data.reason.value : this.reason,
+      lastError: data.lastError.present ? data.lastError.value : this.lastError,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AutoBookEvent(')
+          ..write('id: $id, ')
+          ..write('eventKey: $eventKey, ')
+          ..write('source: $source, ')
+          ..write('captureIntent: $captureIntent, ')
+          ..write('ledgerId: $ledgerId, ')
+          ..write('sourceChannel: $sourceChannel, ')
+          ..write('externalId: $externalId, ')
+          ..write('contentHash: $contentHash, ')
+          ..write('state: $state, ')
+          ..write('capturedAt: $capturedAt, ')
+          ..write('sourceOccurredAt: $sourceOccurredAt, ')
+          ..write('expiresAt: $expiresAt, ')
+          ..write('attemptCount: $attemptCount, ')
+          ..write('nextRetryAt: $nextRetryAt, ')
+          ..write('transactionId: $transactionId, ')
+          ..write('duplicateOfTransactionId: $duplicateOfTransactionId, ')
+          ..write('billJson: $billJson, ')
+          ..write('reason: $reason, ')
+          ..write('lastError: $lastError, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+      id,
+      eventKey,
+      source,
+      captureIntent,
+      ledgerId,
+      sourceChannel,
+      externalId,
+      contentHash,
+      state,
+      capturedAt,
+      sourceOccurredAt,
+      expiresAt,
+      attemptCount,
+      nextRetryAt,
+      transactionId,
+      duplicateOfTransactionId,
+      billJson,
+      reason,
+      lastError,
+      updatedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is AutoBookEvent &&
+          other.id == this.id &&
+          other.eventKey == this.eventKey &&
+          other.source == this.source &&
+          other.captureIntent == this.captureIntent &&
+          other.ledgerId == this.ledgerId &&
+          other.sourceChannel == this.sourceChannel &&
+          other.externalId == this.externalId &&
+          other.contentHash == this.contentHash &&
+          other.state == this.state &&
+          other.capturedAt == this.capturedAt &&
+          other.sourceOccurredAt == this.sourceOccurredAt &&
+          other.expiresAt == this.expiresAt &&
+          other.attemptCount == this.attemptCount &&
+          other.nextRetryAt == this.nextRetryAt &&
+          other.transactionId == this.transactionId &&
+          other.duplicateOfTransactionId == this.duplicateOfTransactionId &&
+          other.billJson == this.billJson &&
+          other.reason == this.reason &&
+          other.lastError == this.lastError &&
+          other.updatedAt == this.updatedAt);
+}
+
+class AutoBookEventsCompanion extends UpdateCompanion<AutoBookEvent> {
+  final Value<int> id;
+  final Value<String> eventKey;
+  final Value<String> source;
+  final Value<String> captureIntent;
+  final Value<int?> ledgerId;
+  final Value<String?> sourceChannel;
+  final Value<String?> externalId;
+  final Value<String?> contentHash;
+  final Value<String> state;
+  final Value<DateTime> capturedAt;
+  final Value<DateTime?> sourceOccurredAt;
+  final Value<DateTime?> expiresAt;
+  final Value<int> attemptCount;
+  final Value<DateTime?> nextRetryAt;
+  final Value<int?> transactionId;
+  final Value<int?> duplicateOfTransactionId;
+  final Value<String?> billJson;
+  final Value<String?> reason;
+  final Value<String?> lastError;
+  final Value<DateTime> updatedAt;
+  const AutoBookEventsCompanion({
+    this.id = const Value.absent(),
+    this.eventKey = const Value.absent(),
+    this.source = const Value.absent(),
+    this.captureIntent = const Value.absent(),
+    this.ledgerId = const Value.absent(),
+    this.sourceChannel = const Value.absent(),
+    this.externalId = const Value.absent(),
+    this.contentHash = const Value.absent(),
+    this.state = const Value.absent(),
+    this.capturedAt = const Value.absent(),
+    this.sourceOccurredAt = const Value.absent(),
+    this.expiresAt = const Value.absent(),
+    this.attemptCount = const Value.absent(),
+    this.nextRetryAt = const Value.absent(),
+    this.transactionId = const Value.absent(),
+    this.duplicateOfTransactionId = const Value.absent(),
+    this.billJson = const Value.absent(),
+    this.reason = const Value.absent(),
+    this.lastError = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+  });
+  AutoBookEventsCompanion.insert({
+    this.id = const Value.absent(),
+    required String eventKey,
+    required String source,
+    this.captureIntent = const Value.absent(),
+    this.ledgerId = const Value.absent(),
+    this.sourceChannel = const Value.absent(),
+    this.externalId = const Value.absent(),
+    this.contentHash = const Value.absent(),
+    this.state = const Value.absent(),
+    required DateTime capturedAt,
+    this.sourceOccurredAt = const Value.absent(),
+    this.expiresAt = const Value.absent(),
+    this.attemptCount = const Value.absent(),
+    this.nextRetryAt = const Value.absent(),
+    this.transactionId = const Value.absent(),
+    this.duplicateOfTransactionId = const Value.absent(),
+    this.billJson = const Value.absent(),
+    this.reason = const Value.absent(),
+    this.lastError = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+  })  : eventKey = Value(eventKey),
+        source = Value(source),
+        capturedAt = Value(capturedAt);
+  static Insertable<AutoBookEvent> custom({
+    Expression<int>? id,
+    Expression<String>? eventKey,
+    Expression<String>? source,
+    Expression<String>? captureIntent,
+    Expression<int>? ledgerId,
+    Expression<String>? sourceChannel,
+    Expression<String>? externalId,
+    Expression<String>? contentHash,
+    Expression<String>? state,
+    Expression<DateTime>? capturedAt,
+    Expression<DateTime>? sourceOccurredAt,
+    Expression<DateTime>? expiresAt,
+    Expression<int>? attemptCount,
+    Expression<DateTime>? nextRetryAt,
+    Expression<int>? transactionId,
+    Expression<int>? duplicateOfTransactionId,
+    Expression<String>? billJson,
+    Expression<String>? reason,
+    Expression<String>? lastError,
+    Expression<DateTime>? updatedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (eventKey != null) 'event_key': eventKey,
+      if (source != null) 'source': source,
+      if (captureIntent != null) 'capture_intent': captureIntent,
+      if (ledgerId != null) 'ledger_id': ledgerId,
+      if (sourceChannel != null) 'source_channel': sourceChannel,
+      if (externalId != null) 'external_id': externalId,
+      if (contentHash != null) 'content_hash': contentHash,
+      if (state != null) 'state': state,
+      if (capturedAt != null) 'captured_at': capturedAt,
+      if (sourceOccurredAt != null) 'source_occurred_at': sourceOccurredAt,
+      if (expiresAt != null) 'expires_at': expiresAt,
+      if (attemptCount != null) 'attempt_count': attemptCount,
+      if (nextRetryAt != null) 'next_retry_at': nextRetryAt,
+      if (transactionId != null) 'transaction_id': transactionId,
+      if (duplicateOfTransactionId != null)
+        'duplicate_of_transaction_id': duplicateOfTransactionId,
+      if (billJson != null) 'bill_json': billJson,
+      if (reason != null) 'reason': reason,
+      if (lastError != null) 'last_error': lastError,
+      if (updatedAt != null) 'updated_at': updatedAt,
+    });
+  }
+
+  AutoBookEventsCompanion copyWith(
+      {Value<int>? id,
+      Value<String>? eventKey,
+      Value<String>? source,
+      Value<String>? captureIntent,
+      Value<int?>? ledgerId,
+      Value<String?>? sourceChannel,
+      Value<String?>? externalId,
+      Value<String?>? contentHash,
+      Value<String>? state,
+      Value<DateTime>? capturedAt,
+      Value<DateTime?>? sourceOccurredAt,
+      Value<DateTime?>? expiresAt,
+      Value<int>? attemptCount,
+      Value<DateTime?>? nextRetryAt,
+      Value<int?>? transactionId,
+      Value<int?>? duplicateOfTransactionId,
+      Value<String?>? billJson,
+      Value<String?>? reason,
+      Value<String?>? lastError,
+      Value<DateTime>? updatedAt}) {
+    return AutoBookEventsCompanion(
+      id: id ?? this.id,
+      eventKey: eventKey ?? this.eventKey,
+      source: source ?? this.source,
+      captureIntent: captureIntent ?? this.captureIntent,
+      ledgerId: ledgerId ?? this.ledgerId,
+      sourceChannel: sourceChannel ?? this.sourceChannel,
+      externalId: externalId ?? this.externalId,
+      contentHash: contentHash ?? this.contentHash,
+      state: state ?? this.state,
+      capturedAt: capturedAt ?? this.capturedAt,
+      sourceOccurredAt: sourceOccurredAt ?? this.sourceOccurredAt,
+      expiresAt: expiresAt ?? this.expiresAt,
+      attemptCount: attemptCount ?? this.attemptCount,
+      nextRetryAt: nextRetryAt ?? this.nextRetryAt,
+      transactionId: transactionId ?? this.transactionId,
+      duplicateOfTransactionId:
+          duplicateOfTransactionId ?? this.duplicateOfTransactionId,
+      billJson: billJson ?? this.billJson,
+      reason: reason ?? this.reason,
+      lastError: lastError ?? this.lastError,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (eventKey.present) {
+      map['event_key'] = Variable<String>(eventKey.value);
+    }
+    if (source.present) {
+      map['source'] = Variable<String>(source.value);
+    }
+    if (captureIntent.present) {
+      map['capture_intent'] = Variable<String>(captureIntent.value);
+    }
+    if (ledgerId.present) {
+      map['ledger_id'] = Variable<int>(ledgerId.value);
+    }
+    if (sourceChannel.present) {
+      map['source_channel'] = Variable<String>(sourceChannel.value);
+    }
+    if (externalId.present) {
+      map['external_id'] = Variable<String>(externalId.value);
+    }
+    if (contentHash.present) {
+      map['content_hash'] = Variable<String>(contentHash.value);
+    }
+    if (state.present) {
+      map['state'] = Variable<String>(state.value);
+    }
+    if (capturedAt.present) {
+      map['captured_at'] = Variable<DateTime>(capturedAt.value);
+    }
+    if (sourceOccurredAt.present) {
+      map['source_occurred_at'] = Variable<DateTime>(sourceOccurredAt.value);
+    }
+    if (expiresAt.present) {
+      map['expires_at'] = Variable<DateTime>(expiresAt.value);
+    }
+    if (attemptCount.present) {
+      map['attempt_count'] = Variable<int>(attemptCount.value);
+    }
+    if (nextRetryAt.present) {
+      map['next_retry_at'] = Variable<DateTime>(nextRetryAt.value);
+    }
+    if (transactionId.present) {
+      map['transaction_id'] = Variable<int>(transactionId.value);
+    }
+    if (duplicateOfTransactionId.present) {
+      map['duplicate_of_transaction_id'] =
+          Variable<int>(duplicateOfTransactionId.value);
+    }
+    if (billJson.present) {
+      map['bill_json'] = Variable<String>(billJson.value);
+    }
+    if (reason.present) {
+      map['reason'] = Variable<String>(reason.value);
+    }
+    if (lastError.present) {
+      map['last_error'] = Variable<String>(lastError.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AutoBookEventsCompanion(')
+          ..write('id: $id, ')
+          ..write('eventKey: $eventKey, ')
+          ..write('source: $source, ')
+          ..write('captureIntent: $captureIntent, ')
+          ..write('ledgerId: $ledgerId, ')
+          ..write('sourceChannel: $sourceChannel, ')
+          ..write('externalId: $externalId, ')
+          ..write('contentHash: $contentHash, ')
+          ..write('state: $state, ')
+          ..write('capturedAt: $capturedAt, ')
+          ..write('sourceOccurredAt: $sourceOccurredAt, ')
+          ..write('expiresAt: $expiresAt, ')
+          ..write('attemptCount: $attemptCount, ')
+          ..write('nextRetryAt: $nextRetryAt, ')
+          ..write('transactionId: $transactionId, ')
+          ..write('duplicateOfTransactionId: $duplicateOfTransactionId, ')
+          ..write('billJson: $billJson, ')
+          ..write('reason: $reason, ')
+          ..write('lastError: $lastError, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $AutoBookEventItemsTable extends AutoBookEventItems
+    with TableInfo<$AutoBookEventItemsTable, AutoBookEventItem> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $AutoBookEventItemsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _eventIdMeta =
+      const VerificationMeta('eventId');
+  @override
+  late final GeneratedColumn<int> eventId = GeneratedColumn<int>(
+      'event_id', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _itemIndexMeta =
+      const VerificationMeta('itemIndex');
+  @override
+  late final GeneratedColumn<int> itemIndex = GeneratedColumn<int>(
+      'item_index', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _semanticKeyMeta =
+      const VerificationMeta('semanticKey');
+  @override
+  late final GeneratedColumn<String> semanticKey = GeneratedColumn<String>(
+      'semantic_key', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _eventKindMeta =
+      const VerificationMeta('eventKind');
+  @override
+  late final GeneratedColumn<String> eventKind = GeneratedColumn<String>(
+      'event_kind', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _settlementStatusMeta =
+      const VerificationMeta('settlementStatus');
+  @override
+  late final GeneratedColumn<String> settlementStatus = GeneratedColumn<String>(
+      'settlement_status', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _amountMeta = const VerificationMeta('amount');
+  @override
+  late final GeneratedColumn<double> amount = GeneratedColumn<double>(
+      'amount', aliasedName, true,
+      type: DriftSqlType.double, requiredDuringInsert: false);
+  static const VerificationMeta _currencyMeta =
+      const VerificationMeta('currency');
+  @override
+  late final GeneratedColumn<String> currency = GeneratedColumn<String>(
+      'currency', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _merchantMeta =
+      const VerificationMeta('merchant');
+  @override
+  late final GeneratedColumn<String> merchant = GeneratedColumn<String>(
+      'merchant', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _transactionIdMeta =
+      const VerificationMeta('transactionId');
+  @override
+  late final GeneratedColumn<int> transactionId = GeneratedColumn<int>(
+      'transaction_id', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _stateMeta = const VerificationMeta('state');
+  @override
+  late final GeneratedColumn<String> state = GeneratedColumn<String>(
+      'state', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      defaultValue: const Constant('extracted'));
+  static const VerificationMeta _billJsonMeta =
+      const VerificationMeta('billJson');
+  @override
+  late final GeneratedColumn<String> billJson = GeneratedColumn<String>(
+      'bill_json', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _reasonMeta = const VerificationMeta('reason');
+  @override
+  late final GeneratedColumn<String> reason = GeneratedColumn<String>(
+      'reason', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _updatedAtMeta =
+      const VerificationMeta('updatedAt');
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+      'updated_at', aliasedName, false,
+      type: DriftSqlType.dateTime,
+      requiredDuringInsert: false,
+      defaultValue: currentDateAndTime);
+  @override
+  List<GeneratedColumn> get $columns => [
+        eventId,
+        itemIndex,
+        semanticKey,
+        eventKind,
+        settlementStatus,
+        amount,
+        currency,
+        merchant,
+        transactionId,
+        state,
+        billJson,
+        reason,
+        updatedAt
+      ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'auto_book_event_items';
+  @override
+  VerificationContext validateIntegrity(Insertable<AutoBookEventItem> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('event_id')) {
+      context.handle(_eventIdMeta,
+          eventId.isAcceptableOrUnknown(data['event_id']!, _eventIdMeta));
+    } else if (isInserting) {
+      context.missing(_eventIdMeta);
+    }
+    if (data.containsKey('item_index')) {
+      context.handle(_itemIndexMeta,
+          itemIndex.isAcceptableOrUnknown(data['item_index']!, _itemIndexMeta));
+    } else if (isInserting) {
+      context.missing(_itemIndexMeta);
+    }
+    if (data.containsKey('semantic_key')) {
+      context.handle(
+          _semanticKeyMeta,
+          semanticKey.isAcceptableOrUnknown(
+              data['semantic_key']!, _semanticKeyMeta));
+    }
+    if (data.containsKey('event_kind')) {
+      context.handle(_eventKindMeta,
+          eventKind.isAcceptableOrUnknown(data['event_kind']!, _eventKindMeta));
+    }
+    if (data.containsKey('settlement_status')) {
+      context.handle(
+          _settlementStatusMeta,
+          settlementStatus.isAcceptableOrUnknown(
+              data['settlement_status']!, _settlementStatusMeta));
+    }
+    if (data.containsKey('amount')) {
+      context.handle(_amountMeta,
+          amount.isAcceptableOrUnknown(data['amount']!, _amountMeta));
+    }
+    if (data.containsKey('currency')) {
+      context.handle(_currencyMeta,
+          currency.isAcceptableOrUnknown(data['currency']!, _currencyMeta));
+    }
+    if (data.containsKey('merchant')) {
+      context.handle(_merchantMeta,
+          merchant.isAcceptableOrUnknown(data['merchant']!, _merchantMeta));
+    }
+    if (data.containsKey('transaction_id')) {
+      context.handle(
+          _transactionIdMeta,
+          transactionId.isAcceptableOrUnknown(
+              data['transaction_id']!, _transactionIdMeta));
+    }
+    if (data.containsKey('state')) {
+      context.handle(
+          _stateMeta, state.isAcceptableOrUnknown(data['state']!, _stateMeta));
+    }
+    if (data.containsKey('bill_json')) {
+      context.handle(_billJsonMeta,
+          billJson.isAcceptableOrUnknown(data['bill_json']!, _billJsonMeta));
+    }
+    if (data.containsKey('reason')) {
+      context.handle(_reasonMeta,
+          reason.isAcceptableOrUnknown(data['reason']!, _reasonMeta));
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(_updatedAtMeta,
+          updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {eventId, itemIndex};
+  @override
+  AutoBookEventItem map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return AutoBookEventItem(
+      eventId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}event_id'])!,
+      itemIndex: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}item_index'])!,
+      semanticKey: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}semantic_key']),
+      eventKind: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}event_kind']),
+      settlementStatus: attachedDatabase.typeMapping.read(
+          DriftSqlType.string, data['${effectivePrefix}settlement_status']),
+      amount: attachedDatabase.typeMapping
+          .read(DriftSqlType.double, data['${effectivePrefix}amount']),
+      currency: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}currency']),
+      merchant: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}merchant']),
+      transactionId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}transaction_id']),
+      state: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}state'])!,
+      billJson: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}bill_json']),
+      reason: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}reason']),
+      updatedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
+    );
+  }
+
+  @override
+  $AutoBookEventItemsTable createAlias(String alias) {
+    return $AutoBookEventItemsTable(attachedDatabase, alias);
+  }
+}
+
+class AutoBookEventItem extends DataClass
+    implements Insertable<AutoBookEventItem> {
+  final int eventId;
+  final int itemIndex;
+  final String? semanticKey;
+  final String? eventKind;
+  final String? settlementStatus;
+  final double? amount;
+  final String? currency;
+  final String? merchant;
+  final int? transactionId;
+  final String state;
+  final String? billJson;
+  final String? reason;
+  final DateTime updatedAt;
+  const AutoBookEventItem(
+      {required this.eventId,
+      required this.itemIndex,
+      this.semanticKey,
+      this.eventKind,
+      this.settlementStatus,
+      this.amount,
+      this.currency,
+      this.merchant,
+      this.transactionId,
+      required this.state,
+      this.billJson,
+      this.reason,
+      required this.updatedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['event_id'] = Variable<int>(eventId);
+    map['item_index'] = Variable<int>(itemIndex);
+    if (!nullToAbsent || semanticKey != null) {
+      map['semantic_key'] = Variable<String>(semanticKey);
+    }
+    if (!nullToAbsent || eventKind != null) {
+      map['event_kind'] = Variable<String>(eventKind);
+    }
+    if (!nullToAbsent || settlementStatus != null) {
+      map['settlement_status'] = Variable<String>(settlementStatus);
+    }
+    if (!nullToAbsent || amount != null) {
+      map['amount'] = Variable<double>(amount);
+    }
+    if (!nullToAbsent || currency != null) {
+      map['currency'] = Variable<String>(currency);
+    }
+    if (!nullToAbsent || merchant != null) {
+      map['merchant'] = Variable<String>(merchant);
+    }
+    if (!nullToAbsent || transactionId != null) {
+      map['transaction_id'] = Variable<int>(transactionId);
+    }
+    map['state'] = Variable<String>(state);
+    if (!nullToAbsent || billJson != null) {
+      map['bill_json'] = Variable<String>(billJson);
+    }
+    if (!nullToAbsent || reason != null) {
+      map['reason'] = Variable<String>(reason);
+    }
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  AutoBookEventItemsCompanion toCompanion(bool nullToAbsent) {
+    return AutoBookEventItemsCompanion(
+      eventId: Value(eventId),
+      itemIndex: Value(itemIndex),
+      semanticKey: semanticKey == null && nullToAbsent
+          ? const Value.absent()
+          : Value(semanticKey),
+      eventKind: eventKind == null && nullToAbsent
+          ? const Value.absent()
+          : Value(eventKind),
+      settlementStatus: settlementStatus == null && nullToAbsent
+          ? const Value.absent()
+          : Value(settlementStatus),
+      amount:
+          amount == null && nullToAbsent ? const Value.absent() : Value(amount),
+      currency: currency == null && nullToAbsent
+          ? const Value.absent()
+          : Value(currency),
+      merchant: merchant == null && nullToAbsent
+          ? const Value.absent()
+          : Value(merchant),
+      transactionId: transactionId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(transactionId),
+      state: Value(state),
+      billJson: billJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(billJson),
+      reason:
+          reason == null && nullToAbsent ? const Value.absent() : Value(reason),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory AutoBookEventItem.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return AutoBookEventItem(
+      eventId: serializer.fromJson<int>(json['eventId']),
+      itemIndex: serializer.fromJson<int>(json['itemIndex']),
+      semanticKey: serializer.fromJson<String?>(json['semanticKey']),
+      eventKind: serializer.fromJson<String?>(json['eventKind']),
+      settlementStatus: serializer.fromJson<String?>(json['settlementStatus']),
+      amount: serializer.fromJson<double?>(json['amount']),
+      currency: serializer.fromJson<String?>(json['currency']),
+      merchant: serializer.fromJson<String?>(json['merchant']),
+      transactionId: serializer.fromJson<int?>(json['transactionId']),
+      state: serializer.fromJson<String>(json['state']),
+      billJson: serializer.fromJson<String?>(json['billJson']),
+      reason: serializer.fromJson<String?>(json['reason']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'eventId': serializer.toJson<int>(eventId),
+      'itemIndex': serializer.toJson<int>(itemIndex),
+      'semanticKey': serializer.toJson<String?>(semanticKey),
+      'eventKind': serializer.toJson<String?>(eventKind),
+      'settlementStatus': serializer.toJson<String?>(settlementStatus),
+      'amount': serializer.toJson<double?>(amount),
+      'currency': serializer.toJson<String?>(currency),
+      'merchant': serializer.toJson<String?>(merchant),
+      'transactionId': serializer.toJson<int?>(transactionId),
+      'state': serializer.toJson<String>(state),
+      'billJson': serializer.toJson<String?>(billJson),
+      'reason': serializer.toJson<String?>(reason),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  AutoBookEventItem copyWith(
+          {int? eventId,
+          int? itemIndex,
+          Value<String?> semanticKey = const Value.absent(),
+          Value<String?> eventKind = const Value.absent(),
+          Value<String?> settlementStatus = const Value.absent(),
+          Value<double?> amount = const Value.absent(),
+          Value<String?> currency = const Value.absent(),
+          Value<String?> merchant = const Value.absent(),
+          Value<int?> transactionId = const Value.absent(),
+          String? state,
+          Value<String?> billJson = const Value.absent(),
+          Value<String?> reason = const Value.absent(),
+          DateTime? updatedAt}) =>
+      AutoBookEventItem(
+        eventId: eventId ?? this.eventId,
+        itemIndex: itemIndex ?? this.itemIndex,
+        semanticKey: semanticKey.present ? semanticKey.value : this.semanticKey,
+        eventKind: eventKind.present ? eventKind.value : this.eventKind,
+        settlementStatus: settlementStatus.present
+            ? settlementStatus.value
+            : this.settlementStatus,
+        amount: amount.present ? amount.value : this.amount,
+        currency: currency.present ? currency.value : this.currency,
+        merchant: merchant.present ? merchant.value : this.merchant,
+        transactionId:
+            transactionId.present ? transactionId.value : this.transactionId,
+        state: state ?? this.state,
+        billJson: billJson.present ? billJson.value : this.billJson,
+        reason: reason.present ? reason.value : this.reason,
+        updatedAt: updatedAt ?? this.updatedAt,
+      );
+  AutoBookEventItem copyWithCompanion(AutoBookEventItemsCompanion data) {
+    return AutoBookEventItem(
+      eventId: data.eventId.present ? data.eventId.value : this.eventId,
+      itemIndex: data.itemIndex.present ? data.itemIndex.value : this.itemIndex,
+      semanticKey:
+          data.semanticKey.present ? data.semanticKey.value : this.semanticKey,
+      eventKind: data.eventKind.present ? data.eventKind.value : this.eventKind,
+      settlementStatus: data.settlementStatus.present
+          ? data.settlementStatus.value
+          : this.settlementStatus,
+      amount: data.amount.present ? data.amount.value : this.amount,
+      currency: data.currency.present ? data.currency.value : this.currency,
+      merchant: data.merchant.present ? data.merchant.value : this.merchant,
+      transactionId: data.transactionId.present
+          ? data.transactionId.value
+          : this.transactionId,
+      state: data.state.present ? data.state.value : this.state,
+      billJson: data.billJson.present ? data.billJson.value : this.billJson,
+      reason: data.reason.present ? data.reason.value : this.reason,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AutoBookEventItem(')
+          ..write('eventId: $eventId, ')
+          ..write('itemIndex: $itemIndex, ')
+          ..write('semanticKey: $semanticKey, ')
+          ..write('eventKind: $eventKind, ')
+          ..write('settlementStatus: $settlementStatus, ')
+          ..write('amount: $amount, ')
+          ..write('currency: $currency, ')
+          ..write('merchant: $merchant, ')
+          ..write('transactionId: $transactionId, ')
+          ..write('state: $state, ')
+          ..write('billJson: $billJson, ')
+          ..write('reason: $reason, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+      eventId,
+      itemIndex,
+      semanticKey,
+      eventKind,
+      settlementStatus,
+      amount,
+      currency,
+      merchant,
+      transactionId,
+      state,
+      billJson,
+      reason,
+      updatedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is AutoBookEventItem &&
+          other.eventId == this.eventId &&
+          other.itemIndex == this.itemIndex &&
+          other.semanticKey == this.semanticKey &&
+          other.eventKind == this.eventKind &&
+          other.settlementStatus == this.settlementStatus &&
+          other.amount == this.amount &&
+          other.currency == this.currency &&
+          other.merchant == this.merchant &&
+          other.transactionId == this.transactionId &&
+          other.state == this.state &&
+          other.billJson == this.billJson &&
+          other.reason == this.reason &&
+          other.updatedAt == this.updatedAt);
+}
+
+class AutoBookEventItemsCompanion extends UpdateCompanion<AutoBookEventItem> {
+  final Value<int> eventId;
+  final Value<int> itemIndex;
+  final Value<String?> semanticKey;
+  final Value<String?> eventKind;
+  final Value<String?> settlementStatus;
+  final Value<double?> amount;
+  final Value<String?> currency;
+  final Value<String?> merchant;
+  final Value<int?> transactionId;
+  final Value<String> state;
+  final Value<String?> billJson;
+  final Value<String?> reason;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const AutoBookEventItemsCompanion({
+    this.eventId = const Value.absent(),
+    this.itemIndex = const Value.absent(),
+    this.semanticKey = const Value.absent(),
+    this.eventKind = const Value.absent(),
+    this.settlementStatus = const Value.absent(),
+    this.amount = const Value.absent(),
+    this.currency = const Value.absent(),
+    this.merchant = const Value.absent(),
+    this.transactionId = const Value.absent(),
+    this.state = const Value.absent(),
+    this.billJson = const Value.absent(),
+    this.reason = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  AutoBookEventItemsCompanion.insert({
+    required int eventId,
+    required int itemIndex,
+    this.semanticKey = const Value.absent(),
+    this.eventKind = const Value.absent(),
+    this.settlementStatus = const Value.absent(),
+    this.amount = const Value.absent(),
+    this.currency = const Value.absent(),
+    this.merchant = const Value.absent(),
+    this.transactionId = const Value.absent(),
+    this.state = const Value.absent(),
+    this.billJson = const Value.absent(),
+    this.reason = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  })  : eventId = Value(eventId),
+        itemIndex = Value(itemIndex);
+  static Insertable<AutoBookEventItem> custom({
+    Expression<int>? eventId,
+    Expression<int>? itemIndex,
+    Expression<String>? semanticKey,
+    Expression<String>? eventKind,
+    Expression<String>? settlementStatus,
+    Expression<double>? amount,
+    Expression<String>? currency,
+    Expression<String>? merchant,
+    Expression<int>? transactionId,
+    Expression<String>? state,
+    Expression<String>? billJson,
+    Expression<String>? reason,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (eventId != null) 'event_id': eventId,
+      if (itemIndex != null) 'item_index': itemIndex,
+      if (semanticKey != null) 'semantic_key': semanticKey,
+      if (eventKind != null) 'event_kind': eventKind,
+      if (settlementStatus != null) 'settlement_status': settlementStatus,
+      if (amount != null) 'amount': amount,
+      if (currency != null) 'currency': currency,
+      if (merchant != null) 'merchant': merchant,
+      if (transactionId != null) 'transaction_id': transactionId,
+      if (state != null) 'state': state,
+      if (billJson != null) 'bill_json': billJson,
+      if (reason != null) 'reason': reason,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  AutoBookEventItemsCompanion copyWith(
+      {Value<int>? eventId,
+      Value<int>? itemIndex,
+      Value<String?>? semanticKey,
+      Value<String?>? eventKind,
+      Value<String?>? settlementStatus,
+      Value<double?>? amount,
+      Value<String?>? currency,
+      Value<String?>? merchant,
+      Value<int?>? transactionId,
+      Value<String>? state,
+      Value<String?>? billJson,
+      Value<String?>? reason,
+      Value<DateTime>? updatedAt,
+      Value<int>? rowid}) {
+    return AutoBookEventItemsCompanion(
+      eventId: eventId ?? this.eventId,
+      itemIndex: itemIndex ?? this.itemIndex,
+      semanticKey: semanticKey ?? this.semanticKey,
+      eventKind: eventKind ?? this.eventKind,
+      settlementStatus: settlementStatus ?? this.settlementStatus,
+      amount: amount ?? this.amount,
+      currency: currency ?? this.currency,
+      merchant: merchant ?? this.merchant,
+      transactionId: transactionId ?? this.transactionId,
+      state: state ?? this.state,
+      billJson: billJson ?? this.billJson,
+      reason: reason ?? this.reason,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (eventId.present) {
+      map['event_id'] = Variable<int>(eventId.value);
+    }
+    if (itemIndex.present) {
+      map['item_index'] = Variable<int>(itemIndex.value);
+    }
+    if (semanticKey.present) {
+      map['semantic_key'] = Variable<String>(semanticKey.value);
+    }
+    if (eventKind.present) {
+      map['event_kind'] = Variable<String>(eventKind.value);
+    }
+    if (settlementStatus.present) {
+      map['settlement_status'] = Variable<String>(settlementStatus.value);
+    }
+    if (amount.present) {
+      map['amount'] = Variable<double>(amount.value);
+    }
+    if (currency.present) {
+      map['currency'] = Variable<String>(currency.value);
+    }
+    if (merchant.present) {
+      map['merchant'] = Variable<String>(merchant.value);
+    }
+    if (transactionId.present) {
+      map['transaction_id'] = Variable<int>(transactionId.value);
+    }
+    if (state.present) {
+      map['state'] = Variable<String>(state.value);
+    }
+    if (billJson.present) {
+      map['bill_json'] = Variable<String>(billJson.value);
+    }
+    if (reason.present) {
+      map['reason'] = Variable<String>(reason.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AutoBookEventItemsCompanion(')
+          ..write('eventId: $eventId, ')
+          ..write('itemIndex: $itemIndex, ')
+          ..write('semanticKey: $semanticKey, ')
+          ..write('eventKind: $eventKind, ')
+          ..write('settlementStatus: $settlementStatus, ')
+          ..write('amount: $amount, ')
+          ..write('currency: $currency, ')
+          ..write('merchant: $merchant, ')
+          ..write('transactionId: $transactionId, ')
+          ..write('state: $state, ')
+          ..write('billJson: $billJson, ')
+          ..write('reason: $reason, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$BeeDatabase extends GeneratedDatabase {
   _$BeeDatabase(QueryExecutor e) : super(e);
   $BeeDatabaseManager get managers => $BeeDatabaseManager(this);
@@ -10884,6 +12485,9 @@ abstract class _$BeeDatabase extends GeneratedDatabase {
   late final $ExchangeRatesTable exchangeRates = $ExchangeRatesTable(this);
   late final $ExchangeRateOverridesTable exchangeRateOverrides =
       $ExchangeRateOverridesTable(this);
+  late final $AutoBookEventsTable autoBookEvents = $AutoBookEventsTable(this);
+  late final $AutoBookEventItemsTable autoBookEventItems =
+      $AutoBookEventItemsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -10909,7 +12513,9 @@ abstract class _$BeeDatabase extends GeneratedDatabase {
         transactionTagOverrides,
         syncPullErrors,
         exchangeRates,
-        exchangeRateOverrides
+        exchangeRateOverrides,
+        autoBookEvents,
+        autoBookEventItems
       ];
 }
 
@@ -16073,6 +17679,705 @@ typedef $$ExchangeRateOverridesTableProcessedTableManager
         ),
         ExchangeRateOverride,
         PrefetchHooks Function()>;
+typedef $$AutoBookEventsTableCreateCompanionBuilder = AutoBookEventsCompanion
+    Function({
+  Value<int> id,
+  required String eventKey,
+  required String source,
+  Value<String> captureIntent,
+  Value<int?> ledgerId,
+  Value<String?> sourceChannel,
+  Value<String?> externalId,
+  Value<String?> contentHash,
+  Value<String> state,
+  required DateTime capturedAt,
+  Value<DateTime?> sourceOccurredAt,
+  Value<DateTime?> expiresAt,
+  Value<int> attemptCount,
+  Value<DateTime?> nextRetryAt,
+  Value<int?> transactionId,
+  Value<int?> duplicateOfTransactionId,
+  Value<String?> billJson,
+  Value<String?> reason,
+  Value<String?> lastError,
+  Value<DateTime> updatedAt,
+});
+typedef $$AutoBookEventsTableUpdateCompanionBuilder = AutoBookEventsCompanion
+    Function({
+  Value<int> id,
+  Value<String> eventKey,
+  Value<String> source,
+  Value<String> captureIntent,
+  Value<int?> ledgerId,
+  Value<String?> sourceChannel,
+  Value<String?> externalId,
+  Value<String?> contentHash,
+  Value<String> state,
+  Value<DateTime> capturedAt,
+  Value<DateTime?> sourceOccurredAt,
+  Value<DateTime?> expiresAt,
+  Value<int> attemptCount,
+  Value<DateTime?> nextRetryAt,
+  Value<int?> transactionId,
+  Value<int?> duplicateOfTransactionId,
+  Value<String?> billJson,
+  Value<String?> reason,
+  Value<String?> lastError,
+  Value<DateTime> updatedAt,
+});
+
+class $$AutoBookEventsTableFilterComposer
+    extends Composer<_$BeeDatabase, $AutoBookEventsTable> {
+  $$AutoBookEventsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get eventKey => $composableBuilder(
+      column: $table.eventKey, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get source => $composableBuilder(
+      column: $table.source, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get captureIntent => $composableBuilder(
+      column: $table.captureIntent, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get ledgerId => $composableBuilder(
+      column: $table.ledgerId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get sourceChannel => $composableBuilder(
+      column: $table.sourceChannel, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get externalId => $composableBuilder(
+      column: $table.externalId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get contentHash => $composableBuilder(
+      column: $table.contentHash, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get state => $composableBuilder(
+      column: $table.state, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get capturedAt => $composableBuilder(
+      column: $table.capturedAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get sourceOccurredAt => $composableBuilder(
+      column: $table.sourceOccurredAt,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get expiresAt => $composableBuilder(
+      column: $table.expiresAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get attemptCount => $composableBuilder(
+      column: $table.attemptCount, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get nextRetryAt => $composableBuilder(
+      column: $table.nextRetryAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get transactionId => $composableBuilder(
+      column: $table.transactionId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get duplicateOfTransactionId => $composableBuilder(
+      column: $table.duplicateOfTransactionId,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get billJson => $composableBuilder(
+      column: $table.billJson, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get reason => $composableBuilder(
+      column: $table.reason, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get lastError => $composableBuilder(
+      column: $table.lastError, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnFilters(column));
+}
+
+class $$AutoBookEventsTableOrderingComposer
+    extends Composer<_$BeeDatabase, $AutoBookEventsTable> {
+  $$AutoBookEventsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get eventKey => $composableBuilder(
+      column: $table.eventKey, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get source => $composableBuilder(
+      column: $table.source, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get captureIntent => $composableBuilder(
+      column: $table.captureIntent,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get ledgerId => $composableBuilder(
+      column: $table.ledgerId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get sourceChannel => $composableBuilder(
+      column: $table.sourceChannel,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get externalId => $composableBuilder(
+      column: $table.externalId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get contentHash => $composableBuilder(
+      column: $table.contentHash, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get state => $composableBuilder(
+      column: $table.state, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get capturedAt => $composableBuilder(
+      column: $table.capturedAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get sourceOccurredAt => $composableBuilder(
+      column: $table.sourceOccurredAt,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get expiresAt => $composableBuilder(
+      column: $table.expiresAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get attemptCount => $composableBuilder(
+      column: $table.attemptCount,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get nextRetryAt => $composableBuilder(
+      column: $table.nextRetryAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get transactionId => $composableBuilder(
+      column: $table.transactionId,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get duplicateOfTransactionId => $composableBuilder(
+      column: $table.duplicateOfTransactionId,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get billJson => $composableBuilder(
+      column: $table.billJson, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get reason => $composableBuilder(
+      column: $table.reason, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get lastError => $composableBuilder(
+      column: $table.lastError, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
+}
+
+class $$AutoBookEventsTableAnnotationComposer
+    extends Composer<_$BeeDatabase, $AutoBookEventsTable> {
+  $$AutoBookEventsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get eventKey =>
+      $composableBuilder(column: $table.eventKey, builder: (column) => column);
+
+  GeneratedColumn<String> get source =>
+      $composableBuilder(column: $table.source, builder: (column) => column);
+
+  GeneratedColumn<String> get captureIntent => $composableBuilder(
+      column: $table.captureIntent, builder: (column) => column);
+
+  GeneratedColumn<int> get ledgerId =>
+      $composableBuilder(column: $table.ledgerId, builder: (column) => column);
+
+  GeneratedColumn<String> get sourceChannel => $composableBuilder(
+      column: $table.sourceChannel, builder: (column) => column);
+
+  GeneratedColumn<String> get externalId => $composableBuilder(
+      column: $table.externalId, builder: (column) => column);
+
+  GeneratedColumn<String> get contentHash => $composableBuilder(
+      column: $table.contentHash, builder: (column) => column);
+
+  GeneratedColumn<String> get state =>
+      $composableBuilder(column: $table.state, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get capturedAt => $composableBuilder(
+      column: $table.capturedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get sourceOccurredAt => $composableBuilder(
+      column: $table.sourceOccurredAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get expiresAt =>
+      $composableBuilder(column: $table.expiresAt, builder: (column) => column);
+
+  GeneratedColumn<int> get attemptCount => $composableBuilder(
+      column: $table.attemptCount, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get nextRetryAt => $composableBuilder(
+      column: $table.nextRetryAt, builder: (column) => column);
+
+  GeneratedColumn<int> get transactionId => $composableBuilder(
+      column: $table.transactionId, builder: (column) => column);
+
+  GeneratedColumn<int> get duplicateOfTransactionId => $composableBuilder(
+      column: $table.duplicateOfTransactionId, builder: (column) => column);
+
+  GeneratedColumn<String> get billJson =>
+      $composableBuilder(column: $table.billJson, builder: (column) => column);
+
+  GeneratedColumn<String> get reason =>
+      $composableBuilder(column: $table.reason, builder: (column) => column);
+
+  GeneratedColumn<String> get lastError =>
+      $composableBuilder(column: $table.lastError, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$AutoBookEventsTableTableManager extends RootTableManager<
+    _$BeeDatabase,
+    $AutoBookEventsTable,
+    AutoBookEvent,
+    $$AutoBookEventsTableFilterComposer,
+    $$AutoBookEventsTableOrderingComposer,
+    $$AutoBookEventsTableAnnotationComposer,
+    $$AutoBookEventsTableCreateCompanionBuilder,
+    $$AutoBookEventsTableUpdateCompanionBuilder,
+    (
+      AutoBookEvent,
+      BaseReferences<_$BeeDatabase, $AutoBookEventsTable, AutoBookEvent>
+    ),
+    AutoBookEvent,
+    PrefetchHooks Function()> {
+  $$AutoBookEventsTableTableManager(
+      _$BeeDatabase db, $AutoBookEventsTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$AutoBookEventsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$AutoBookEventsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$AutoBookEventsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            Value<String> eventKey = const Value.absent(),
+            Value<String> source = const Value.absent(),
+            Value<String> captureIntent = const Value.absent(),
+            Value<int?> ledgerId = const Value.absent(),
+            Value<String?> sourceChannel = const Value.absent(),
+            Value<String?> externalId = const Value.absent(),
+            Value<String?> contentHash = const Value.absent(),
+            Value<String> state = const Value.absent(),
+            Value<DateTime> capturedAt = const Value.absent(),
+            Value<DateTime?> sourceOccurredAt = const Value.absent(),
+            Value<DateTime?> expiresAt = const Value.absent(),
+            Value<int> attemptCount = const Value.absent(),
+            Value<DateTime?> nextRetryAt = const Value.absent(),
+            Value<int?> transactionId = const Value.absent(),
+            Value<int?> duplicateOfTransactionId = const Value.absent(),
+            Value<String?> billJson = const Value.absent(),
+            Value<String?> reason = const Value.absent(),
+            Value<String?> lastError = const Value.absent(),
+            Value<DateTime> updatedAt = const Value.absent(),
+          }) =>
+              AutoBookEventsCompanion(
+            id: id,
+            eventKey: eventKey,
+            source: source,
+            captureIntent: captureIntent,
+            ledgerId: ledgerId,
+            sourceChannel: sourceChannel,
+            externalId: externalId,
+            contentHash: contentHash,
+            state: state,
+            capturedAt: capturedAt,
+            sourceOccurredAt: sourceOccurredAt,
+            expiresAt: expiresAt,
+            attemptCount: attemptCount,
+            nextRetryAt: nextRetryAt,
+            transactionId: transactionId,
+            duplicateOfTransactionId: duplicateOfTransactionId,
+            billJson: billJson,
+            reason: reason,
+            lastError: lastError,
+            updatedAt: updatedAt,
+          ),
+          createCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            required String eventKey,
+            required String source,
+            Value<String> captureIntent = const Value.absent(),
+            Value<int?> ledgerId = const Value.absent(),
+            Value<String?> sourceChannel = const Value.absent(),
+            Value<String?> externalId = const Value.absent(),
+            Value<String?> contentHash = const Value.absent(),
+            Value<String> state = const Value.absent(),
+            required DateTime capturedAt,
+            Value<DateTime?> sourceOccurredAt = const Value.absent(),
+            Value<DateTime?> expiresAt = const Value.absent(),
+            Value<int> attemptCount = const Value.absent(),
+            Value<DateTime?> nextRetryAt = const Value.absent(),
+            Value<int?> transactionId = const Value.absent(),
+            Value<int?> duplicateOfTransactionId = const Value.absent(),
+            Value<String?> billJson = const Value.absent(),
+            Value<String?> reason = const Value.absent(),
+            Value<String?> lastError = const Value.absent(),
+            Value<DateTime> updatedAt = const Value.absent(),
+          }) =>
+              AutoBookEventsCompanion.insert(
+            id: id,
+            eventKey: eventKey,
+            source: source,
+            captureIntent: captureIntent,
+            ledgerId: ledgerId,
+            sourceChannel: sourceChannel,
+            externalId: externalId,
+            contentHash: contentHash,
+            state: state,
+            capturedAt: capturedAt,
+            sourceOccurredAt: sourceOccurredAt,
+            expiresAt: expiresAt,
+            attemptCount: attemptCount,
+            nextRetryAt: nextRetryAt,
+            transactionId: transactionId,
+            duplicateOfTransactionId: duplicateOfTransactionId,
+            billJson: billJson,
+            reason: reason,
+            lastError: lastError,
+            updatedAt: updatedAt,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$AutoBookEventsTableProcessedTableManager = ProcessedTableManager<
+    _$BeeDatabase,
+    $AutoBookEventsTable,
+    AutoBookEvent,
+    $$AutoBookEventsTableFilterComposer,
+    $$AutoBookEventsTableOrderingComposer,
+    $$AutoBookEventsTableAnnotationComposer,
+    $$AutoBookEventsTableCreateCompanionBuilder,
+    $$AutoBookEventsTableUpdateCompanionBuilder,
+    (
+      AutoBookEvent,
+      BaseReferences<_$BeeDatabase, $AutoBookEventsTable, AutoBookEvent>
+    ),
+    AutoBookEvent,
+    PrefetchHooks Function()>;
+typedef $$AutoBookEventItemsTableCreateCompanionBuilder
+    = AutoBookEventItemsCompanion Function({
+  required int eventId,
+  required int itemIndex,
+  Value<String?> semanticKey,
+  Value<String?> eventKind,
+  Value<String?> settlementStatus,
+  Value<double?> amount,
+  Value<String?> currency,
+  Value<String?> merchant,
+  Value<int?> transactionId,
+  Value<String> state,
+  Value<String?> billJson,
+  Value<String?> reason,
+  Value<DateTime> updatedAt,
+  Value<int> rowid,
+});
+typedef $$AutoBookEventItemsTableUpdateCompanionBuilder
+    = AutoBookEventItemsCompanion Function({
+  Value<int> eventId,
+  Value<int> itemIndex,
+  Value<String?> semanticKey,
+  Value<String?> eventKind,
+  Value<String?> settlementStatus,
+  Value<double?> amount,
+  Value<String?> currency,
+  Value<String?> merchant,
+  Value<int?> transactionId,
+  Value<String> state,
+  Value<String?> billJson,
+  Value<String?> reason,
+  Value<DateTime> updatedAt,
+  Value<int> rowid,
+});
+
+class $$AutoBookEventItemsTableFilterComposer
+    extends Composer<_$BeeDatabase, $AutoBookEventItemsTable> {
+  $$AutoBookEventItemsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get eventId => $composableBuilder(
+      column: $table.eventId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get itemIndex => $composableBuilder(
+      column: $table.itemIndex, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get semanticKey => $composableBuilder(
+      column: $table.semanticKey, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get eventKind => $composableBuilder(
+      column: $table.eventKind, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get settlementStatus => $composableBuilder(
+      column: $table.settlementStatus,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<double> get amount => $composableBuilder(
+      column: $table.amount, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get currency => $composableBuilder(
+      column: $table.currency, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get merchant => $composableBuilder(
+      column: $table.merchant, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get transactionId => $composableBuilder(
+      column: $table.transactionId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get state => $composableBuilder(
+      column: $table.state, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get billJson => $composableBuilder(
+      column: $table.billJson, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get reason => $composableBuilder(
+      column: $table.reason, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnFilters(column));
+}
+
+class $$AutoBookEventItemsTableOrderingComposer
+    extends Composer<_$BeeDatabase, $AutoBookEventItemsTable> {
+  $$AutoBookEventItemsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get eventId => $composableBuilder(
+      column: $table.eventId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get itemIndex => $composableBuilder(
+      column: $table.itemIndex, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get semanticKey => $composableBuilder(
+      column: $table.semanticKey, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get eventKind => $composableBuilder(
+      column: $table.eventKind, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get settlementStatus => $composableBuilder(
+      column: $table.settlementStatus,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<double> get amount => $composableBuilder(
+      column: $table.amount, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get currency => $composableBuilder(
+      column: $table.currency, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get merchant => $composableBuilder(
+      column: $table.merchant, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get transactionId => $composableBuilder(
+      column: $table.transactionId,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get state => $composableBuilder(
+      column: $table.state, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get billJson => $composableBuilder(
+      column: $table.billJson, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get reason => $composableBuilder(
+      column: $table.reason, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
+}
+
+class $$AutoBookEventItemsTableAnnotationComposer
+    extends Composer<_$BeeDatabase, $AutoBookEventItemsTable> {
+  $$AutoBookEventItemsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get eventId =>
+      $composableBuilder(column: $table.eventId, builder: (column) => column);
+
+  GeneratedColumn<int> get itemIndex =>
+      $composableBuilder(column: $table.itemIndex, builder: (column) => column);
+
+  GeneratedColumn<String> get semanticKey => $composableBuilder(
+      column: $table.semanticKey, builder: (column) => column);
+
+  GeneratedColumn<String> get eventKind =>
+      $composableBuilder(column: $table.eventKind, builder: (column) => column);
+
+  GeneratedColumn<String> get settlementStatus => $composableBuilder(
+      column: $table.settlementStatus, builder: (column) => column);
+
+  GeneratedColumn<double> get amount =>
+      $composableBuilder(column: $table.amount, builder: (column) => column);
+
+  GeneratedColumn<String> get currency =>
+      $composableBuilder(column: $table.currency, builder: (column) => column);
+
+  GeneratedColumn<String> get merchant =>
+      $composableBuilder(column: $table.merchant, builder: (column) => column);
+
+  GeneratedColumn<int> get transactionId => $composableBuilder(
+      column: $table.transactionId, builder: (column) => column);
+
+  GeneratedColumn<String> get state =>
+      $composableBuilder(column: $table.state, builder: (column) => column);
+
+  GeneratedColumn<String> get billJson =>
+      $composableBuilder(column: $table.billJson, builder: (column) => column);
+
+  GeneratedColumn<String> get reason =>
+      $composableBuilder(column: $table.reason, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$AutoBookEventItemsTableTableManager extends RootTableManager<
+    _$BeeDatabase,
+    $AutoBookEventItemsTable,
+    AutoBookEventItem,
+    $$AutoBookEventItemsTableFilterComposer,
+    $$AutoBookEventItemsTableOrderingComposer,
+    $$AutoBookEventItemsTableAnnotationComposer,
+    $$AutoBookEventItemsTableCreateCompanionBuilder,
+    $$AutoBookEventItemsTableUpdateCompanionBuilder,
+    (
+      AutoBookEventItem,
+      BaseReferences<_$BeeDatabase, $AutoBookEventItemsTable, AutoBookEventItem>
+    ),
+    AutoBookEventItem,
+    PrefetchHooks Function()> {
+  $$AutoBookEventItemsTableTableManager(
+      _$BeeDatabase db, $AutoBookEventItemsTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$AutoBookEventItemsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$AutoBookEventItemsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$AutoBookEventItemsTableAnnotationComposer(
+                  $db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<int> eventId = const Value.absent(),
+            Value<int> itemIndex = const Value.absent(),
+            Value<String?> semanticKey = const Value.absent(),
+            Value<String?> eventKind = const Value.absent(),
+            Value<String?> settlementStatus = const Value.absent(),
+            Value<double?> amount = const Value.absent(),
+            Value<String?> currency = const Value.absent(),
+            Value<String?> merchant = const Value.absent(),
+            Value<int?> transactionId = const Value.absent(),
+            Value<String> state = const Value.absent(),
+            Value<String?> billJson = const Value.absent(),
+            Value<String?> reason = const Value.absent(),
+            Value<DateTime> updatedAt = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              AutoBookEventItemsCompanion(
+            eventId: eventId,
+            itemIndex: itemIndex,
+            semanticKey: semanticKey,
+            eventKind: eventKind,
+            settlementStatus: settlementStatus,
+            amount: amount,
+            currency: currency,
+            merchant: merchant,
+            transactionId: transactionId,
+            state: state,
+            billJson: billJson,
+            reason: reason,
+            updatedAt: updatedAt,
+            rowid: rowid,
+          ),
+          createCompanionCallback: ({
+            required int eventId,
+            required int itemIndex,
+            Value<String?> semanticKey = const Value.absent(),
+            Value<String?> eventKind = const Value.absent(),
+            Value<String?> settlementStatus = const Value.absent(),
+            Value<double?> amount = const Value.absent(),
+            Value<String?> currency = const Value.absent(),
+            Value<String?> merchant = const Value.absent(),
+            Value<int?> transactionId = const Value.absent(),
+            Value<String> state = const Value.absent(),
+            Value<String?> billJson = const Value.absent(),
+            Value<String?> reason = const Value.absent(),
+            Value<DateTime> updatedAt = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              AutoBookEventItemsCompanion.insert(
+            eventId: eventId,
+            itemIndex: itemIndex,
+            semanticKey: semanticKey,
+            eventKind: eventKind,
+            settlementStatus: settlementStatus,
+            amount: amount,
+            currency: currency,
+            merchant: merchant,
+            transactionId: transactionId,
+            state: state,
+            billJson: billJson,
+            reason: reason,
+            updatedAt: updatedAt,
+            rowid: rowid,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$AutoBookEventItemsTableProcessedTableManager = ProcessedTableManager<
+    _$BeeDatabase,
+    $AutoBookEventItemsTable,
+    AutoBookEventItem,
+    $$AutoBookEventItemsTableFilterComposer,
+    $$AutoBookEventItemsTableOrderingComposer,
+    $$AutoBookEventItemsTableAnnotationComposer,
+    $$AutoBookEventItemsTableCreateCompanionBuilder,
+    $$AutoBookEventItemsTableUpdateCompanionBuilder,
+    (
+      AutoBookEventItem,
+      BaseReferences<_$BeeDatabase, $AutoBookEventItemsTable, AutoBookEventItem>
+    ),
+    AutoBookEventItem,
+    PrefetchHooks Function()>;
 
 class $BeeDatabaseManager {
   final _$BeeDatabase _db;
@@ -16121,4 +18426,8 @@ class $BeeDatabaseManager {
       $$ExchangeRatesTableTableManager(_db, _db.exchangeRates);
   $$ExchangeRateOverridesTableTableManager get exchangeRateOverrides =>
       $$ExchangeRateOverridesTableTableManager(_db, _db.exchangeRateOverrides);
+  $$AutoBookEventsTableTableManager get autoBookEvents =>
+      $$AutoBookEventsTableTableManager(_db, _db.autoBookEvents);
+  $$AutoBookEventItemsTableTableManager get autoBookEventItems =>
+      $$AutoBookEventItemsTableTableManager(_db, _db.autoBookEventItems);
 }

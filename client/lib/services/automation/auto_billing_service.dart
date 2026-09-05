@@ -22,15 +22,29 @@ import '../data/source_channel_resolver.dart';
 import '../data/tag_seed_service.dart';
 import '../system/logger_service.dart';
 import 'auto_billing_config.dart';
+import 'auto_book_event.dart';
+import 'auto_book_event_store.dart';
 
 /// 短信一次处理的走向。队列管理侧据此决定丢弃 or 保留待补记。
 enum SmsProcessOutcome {
   /// 已入账(成功)
   success,
+
   /// AI 判定不是交易短信(正常情况,直接丢弃)
   noTransaction,
+
+  /// AI 识别到有效账单，但按安全策略进入待确认队列，尚未创建交易。
+  pending,
+
+  /// AI 识别到的账单已与已有 canonical transaction 判重，未创建新交易。
+  duplicate,
+
   /// 处理失败(AI 调用/落库异常,丢弃,避免对同一短信反复重试)
   failed,
+
+  /// 影子模式识别完成，但刻意没有创建交易。
+  shadow,
+
   /// 短信已接收但 AI text 未配置 —— 保留队列,配置后下次启动补记
   noAiConfigured,
 }
@@ -41,11 +55,15 @@ class AutoBillingService {
   static const _ledgerIdKey = 'current_ledger_id';
   static const _processedScreenshotsKey = 'processed_screenshots';
   static const _processedSmsFingerprintsKey = 'processed_sms_fingerprints';
-  static const _processedNotifyFingerprintsKey = 'processed_notify_fingerprints';
-  static const _processedScreenTextFingerprintsKey = 'processed_screen_text_fingerprints';
+  static const _processedNotifyFingerprintsKey =
+      'processed_notify_fingerprints';
+  static const _processedScreenTextFingerprintsKey =
+      'processed_screen_text_fingerprints';
   static const _processedBillFingerprintsKey = 'processed_bill_fingerprints';
+  static const _shadowModeKey = 'auto_book_shadow_mode';
 
   final ProviderContainer _container;
+  final AutoBookEventStore? _eventStore;
   final FlutterLocalNotificationsPlugin _notificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
@@ -64,7 +82,8 @@ class AutoBillingService {
   // 用于「同一账单重复进入详情页」这类页面指纹挡不住的场景。
   final Set<String> _processedBillFingerprints = {};
 
-  AutoBillingService(this._container) {
+  AutoBillingService(this._container, {AutoBookEventStore? eventStore})
+      : _eventStore = eventStore {
     _initNotifications();
     _loadProcessedScreenshots();
     _loadProcessedSmsFingerprints();
@@ -73,12 +92,29 @@ class AutoBillingService {
     _loadProcessedBillFingerprints();
   }
 
-  /// 候选制分流参数(M2):设置页开关「自动入账校验」默认开;
-  /// 关闭后与旧行为一致(全部直接入账)。
-  Future<AutoBookFlow?> _autoBookFlow() async {
+  /// 自动入口始终经过候选/语义安全层。旧版「自动入账校验」开关不能再
+  /// 关闭硬闸门或 event 幂等，否则一次误触发就可能把账单汇总写成消费；
+  /// 保留读取偏好仅为兼容旧数据，不让它绕过安全策略。
+  Future<AutoBookFlow> _autoBookFlow({String? eventKey}) async {
     final prefs = await SharedPreferences.getInstance();
-    if (!(prefs.getBool('auto_book_enabled') ?? true)) return null;
-    return AutoBookFlow(store: PendingCandidateStore());
+    return AutoBookFlow(
+      store: PendingCandidateStore(),
+      eventKey: eventKey,
+      eventStore: _eventStore,
+      strictSemantic: true,
+      shadowMode: prefs.getBool(_shadowModeKey) ?? false,
+    );
+  }
+
+  /// 影子模式只识别和记录摘要，不创建交易/候选，默认关闭。
+  Future<bool> isShadowModeEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_shadowModeKey) ?? false;
+  }
+
+  Future<void> setShadowModeEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_shadowModeKey, enabled);
   }
 
   /// 解析当前账本 ID(Provider → SharedPreferences → 数据库默认)。
@@ -159,11 +195,12 @@ class AutoBillingService {
       final prefs = await SharedPreferences.getInstance();
       final list = prefs.getStringList(_processedSmsFingerprintsKey) ?? [];
       _processedSmsFingerprints.addAll(list);
-      if (_processedSmsFingerprints.length > AutoBillingConfig.maxProcessedCache) {
+      if (_processedSmsFingerprints.length >
+          AutoBillingConfig.maxProcessedCache) {
         final toRemove = _processedSmsFingerprints.length -
             AutoBillingConfig.maxProcessedCache;
-        _processedSmsFingerprints.removeAll(
-            _processedSmsFingerprints.take(toRemove));
+        _processedSmsFingerprints
+            .removeAll(_processedSmsFingerprints.take(toRemove));
         await _saveProcessedSmsFingerprints();
       }
     } catch (_) {}
@@ -192,8 +229,8 @@ class AutoBillingService {
           AutoBillingConfig.maxProcessedCache) {
         final toRemove = _processedNotifyFingerprints.length -
             AutoBillingConfig.maxProcessedCache;
-        _processedNotifyFingerprints.removeAll(
-            _processedNotifyFingerprints.take(toRemove));
+        _processedNotifyFingerprints
+            .removeAll(_processedNotifyFingerprints.take(toRemove));
         await _saveProcessedNotifyFingerprints();
       }
     } catch (_) {}
@@ -201,8 +238,8 @@ class AutoBillingService {
 
   Future<void> _saveProcessedNotifyFingerprints() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(_processedNotifyFingerprintsKey,
-        _processedNotifyFingerprints.toList());
+    await prefs.setStringList(
+        _processedNotifyFingerprintsKey, _processedNotifyFingerprints.toList());
   }
 
   bool _isNotifyProcessed(String fingerprint) {
@@ -220,8 +257,8 @@ class AutoBillingService {
           AutoBillingConfig.maxProcessedCache) {
         final toRemove = _processedScreenTextFingerprints.length -
             AutoBillingConfig.maxProcessedCache;
-        _processedScreenTextFingerprints.removeAll(
-            _processedScreenTextFingerprints.take(toRemove));
+        _processedScreenTextFingerprints
+            .removeAll(_processedScreenTextFingerprints.take(toRemove));
         await _saveProcessedScreenTextFingerprints();
       }
     } catch (e) {
@@ -263,16 +300,18 @@ class AutoBillingService {
     String imagePath, {
     bool showNotification = true,
     bool notifyOnlyOnSuccess = false,
+    String? eventKey,
   }) async {
     final totalStartTime = DateTime.now().millisecondsSinceEpoch;
     print('📸 [AutoBilling] 开始处理截图: $imagePath');
-    logger.info('AutoBilling', '开始处理截图', imagePath);
+    logger.info('AutoBilling', '开始处理截图',
+        'pathHash=${autoBookHash(imagePath, length: 12)}');
 
     // 防重复处理: 已处理过的跳过
     if (_isProcessed(imagePath)) {
       print('⚠️ [AutoBilling] 截图已处理过，跳过');
       logger.warning('AutoBilling', '截图已处理过，跳过', imagePath);
-      return BookkeepingResult.empty;
+      return const BookkeepingResult(duplicateCount: 1);
     }
 
     // 防重复处理: 配置时间窗口内相同路径只处理一次
@@ -282,7 +321,7 @@ class AutoBillingService {
       final timeDiff = now - _lastProcessedTime;
       print('⚠️ [AutoBilling] 重复截图，跳过处理 (${timeDiff}ms前已处理)');
       logger.warning('AutoBilling', '重复截图，跳过处理', '${timeDiff}ms前已处理');
-      return BookkeepingResult.empty;
+      return const BookkeepingResult(duplicateCount: 1);
     }
 
     _lastProcessedPath = imagePath;
@@ -322,7 +361,8 @@ class AutoBillingService {
             logger.info('AutoBilling', '文件就绪', '等待时间=${waitTime}ms');
             break;
           }
-          await Future.delayed(Duration(milliseconds: AutoBillingConfig.fileCheckInterval));
+          await Future.delayed(
+              Duration(milliseconds: AutoBillingConfig.fileCheckInterval));
           waitTime = DateTime.now().millisecondsSinceEpoch - waitStartTime;
         }
 
@@ -339,7 +379,7 @@ class AutoBillingService {
               body: l10n.autoBillingNotifyFileUnavailableBody,
             );
           }
-          return BookkeepingResult.empty;
+          return const BookkeepingResult(failedCount: 1, retryable: true);
         }
       } else {
         print('✅ 文件已就绪,无需等待');
@@ -355,8 +395,8 @@ class AutoBillingService {
         // 静默模式:只在会话首次提示,之后不再打扰
         if (showNotification &&
             (!notifyOnlyOnSuccess || !_aiUnconfiguredWarnedOnce)) {
-          final l10n = lookupAppLocalizations(
-              PlatformDispatcher.instance.locale);
+          final l10n =
+              lookupAppLocalizations(PlatformDispatcher.instance.locale);
           await _showFinalNotification(
             progressId: notificationId,
             finalId: resultNotificationId,
@@ -365,13 +405,12 @@ class AutoBillingService {
           );
           _aiUnconfiguredWarnedOnce = true;
         }
-        return BookkeepingResult.empty;
+        return const BookkeepingResult(aiNotConfigured: true);
       }
 
       // 更新通知：开始识别
       if (showNotification && !notifyOnlyOnSuccess) {
-        final l10n =
-            lookupAppLocalizations(PlatformDispatcher.instance.locale);
+        final l10n = lookupAppLocalizations(PlatformDispatcher.instance.locale);
         await _showNotification(
           id: notificationId,
           title: l10n.autoBillingNotifyRecognizingScreenshotTitle,
@@ -393,8 +432,7 @@ class AutoBillingService {
             body: l10n.autoBillingNotifyNoLedgerBody,
           );
         }
-        await _markAsProcessed(imagePath);
-        return BookkeepingResult.empty;
+        return const BookkeepingResult(failedCount: 1, retryable: true);
       }
 
       final aiStartTime = DateTime.now().millisecondsSinceEpoch;
@@ -403,77 +441,91 @@ class AutoBillingService {
       final autoAddAttachment =
           _container.read(smartBillingAutoAttachmentProvider);
       final result = await _container.read(aiBookkeeperProvider).fromImage(
-        image: file,
-        ledgerId: ledgerId,
-        billGuard: PromptBuilder.billGuardForImage,
-        billingTypes: const [
-          TagSeedService.billingTypeImage,
-          TagSeedService.billingTypeAi,
-        ],
-        l10n: lookupAppLocalizations(PlatformDispatcher.instance.locale),
-        autoBookFlow: await _autoBookFlow(),
-        source: 'image',
-        // 多笔截图(罕见,但 AI 可能识别出一张账单页里的多笔)时,每笔都挂
-        // 同一张原图,与相册路径行为对齐。
-        //
-        // 走 urgent 模式:跳过 FlutterImageCompress(platform channel,后台冻
-        // 结时会卡)和 _getImageInfo,用 sync File.copy 几十 ms 内完成。
-        // 这样 attachment 在 perform() return 前就写完,不依赖用户开 app。
-        onSaved: autoAddAttachment
-            ? (txId, _) async {
-                try {
-                  final attachmentService =
-                      _container.read(attachmentServiceProvider);
-                  await attachmentService.saveAttachment(
-                    transactionId: txId,
-                    sourceFile: file,
-                    index: 0,
-                    urgent: true,
-                  );
-                  _container
-                      .read(attachmentListRefreshProvider.notifier)
-                      .state++;
-                } catch (e, st) {
-                  logger.error('AutoBilling', '保存截图附件失败', e, st);
-                }
-              }
-            : null,
-      );
+            image: file,
+            ledgerId: ledgerId,
+            billGuard: PromptBuilder.billGuardForImage,
+            billingTypes: const [
+              TagSeedService.billingTypeImage,
+              TagSeedService.billingTypeAi,
+            ],
+            l10n: lookupAppLocalizations(PlatformDispatcher.instance.locale),
+            autoBookFlow: await _autoBookFlow(eventKey: eventKey),
+            source: 'image',
+            // 多笔截图(罕见,但 AI 可能识别出一张账单页里的多笔)时,每笔都挂
+            // 同一张原图,与相册路径行为对齐。
+            //
+            // 走 urgent 模式:跳过 FlutterImageCompress(platform channel,后台冻
+            // 结时会卡)和 _getImageInfo,用 sync File.copy 几十 ms 内完成。
+            // 这样 attachment 在 perform() return 前就写完,不依赖用户开 app。
+            onSaved: autoAddAttachment
+                ? (txId, _) async {
+                    try {
+                      final attachmentService =
+                          _container.read(attachmentServiceProvider);
+                      await attachmentService.saveAttachment(
+                        transactionId: txId,
+                        sourceFile: file,
+                        index: 0,
+                        urgent: true,
+                      );
+                      _container
+                          .read(attachmentListRefreshProvider.notifier)
+                          .state++;
+                    } catch (e, st) {
+                      logger.error('AutoBilling', '保存截图附件失败', e, st);
+                    }
+                  }
+                : null,
+          );
 
       final aiElapsed = DateTime.now().millisecondsSinceEpoch - aiStartTime;
       logger.info('AutoBilling', 'AI 识别 + 落库完成',
           '耗时=${aiElapsed}ms, 成功=${result.savedCount} 笔, 失败=${result.failedCount}');
 
-      // 不管成败,这张截图都不再处理
-      await _markAsProcessed(imagePath);
+      // 只有已进入终态的结果才写入旧路径缓存。临时失败必须让 Coordinator
+      // 重试；事件表是主幂等来源，路径缓存只是旧版本兼容兜底。
+      if (result.failedCount == 0 &&
+          !result.retryable &&
+          !result.aiNotConfigured) {
+        await _markAsProcessed(imagePath);
+      }
 
-      if (!result.success) {
+      if (result.success) {
+        _container.read(statsRefreshProvider.notifier).state++;
+        await PostProcessor.runC(_container, ledgerId: ledgerId, tags: true);
+        await _syncBillingToAiChat(result);
+      }
+
+      if (result.retryable || result.failedCount > 0) {
         if (showNotification && !notifyOnlyOnSuccess) {
           final l10n =
               lookupAppLocalizations(PlatformDispatcher.instance.locale);
-          // failedCount>0:提取到账单但入库失败(真·错误);否则=AI 判定不是账单
-          final isNoBill = result.failedCount == 0;
           await _showFinalNotification(
             progressId: notificationId,
             finalId: resultNotificationId,
-            title: isNoBill
-                ? l10n.autoBillingNotifyNoBillTitle
-                : l10n.autoBillingNotifyRecognizeFailedTitle,
-            body: isNoBill
-                ? l10n.autoBillingNotifyNoBillBody
-                : l10n.autoBillingNotifyRecognizeFailedBody,
+            title: l10n.autoBillingNotifyRecognizeFailedTitle,
+            body: l10n.autoBillingNotifyRecognizeFailedBody,
           );
         }
-        return BookkeepingResult.empty;
+        return result;
       }
 
-      _container.read(statsRefreshProvider.notifier).state++;
-      await PostProcessor.runC(_container, ledgerId: ledgerId, tags: true);
-      await _syncBillingToAiChat(result);
+      if (!result.handled) {
+        if (showNotification && !notifyOnlyOnSuccess) {
+          final l10n =
+              lookupAppLocalizations(PlatformDispatcher.instance.locale);
+          await _showFinalNotification(
+            progressId: notificationId,
+            finalId: resultNotificationId,
+            title: l10n.autoBillingNotifyNoBillTitle,
+            body: l10n.autoBillingNotifyNoBillBody,
+          );
+        }
+        return result;
+      }
 
-      if (showNotification) {
-        final l10n =
-            lookupAppLocalizations(PlatformDispatcher.instance.locale);
+      if (result.success && showNotification) {
+        final l10n = lookupAppLocalizations(PlatformDispatcher.instance.locale);
         await _showFinalNotification(
           progressId: notificationId,
           finalId: resultNotificationId,
@@ -481,16 +533,16 @@ class AutoBillingService {
           body: _successBody(result, l10n),
         );
       }
-      logger.info('AutoBilling', '自动记账成功',
-          'ids=${result.transactionIds}, 总金额=${result.totalAbsAmount}');
+      logger.info('AutoBilling', '自动记账事件已处理',
+          'saved=${result.savedCount}, pending=${result.awaitingCount}, duplicate=${result.duplicateCount}, ignored=${result.ignoredCount}');
       return result;
     } catch (e, stackTrace) {
       print('❌ 处理截图失败: $e');
-      logger.error('AutoBilling', '处理截图失败', {
-        'path': imagePath,
-        'error': e.toString(),
-        'stage': '未知阶段',
-      }, stackTrace);
+      logger.error(
+          'AutoBilling',
+          '处理截图失败',
+          {'pathHash': autoBookHash(imagePath, length: 12), 'stage': '未知阶段'},
+          stackTrace);
       if (showNotification && !notifyOnlyOnSuccess) {
         try {
           final l10n =
@@ -503,7 +555,7 @@ class AutoBillingService {
           );
         } catch (_) {}
       }
-      return BookkeepingResult.empty;
+      return const BookkeepingResult(failedCount: 1, retryable: true);
     } finally {
       final totalElapsed =
           DateTime.now().millisecondsSinceEpoch - totalStartTime;
@@ -515,19 +567,40 @@ class AutoBillingService {
   /// [text] 快捷指令传递的识别文本
   /// [showNotification] 是否显示通知（默认true）
   /// 返回：交易记录ID，失败返回null
+  /// 兼容旧调用方的文本记账入口。需要知道 pending/duplicate/retry 状态时，
+  /// 使用 [processTextResult]。
   Future<int?> processText(
     String text, {
     bool showNotification = true,
+    String? eventKey,
+  }) async {
+    final result = await processTextResult(
+      text,
+      showNotification: showNotification,
+      eventKey: eventKey,
+    );
+    return result.firstTransactionId;
+  }
+
+  /// 文本自动记账的完整结果入口。
+  Future<BookkeepingResult> processTextResult(
+    String text, {
+    bool showNotification = true,
+    String? eventKey,
   }) async {
     final totalStartTime = DateTime.now().millisecondsSinceEpoch;
-    print('📝 [AutoBilling] 开始处理文本: $text');
+    final textHash =
+        sha256.convert(utf8.encode(text)).toString().substring(0, 12);
+    logger.debug(
+        'AutoBilling', '开始处理文本', 'length=${text.length}, hash=$textHash');
 
     try {
       const notificationId = 1002;
       const resultNotificationId = 1102;
       final l10n = lookupAppLocalizations(PlatformDispatcher.instance.locale);
 
-      // 兜底:AI text 未配置 → 系统通知,引导用户去配置
+      // 兜底:AI text 未配置 → 系统通知,引导用户去配置。保留 captured 状态，
+      // 由启动 drain 在用户完成配置后再次尝试。
       if (!await AIProviderManager.isCapabilityConfigured(
           AICapabilityType.text)) {
         logger.warning('AutoBilling', 'AI text 未配置,跳过文本记账');
@@ -538,10 +611,9 @@ class AutoBillingService {
             body: l10n.aiNotConfiguredNotificationBody,
           );
         }
-        return null;
+        return const BookkeepingResult(aiNotConfigured: true);
       }
 
-      // 显示"正在识别"通知
       if (showNotification) {
         await _showNotification(
           id: notificationId,
@@ -550,7 +622,6 @@ class AutoBillingService {
         );
       }
 
-      // AI 文本提取 + 多笔保存(全部委托 AiBookkeeper)
       final ledgerId = await _resolveLedgerId();
       if (ledgerId == null) {
         if (showNotification) {
@@ -561,58 +632,66 @@ class AutoBillingService {
             body: l10n.autoBillingNotifyNoLedgerBody,
           );
         }
-        return null;
+        return const BookkeepingResult(failedCount: 1, retryable: true);
       }
 
       final result = await _container.read(aiBookkeeperProvider).fromText(
-        text: text,
-        ledgerId: ledgerId,
-        billingTypes: const [
-          TagSeedService.billingTypeImage, // 通知文本场景沿用 image 标签习惯
-          TagSeedService.billingTypeAi,
-        ],
-        l10n: l10n,
-        autoBookFlow: await _autoBookFlow(),
-        source: 'text',
-      );
+            text: text,
+            ledgerId: ledgerId,
+            billingTypes: const [
+              TagSeedService.billingTypeImage,
+              TagSeedService.billingTypeAi,
+            ],
+            billGuard: PromptBuilder.billGuardForText,
+            l10n: l10n,
+            autoBookFlow: await _autoBookFlow(eventKey: eventKey),
+            source: 'text',
+            evidenceText: text,
+          );
 
-      if (!result.success) {
+      if (result.retryable || result.failedCount > 0) {
         if (showNotification) {
           await _showFinalNotification(
             progressId: notificationId,
             finalId: resultNotificationId,
             title: l10n.autoBillingNotifyRecognizeFailedTitle,
-            body: l10n.autoBillingNotifyNoAmountBody,
+            body: l10n.autoBillingNotifyRecognizeFailedBody,
           );
         }
-        return null;
-      }
-
-      _container.read(statsRefreshProvider.notifier).state++;
-      await PostProcessor.runC(_container, ledgerId: ledgerId, tags: true);
-      await _syncBillingToAiChat(result);
-
-      if (showNotification) {
+      } else if (!result.handled && showNotification) {
         await _showFinalNotification(
           progressId: notificationId,
           finalId: resultNotificationId,
-          title: _successTitle(result, l10n),
-          body: _successBody(result, l10n),
+          title: l10n.autoBillingNotifyRecognizeFailedTitle,
+          body: l10n.autoBillingNotifyNoAmountBody,
         );
       }
-      return result.firstTransactionId;
-    } catch (e) {
-      logger.error('AutoBilling', '文本处理失败', e);
+
+      if (result.success) {
+        _container.read(statsRefreshProvider.notifier).state++;
+        await PostProcessor.runC(_container, ledgerId: ledgerId, tags: true);
+        await _syncBillingToAiChat(result);
+        if (showNotification) {
+          await _showFinalNotification(
+            progressId: notificationId,
+            finalId: resultNotificationId,
+            title: _successTitle(result, l10n),
+            body: _successBody(result, l10n),
+          );
+        }
+      }
+      return result;
+    } catch (e, st) {
+      logger.error('AutoBilling', '文本处理失败', e, st);
       if (showNotification) {
-        final l10n =
-            lookupAppLocalizations(PlatformDispatcher.instance.locale);
+        final l10n = lookupAppLocalizations(PlatformDispatcher.instance.locale);
         await _showNotification(
           id: 1002,
           title: l10n.autoBillingNotifyProcessFailedTitle,
           body: l10n.autoBillingNotifyProcessFailedBody(e.toString()),
         );
       }
-      return null;
+      return const BookkeepingResult(failedCount: 1, retryable: true);
     } finally {
       final totalElapsed =
           DateTime.now().millisecondsSinceEpoch - totalStartTime;
@@ -636,6 +715,7 @@ class AutoBillingService {
     String body, {
     bool showNotification = true,
     bool skipDedup = false,
+    String? eventKey,
   }) async {
     final fingerprint = smsFingerprint(sender, body);
 
@@ -643,7 +723,7 @@ class AutoBillingService {
     // skipDedup:仅「模拟短信」调试入口使用 —— 同一模板可反复发送验证链路。
     if (!skipDedup && _isSmsProcessed(fingerprint)) {
       logger.debug('AutoBilling', '短信指纹已处理过,跳过', fingerprint);
-      return SmsProcessOutcome.failed;
+      return SmsProcessOutcome.duplicate;
     }
 
     const notificationId = 1003;
@@ -664,11 +744,6 @@ class AutoBillingService {
         }
         return SmsProcessOutcome.noAiConfigured;
       }
-
-      // 标记时机:AI 检查通过、真正开始解析前。进程在 AI 调用中,此条会在
-      // 下次 drain 被"已处理"跳过(宁可丢一笔,不重复入账)——顺序是
-      // 检查→标记→解析,二者之间被杀不会丢已持久化的数据。
-      await _markSmsProcessed(fingerprint);
 
       if (showNotification) {
         await _showNotification(
@@ -695,34 +770,41 @@ class AutoBillingService {
       // 账户/分类先验 + 传递给账户映射回退。
       final channel = SourceChannelResolver.channelForSmsSender(sender);
       final result = await _container.read(aiBookkeeperProvider).fromText(
-        text: SourceChannelResolver.withSourcePrefix(channel, body),
-        ledgerId: ledgerId,
-        billingTypes: const [
-          TagSeedService.billingTypeSms,
-          TagSeedService.billingTypeAi,
-        ],
-        billGuard: PromptBuilder.billGuardForSms,
-        l10n: l10n,
-        autoBookFlow: await _autoBookFlow(),
-        source: 'sms',
-        sourceChannel: channel,
-      );
+            text: SourceChannelResolver.withSourcePrefix(channel, body),
+            ledgerId: ledgerId,
+            billingTypes: const [
+              TagSeedService.billingTypeSms,
+              TagSeedService.billingTypeAi,
+            ],
+            billGuard: PromptBuilder.billGuardForSms,
+            l10n: l10n,
+            autoBookFlow: await _autoBookFlow(eventKey: eventKey),
+            source: 'sms',
+            sourceChannel: channel,
+            evidenceText: body,
+          );
 
-      if (!result.success) {
-        if (result.failedCount == 0) {
-          // AI 判定本次不是交易短信:同样发一条"未识别到账单"通知收尾,
-          // 让用户知道自动记账确实跑过(成功/失败都应有通知)。
-          logger.info('AutoBilling', '短信非交易,已丢弃');
-          if (showNotification) {
-            await _showFinalNotification(
-              progressId: notificationId,
-              finalId: resultNotificationId,
-              title: l10n.autoBillingNotifyNoBillTitle,
-              body: l10n.autoBillingNotifyNoBillBody,
-            );
-          }
-          return SmsProcessOutcome.noTransaction;
+      if (result.success) {
+        _container.read(statsRefreshProvider.notifier).state++;
+        await PostProcessor.runC(_container, ledgerId: ledgerId, tags: true);
+        await _syncBillingToAiChat(result);
+      }
+
+      final outcome = _outcomeForResult(result);
+      if (outcome == SmsProcessOutcome.noTransaction) {
+        await _markSmsProcessed(fingerprint);
+        logger.info('AutoBilling', '短信非交易,已丢弃');
+        if (showNotification) {
+          await _showFinalNotification(
+            progressId: notificationId,
+            finalId: resultNotificationId,
+            title: l10n.autoBillingNotifyNoBillTitle,
+            body: l10n.autoBillingNotifyNoBillBody,
+          );
         }
+        return outcome;
+      }
+      if (outcome == SmsProcessOutcome.failed) {
         if (showNotification) {
           await _showFinalNotification(
             progressId: notificationId,
@@ -731,13 +813,17 @@ class AutoBillingService {
             body: l10n.autoBillingNotifyRecognizeFailedBody,
           );
         }
-        return SmsProcessOutcome.failed;
+        return outcome;
+      }
+      if (outcome == SmsProcessOutcome.pending ||
+          outcome == SmsProcessOutcome.duplicate ||
+          outcome == SmsProcessOutcome.shadow) {
+        await _markSmsProcessed(fingerprint);
+        logger.info('AutoBilling', '短信已处理但未新建交易', outcome.name);
+        return outcome;
       }
 
-      _container.read(statsRefreshProvider.notifier).state++;
-      await PostProcessor.runC(_container, ledgerId: ledgerId, tags: true);
-      await _syncBillingToAiChat(result);
-
+      await _markSmsProcessed(fingerprint);
       if (showNotification) {
         await _showFinalNotification(
           progressId: notificationId,
@@ -767,7 +853,10 @@ class AutoBillingService {
   /// 与 native [com.smartbook.zhi.SmsReceiver] 同口径(取前 8 字节),
   /// 保证两层去重共用同一指纹。
   static String smsFingerprint(String sender, String body) {
-    return sha256.convert(utf8.encode('$sender|$body')).toString().substring(0, 16);
+    return sha256
+        .convert(utf8.encode('$sender|$body'))
+        .toString()
+        .substring(0, 16);
   }
 
   /// 通知指纹:sha256(pkg|title|body) 前 16 位 hex。
@@ -788,6 +877,20 @@ class AutoBillingService {
         .substring(0, 16);
   }
 
+  /// 将统一结果映射为队列可理解的状态。失败优先于 pending，避免部分
+  /// 成功时把尚未落库的账单误当作已完成；saved transaction 会在调用方先做
+  /// post-process，下一次 retry 再由语义去重兜底。
+  SmsProcessOutcome _outcomeForResult(BookkeepingResult result) {
+    if (result.failedCount > 0 || result.retryable) {
+      return SmsProcessOutcome.failed;
+    }
+    if (result.awaitingCount > 0) return SmsProcessOutcome.pending;
+    if (result.shadowCount > 0) return SmsProcessOutcome.shadow;
+    if (result.success) return SmsProcessOutcome.success;
+    if (result.duplicateCount > 0) return SmsProcessOutcome.duplicate;
+    return SmsProcessOutcome.noTransaction;
+  }
+
   /// 核心:处理支付通知文本并自动记账(通知监听)。
   ///
   /// 与 [processSms] 流程一致(native 过滤 → 指纹二次去重 → fromText),
@@ -799,12 +902,13 @@ class AutoBillingService {
     String body, {
     bool showNotification = true,
     bool skipDedup = false,
+    String? eventKey,
   }) async {
     final fingerprint = notifyFingerprint(pkg, title, body);
 
     if (!skipDedup && _isNotifyProcessed(fingerprint)) {
       logger.debug('AutoBilling', '通知指纹已处理过,跳过', fingerprint);
-      return SmsProcessOutcome.failed;
+      return SmsProcessOutcome.duplicate;
     }
 
     const notificationId = 1004;
@@ -825,8 +929,6 @@ class AutoBillingService {
         }
         return SmsProcessOutcome.noAiConfigured;
       }
-
-      await _markNotifyProcessed(fingerprint);
 
       if (showNotification) {
         await _showNotification(
@@ -854,34 +956,41 @@ class AutoBillingService {
       final rawText = title.trim().isEmpty ? body : '$title\n$body';
       final text = SourceChannelResolver.withSourcePrefix(channel, rawText);
       final result = await _container.read(aiBookkeeperProvider).fromText(
-        text: text,
-        ledgerId: ledgerId,
-        billingTypes: const [
-          TagSeedService.billingTypeNotification,
-          TagSeedService.billingTypeAi,
-        ],
-        billGuard: PromptBuilder.billGuardForNotification,
-        l10n: l10n,
-        autoBookFlow: await _autoBookFlow(),
-        source: 'notification',
-        sourceChannel: channel,
-      );
+            text: text,
+            ledgerId: ledgerId,
+            billingTypes: const [
+              TagSeedService.billingTypeNotification,
+              TagSeedService.billingTypeAi,
+            ],
+            billGuard: PromptBuilder.billGuardForNotification,
+            l10n: l10n,
+            autoBookFlow: await _autoBookFlow(eventKey: eventKey),
+            source: 'notification',
+            sourceChannel: channel,
+            evidenceText: rawText,
+          );
 
-      if (!result.success) {
-        if (result.failedCount == 0) {
-          // AI 判定本次不是交易通知:同样发一条"未识别到账单"通知收尾,
-          // 让用户知道自动记账确实跑过(成功/失败都应有通知)。
-          logger.info('AutoBilling', '通知非交易,已丢弃');
-          if (showNotification) {
-            await _showFinalNotification(
-              progressId: notificationId,
-              finalId: resultNotificationId,
-              title: l10n.autoBillingNotifyNoBillTitle,
-              body: l10n.autoBillingNotifyNoBillBody,
-            );
-          }
-          return SmsProcessOutcome.noTransaction;
+      if (result.success) {
+        _container.read(statsRefreshProvider.notifier).state++;
+        await PostProcessor.runC(_container, ledgerId: ledgerId, tags: true);
+        await _syncBillingToAiChat(result);
+      }
+
+      final outcome = _outcomeForResult(result);
+      if (outcome == SmsProcessOutcome.noTransaction) {
+        await _markNotifyProcessed(fingerprint);
+        logger.info('AutoBilling', '通知非交易,已丢弃');
+        if (showNotification) {
+          await _showFinalNotification(
+            progressId: notificationId,
+            finalId: resultNotificationId,
+            title: l10n.autoBillingNotifyNoBillTitle,
+            body: l10n.autoBillingNotifyNoBillBody,
+          );
         }
+        return outcome;
+      }
+      if (outcome == SmsProcessOutcome.failed) {
         if (showNotification) {
           await _showFinalNotification(
             progressId: notificationId,
@@ -890,13 +999,17 @@ class AutoBillingService {
             body: l10n.autoBillingNotifyRecognizeFailedBody,
           );
         }
-        return SmsProcessOutcome.failed;
+        return outcome;
+      }
+      if (outcome == SmsProcessOutcome.pending ||
+          outcome == SmsProcessOutcome.duplicate ||
+          outcome == SmsProcessOutcome.shadow) {
+        await _markNotifyProcessed(fingerprint);
+        logger.info('AutoBilling', '通知已处理但未新建交易', outcome.name);
+        return outcome;
       }
 
-      _container.read(statsRefreshProvider.notifier).state++;
-      await PostProcessor.runC(_container, ledgerId: ledgerId, tags: true);
-      await _syncBillingToAiChat(result);
-
+      await _markNotifyProcessed(fingerprint);
       if (showNotification) {
         await _showFinalNotification(
           progressId: notificationId,
@@ -932,19 +1045,22 @@ class AutoBillingService {
     String pkg,
     String text, {
     bool showNotification = true,
+
     /// 最小打扰模式:进入页面触发识别时静默,只在「识别完成且成功入账」时通知;
     /// 非交易/失败/已去重一律不通知(与截图自动监听 notifyOnlyOnSuccess 一致)。
     bool notifyOnlyOnSuccess = true,
+
     /// 「AI text 未配置」引导提示(必要的一次性引导,不由 notifyOnlyOnSuccess
     /// 静默;是否提示由调用方用会话级去重控制)。
     bool notifyAiUnconfigured = true,
     bool skipDedup = false,
+    String? eventKey,
   }) async {
     final fingerprint = screenTextFingerprint(pkg, text);
 
     if (!skipDedup && _isScreenTextProcessed(fingerprint)) {
       logger.debug('AutoBilling', '屏幕文本指纹已处理过,跳过', fingerprint);
-      return SmsProcessOutcome.failed;
+      return SmsProcessOutcome.duplicate;
     }
 
     const notificationId = 1005;
@@ -965,8 +1081,6 @@ class AutoBillingService {
         }
         return SmsProcessOutcome.noAiConfigured;
       }
-
-      await _markScreenTextProcessed(fingerprint);
 
       if (showNotification && !notifyOnlyOnSuccess) {
         await _showNotification(
@@ -997,81 +1111,97 @@ class AutoBillingService {
       // 落库成功后回填指纹,跨会话生效。
       final channelKey = channel ?? pkg;
       final result = await _container.read(aiBookkeeperProvider).fromText(
-        text: textWithSource,
-        ledgerId: ledgerId,
-        billingTypes: const [
-          TagSeedService.billingTypeScreen,
-          TagSeedService.billingTypeAi,
-        ],
-        billGuard: PromptBuilder.billGuardForScreen,
-        l10n: l10n,
-        autoBookFlow: await _autoBookFlow(),
-        source: 'screen',
-        sourceChannel: channel,
-        skipIfProcessed: (bill) async {
+            text: textWithSource,
+            ledgerId: ledgerId,
+            billingTypes: const [
+              TagSeedService.billingTypeScreen,
+              TagSeedService.billingTypeAi,
+            ],
+            billGuard: PromptBuilder.billGuardForScreen,
+            l10n: l10n,
+            autoBookFlow: await _autoBookFlow(eventKey: eventKey),
+            source: 'screen',
+            sourceChannel: channel,
+            evidenceText: text,
+            skipIfProcessed: (bill) async {
+              final amount = bill.amount;
+              if (amount == null || amount.abs() <= 0) return false;
+              final fp = billFingerprint(
+                channel: channelKey,
+                amount: amount,
+                note: bill.note,
+                time: bill.time,
+              );
+              return _isBillProcessed(fp);
+            },
+          );
+
+      // 入账成功的笔,把账单级指纹持久化(避免下次进同一详情页重复入账)。
+      if (result.failedCount == 0) {
+        for (final bill in result.savedBills) {
           final amount = bill.amount;
-          if (amount == null || amount.abs() <= 0) return false;
+          if (amount == null || amount.abs() <= 0) continue;
           final fp = billFingerprint(
             channel: channelKey,
             amount: amount,
             note: bill.note,
             time: bill.time,
           );
-          return _isBillProcessed(fp);
-        },
-      );
-
-      // 入账成功的笔,把账单级指纹持久化(避免下次进同一详情页重复入账)。
-      for (final bill in result.savedBills) {
-        final amount = bill.amount;
-        if (amount == null || amount.abs() <= 0) continue;
-        final fp = billFingerprint(
-          channel: channelKey,
-          amount: amount,
-          note: bill.note,
-          time: bill.time,
-        );
-        if (!_isBillProcessed(fp)) {
-          _processedBillFingerprints.add(fp);
+          if (!_isBillProcessed(fp)) {
+            _processedBillFingerprints.add(fp);
+          }
         }
       }
-      if (_processedBillFingerprints.length > AutoBillingConfig.maxProcessedCache) {
+
+      if (_processedBillFingerprints.length >
+          AutoBillingConfig.maxProcessedCache) {
         final toRemove = _processedBillFingerprints.length -
             AutoBillingConfig.maxProcessedCache;
-        _processedBillFingerprints.removeAll(
-            _processedBillFingerprints.take(toRemove));
+        _processedBillFingerprints
+            .removeAll(_processedBillFingerprints.take(toRemove));
       }
       await _saveProcessedBillFingerprints();
 
-      if (!result.success) {
-        if (result.failedCount == 0) {
-          // AI 判定本次不是交易页面(商品浏览/首页等):已跳过,通知收尾
-          logger.info('AutoBilling', '屏幕文本非交易页面,已丢弃');
-          if (showNotification && !notifyOnlyOnSuccess) {
-            await _showFinalNotification(
-              progressId: notificationId,
-              finalId: resultNotificationId,
-              title: l10n.autoScreenBillingNoBillTitle,
-              body: l10n.autoScreenBillingNoBillBody,
-            );
-          }
-          return SmsProcessOutcome.noTransaction;
+      if (result.success) {
+        _container.read(statsRefreshProvider.notifier).state++;
+        await PostProcessor.runC(_container, ledgerId: ledgerId, tags: true);
+        await _syncBillingToAiChat(result);
+      }
+
+      final outcome = _outcomeForResult(result);
+      if (outcome == SmsProcessOutcome.noTransaction) {
+        await _markScreenTextProcessed(fingerprint);
+        logger.info('AutoBilling', '屏幕文本非交易页面,已丢弃');
+        if (showNotification && !notifyOnlyOnSuccess) {
+          await _showFinalNotification(
+            progressId: notificationId,
+            finalId: resultNotificationId,
+            title: l10n.autoScreenBillingNoBillTitle,
+            body: l10n.autoScreenBillingNoBillBody,
+          );
         }
+        return outcome;
+      }
+      if (outcome == SmsProcessOutcome.failed) {
         if (showNotification && !notifyOnlyOnSuccess) {
           await _showFinalNotification(
             progressId: notificationId,
             finalId: resultNotificationId,
             title: l10n.autoScreenBillingRecognizeFailedTitle,
-            body: l10n.autoScreenBillingRecognizeFailedBody,
+            body: l10n.autoBillingNotifyRecognizeFailedBody,
           );
         }
-        return SmsProcessOutcome.failed;
+        return outcome;
+      }
+      if (outcome == SmsProcessOutcome.pending ||
+          outcome == SmsProcessOutcome.duplicate ||
+          outcome == SmsProcessOutcome.shadow) {
+        await _markScreenTextProcessed(fingerprint);
+        logger.info('AutoBilling', '屏幕文本已处理但未新建交易', outcome.name);
+        return outcome;
       }
 
-      _container.read(statsRefreshProvider.notifier).state++;
-      await PostProcessor.runC(_container, ledgerId: ledgerId, tags: true);
-      await _syncBillingToAiChat(result);
-
+      await _markScreenTextProcessed(fingerprint);
       if (showNotification) {
         await _showFinalNotification(
           progressId: notificationId,
@@ -1114,11 +1244,12 @@ class AutoBillingService {
       final prefs = await SharedPreferences.getInstance();
       final list = prefs.getStringList(_processedBillFingerprintsKey) ?? [];
       _processedBillFingerprints.addAll(list);
-      if (_processedBillFingerprints.length > AutoBillingConfig.maxProcessedCache) {
+      if (_processedBillFingerprints.length >
+          AutoBillingConfig.maxProcessedCache) {
         final toRemove = _processedBillFingerprints.length -
             AutoBillingConfig.maxProcessedCache;
-        _processedBillFingerprints.removeAll(
-            _processedBillFingerprints.take(toRemove));
+        _processedBillFingerprints
+            .removeAll(_processedBillFingerprints.take(toRemove));
         await _saveProcessedBillFingerprints();
       }
     } catch (_) {}
@@ -1210,8 +1341,8 @@ class AutoBillingService {
           createdAt: Value(DateTime.now()),
         ),
       );
-      logger.debug(
-          'AutoBilling', '已同步自动记账到 AI 会话', 'conversationId=${conv.id}, txIds=$txIds');
+      logger.debug('AutoBilling', '已同步自动记账到 AI 会话',
+          'conversationId=${conv.id}, txIds=$txIds');
     } catch (e, st) {
       logger.error('AutoBilling', '同步自动记账到 AI 会话失败(不影响记账)', e, st);
     }
@@ -1267,8 +1398,7 @@ class AutoBillingService {
     try {
       await _notificationsPlugin.show(id, title, body, details);
     } catch (e) {
-      logger.warning('AutoBilling',
-          '通知发送失败(未授权通知时属预期,不中断记账流程): $e');
+      logger.warning('AutoBilling', '通知发送失败(未授权通知时属预期,不中断记账流程): $e');
     }
   }
 

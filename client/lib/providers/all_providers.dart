@@ -3,7 +3,7 @@
 // 主题相关
 export 'theme_providers.dart';
 
-// 数据库相关  
+// 数据库相关
 export 'database_providers.dart';
 
 // 统计相关
@@ -38,3 +38,6 @@ export 'tag_providers.dart';
 
 // 智能记账相关
 export 'smart_billing_providers.dart';
+
+// 自动记账入口协调与事件幂等
+export 'automation_providers.dart';
