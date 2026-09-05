@@ -48,7 +48,7 @@ class SmsReceiver : BroadcastReceiver() {
         }
 
         if (!isTrustedSender(sender)) {
-            log("发送者未命中白名单,丢弃: $sender")
+            log("发送者未命中白名单,丢弃")
             return
         }
         if (shouldReject(body)) {
@@ -59,21 +59,25 @@ class SmsReceiver : BroadcastReceiver() {
             log("纯余额/结余提醒(有余额词但无收支动作),丢弃")
             return
         }
+        if (isNonBookableStatus(body)) {
+            log("内容命中账单汇总/待支付/失败状态,丢弃")
+            return
+        }
         if (!hasAmountOrAction(body)) {
             log("无金额且无收支动作特征,丢弃")
             return
         }
 
         val fingerprint = fingerprint(sender, body)
-        val memo = loadFingerprints(prefs)
-        if (memo.contains(fingerprint)) {
-            log("指纹已处理过,丢弃")
+        val sourceTimestamp = smsMessages
+            .map { it.timestampMillis }
+            .filter { it > 0L }
+            .minOrNull() ?: System.currentTimeMillis()
+        val eventKey = eventKey(sender, fingerprint, sourceTimestamp)
+        if (!enqueue(prefs, eventKey, fingerprint, sender, body, sourceTimestamp)) {
+            log("短信已在已处理记录或待处理队列中,丢弃")
             return
         }
-        memo.add(fingerprint)
-        saveFingerprints(prefs, memo)
-
-        enqueue(prefs, fingerprint, sender, body, System.currentTimeMillis())
 
         // 通知 Flutter 活实例;进程已死则自然无人接收,队列留待下次启动处理。
         try {
@@ -112,10 +116,23 @@ class SmsReceiver : BroadcastReceiver() {
             !ACTION_KEYWORDS.any { body.contains(it) }
     }
 
-    /** sha256(sender|body) 前 16 位 hex,作为短信指纹。 */
+    /** 明确不是已完成交易的状态，交给上层前先挡住高频误记账来源。 */
+    fun isNonBookableStatus(body: String): Boolean {
+        return NON_BOOKABLE_KEYWORDS.any { body.contains(it) }
+    }
+
+    /** sha256(sender|body) 前 16 位 hex,作为兼容用内容指纹。 */
     fun fingerprint(sender: String, body: String): String {
         return MessageDigest.getInstance("SHA-256")
             .digest("$sender|$body".toByteArray())
+            .take(8)
+            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+    }
+
+    /** 同一正文在不同接收时间仍可区分的原始事件键。 */
+    fun eventKey(sender: String, fingerprint: String, timestamp: Long): String {
+        return MessageDigest.getInstance("SHA-256")
+            .digest("$sender|$timestamp|$fingerprint".toByteArray())
             .take(8)
             .joinToString("") { "%02x".format(it.toInt() and 0xff) }
     }
@@ -137,18 +154,41 @@ class SmsReceiver : BroadcastReceiver() {
     // ------------------------------------------------------------
 
     @Synchronized
-    private fun enqueue(prefs: SharedPreferences, fingerprint: String, sender: String, body: String, ts: Long) {
+    private fun enqueue(
+        prefs: SharedPreferences,
+        eventKey: String,
+        fingerprint: String,
+        sender: String,
+        body: String,
+        ts: Long,
+    ): Boolean {
+        val processed = loadFingerprints(prefs)
+        // 新事件按 eventKey 去重，不能把内容 fingerprint 当永久幂等键，
+        // 否则两条正文完全相同但时间不同的真实短信会互相覆盖。
+        if (processed.contains(PROCESSED_EVENT_PREFIX + eventKey)) return false
         val arr = JSONArray(prefs.getString(KEY_QUEUE, null) ?: "[]")
+        for (i in 0 until arr.length()) {
+            val obj = arr.optJSONObject(i) ?: continue
+            if (obj.optString("eventKey") == eventKey ||
+                (obj.optString("eventKey").isEmpty() &&
+                    obj.optString("fingerprint") == fingerprint)
+            ) {
+                return false
+            }
+        }
         arr.put(
             JSONObject()
+                .put("eventKey", eventKey)
                 .put("fingerprint", fingerprint)
                 .put("sender", sender)
                 .put("body", body)
                 .put("timestamp", ts)
         )
-        // 超出容量:删最旧(0 是队头,最先入队)
+        // 超出容量:删最旧(0 是队头,最先入队)。未 ACK 的项不写入 processed,
+        // 避免容量淘汰造成静默丢失后永久阻断重放。
         while (arr.length() > MAX_QUEUE) arr.remove(0)
         prefs.edit().putString(KEY_QUEUE, arr.toString()).apply()
+        return true
     }
 
     /**
@@ -168,6 +208,7 @@ class SmsReceiver : BroadcastReceiver() {
             val obj = arr.optJSONObject(i) ?: continue
             result.add(
                 mapOf(
+                    "eventKey" to obj.optString("eventKey"),
                     "fingerprint" to obj.optString("fingerprint"),
                     "sender" to obj.optString("sender"),
                     "body" to obj.optString("body"),
@@ -180,17 +221,38 @@ class SmsReceiver : BroadcastReceiver() {
 
     /** 按指纹删除已处理项(处理完成后 ack)。 */
     @Synchronized
-    fun ackSms(context: Context, fingerprints: List<String>) {
-        if (fingerprints.isEmpty()) return
+    fun ackSms(
+        context: Context,
+        fingerprints: List<String>,
+        eventKeys: List<String> = emptyList(),
+    ) {
+        if (fingerprints.isEmpty() && eventKeys.isEmpty()) return
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val raw = prefs.getString(KEY_QUEUE, null) ?: return
+        val wanted = (fingerprints + eventKeys).toSet()
         val arr = JSONArray(raw)
         val remaining = JSONArray()
+        val acked = mutableSetOf<String>()
         for (i in 0 until arr.length()) {
             val obj = arr.optJSONObject(i) ?: continue
-            if (fingerprints.contains(obj.optString("fingerprint"))) continue
-            remaining.put(obj)
+            val fp = obj.optString("fingerprint")
+            val key = obj.optString("eventKey")
+            if (wanted.contains(fp) || (key.isNotEmpty() && wanted.contains(key))) {
+                // 新格式只持久化带前缀的 eventKey；没有 eventKey 的旧队列
+                // 才回退到内容 fingerprint。
+                if (key.isNotEmpty()) {
+                    acked.add(PROCESSED_EVENT_PREFIX + key)
+                } else if (fp.isNotEmpty()) {
+                    acked.add(fp)
+                }
+            } else {
+                remaining.put(obj)
+            }
         }
+        if (acked.isEmpty()) return
+        val processed = loadFingerprints(prefs)
+        processed.addAll(acked)
+        saveFingerprints(prefs, processed)
         prefs.edit().putString(KEY_QUEUE, remaining.toString()).apply()
     }
 
@@ -211,6 +273,7 @@ class SmsReceiver : BroadcastReceiver() {
 
         const val MAX_FINGERPRINTS = 200
         const val MAX_QUEUE = 50
+        private const val PROCESSED_EVENT_PREFIX = "event:"
 
         /** 银行/支付/运营商服务号关键词(子串匹配,已大写)。 */
         private val TRUSTED_SENDER_KEYWORDS = listOf(
@@ -259,6 +322,14 @@ class SmsReceiver : BroadcastReceiver() {
             "入账", "充值", "退款", "还款", "支付", "付款", "扫码", "刷卡",
             "提现", "红包", "汇入", "汇出", "购买", "代扣", "扣缴",
             "利息", "存现", "存入", "取现", "取款", "汇兑", "购汇", "费"
+        )
+
+        /** 明确的账单/订单非结算状态，不能直接生成消费。 */
+        private val NON_BOOKABLE_KEYWORDS = listOf(
+            "本期账单", "账单已出", "账单出账", "最低还款", "还款日前",
+            "还款日", "待付款", "待支付", "待确认", "订单确认",
+            "交易关闭", "支付失败", "交易失败", "支付未成功", "订单已关闭",
+            "可用额度", "积分余额", "积分到账"
         )
 
         /** 金额证据:带 ¥/￥ 符号,或数字紧邻 元/块。 */

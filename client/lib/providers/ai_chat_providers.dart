@@ -40,6 +40,7 @@ final aiBookkeeperProvider = Provider<AiBookkeeper>((ref) {
   final repo = ref.watch(repositoryProvider);
   return AiBookkeeper(
     repository: repo,
+    eventStore: ref.read(autoBookCoordinatorProvider).store,
     engine: ref.watch(aiExtractionEngineProvider),
     persister: BillCreationService(
       repo,

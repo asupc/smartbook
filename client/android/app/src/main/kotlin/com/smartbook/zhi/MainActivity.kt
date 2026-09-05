@@ -193,6 +193,16 @@ class MainActivity: FlutterFragmentActivity() {
                     val path = call.argument<String>("path")
                     result.success(if (path != null) deleteScreenshotFile(path) else false)
                 }
+                // 截图事件先持久化入队，Flutter 处理到终态后再 ACK；这样
+                // AI/数据库异常或进程被杀不会靠路径缓存静默丢图。
+                "peekPendingScreenshots" -> {
+                    result.success(ScreenshotObserver.peekQueue(this))
+                }
+                "ackPendingScreenshots" -> {
+                    val paths = call.argument<List<String>>("paths") ?: emptyList()
+                    ScreenshotObserver.ackQueue(this, paths)
+                    result.success(true)
+                }
                 else -> result.notImplemented()
             }
         }
@@ -222,7 +232,9 @@ class MainActivity: FlutterFragmentActivity() {
                 "ackPendingSms" -> {
                     val fingerprints =
                         call.argument<List<String>>("fingerprints") ?: emptyList()
-                    SmsReceiver().ackSms(this, fingerprints)
+                    val eventKeys =
+                        call.argument<List<String>>("eventKeys") ?: emptyList()
+                    SmsReceiver().ackSms(this, fingerprints, eventKeys)
                     result.success(true)
                 }
                 "getQueueSize" -> {
@@ -360,7 +372,9 @@ class MainActivity: FlutterFragmentActivity() {
                 "ackPending" -> {
                     val fingerprints =
                         call.argument<List<String>>("fingerprints") ?: emptyList()
-                    ScreenTextWatcher().ackQueue(this, fingerprints)
+                    val eventKeys =
+                        call.argument<List<String>>("eventKeys") ?: emptyList()
+                    ScreenTextWatcher().ackQueue(this, fingerprints, eventKeys)
                     result.success(true)
                 }
                 else -> result.notImplemented()

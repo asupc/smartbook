@@ -108,4 +108,22 @@ class SmsReceiverTest {
                 == receiver.fingerprint("95555", "消费124.00元")
         )
     }
+
+
+    @Test
+    fun `账单汇总和待支付失败状态被挡住`() {
+        assertTrue(receiver.isNonBookableStatus("本期账单总额5000元,最低还款500元"))
+        assertTrue(receiver.isNonBookableStatus("订单确认,待付款¥30.00"))
+        assertTrue(receiver.isNonBookableStatus("支付失败,金额¥30.00"))
+        assertFalse(receiver.isNonBookableStatus("支付成功,消费¥30.00"))
+    }
+
+    @Test
+    fun `短信事件键包含来源时间且保持确定性`() {
+        val fp = receiver.fingerprint("95555", "消费30元")
+        val first = receiver.eventKey("95555", fp, 1_757_000_000_000L)
+        assertEquals(first, receiver.eventKey("95555", fp, 1_757_000_000_000L))
+        assertFalse(first == receiver.eventKey("95555", fp, 1_757_000_001_000L))
+        assertEquals(16, first.length)
+    }
 }

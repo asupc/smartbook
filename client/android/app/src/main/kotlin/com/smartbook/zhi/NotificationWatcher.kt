@@ -33,6 +33,12 @@ class NotificationWatcher : NotificationListenerService() {
             if (s.notification?.flags?.and(android.app.Notification.FLAG_GROUP_SUMMARY) != 0) return
 
             val pkg = s.packageName
+            // 自己的通知(识别中/入账成功等)含金额+动作词,吃回去会形成
+            // 「入账→通知→再入账」自反馈循环;无论白名单怎么改都必须挡住。
+            if (pkg == this.packageName) {
+                log("自身通知,丢弃(防自反馈)")
+                return
+            }
             if (!TRUSTED_PACKAGES.any { pkg.contains(it) }) {
                 log("包名未命中白名单,丢弃: $pkg")
                 return
@@ -60,21 +66,39 @@ class NotificationWatcher : NotificationListenerService() {
                 log("纯余额/结余提醒,丢弃")
                 return
             }
+            if (isNonBookableStatus(text)) {
+                log("内容命中账单汇总/待支付/失败状态,丢弃")
+                return
+            }
             if (!hasAmountAndAction(text)) {
                 log("无金额或无收支动作特征,丢弃")
                 return
             }
 
-            val fingerprint = fingerprint(pkg, title, text)
-            val memo = loadFingerprints(prefs)
-            if (memo.contains(fingerprint)) {
-                log("指纹已处理过,丢弃")
+            val postTime = if (s.postTime > 0L) s.postTime else System.currentTimeMillis()
+            val notificationKey = s.key.ifBlank { "${s.id}:${s.tag ?: ""}" }
+            val fingerprint = fingerprint(
+                pkg,
+                title,
+                text,
+                notificationKey = notificationKey,
+                notificationId = s.id,
+                postTime = postTime,
+            )
+            if (!enqueue(
+                    prefs,
+                    fingerprint,
+                    pkg,
+                    title,
+                    text,
+                    postTime,
+                    notificationKey,
+                    s.id,
+                )
+            ) {
+                log("通知已在已处理记录或待处理队列中,丢弃")
                 return
             }
-            memo.add(fingerprint)
-            saveFingerprints(prefs, memo)
-
-            enqueue(prefs, fingerprint, pkg, title, text, System.currentTimeMillis())
 
             try {
                 sendBroadcast(Intent(BRIDGE_ACTION).setPackage(packageName))
@@ -108,13 +132,32 @@ class NotificationWatcher : NotificationListenerService() {
             !ACTION_KEYWORDS.any { text.contains(it) }
     }
 
+    /** 明确不是已完成交易的状态，避免通知侧把订单/账单提醒送入 AI。 */
+    fun isNonBookableStatus(text: String): Boolean {
+        return NON_BOOKABLE_KEYWORDS.any { text.contains(it) }
+    }
+
     /**
      * 通知指纹:sha256(pkg|title|text) 前 16 位 hex。
      * 与短信指纹不共用命名空间(pkg ≠ sender 并不会冲突,但独立 key 更清晰)。
      */
-    fun fingerprint(pkg: String, title: String, text: String): String {
+    fun fingerprint(
+        pkg: String,
+        title: String,
+        text: String,
+        notificationKey: String? = null,
+        notificationId: Int = 0,
+        postTime: Long = 0L,
+    ): String {
+        val identity = if (notificationKey.isNullOrBlank() &&
+            notificationId == 0 && postTime == 0L
+        ) {
+            "$pkg|$title|$text"
+        } else {
+            "$pkg|$notificationKey|$notificationId|$postTime|$title|$text"
+        }
         return MessageDigest.getInstance("SHA-256")
-            .digest("$pkg|$title|$text".toByteArray())
+            .digest(identity.toByteArray())
             .take(8)
             .joinToString("") { "%02x".format(it.toInt() and 0xff) }
     }
@@ -135,8 +178,24 @@ class NotificationWatcher : NotificationListenerService() {
     // ------------------------------------------------------------
 
     @Synchronized
-    private fun enqueue(prefs: SharedPreferences, fingerprint: String, pkg: String, title: String, text: String, ts: Long) {
+    private fun enqueue(
+        prefs: SharedPreferences,
+        fingerprint: String,
+        pkg: String,
+        title: String,
+        text: String,
+        ts: Long,
+        notificationKey: String,
+        notificationId: Int,
+    ): Boolean {
+        val processed = loadFingerprints(prefs)
+        if (processed.contains(fingerprint)) return false
         val arr = JSONArray(prefs.getString(KEY_QUEUE, null) ?: "[]")
+        for (i in 0 until arr.length()) {
+            if (arr.optJSONObject(i)?.optString("fingerprint") == fingerprint) {
+                return false
+            }
+        }
         arr.put(
             JSONObject()
                 .put("fingerprint", fingerprint)
@@ -144,9 +203,12 @@ class NotificationWatcher : NotificationListenerService() {
                 .put("title", title)
                 .put("body", text)
                 .put("timestamp", ts)
+                .put("notificationKey", notificationKey)
+                .put("notificationId", notificationId)
         )
         while (arr.length() > MAX_QUEUE) arr.remove(0)
         prefs.edit().putString(KEY_QUEUE, arr.toString()).apply()
+        return true
     }
 
     @Synchronized
@@ -163,7 +225,9 @@ class NotificationWatcher : NotificationListenerService() {
                     "package" to obj.optString("package"),
                     "title" to obj.optString("title"),
                     "body" to obj.optString("body"),
-                    "timestamp" to obj.optString("timestamp")
+                    "timestamp" to obj.optString("timestamp"),
+                    "notificationKey" to obj.optString("notificationKey"),
+                    "notificationId" to obj.optString("notificationId")
                 )
             )
         }
@@ -175,13 +239,23 @@ class NotificationWatcher : NotificationListenerService() {
         if (fingerprints.isEmpty()) return
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val raw = prefs.getString(KEY_QUEUE, null) ?: return
+        val wanted = fingerprints.toSet()
         val arr = JSONArray(raw)
         val remaining = JSONArray()
+        val acked = mutableSetOf<String>()
         for (i in 0 until arr.length()) {
             val obj = arr.optJSONObject(i) ?: continue
-            if (fingerprints.contains(obj.optString("fingerprint"))) continue
-            remaining.put(obj)
+            val fp = obj.optString("fingerprint")
+            if (wanted.contains(fp)) {
+                acked.add(fp)
+            } else {
+                remaining.put(obj)
+            }
         }
+        if (acked.isEmpty()) return
+        val processed = loadFingerprints(prefs)
+        processed.addAll(acked)
+        saveFingerprints(prefs, processed)
         prefs.edit().putString(KEY_QUEUE, remaining.toString()).apply()
     }
 
@@ -198,7 +272,15 @@ class NotificationWatcher : NotificationListenerService() {
         const val MAX_QUEUE = 50
 
         /** 支付/银行 App 包名白名单(子串匹配)。自用可在此扩展。
-         *  京东/抖音包名 2026-09 已在真机核对补充。 */
+         *  京东/抖音包名 2026-09 已在真机核对补充。
+         *  银行包名 2026-09 已逐家经应用商店核验(应用汇/豌豆荚/应用宝):
+         *  中国银行=com.chinamworld.bocmbci、邮储=com.yitong.mbank.psbc、
+         *  民生=cn.com.cmbc.newmbank、中信=com.ecitic.bank.mobile、
+         *  兴业=com.cib.cibmb、广发=com.cgbchina.xpt、浦发=cn.com.spdb.mobilebank.per、
+         *  华夏=com.hxb.mobile.client、微众=com.webank.wemoney、
+         *  网商=com.mybank.android.phone、平安口袋=com.pingan.paces.ccms。
+         *  原来的 com.chinabank.mobilebank / cn.pay.youjian 已证伪并移除。
+         *  光大银行包名未能可靠核验,待真机 pm list packages 核对后再补。 */
         private val TRUSTED_PACKAGES = listOf(
             "eg.android.AlipayGphone",        // 支付宝
             "tencent.mm",                     // 微信(含微信支付)
@@ -206,14 +288,23 @@ class NotificationWatcher : NotificationListenerService() {
             "com.tencent.mm.biz",             // 微信支付服务号(兜底)
             "com.jingdong.app.mall",          // 京东
             "com.ss.android.ugc.aweme",       // 抖音(含极速版,子串覆盖 lite)
-            // 六大行(包名按常见值,若有出入请在真机核对后增补)
+            // 银行
             "com.icbc",                       // 中国工商银行
             "com.chinamworld.main",           // 中国建设银行
             "android.bankabc",                // 中国农业银行
-            "com.chinabank.mobilebank",       // 中国银行(实际包名待核对)
-            "com.bankcomm.Bankcomm",          // 交通银行(实际包名待核对)
+            "com.chinamworld.bocmbci",        // 中国银行
+            "com.bankcomm.Bankcomm",          // 交通银行
             "cmb.pb",                         // 招商银行
-            "cn.pay.youjian",                 // 邮储银行(实际包名待核对)
+            "com.yitong.mbank.psbc",          // 邮储银行
+            "cn.com.cmbc.newmbank",           // 民生银行
+            "com.ecitic.bank.mobile",         // 中信银行
+            "cn.com.spdb.mobilebank.per",     // 浦发银行
+            "com.cib.cibmb",                  // 兴业银行
+            "com.cgbchina.xpt",               // 广发银行
+            "com.hxb.mobile.client",          // 华夏银行
+            "com.pingan.paces.ccms",          // 平安口袋银行
+            "com.webank.wemoney",             // 微众银行
+            "com.mybank.android.phone",       // 网商银行
             "lianlian.trust"                  // 连连支付(商户通知,可选)
         )
 
@@ -240,6 +331,13 @@ class NotificationWatcher : NotificationListenerService() {
             "入账", "到账", "充值", "退款", "还款", "支付", "付款", "扫码", "刷卡",
             "提现", "红包", "汇入", "汇出", "购买", "代扣", "扣缴",
             "利息", "存现", "存入", "取现", "取款", "汇兑", "购汇", "费"
+        )
+
+        private val NON_BOOKABLE_KEYWORDS = listOf(
+            "本期账单", "账单已出", "账单出账", "最低还款", "还款日前",
+            "还款日", "待付款", "待支付", "待确认", "订单确认",
+            "交易关闭", "支付失败", "交易失败", "支付未成功", "订单已关闭",
+            "可用额度", "积分余额", "积分到账"
         )
 
         private val AMOUNT_PATTERN = Regex("[¥￥]\\s*\\d|\\d[\\d,]*(\\.[\\d]{1,2})?\\s*元|\\d[\\d,]*(\\.[\\d]{1,2})?\\s*块|人民币\\s*\\d")

@@ -11,6 +11,7 @@ import 'budget_providers.dart';
 import 'font_scale_provider.dart';
 import 'update_providers.dart';
 import 'smart_billing_providers.dart';
+import 'automation_providers.dart';
 import '../data/db.dart';
 import '../utils/month_range.dart';
 import '../services/data/recurring_transaction_service.dart';
@@ -24,14 +25,16 @@ import 'security_providers.dart';
 final bottomTabIndexProvider = StateProvider<int>((ref) => 0);
 
 // AppLink 待处理动作（用于通知 UI 层执行导航）
-final pendingAppLinkActionProvider = StateProvider<AppLinkAction?>((ref) => null);
+final pendingAppLinkActionProvider =
+    StateProvider<AppLinkAction?>((ref) => null);
 
 // 手动记账待处理类型（expense/income，配合 newTransaction action 使用）
 final pendingNewTransactionTypeProvider = StateProvider<String?>((ref) => null);
 
 // 手动记账待处理的预填分类 id（配合 newTransaction action 使用，来自小组件
 // 「快速记账」深链 smartbook://new?type=...&category=<id>）
-final pendingNewTransactionCategoryIdProvider = StateProvider<int?>((ref) => null);
+final pendingNewTransactionCategoryIdProvider =
+    StateProvider<int?>((ref) => null);
 
 // smartbook://open?page=... 深链的待处理目标页面（assets/budget/detail），
 // 配合 AppLinkAction.open 使用
@@ -185,8 +188,14 @@ final cachedTransactionsProvider =
     StateProvider<List<TransactionDisplayItem>?>((ref) => null);
 
 // 缓存的交易数据Provider（仅含分类，兼容旧版本）
-final cachedTransactionsWithCategoryProvider =
-    StateProvider<List<({Transaction t, Category? category, Account? account, Account? toAccount})>?>((ref) => null);
+final cachedTransactionsWithCategoryProvider = StateProvider<
+    List<
+        ({
+          Transaction t,
+          Category? category,
+          Account? account,
+          Account? toAccount
+        })>?>((ref) => null);
 
 // 应用初始化Provider - 管理数据预加载
 final appSplashInitProvider = FutureProvider<void>((ref) async {
@@ -218,7 +227,8 @@ final appSplashInitProvider = FutureProvider<void>((ref) async {
       ref.watch(headerSkinInitProvider.future),
       ref.watch(securityInitProvider.future),
     ]);
-    logger.info(tag, '基础配置初始化完成: ${DateTime.now().difference(stepTime).inMilliseconds}ms');
+    logger.info(tag,
+        '基础配置初始化完成: ${DateTime.now().difference(stepTime).inMilliseconds}ms');
     stepTime = DateTime.now();
 
     // 获取 repository
@@ -240,7 +250,8 @@ final appSplashInitProvider = FutureProvider<void>((ref) async {
     Future<T> timed<T>(String name, Future<T> future) async {
       final start = DateTime.now();
       final result = await future;
-      logger.info(tag, '$name: ${DateTime.now().difference(start).inMilliseconds}ms');
+      logger.info(
+          tag, '$name: ${DateTime.now().difference(start).inMilliseconds}ms');
       return result;
     }
 
@@ -250,17 +261,28 @@ final appSplashInitProvider = FutureProvider<void>((ref) async {
     final results = await Future.wait([
       timed('月度统计', ref.read(monthlyTotalsProvider(monthlyParams).future)),
       // 只查询前 N 条，而非全部
-      timed('交易列表(前$preloadLimit条)', repo.getRecentTransactionsWithCategory(ledgerId: ledgerId, limit: preloadLimit)),
+      timed(
+          '交易列表(前$preloadLimit条)',
+          repo.getRecentTransactionsWithCategory(
+              ledgerId: ledgerId, limit: preloadLimit)),
       // 预加载预算概览，避免首页进度条闪现
       timed('预算概览', ref.read(budgetOverviewProvider.future)),
     ]);
 
     final monthlyResult = results[0] as (double, double);
-    final transactionsWithCategory = results[1] as List<({Transaction t, Category? category, Account? account, Account? toAccount})>;
+    final transactionsWithCategory = results[1] as List<
+        ({
+          Transaction t,
+          Category? category,
+          Account? account,
+          Account? toAccount
+        })>;
 
-    ref.read(lastMonthlyTotalsProvider(monthlyParams).notifier).state = monthlyResult;
+    ref.read(lastMonthlyTotalsProvider(monthlyParams).notifier).state =
+        monthlyResult;
     // 不再预加载完整列表，让 Stream 自己加载
-    logger.info(tag, '并行预加载完成: ${DateTime.now().difference(stepTime).inMilliseconds}ms, 首屏${transactionsWithCategory.length}条');
+    logger.info(tag,
+        '并行预加载完成: ${DateTime.now().difference(stepTime).inMilliseconds}ms, 首屏${transactionsWithCategory.length}条');
     stepTime = DateTime.now();
 
     // 只为首屏数据加载标签、附件数量和账户信息
@@ -288,7 +310,8 @@ final appSplashInitProvider = FutureProvider<void>((ref) async {
     for (final account in accountsList) {
       accountNameMap[account.id] = account.name;
     }
-    logger.info(tag, '详情数据加载完成: ${DateTime.now().difference(stepTime).inMilliseconds}ms');
+    logger.info(tag,
+        '详情数据加载完成: ${DateTime.now().difference(stepTime).inMilliseconds}ms');
     stepTime = DateTime.now();
 
     // 组装完整的交易展示数据。account / toAccount 直接用 watch 时 JOIN 拿到
@@ -297,9 +320,7 @@ final appSplashInitProvider = FutureProvider<void>((ref) async {
     // accountSyncIdOverride → SharedLedgerAccounts 反查)。
     final fullTransactions = transactionsWithCategory.map((item) {
       final accName = item.account?.name ??
-          (item.t.accountId != null
-              ? accountNameMap[item.t.accountId!]
-              : null);
+          (item.t.accountId != null ? accountNameMap[item.t.accountId!] : null);
       final toAccName = item.toAccount?.name ??
           (item.t.toAccountId != null
               ? accountNameMap[item.t.toAccountId!]
@@ -322,16 +343,20 @@ final appSplashInitProvider = FutureProvider<void>((ref) async {
     Future.microtask(() async {
       final start = DateTime.now();
       await ref.read(countsForLedgerProvider(ledgerId).future);
-      logger.info(tag, '账本统计(异步): ${DateTime.now().difference(start).inMilliseconds}ms');
+      logger.info(tag,
+          '账本统计(异步): ${DateTime.now().difference(start).inMilliseconds}ms');
     });
 
     // 生成待处理的周期交易
     try {
-      final generatedLedgerIds = await RecurringTransactionService.generatePendingTransactionsStatic(
+      final generatedLedgerIds =
+          await RecurringTransactionService.generatePendingTransactionsStatic(
         repository: repo,
         verbose: false,
+        coordinator: ref.read(autoBookCoordinatorProvider),
       );
-      logger.info(tag, '周期交易生成完成: ${DateTime.now().difference(stepTime).inMilliseconds}ms');
+      logger.info(tag,
+          '周期交易生成完成: ${DateTime.now().difference(stepTime).inMilliseconds}ms');
 
       // 统一后处理：刷新UI + 触发云同步（如果有生成交易）
       for (final genLedgerId in generatedLedgerIds) {
@@ -422,4 +447,3 @@ class AIAssistantSetter {
 final aiAssistantSetterProvider = Provider<AIAssistantSetter>((ref) {
   return AIAssistantSetter();
 });
-

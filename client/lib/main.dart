@@ -23,6 +23,7 @@ import 'providers/credit_card_reminder_providers.dart';
 import 'services/platform/screenshot_monitor_service.dart';
 import 'services/platform/sms_monitor_service.dart';
 import 'services/platform/notify_monitor_service.dart';
+import 'services/platform/screen_text_monitor_service.dart';
 import 'services/platform/image_share_handler_service.dart';
 import 'services/platform/app_link_service.dart';
 import 'services/system/logger_service.dart';
@@ -37,9 +38,9 @@ import 'dart:ui';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-
 /// 全局 navigator key — 给 service 层(没有 BuildContext)push 路由使用。
-final GlobalKey<NavigatorState> globalNavigatorKey = GlobalKey<NavigatorState>();
+final GlobalKey<NavigatorState> globalNavigatorKey =
+    GlobalKey<NavigatorState>();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -126,6 +127,14 @@ Future<void> main() async {
     logger.warning('App', '小组件回调注册失败（可能在不支持的平台上运行）: $e');
   }
 
+  // 初始化自动记账统一协调器：所有来源共用一条事件串行链和本地事件表。
+  // 必须在各 monitor drain 前完成，避免冷启动时多个来源同时 claim。
+  try {
+    await container.read(autoBookCoordinatorProvider).initialize();
+  } catch (e) {
+    logger.warning('App', '自动记账协调器初始化失败(后续会按事件 retry)', '$e');
+  }
+
   // 恢复截图自动识别设置（Android专属），传入container
   await _restoreScreenshotMonitor(container);
 
@@ -134,6 +143,9 @@ Future<void> main() async {
 
   // 恢复通知自动记账设置（Android专属）
   await _restoreNotifyMonitor(container);
+
+  // 恢复账单详情页无障碍自动记账设置（Android专属）。
+  await _restoreScreenTextMonitor(container);
 
   // 初始化图片分享处理服务（Android专属）
   if (Platform.isAndroid) {
@@ -226,7 +238,8 @@ Future<void> _restoreUserReminder() async {
     if (isEnabled) {
       final hour = prefs.getInt('reminder_hour') ?? 21;
       final minute = prefs.getInt('reminder_minute') ?? 0;
-      print('✅ 发现用户已启用记账提醒: ${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}');
+      print(
+          '✅ 发现用户已启用记账提醒: ${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}');
       print('🔔 正在重新设置提醒任务...');
 
       try {
@@ -343,6 +356,34 @@ Future<void> _restoreSmsMonitor(ProviderContainer container) async {
   }
 }
 
+/// 恢复账单详情页屏幕文本自动识别设置（仅 Android）。
+///
+/// ScreenTextWatcher 在 App 进程死亡时仍会把文本放入 native 队列；启动时
+/// 必须重新注册桥接并 drain，否则积压要等用户进入设置页才会处理。
+Future<void> _restoreScreenTextMonitor(ProviderContainer container) async {
+  if (!Platform.isAndroid) return;
+
+  try {
+    print('📄 检查并恢复详情页自动记账...');
+    final monitor = ScreenTextMonitorService(container);
+    final enabled = await monitor.isEnabled();
+    if (!enabled) {
+      print('ℹ️  用户未启用详情页自动记账，跳过恢复');
+      return;
+    }
+
+    if (await monitor.isAccessibilityGranted()) {
+      await monitor.enable();
+      print('✅ 详情页自动记账已成功恢复');
+    } else {
+      print('⚠️ 详情页自动记账已启用但无障碍授权丢失，跳过恢复');
+    }
+  } catch (e) {
+    print('❌ 恢复详情页自动记账失败: $e');
+    // 不抛出异常，避免影响应用启动；native 队列保留待下次恢复。
+  }
+}
+
 /// 初始化应用模式
 ///
 /// 在应用启动时从 SharedPreferences 读取模式并设置到 appModeProvider
@@ -367,7 +408,6 @@ Future<void> _initializeAppMode(ProviderContainer container) async {
     logger.error('Main', '应用模式初始化失败', e, stackTrace);
   }
 }
-
 
 /// 设置图片分享处理（Android专属）
 ///
@@ -409,7 +449,8 @@ void _setupUrlListener(ProviderContainer container) {
     appLinkService.onNavigate = (action, {params}) {
       logger.info('AppLink', '触发导航: $action');
       if (action == AppLinkAction.newTransaction && params != null) {
-        container.read(pendingNewTransactionTypeProvider.notifier).state = params.type;
+        container.read(pendingNewTransactionTypeProvider.notifier).state =
+            params.type;
         container.read(pendingNewTransactionCategoryIdProvider.notifier).state =
             params.categoryId;
       }
@@ -621,10 +662,12 @@ class MainApp extends ConsumerWidget {
         debugShowCheckedModeBanner: false,
         theme: theme,
         darkTheme: BeeTheme.darkTheme(platform: platform).copyWith(
-          colorScheme: BeeTheme.darkTheme(platform: platform).colorScheme.copyWith(primary: primary),
+          colorScheme: BeeTheme.darkTheme(platform: platform)
+              .colorScheme
+              .copyWith(primary: primary),
           primaryColor: primary,
-        ),                                                // ⭐ 暗黑主题（使用动态主题色）
-        themeMode: ref.watch(themeModeProvider),         // ⭐ 使用 provider 支持手动切换
+        ), // ⭐ 暗黑主题（使用动态主题色）
+        themeMode: ref.watch(themeModeProvider), // ⭐ 使用 provider 支持手动切换
         localizationsDelegates: const [
           AppLocalizations.delegate,
           GlobalMaterialLocalizations.delegate,

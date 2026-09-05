@@ -8,8 +8,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/repositories/base_repository.dart';
 import '../../providers/database_providers.dart';
 import '../automation/auto_billing_service.dart';
+import '../ai/bookkeeping_result.dart';
+import '../automation/auto_book_coordinator.dart';
+import '../automation/auto_book_event.dart';
 import '../billing/post_processor.dart';
 import '../system/logger_service.dart';
+import '../../providers/automation_providers.dart';
 
 /// AppLink 动作类型
 enum AppLinkAction {
@@ -62,6 +66,9 @@ class AddTransactionParams {
   final DateTime? date;
   final bool silent;
 
+  /// 外部自动化的幂等键。silent 请求必须提供，避免同一 URL 重放造成双记。
+  final String? idempotencyKey;
+
   /// 快速记账预填的分类 id（仅 [AppLinkAction.newTransaction] 使用，来自
   /// `smartbook://new?type=...&category=<id>` 中的 int id）。
   ///
@@ -85,6 +92,7 @@ class AddTransactionParams {
     this.tags,
     this.date,
     this.silent = false,
+    this.idempotencyKey,
     this.categoryId,
     this.page,
   });
@@ -111,7 +119,11 @@ class AddTransactionParams {
     List<String>? tags;
     final tagsStr = params['tags'];
     if (tagsStr != null && tagsStr.isNotEmpty) {
-      tags = tagsStr.split(',').map((t) => t.trim()).where((t) => t.isNotEmpty).toList();
+      tags = tagsStr
+          .split(',')
+          .map((t) => t.trim())
+          .where((t) => t.isNotEmpty)
+          .toList();
     }
 
     return AddTransactionParams(
@@ -124,6 +136,8 @@ class AddTransactionParams {
       tags: tags,
       date: date,
       silent: params['silent'] == '1' || params['silent'] == 'true',
+      idempotencyKey:
+          params['idempotency_key'] ?? params['event_id'] ?? params['eventId'],
     );
   }
 }
@@ -141,7 +155,8 @@ class AppLinkResult {
   });
 
   factory AppLinkResult.success({String? message, int? transactionId}) =>
-      AppLinkResult(success: true, message: message, transactionId: transactionId);
+      AppLinkResult(
+          success: true, message: message, transactionId: transactionId);
 
   factory AppLinkResult.failure(String message) =>
       AppLinkResult(success: false, message: message);
@@ -169,6 +184,7 @@ class AppLinkResult {
 class AppLinkService {
   final ProviderContainer _container;
   late final AutoBillingService _autoBillingService;
+  late final AutoBookCoordinator _coordinator;
 
   /// iOS AppIntents 事件通道（用于接收快捷指令传入的图片路径）
   static const EventChannel _eventChannel =
@@ -182,13 +198,15 @@ class AppLinkService {
   StreamSubscription<dynamic>? _appIntentSubscription;
 
   /// 导航回调，由外部设置
-  void Function(AppLinkAction action, {AddTransactionParams? params})? onNavigate;
+  void Function(AppLinkAction action, {AddTransactionParams? params})?
+      onNavigate;
 
   /// Toast 回调，由外部设置
   void Function(String message)? onShowToast;
 
   AppLinkService(this._container) {
-    _autoBillingService = AutoBillingService(_container);
+    _autoBillingService = _container.read(autoBillingServiceProvider);
+    _coordinator = _container.read(autoBookCoordinatorProvider);
     _initAppIntentsListener();
   }
 
@@ -201,7 +219,8 @@ class AppLinkService {
     _appIntentSubscription = _eventChannel.receiveBroadcastStream().listen(
       (event) {
         if (event is String) {
-          logger.info('AppLink', '收到 AppIntent 事件: $event');
+          logger.info('AppLink', '收到 AppIntent 事件',
+              'length=${event.toString().length}');
           _handleAppIntent(event);
         }
       },
@@ -225,7 +244,8 @@ class AppLinkService {
       if (action == 'auto-billing') {
         final imagePath = data['imagePath'] as String?;
         if (imagePath != null && imagePath.isNotEmpty) {
-          logger.info('AppLink', '处理快捷指令图片: $imagePath');
+          logger.info('AppLink', '处理快捷指令图片',
+              'pathHash=${autoBookHash(imagePath, length: 12)}');
           await _handleScreenshotBilling(imagePath);
         } else {
           logger.warning('AppLink', 'auto-billing 未提供图片路径');
@@ -241,9 +261,46 @@ class AppLinkService {
   /// 处理快捷指令截图记账
   Future<void> _handleScreenshotBilling(String imagePath) async {
     try {
-      await _autoBillingService.processScreenshot(
-        imagePath,
-        showNotification: true,
+      final eventKey = await _coordinator.imageEventKey(imagePath);
+      await _coordinator.execute(
+        input: AutoBookInput(
+          eventKey: eventKey,
+          source: AutoBookSource.screenshot,
+          captureIntent: AutoBookCaptureIntent.userInitiated,
+          capturedAt: DateTime.now(),
+          contentHash: eventKey.startsWith('image:v1:')
+              ? eventKey.substring('image:v1:'.length)
+              : null,
+        ),
+        action: () => _autoBillingService.processScreenshot(
+          imagePath,
+          showNotification: true,
+          eventKey: eventKey,
+        ),
+        updateFor: (result) => AutoBookEventUpdate(
+          state: result.aiNotConfigured
+              ? AutoBookState.captured
+              : result.retryable || result.failedCount > 0
+                  ? AutoBookState.retry
+                  : result.awaitingCount > 0
+                      ? AutoBookState.pending
+                      : result.shadowCount > 0
+                          ? AutoBookState.ignored
+                          : result.duplicateCount > 0
+                              ? AutoBookState.duplicate
+                              : result.success
+                                  ? AutoBookState.booked
+                                  : AutoBookState.ignored,
+          transactionId: result.firstTransactionId,
+          duplicateOfTransactionId: result.firstDuplicateTransactionId,
+          reason: result.aiNotConfigured
+              ? 'ai_not_configured'
+              : result.shadowCount > 0
+                  ? 'shadow_mode'
+                  : result.awaitingCount > 0
+                      ? 'pending_confirmation'
+                      : null,
+        ),
       );
       logger.info('AppLink', '快捷指令截图记账完成');
     } catch (e, st) {
@@ -293,7 +350,8 @@ class AppLinkService {
 
   /// 处理 URL
   Future<AppLinkResult> handleUrl(Uri uri) async {
-    logger.info('AppLink', '收到URL: $uri');
+    logger.info('AppLink', '收到URL',
+        'scheme=${uri.scheme}, host=${uri.host}, path=${uri.path}, queryKeys=${uri.queryParameters.keys.toList()..sort()}');
 
     final action = parseAction(uri);
     final queryParams = uri.queryParameters;
@@ -320,7 +378,8 @@ class AppLinkService {
         return AppLinkResult.success(message: '打开AI小助手');
 
       case AppLinkAction.add:
-        logger.info('AppLink', '自动记账: $queryParams');
+        logger.info(
+            'AppLink', '自动记账参数', 'keys=${queryParams.keys.toList()..sort()}');
         return await _handleAddTransaction(queryParams);
 
       case AppLinkAction.newTransaction:
@@ -328,12 +387,14 @@ class AppLinkService {
         // 小组件「快速记账」点分类格携带的分类 id（int），与 add action 的
         // 分类名称参数是两个不同概念，见 AddTransactionParams.categoryId 文档。
         final categoryIdStr = queryParams['category'];
-        final categoryId = categoryIdStr != null ? int.tryParse(categoryIdStr) : null;
+        final categoryId =
+            categoryIdStr != null ? int.tryParse(categoryIdStr) : null;
         logger.info('AppLink',
             '打开手动记账: type=$type${categoryId != null ? ', categoryId=$categoryId' : ''}');
         onNavigate?.call(
           AppLinkAction.newTransaction,
-          params: AddTransactionParams(amount: 0, type: type, categoryId: categoryId),
+          params: AddTransactionParams(
+              amount: 0, type: type, categoryId: categoryId),
         );
         return AppLinkResult.success(message: '打开手动记账');
 
@@ -344,7 +405,8 @@ class AppLinkService {
           logger.warning('AppLink', 'open 未提供 page 参数');
           return AppLinkResult.failure('未提供目标页面');
         }
-        onNavigate?.call(AppLinkAction.open, params: AddTransactionParams(amount: 0, page: page));
+        onNavigate?.call(AppLinkAction.open,
+            params: AddTransactionParams(amount: 0, page: page));
         return AppLinkResult.success(message: '打开页面: $page');
 
       case AppLinkAction.autoBilling:
@@ -363,7 +425,8 @@ class AppLinkService {
   }
 
   /// 处理自动记账（带参数）
-  Future<AppLinkResult> _handleAddTransaction(Map<String, String> params) async {
+  Future<AppLinkResult> _handleAddTransaction(
+      Map<String, String> params) async {
     try {
       final repo = _container.read(repositoryProvider);
 
@@ -384,6 +447,16 @@ class AppLinkService {
 
       final ledgerId = currentLedger.id;
       final type = params['type'] ?? 'expense';
+
+      final txParams = AddTransactionParams.fromQueryParams(params);
+      if (txParams.silent &&
+          (txParams.idempotencyKey == null ||
+              txParams.idempotencyKey!.trim().isEmpty)) {
+        // silent 是给外部自动化用的，必须有稳定幂等键；否则系统重放
+        // 同一个 URL 时无法区分“重试”与“新交易”。
+        logger.warning('AppLink', '已拦截:静默自动记账缺少 idempotency_key');
+        return AppLinkResult.failure('静默自动记账必须提供 idempotency_key');
+      }
 
       // —— 完整性校验 —— 金额无效 / 缺分类 / 分类不存在 → 不记账,返回具体原因
       // (由上层用 toast 提醒用户)。转账没有分类概念,只校验金额。
@@ -406,9 +479,6 @@ class AppLinkService {
         }
       }
 
-      // —— 参数齐全:自动记账(原逻辑)——
-      final txParams = AddTransactionParams.fromQueryParams(params);
-
       // 解析分类
       int? categoryId;
       if (txParams.category != null) {
@@ -422,57 +492,92 @@ class AppLinkService {
       // 解析账户（不存在则自动创建）
       int? accountId;
       if (txParams.account != null) {
-        accountId = await _findOrCreateAccountId(repo, txParams.account!, ledgerId);
+        accountId =
+            await _findOrCreateAccountId(repo, txParams.account!, ledgerId);
       }
 
       // 解析转入账户（不存在则自动创建）
       int? toAccountId;
       if (txParams.type == 'transfer' && txParams.toAccount != null) {
-        toAccountId = await _findOrCreateAccountId(repo, txParams.toAccount!, ledgerId);
+        toAccountId =
+            await _findOrCreateAccountId(repo, txParams.toAccount!, ledgerId);
       }
 
-      // 创建交易
-      final transactionId = await repo.addTransaction(
-        ledgerId: ledgerId,
-        type: txParams.type,
-        amount: txParams.amount.abs(),
-        categoryId: categoryId,
-        accountId: accountId,
-        toAccountId: toAccountId,
-        happenedAt: txParams.date ?? DateTime.now(),
-        note: txParams.note,
+      final canonicalParams = params.entries.toList()
+        ..sort((a, b) => a.key.compareTo(b.key));
+      final eventKey = AutoBookCoordinator.deepLinkEventKey(
+        txParams.idempotencyKey,
+        canonicalParams.map((e) => '${e.key}=${e.value}').join('&'),
+      );
+      final execution = await _coordinator.execute<int>(
+        input: AutoBookInput(
+          eventKey: eventKey,
+          source: AutoBookSource.deepLinkDirect,
+          captureIntent: AutoBookCaptureIntent.userInitiated,
+          ledgerId: ledgerId,
+          capturedAt: DateTime.now(),
+          externalId: txParams.idempotencyKey,
+        ),
+        action: () async {
+          // 创建交易
+          final transactionId = await repo.addTransaction(
+            ledgerId: ledgerId,
+            type: txParams.type,
+            amount: txParams.amount.abs(),
+            categoryId: categoryId,
+            accountId: accountId,
+            toAccountId: toAccountId,
+            happenedAt: txParams.date ?? DateTime.now(),
+            note: txParams.note,
+          );
+
+          // 关联标签
+          if (txParams.tags != null && txParams.tags!.isNotEmpty) {
+            final tagIds = <int>[];
+            for (final tagName in txParams.tags!) {
+              final tag = await repo.getTagByName(tagName);
+              if (tag != null) {
+                tagIds.add(tag.id);
+              } else {
+                final newTagId = await repo.createTag(name: tagName);
+                tagIds.add(newTagId);
+              }
+            }
+            if (tagIds.isNotEmpty) {
+              await repo.updateTransactionTags(
+                transactionId: transactionId,
+                tagIds: tagIds,
+              );
+            }
+          }
+
+          logger.info('AppLink',
+              '自动记账成功: id=$transactionId, amount=${txParams.amount}');
+
+          // 统一后处理：刷新UI + 触发云同步
+          final hasTags = txParams.tags != null && txParams.tags!.isNotEmpty;
+          await PostProcessor.runC(_container,
+              ledgerId: ledgerId, tags: hasTags);
+          return transactionId;
+        },
+        updateFor: (transactionId) => AutoBookEventUpdate(
+          state: AutoBookState.booked,
+          transactionId: transactionId,
+        ),
       );
 
-      // 关联标签
-      if (txParams.tags != null && txParams.tags!.isNotEmpty) {
-        final tagIds = <int>[];
-        for (final tagName in txParams.tags!) {
-          final tag = await repo.getTagByName(tagName);
-          if (tag != null) {
-            tagIds.add(tag.id);
-          } else {
-            // 创建新标签
-            final newTagId = await repo.createTag(name: tagName);
-            tagIds.add(newTagId);
-          }
-        }
-        if (tagIds.isNotEmpty) {
-          await repo.updateTransactionTags(
-            transactionId: transactionId,
-            tagIds: tagIds,
-          );
-        }
+      final transactionId = execution.existingTransactionId ?? execution.value;
+      if (transactionId == null) {
+        return AppLinkResult.failure('记账失败:事件未产生交易 ID');
       }
 
-      logger.info('AppLink', '自动记账成功: id=$transactionId, amount=${txParams.amount}');
-
-      // 统一后处理：刷新UI + 触发云同步
-      final hasTags = txParams.tags != null && txParams.tags!.isNotEmpty;
-      await PostProcessor.runC(_container, ledgerId: ledgerId, tags: hasTags);
-
-      if (!txParams.silent) {
-        final typeText = txParams.type == 'income' ? '收入' : (txParams.type == 'transfer' ? '转账' : '支出');
-        onShowToast?.call('已记录 $typeText ${txParams.amount.toStringAsFixed(2)} 元');
+      // 只有首次真正执行才提示；重放直接返回幂等成功，避免重复 toast。
+      if (!execution.skipped && !txParams.silent) {
+        final typeText = txParams.type == 'income'
+            ? '收入'
+            : (txParams.type == 'transfer' ? '转账' : '支出');
+        onShowToast
+            ?.call('已记录 $typeText ${txParams.amount.toStringAsFixed(2)} 元');
       }
 
       return AppLinkResult.success(
@@ -497,8 +602,7 @@ class AppLinkService {
     try {
       final prefs = await SharedPreferences.getInstance();
       final saved = prefs.getInt('current_ledger_id');
-      if (saved != null &&
-          _container.read(currentLedgerIdProvider) != saved) {
+      if (saved != null && _container.read(currentLedgerIdProvider) != saved) {
         _container.read(currentLedgerIdProvider.notifier).state = saved;
       }
     } catch (_) {
@@ -516,11 +620,61 @@ class AppLinkService {
       logger.info('AppLink', '从URL参数读取文本，长度: ${text.length}');
 
       try {
-        await _autoBillingService.processText(
-          text,
-          showNotification: true,
+        final eventKey = AutoBookCoordinator.deepLinkEventKey(
+          params['idempotency_key'] ?? params['event_id'],
+          'text=$text',
         );
-        return AppLinkResult.success(message: '文本处理完成');
+        final execution = await _coordinator.execute<BookkeepingResult>(
+          input: AutoBookInput(
+            eventKey: eventKey,
+            source: AutoBookSource.deepLinkText,
+            captureIntent: AutoBookCaptureIntent.automatic,
+            capturedAt: DateTime.now(),
+            externalId: params['idempotency_key'] ?? params['event_id'],
+          ),
+          action: () => _autoBillingService.processTextResult(
+            text!,
+            showNotification: true,
+            eventKey: eventKey,
+          ),
+          updateFor: (result) => AutoBookEventUpdate(
+            state: result.aiNotConfigured
+                ? AutoBookState.captured
+                : result.retryable || result.failedCount > 0
+                    ? AutoBookState.retry
+                    : result.awaitingCount > 0
+                        ? AutoBookState.pending
+                        : result.shadowCount > 0
+                            ? AutoBookState.ignored
+                            : result.duplicateCount > 0
+                                ? AutoBookState.duplicate
+                                : result.success
+                                    ? AutoBookState.booked
+                                    : AutoBookState.ignored,
+            transactionId: result.firstTransactionId,
+            duplicateOfTransactionId: result.firstDuplicateTransactionId,
+            reason: result.shadowCount > 0
+                ? 'shadow_mode'
+                : result.awaitingCount > 0
+                    ? 'pending_confirmation'
+                    : result.aiNotConfigured
+                        ? 'ai_not_configured'
+                        : null,
+          ),
+        );
+        final textResult = execution.value;
+        final message = execution.state == AutoBookState.pending
+            ? '文本已进入待确认'
+            : execution.state == AutoBookState.duplicate
+                ? '文本对应交易已存在'
+                : execution.state == AutoBookState.retry
+                    ? '文本处理失败,稍后重试'
+                    : '文本处理完成';
+        return AppLinkResult.success(
+          message: message,
+          transactionId:
+              execution.existingTransactionId ?? textResult?.firstTransactionId,
+        );
       } catch (e, st) {
         logger.error('AppLink', '文本记账失败', e, st);
         return AppLinkResult.failure('文本记账失败: $e');
@@ -532,7 +686,8 @@ class AppLinkService {
   }
 
   /// 根据名称查找分类ID
-  Future<int?> _findCategoryId(BaseRepository repo, String name, String kind) async {
+  Future<int?> _findCategoryId(
+      BaseRepository repo, String name, String kind) async {
     final categories = kind == 'income'
         ? await repo.getTopLevelCategories('income')
         : await repo.getTopLevelCategories('expense');
@@ -553,7 +708,8 @@ class AppLinkService {
   }
 
   /// 根据名称查找账户ID，不存在则创建
-  Future<int?> _findOrCreateAccountId(BaseRepository repo, String name, int ledgerId) async {
+  Future<int?> _findOrCreateAccountId(
+      BaseRepository repo, String name, int ledgerId) async {
     final accounts = await repo.getAllAccounts();
     for (final acc in accounts) {
       if (acc.name == name) {
@@ -640,7 +796,9 @@ class AppLinkBuilder {
     if (date != null) params['date'] = date.toIso8601String();
     if (silent) params['silent'] = '1';
 
-    final query = params.entries.map((e) => '${e.key}=${Uri.encodeComponent(e.value)}').join('&');
+    final query = params.entries
+        .map((e) => '${e.key}=${Uri.encodeComponent(e.value)}')
+        .join('&');
     return '$scheme://add?$query';
   }
 }

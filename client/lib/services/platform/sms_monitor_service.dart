@@ -5,6 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../automation/auto_billing_service.dart'
     show AutoBillingService, SmsProcessOutcome;
+import '../automation/auto_book_coordinator.dart';
+import '../automation/auto_book_event.dart';
+import '../data/source_channel_resolver.dart';
+import '../../providers/automation_providers.dart';
 import '../system/logger_service.dart' show logger;
 
 /// 短信监听服务(Android 专用,自动记账 M1)。
@@ -24,6 +28,7 @@ class SmsMonitorService {
 
   final ProviderContainer _container;
   late final AutoBillingService _autoBillingService;
+  late final AutoBookCoordinator _coordinator;
 
   bool _isEnabled = false;
   bool _bridgeRegistered = false;
@@ -43,7 +48,8 @@ class SmsMonitorService {
   }
 
   SmsMonitorService._internal(this._container) {
-    _autoBillingService = AutoBillingService(_container);
+    _autoBillingService = _container.read(autoBillingServiceProvider);
+    _coordinator = _container.read(autoBookCoordinatorProvider);
     _setupMethodCallHandler();
   }
 
@@ -62,8 +68,7 @@ class SmsMonitorService {
   /// 串行执行:前一个任务完成(无论成败)后执行下一个。
   /// 返回整条链,便于调用方 await。
   Future<void> _enqueue(Future<void> Function() task) {
-    _processingChain =
-        _processingChain.catchError((_) {}).then((_) => task());
+    _processingChain = _processingChain.catchError((_) {}).then((_) => task());
     return _processingChain;
   }
 
@@ -112,37 +117,80 @@ class SmsMonitorService {
   Future<void> drainPendingSms() async {
     if (!_isEnabled) return;
     try {
-      final items = await _channel
-              .invokeMethod<List<dynamic>>('peekPendingSms') ??
-          const [];
+      final items =
+          await _channel.invokeMethod<List<dynamic>>('peekPendingSms') ??
+              const [];
       for (final raw in items) {
         if (!_isEnabled) break; // 用户中途关闭:剩余项留在队列
         if (raw is! Map) continue;
         final sender = (raw['sender'] ?? '').toString();
         final body = (raw['body'] ?? '').toString();
         final fingerprint = (raw['fingerprint'] ?? '').toString();
+        final nativeEventKey = (raw['eventKey'] ?? '').toString().trim();
+        final timestamp = int.tryParse((raw['timestamp'] ?? '').toString());
+        final eventKey = nativeEventKey.isNotEmpty
+            ? 'sms:v3:$nativeEventKey'
+            : 'sms:v2:$fingerprint:${timestamp ?? 0}';
         if (body.isEmpty) {
-          await _ack(fingerprint);
+          await _ack(fingerprint, eventKey);
           continue;
         }
 
-        // 已处理过的(如上次处理完成但 ack 前被杀):跳过并补 ack
-        if (_autoBillingService.isSmsProcessed(fingerprint)) {
-          await _ack(fingerprint);
-          continue;
-        }
-
-        // AI 未配置的提示每指纹只弹一次(会话内)
-        final alreadyWarned = _noAiNotified.contains(fingerprint);
-        final outcome = await _autoBillingService.processSms(
-          sender,
-          body,
-          showNotification: !alreadyWarned,
+        // AI 未配置的提示每事件只弹一次(会话内)
+        final alreadyWarned = _noAiNotified.contains(eventKey);
+        final execution = await _coordinator.execute(
+          input: AutoBookInput(
+            // v2 把 native 时间带入 key，避免同一模板在不同日期被误当成
+            // 同一条短信；同一条广播重放仍保持相同 key。
+            eventKey: eventKey,
+            source: AutoBookSource.sms,
+            captureIntent: AutoBookCaptureIntent.automatic,
+            capturedAt: DateTime.now(),
+            sourceOccurredAt: timestamp == null
+                ? null
+                : DateTime.fromMillisecondsSinceEpoch(timestamp),
+            contentHash: fingerprint,
+            sourceChannel: SourceChannelResolver.channelForSmsSender(sender),
+          ),
+          action: () => _autoBillingService.processSms(
+            sender,
+            body,
+            showNotification: !alreadyWarned,
+            // Coordinator 已接管事件级幂等；避免旧的内存 cache 把 retry
+            // 误判成已处理。
+            skipDedup: true,
+            eventKey: eventKey,
+          ),
+          updateFor: (outcome) => AutoBookEventUpdate(
+            state: switch (outcome) {
+              SmsProcessOutcome.success => AutoBookState.booked,
+              SmsProcessOutcome.pending => AutoBookState.pending,
+              SmsProcessOutcome.duplicate => AutoBookState.duplicate,
+              SmsProcessOutcome.shadow => AutoBookState.ignored,
+              SmsProcessOutcome.noTransaction => AutoBookState.ignored,
+              SmsProcessOutcome.noAiConfigured => AutoBookState.captured,
+              SmsProcessOutcome.failed => AutoBookState.retry,
+            },
+            reason: outcome == SmsProcessOutcome.noAiConfigured
+                ? 'ai_not_configured'
+                : outcome == SmsProcessOutcome.shadow
+                    ? 'shadow_mode'
+                    : null,
+          ),
         );
+
+        if (execution.skipped) {
+          // terminal 事件只需补 ACK；retry/processing 尚未到终态时保留队列。
+          if (execution.terminal) await _ack(fingerprint, eventKey);
+          continue;
+        }
+
+        final outcome = execution.value;
+        if (outcome == null) continue;
         if (outcome == SmsProcessOutcome.noAiConfigured) {
-          _noAiNotified.add(fingerprint);
-        } else {
-          await _ack(fingerprint);
+          _noAiNotified.add(eventKey);
+        } else if (outcome != SmsProcessOutcome.failed) {
+          await _ack(fingerprint, eventKey);
         }
       }
     } catch (e) {
@@ -151,11 +199,15 @@ class SmsMonitorService {
     }
   }
 
-  Future<void> _ack(String fingerprint) async {
-    if (fingerprint.isEmpty) return;
+  Future<void> _ack(String fingerprint, String? eventKey) async {
+    if (fingerprint.isEmpty && (eventKey == null || eventKey.isEmpty)) return;
     try {
-      await _channel.invokeMethod(
-          'ackPendingSms', {'fingerprints': [fingerprint]});
+      await _channel.invokeMethod('ackPendingSms', {
+        'fingerprints': fingerprint.isEmpty ? const <String>[] : [fingerprint],
+        'eventKeys': eventKey == null || eventKey.isEmpty
+            ? const <String>[]
+            : [eventKey.replaceFirst('sms:v3:', '')],
+      });
     } catch (_) {}
   }
 

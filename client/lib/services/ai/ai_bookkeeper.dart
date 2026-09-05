@@ -9,6 +9,11 @@ import '../../l10n/app_localizations.dart';
 import '../billing/bill_creation_service.dart';
 import '../billing/pending_candidate.dart';
 import '../system/logger_service.dart';
+import '../automation/auto_book_event.dart';
+import '../automation/auto_book_event_store.dart';
+
+import '../automation/auto_book_policy.dart';
+import '../automation/semantic_dedup_matcher.dart';
 import 'bookkeeping_result.dart';
 
 /// AI 记账应用层 (Layer 2)。
@@ -29,16 +34,21 @@ class AiBookkeeper {
   final AiExtractionEngine _engine;
   final BillCreationService _persister;
   final AiCallReporter? _reporter;
+  final AutoBookEventStore? _eventStore;
+  static const _semanticPolicy = AutoBookPolicy();
+  static const _dedupMatcher = SemanticDedupMatcher();
 
   const AiBookkeeper({
     required BaseRepository repository,
     required AiExtractionEngine engine,
     required BillCreationService persister,
     AiCallReporter? reporter,
+    AutoBookEventStore? eventStore,
   })  : _repo = repository,
         _engine = engine,
         _persister = persister,
-        _reporter = reporter;
+        _reporter = reporter,
+        _eventStore = eventStore;
 
   /// 文本记账(对话 / 自动通知文本)
   ///
@@ -54,11 +64,16 @@ class AiBookkeeper {
     AppLocalizations? l10n,
     AutoBookFlow? autoBookFlow,
     String source = 'auto',
+
     /// M4:来源渠道(短信 sender / 通知 pkg 解析出的渠道名),AI 账户名未匹配
     /// 时按渠道→账户映射回退;手动/主动路径传 null。
     String? sourceChannel,
+
     /// 账单级去重(见 [_persistAll])。
     Future<bool> Function(BillInfo bill)? skipIfProcessed,
+
+    /// 原始文本证据，仅用于自动路径的语义硬闸门；不会写入交易。
+    String? evidenceText,
   }) async {
     final context = await AiExtractionContext.forLedger(
       repository: _repo,
@@ -79,6 +94,7 @@ class AiBookkeeper {
       source: source,
       sourceChannel: sourceChannel,
       skipIfProcessed: skipIfProcessed,
+      evidenceText: evidenceText,
     );
   }
 
@@ -99,6 +115,9 @@ class AiBookkeeper {
     Future<void> Function(int txId, int index)? onSaved,
     AutoBookFlow? autoBookFlow,
     String source = 'auto',
+
+    /// 图片原始证据无法稳定转成文本时可由调用方传入 OCR/摘要提示。
+    String? evidenceText,
   }) async {
     final context = await AiExtractionContext.forLedger(
       repository: _repo,
@@ -118,6 +137,7 @@ class AiBookkeeper {
       onSaved: onSaved,
       autoBookFlow: autoBookFlow,
       source: source,
+      evidenceText: evidenceText,
     );
   }
 
@@ -155,24 +175,115 @@ class AiBookkeeper {
   Future<int?> approvePending(
     PendingCandidate candidate, {
     AppLocalizations? l10n,
+    bool forceCreate = false,
   }) async {
     final ledgerId = candidate.bill.ledgerId;
     if (ledgerId == null) return null;
-    final txId = await _persister.createFromBill(
-      bill: candidate.bill,
-      ledgerId: ledgerId,
-      billingTypes: candidate.billingTypes,
-      l10n: l10n,
-    );
-    if (txId != null) {
-      await PendingCandidateStore().remove(candidate.id);
+
+    // 用户重复点击/进程在“交易已写入、候选尚未删除”窗口被杀时，优先
+    // 返回已经记录的结果，不能再创建第二笔。
+    if (_eventStore != null &&
+        candidate.eventKey != null &&
+        candidate.eventKey!.isNotEmpty) {
+      try {
+        final event = await _eventStore.findByEventKey(candidate.eventKey!);
+        if (event?.state == AutoBookState.booked.value &&
+            event?.transactionId != null) {
+          await PendingCandidateStore().remove(candidate.id);
+          return event!.transactionId;
+        }
+      } catch (e, st) {
+        logger.warning(_tag, '读取候选事件幂等结果失败,继续语义检查', '$e');
+        logger.debug(_tag, '读取候选事件堆栈', st);
+      }
     }
-    return txId;
+
+    // 候选可能已经被短信/通知/导入等其它入口落库；默认强语义命中时
+    // 合并到已有 canonical transaction。用户选择“仍记一笔”时跳过这层，
+    // 但仍保留上面的同一 event 精确幂等保护。
+    if (!forceCreate) {
+      try {
+        final match = await _dedupMatcher.findBest(
+          repository: _repo,
+          ledgerId: ledgerId,
+          bill: candidate.bill,
+          eventStore: _eventStore,
+        );
+        final strongMatch = match;
+        if (strongMatch != null && strongMatch.isStrong) {
+          await PendingCandidateStore().remove(candidate.id);
+          await _markCandidateEvent(
+            candidate,
+            state: AutoBookState.duplicate,
+            reason:
+                'approve_reconciled:${strongMatch.score.toStringAsFixed(3)}',
+          );
+          return strongMatch.transactionId;
+        }
+      } catch (e, st) {
+        // 判重查询失败不阻断用户确认；创建失败仍保留候选。
+        logger.warning(_tag, '确认前语义去重查询失败,继续创建', '$e');
+        logger.debug(_tag, '确认前语义去重堆栈', st);
+      }
+    }
+
+    try {
+      final txId = await _persister.createFromBill(
+        bill: candidate.bill,
+        ledgerId: ledgerId,
+        billingTypes: candidate.billingTypes,
+        l10n: l10n,
+      );
+      if (txId != null) {
+        await PendingCandidateStore().remove(candidate.id);
+        await _markCandidateEvent(
+          candidate,
+          state: AutoBookState.booked,
+          transactionId: txId,
+        );
+      }
+      return txId;
+    } catch (e, st) {
+      // 失败不删除候选；用户可以修正账户/分类或稍后重试。
+      logger.error(_tag, '确认候选入账失败,保留候选', e, st);
+      return null;
+    }
   }
 
-  /// 拒绝待确认候选(从队列删除)。
-  Future<void> rejectPending(PendingCandidate candidate) =>
-      PendingCandidateStore().remove(candidate.id);
+  /// 拒绝待确认候选(从队列删除)，同时保留事件状态审计。
+  Future<void> rejectPending(PendingCandidate candidate) async {
+    await PendingCandidateStore().remove(candidate.id);
+    await _markCandidateEvent(
+      candidate,
+      state: AutoBookState.ignored,
+      reason: 'user_rejected',
+    );
+  }
+
+  Future<void> _markCandidateEvent(
+    PendingCandidate candidate, {
+    required AutoBookState state,
+    int? transactionId,
+    String? reason,
+  }) async {
+    final key = candidate.eventKey;
+    if (_eventStore == null || key == null || key.isEmpty) return;
+    try {
+      final event = await _eventStore.findByEventKey(key);
+      if (event == null) return;
+      await _eventStore.mark(
+        AutoBookEventUpdate(
+          state: state,
+          transactionId: transactionId,
+          reason: reason,
+        ),
+        eventId: event.id,
+      );
+    } catch (e, st) {
+      logger.warning(_tag, '更新候选关联事件失败(不影响用户操作)', '$e');
+      logger.debug(_tag, '更新候选关联事件堆栈', st);
+    }
+  }
 
   // ============================================================
   // 内部:分流(自动→候选 / 主动→落库) + 聚合结果
@@ -192,63 +303,267 @@ class AiBookkeeper {
     AutoBookFlow? autoBookFlow,
     String source = 'auto',
     String? sourceChannel,
+
     /// 账单级去重:落库前对每笔调用,返回 true 则跳过该笔(不落库、不 failed、
     /// 不 awaiting)。用于「同一账单重复进入详情页」这类页面文本指纹挡不住
     /// 的场景(见 AutoBillingService.processScreenText 的账单指纹)。
     Future<bool> Function(BillInfo bill)? skipIfProcessed,
+    String? evidenceText,
   }) async {
     if (bills.isEmpty) {
       return BookkeepingResult.empty;
     }
 
-    // M2 候选制:分流基准数据只取一次(90 天一次拉取,M3 基线共用)
+    // M2 候选制:分流基准数据只取一次(90 天一次拉取,M3 基线共用)。
+    // 用可变副本维护本批已经处理的账单，防止模型一次返回重复对象时
+    // 第一笔入账后第二笔仍拿旧 pool 判定为“无重复”。
     List<BillInfo> recentBills = const [];
     List<BillInfo> pendingBills = const [];
     if (autoBookFlow != null) {
       recentBills = (await _loadBaseline(ledgerId)) ?? const [];
-      pendingBills = (await autoBookFlow.store.load())
-          .map((c) => c.bill)
-          .toList();
+      pendingBills =
+          (await autoBookFlow.store.load()).map((c) => c.bill).toList();
     }
+    final recentComparison = List<BillInfo>.from(recentBills);
+    final pendingComparison = List<BillInfo>.from(pendingBills);
     var awaitingCount = 0;
+    var ignoredCount = 0;
+    var duplicateCount = 0;
+    var shadowCount = 0;
+    final duplicateTransactionIds = <int>[];
+
+    final eventStore = autoBookFlow?.eventStore;
+    final eventKey = autoBookFlow?.eventKey;
+    dynamic eventRecord;
+    var priorEventItems = <int, dynamic>{};
+    if (eventStore != null && eventKey != null && eventKey.isNotEmpty) {
+      try {
+        eventRecord = await eventStore.findByEventKey(eventKey);
+        if (eventRecord != null) {
+          final items = await eventStore.itemsForEvent(eventRecord.id as int);
+          priorEventItems = {for (final item in items) item.itemIndex: item};
+        }
+      } catch (e, st) {
+        logger.warning(_tag, '读取自动记账事件失败,仅跳过子项审计', '$e');
+        logger.debug(_tag, '读取自动记账事件堆栈', st);
+      }
+    }
+
+    Future<void> recordEventItem({
+      required int index,
+      required BillInfo bill,
+      required String state,
+      int? transactionId,
+      String? reason,
+      Map<String, dynamic>? metadata,
+    }) async {
+      if (eventRecord == null || eventStore == null) return;
+      try {
+        await eventStore.upsertItem(
+          eventId: eventRecord.id,
+          itemIndex: index,
+          semanticKey: SemanticDedupMatcher.semanticKey(bill),
+          eventKind: bill.eventKind?.name,
+          settlementStatus: bill.settlementStatus?.name,
+          amount: bill.amount,
+          currency: bill.currency,
+          merchant: bill.merchant ?? bill.note,
+          transactionId: transactionId,
+          state: state,
+          bill: {
+            ...bill.toJson(),
+            if (metadata != null) ...metadata,
+          },
+          reason: reason,
+        );
+      } catch (e, st) {
+        // 审计表写失败不能回滚已经成功的交易；主事件仍由 Coordinator 维护。
+        logger.warning(_tag, '写入自动记账子项失败(不影响主流程)', '$e');
+        logger.debug(_tag, '写入自动记账子项堆栈', st);
+      }
+    }
 
     final saved = <BillInfo>[];
     final txIds = <int>[];
     var failed = 0;
 
     for (var i = 0; i < bills.length; i++) {
-      final bill = bills[i].copyWith(ledgerId: ledgerId);
+      final bill = _semanticPolicy.normalizeForPersistence(
+        bill: bills[i].copyWith(ledgerId: ledgerId),
+        evidenceText: evidenceText,
+      );
+
+      // 事件可能在“交易已写入、整批尚未完成”时被进程杀死，父事件会在
+      // lease 到期后进入 retry。先恢复已经成功的子项，避免重试再次创建；
+      // pending/ignored 子项也要保持原决定，避免重复添加候选或重新送 AI。
+      final priorItem = priorEventItems[i];
+      if (priorItem != null) {
+        final priorState = AutoBookStateValue.parse(priorItem.state as String?);
+        final priorTransactionId = priorItem.transactionId as int?;
+        if ((priorState == AutoBookState.booked ||
+                priorState == AutoBookState.duplicate) &&
+            priorTransactionId != null) {
+          duplicateCount++;
+          duplicateTransactionIds.add(priorTransactionId);
+          logger.debug(
+            _tag,
+            '重试恢复已完成账单子项,跳过创建',
+            'index=$i tx=$priorTransactionId state=${priorState.value}',
+          );
+          continue;
+        }
+        if (priorState == AutoBookState.ignored) {
+          ignoredCount++;
+          continue;
+        }
+        if (priorState == AutoBookState.pending && autoBookFlow != null) {
+          final reason =
+              (priorItem.reason as String?) ?? 'pending_confirmation';
+          await autoBookFlow.store.add(PendingCandidate(
+            id: PendingCandidate.candidateId(bill),
+            bill: bill,
+            billingTypes: billingTypes,
+            source: source,
+            capturedAt: DateTime.now(),
+            reason: reason,
+            eventKey: eventKey,
+            eventItemIndex: i,
+            semanticKey: SemanticDedupMatcher.semanticKey(bill),
+            matchedTransactionId: priorTransactionId,
+          ));
+          awaitingCount++;
+          pendingComparison.add(bill);
+          continue;
+        }
+      }
 
       // 账单级去重(调用方注入,如屏幕文本的「金额+备注+日期」指纹):
       // 命中即视为已入账过,直接跳过,不落库也不进候选。
       if (skipIfProcessed != null && await skipIfProcessed(bill)) {
-        logger.info(_tag, '第 ${i + 1} 笔命中账单级去重,跳过: ${bill.toJson()}');
+        duplicateCount++;
+        await recordEventItem(
+          index: i,
+          bill: bill,
+          state: AutoBookState.duplicate.value,
+          reason: 'already_processed',
+        );
+        logger.info(_tag, '第 ${i + 1} 笔命中账单级去重,跳过', _billDiagnostic(bill));
         continue;
       }
 
-      // M2 候选制:低置信 / 疑似重复 → 待确认队列,不入账
-      if (autoBookFlow != null &&
-          AutoBookRule.requiresConfirmation(
-            bill: bill,
-            recentBills: recentBills,
-            pendingBills: pendingBills,
-          )) {
-        final duplicate = AutoBookRule.looksLikeDuplicate(
-            bill, [...recentBills, ...pendingBills]);
-        final reason = AutoBookRule.reasonKeyFor(
+      final policy = _semanticPolicy.evaluate(
+        bill: bill,
+        source: source,
+        evidenceText: evidenceText,
+        automatic: autoBookFlow != null,
+      );
+      if (autoBookFlow != null && policy.isIgnored) {
+        ignoredCount++;
+        await recordEventItem(
+          index: i,
           bill: bill,
-          duplicate: duplicate,
+          state: AutoBookState.ignored.value,
+          reason: policy.reason,
         );
-        final queued = await autoBookFlow.store.add(PendingCandidate(
+        logger.info(_tag, '第 ${i + 1} 笔被语义硬闸门忽略: ${policy.reason}');
+        continue;
+      }
+
+      SemanticDedupMatch? semanticMatch;
+      if (autoBookFlow != null) {
+        try {
+          semanticMatch = await _dedupMatcher.findBest(
+            repository: _repo,
+            ledgerId: ledgerId,
+            bill: bill,
+            eventStore: eventStore,
+            sourceChannel: sourceChannel,
+          );
+        } catch (e, st) {
+          // 判重失败不阻断自动记账；退回候选规则，并保留诊断信息。
+          logger.warning(_tag, '语义去重查询失败,降级到基础规则', '$e');
+          logger.debug(_tag, '语义去重堆栈', st);
+        }
+      }
+
+      final basicDuplicate = AutoBookRule.looksLikeDuplicate(
+        bill,
+        [...recentComparison, ...pendingComparison],
+      );
+      final semanticDuplicate = semanticMatch?.isPossible ?? false;
+      final duplicate = basicDuplicate || semanticDuplicate;
+
+      // 影子模式只观察识别、语义策略和判重结果，不创建交易，也不写入候选。
+      // 事件子项仍保留脱敏后的结构化摘要，便于发布前统计和回溯。
+      if (autoBookFlow?.shadowMode == true) {
+        shadowCount++;
+        await recordEventItem(
+          index: i,
+          bill: bill,
+          state: AutoBookState.ignored.value,
+          reason:
+              'shadow_mode:${policy.reason}${duplicate ? ':duplicate' : ''}',
+        );
+        logger.info(_tag, '影子模式跳过写入', _billDiagnostic(bill));
+        continue;
+      }
+
+      // 强匹配直接关联已有交易，不再创建第二笔；弱匹配必须进入候选。
+      if (autoBookFlow != null && semanticMatch?.isStrong == true) {
+        duplicateCount++;
+        duplicateTransactionIds.add(semanticMatch!.transactionId);
+        await recordEventItem(
+          index: i,
+          bill: bill,
+          state: AutoBookState.duplicate.value,
+          transactionId: semanticMatch.transactionId,
+          reason: 'semantic_strong:${semanticMatch.score.toStringAsFixed(3)}',
+        );
+        logger.info(_tag,
+            '第 ${i + 1} 笔命中强语义重复,跳过创建: tx=${semanticMatch.transactionId} score=${semanticMatch.score.toStringAsFixed(3)}');
+        continue;
+      }
+
+      // M2 候选制:低置信 / 语义待确认 / 疑似重复 → 待确认队列,不入账。
+      final requiresConfirmation = autoBookFlow != null &&
+          (policy.isPending || AutoBookRule.isLowConfidence(bill) || duplicate);
+      if (requiresConfirmation) {
+        final reason = duplicate
+            ? 'duplicate'
+            : _candidateReasonForPolicy(policy) ??
+                AutoBookRule.reasonKeyFor(bill: bill, duplicate: duplicate);
+        await autoBookFlow.store.add(PendingCandidate(
           id: PendingCandidate.candidateId(bill),
           bill: bill,
           billingTypes: billingTypes,
           source: source,
           capturedAt: DateTime.now(),
           reason: reason,
+          eventKey: autoBookFlow.eventKey,
+          semanticKey: SemanticDedupMatcher.semanticKey(bill),
+          matchedTransactionId: semanticMatch?.transactionId,
+          matchScore: semanticMatch?.score,
         ));
         awaitingCount++;
-        logger.info(_tag, '第 ${i + 1} 笔进入待确认(候选制): ${bill.toJson()}');
+        await recordEventItem(
+          index: i,
+          bill: bill,
+          state: AutoBookState.pending.value,
+          reason: reason,
+          metadata: {
+            'candidate_id': PendingCandidate.candidateId(bill),
+            'candidate_reason': reason,
+            'billing_types': billingTypes,
+            'source': source,
+            'captured_at': DateTime.now().toIso8601String(),
+            if (semanticMatch?.transactionId != null)
+              'matched_transaction_id': semanticMatch!.transactionId,
+            if (semanticMatch?.score != null)
+              'match_score': semanticMatch!.score,
+          },
+        );
+        pendingComparison.add(bill);
+        logger.info(_tag, '第 ${i + 1} 笔进入待确认(候选制)', _billDiagnostic(bill));
         continue;
       }
 
@@ -262,9 +577,24 @@ class AiBookkeeper {
         );
         if (txId == null) {
           failed++;
-          logger.warning(_tag, '第 ${i + 1} 笔创建失败: ${bill.toJson()}');
+          await recordEventItem(
+            index: i,
+            bill: bill,
+            state: AutoBookState.retry.value,
+            reason: 'create_returned_null',
+          );
+          logger.warning(_tag, '第 ${i + 1} 笔创建失败', _billDiagnostic(bill));
           continue;
         }
+
+        // 先写入子项关联，再执行附件/名称等非核心副作用。这样即使进程
+        // 在后续步骤被杀，重试也能知道这笔交易已经成功落库。
+        await recordEventItem(
+          index: i,
+          bill: bill,
+          state: AutoBookState.booked.value,
+          transactionId: txId,
+        );
 
         // 1. **优先**触发 onSaved 回调(主要用于保存图片附件)。
         //    放在 _enrichWithActualNames 前面是为了缩短附件保存的时间窗口 ——
@@ -286,14 +616,21 @@ class AiBookkeeper {
         try {
           enriched = await _enrichWithActualNames(bill, txId);
         } catch (e, st) {
-          logger.error(_tag, 'enrichWithActualNames 异常,用 AI 原始 BillInfo',
-              e, st);
+          logger.error(
+              _tag, 'enrichWithActualNames 异常,用 AI 原始 BillInfo', e, st);
           enriched = bill;
         }
         saved.add(enriched);
         txIds.add(txId);
+        recentComparison.add(bill);
       } catch (e, st) {
         failed++;
+        await recordEventItem(
+          index: i,
+          bill: bill,
+          state: AutoBookState.retry.value,
+          reason: 'create_exception',
+        );
         logger.error(_tag, '第 ${i + 1} 笔创建异常', e, st);
       }
     }
@@ -309,7 +646,38 @@ class AiBookkeeper {
       unconvertedCurrencies:
           List.unmodifiable(await _collectUnconverted(txIds, ledgerId)),
       awaitingCount: awaitingCount,
+      ignoredCount: ignoredCount,
+      duplicateCount: duplicateCount,
+      duplicateTransactionIds: List.unmodifiable(duplicateTransactionIds),
+      shadowCount: shadowCount,
     );
+  }
+
+  String _billDiagnostic(BillInfo bill) {
+    final note = bill.note?.trim();
+    final noteHash = note == null || note.isEmpty
+        ? null
+        : autoBookHash(normalizeAutoBookText(note), length: 12);
+    final external = bill.externalId?.trim();
+    final externalHash = external == null || external.isEmpty
+        ? null
+        : autoBookHash(external, length: 12);
+    return 'amount=${bill.amount}, type=${bill.type?.name}, '
+        'kind=${bill.eventKind?.name}, status=${bill.settlementStatus?.name}, '
+        'time=${bill.time?.toIso8601String()}, timePrecision=${bill.timePrecision?.name}, '
+        'noteHash=$noteHash, externalHash=$externalHash';
+  }
+
+  String? _candidateReasonForPolicy(AutoBookPolicyDecision decision) {
+    return switch (decision.reason) {
+      'confidence_missing' => 'lowConfidence',
+      'time_inferred' => 'lowConfidence',
+      'settlement_unknown' => 'settlementUnknown',
+      'transfer_account_missing' => 'transferAccountMissing',
+      'time_precision_weak' => 'lowConfidence',
+      'event_kind_unknown' => 'settlementUnknown',
+      _ => null,
+    };
   }
 
   /// 近 90 天本账本原始交易一次拉取,拆分出最近 24h 的 BillInfo
@@ -353,14 +721,14 @@ class AiBookkeeper {
 
   /// 找出本批里「外币且未折算」的币种(A5)。判定条件与 L11 补折算横幅一致:
   /// `currencyCode != 账本本位币 && nativeAmount == amount`。
-  Future<List<String>> _collectUnconverted(List<int> txIds, int ledgerId) async {
+  Future<List<String>> _collectUnconverted(
+      List<int> txIds, int ledgerId) async {
     if (txIds.isEmpty) return const [];
     try {
       final ledger = await _repo.getLedgerById(ledgerId);
-      final base = ((ledger?.currency.isNotEmpty ?? false)
-              ? ledger!.currency
-              : 'CNY')
-          .toUpperCase();
+      final base =
+          ((ledger?.currency.isNotEmpty ?? false) ? ledger!.currency : 'CNY')
+              .toUpperCase();
       final codes = <String>{};
       for (final id in txIds) {
         final tx = await _repo.getTransactionById(id);

@@ -5,6 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../automation/auto_billing_service.dart'
     show AutoBillingService, SmsProcessOutcome;
+import '../automation/auto_book_coordinator.dart';
+import '../automation/auto_book_event.dart';
+import '../data/source_channel_resolver.dart';
+import '../../providers/automation_providers.dart';
 
 /// 支付通知监听服务(Android 专用)。
 ///
@@ -21,6 +25,7 @@ class NotifyMonitorService {
 
   final ProviderContainer _container;
   late final AutoBillingService _autoBillingService;
+  late final AutoBookCoordinator _coordinator;
 
   bool _isEnabled = false;
   bool _bridgeRegistered = false;
@@ -38,7 +43,8 @@ class NotifyMonitorService {
   }
 
   NotifyMonitorService._internal(this._container) {
-    _autoBillingService = AutoBillingService(_container);
+    _autoBillingService = _container.read(autoBillingServiceProvider);
+    _coordinator = _container.read(autoBookCoordinatorProvider);
     _setupMethodCallHandler();
   }
 
@@ -54,8 +60,7 @@ class NotifyMonitorService {
   }
 
   Future<void> _enqueue(Future<void> Function() task) {
-    _processingChain =
-        _processingChain.catchError((_) {}).then((_) => task());
+    _processingChain = _processingChain.catchError((_) {}).then((_) => task());
     return _processingChain;
   }
 
@@ -119,21 +124,60 @@ class NotifyMonitorService {
         final body = (raw['body'] ?? '').toString();
         final fingerprint = (raw['fingerprint'] ?? '').toString();
 
-        if (_autoBillingService.isNotifyProcessed(fingerprint)) {
-          await _ack(fingerprint);
+        final alreadyWarned = _noAiNotified.contains(fingerprint);
+        final timestamp = int.tryParse((raw['timestamp'] ?? '').toString());
+        // native fingerprint 已包含 StatusBarNotification key/id/postTime；
+        // 旧队列没有这些字段时仍能通过 content fingerprint 兼容。
+        final eventKey = 'notification:v3:$fingerprint';
+        final execution = await _coordinator.execute(
+          input: AutoBookInput(
+            eventKey: eventKey,
+            source: AutoBookSource.notification,
+            captureIntent: AutoBookCaptureIntent.automatic,
+            capturedAt: DateTime.now(),
+            sourceOccurredAt: timestamp == null
+                ? null
+                : DateTime.fromMillisecondsSinceEpoch(timestamp),
+            contentHash: fingerprint,
+            sourceChannel: SourceChannelResolver.channelForPackage(pkg),
+          ),
+          action: () => _autoBillingService.processNotification(
+            pkg,
+            title,
+            body,
+            showNotification: !alreadyWarned,
+            // 事件幂等由 Coordinator 负责，避免旧内存 cache 影响 retry。
+            skipDedup: true,
+            eventKey: eventKey,
+          ),
+          updateFor: (outcome) => AutoBookEventUpdate(
+            state: switch (outcome) {
+              SmsProcessOutcome.success => AutoBookState.booked,
+              SmsProcessOutcome.pending => AutoBookState.pending,
+              SmsProcessOutcome.duplicate => AutoBookState.duplicate,
+              SmsProcessOutcome.shadow => AutoBookState.ignored,
+              SmsProcessOutcome.noTransaction => AutoBookState.ignored,
+              SmsProcessOutcome.noAiConfigured => AutoBookState.captured,
+              SmsProcessOutcome.failed => AutoBookState.retry,
+            },
+            reason: outcome == SmsProcessOutcome.noAiConfigured
+                ? 'ai_not_configured'
+                : outcome == SmsProcessOutcome.shadow
+                    ? 'shadow_mode'
+                    : null,
+          ),
+        );
+
+        if (execution.skipped) {
+          if (execution.terminal) await _ack(fingerprint);
           continue;
         }
 
-        final alreadyWarned = _noAiNotified.contains(fingerprint);
-        final outcome = await _autoBillingService.processNotification(
-          pkg,
-          title,
-          body,
-          showNotification: !alreadyWarned,
-        );
+        final outcome = execution.value;
+        if (outcome == null) continue;
         if (outcome == SmsProcessOutcome.noAiConfigured) {
           _noAiNotified.add(fingerprint);
-        } else {
+        } else if (outcome != SmsProcessOutcome.failed) {
           await _ack(fingerprint);
         }
       }
@@ -159,8 +203,9 @@ class NotifyMonitorService {
   Future<void> _ack(String fingerprint) async {
     if (fingerprint.isEmpty) return;
     try {
-      await _channel
-          .invokeMethod('ackPending', {'fingerprints': [fingerprint]});
+      await _channel.invokeMethod('ackPending', {
+        'fingerprints': [fingerprint]
+      });
     } catch (_) {}
   }
 

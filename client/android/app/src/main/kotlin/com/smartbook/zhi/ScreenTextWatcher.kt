@@ -22,8 +22,8 @@ import java.security.MessageDigest
  * 支付通知的 App 以及历史账单回看)。系统无障碍服务读取前台页面文本树,
  * 检测到金额+交易特征后持久化入队,Flutter 侧经 AI 记账。流程与
  * NotificationWatcher 完全同构:
- *   1. 白名单包名(支付宝/抖音/京东/微信) + 事件防抖(页面稳定后抓一次);
- *   2. 垃圾特征剔除 + 金额/交易关键词粗筛(精确判定交给 AI,宁缺勿滥);
+ *   1. 白名单包名(支付宝/抖音/京东/微信/招商银行) + 事件防抖(页面稳定后抓一次);
+ *   2. 垃圾特征剔除 + 聊天页拒识 + 金额/强交易特征粗筛(宁缺勿滥);
  *   3. 指纹去重 + 持久化队列与短信/通知队列相互独立;
  *   4. Flutter 进程存活时经桥接广播即时取走,否则下次启动 drain。
  *
@@ -58,6 +58,7 @@ open class ScreenTextWatcher : AccessibilityService() {
     private var retryCount = 0
     private var lastEventAt = 0L
     private var lastEventPkg = ""
+    private var lastPageClass = ""
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val e = event ?: return
@@ -72,6 +73,12 @@ open class ScreenTextWatcher : AccessibilityService() {
             if (!prefs.getBoolean(KEY_ENABLED, false)) {
                 log("白名单包可见但开关关闭,跳过: $pkg")
                 return
+            }
+
+            // 只有窗口切换事件携带页面(Activity)类名;内容变化事件携带的是
+            // 控件类名,不能覆盖。据此维护「当前页面类名」供聊天页黑名单判定。
+            if (e.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                lastPageClass = e.className?.toString() ?: ""
             }
 
             // 事件到达只记时间戳,保证只有一个待执行的抓取任务。
@@ -120,6 +127,10 @@ open class ScreenTextWatcher : AccessibilityService() {
                 log("页面内容命中垃圾特征,丢弃: $pkg len=$logLen")
                 return
             }
+            if (isChatPage(pkg, lastPageClass)) {
+                log("页面类名命中聊天页黑名单,丢弃: $pkg/$lastPageClass len=$logLen")
+                return
+            }
             if (!hasAmount(text) || !hasTradeHint(text)) {
                 log("无金额或无交易特征,丢弃: $pkg len=$logLen")
                 return
@@ -130,18 +141,19 @@ open class ScreenTextWatcher : AccessibilityService() {
                 log("命中列表页特征(金额出现 ${AMOUNT_PATTERN.findAll(text).count()} 次),丢弃: $pkg len=$logLen")
                 return
             }
+            if (isNonBookableStatus(text)) {
+                log("命中账单汇总/待支付/失败状态,丢弃: $pkg len=$logLen")
+                return
+            }
 
             val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             val fingerprint = fingerprint(pkg, text)
-            val memo = loadFingerprints(prefs)
-            if (memo.contains(fingerprint)) {
-                log("页面指纹已处理过,丢弃: $pkg len=$logLen")
+            val timestamp = System.currentTimeMillis()
+            val eventKey = eventKey(pkg, fingerprint, timestamp)
+            if (!enqueue(prefs, eventKey, fingerprint, pkg, text, timestamp)) {
+                log("页面已在已处理记录或待处理队列中,丢弃: $pkg len=$logLen")
                 return
             }
-            memo.add(fingerprint)
-            saveFingerprints(prefs, memo)
-
-            enqueue(prefs, fingerprint, pkg, text, System.currentTimeMillis())
             log("已入队详情页文本: $pkg len=$logLen")
 
             try {
@@ -219,6 +231,20 @@ open class ScreenTextWatcher : AccessibilityService() {
     }
 
     /**
+     * 聊天页拒识:微信聊天列表/单聊页面十年未变(LauncherUI 承载聊天列表与
+     * 单聊;微信支付/账单页是独立页面),按页面类名黑名单直接丢弃 —— 聊天
+     * 文本既不是账单,送 AI 还有隐私风险。类名比内容特征可靠:聊天里出现
+     * 「转账/支付成功 ¥xx」的消息气泡会绕过内容粗筛,却绕不过类名。
+     * 覆盖子进程包名(如 com.tencent.mm:tools)用 contains 匹配。
+     */
+    fun isChatPage(pkg: String, pageClass: String): Boolean {
+        if (pkg.contains("com.tencent.mm") &&
+            (pageClass.contains("LauncherUI") || pageClass.contains("ChatUI"))
+        ) return true
+        return false
+    }
+
+    /**
      * 列表页判定:单条账单详情页金额通常出现 1~3 次(实付/原价/优惠/退款),
      * 账单/流水列表页则一条流水一个金额,整页几十个。金额命中次数达到阈值
      * 即视为列表页,丢弃 —— 避免把整页历史流水批量送 AI 造成重复/错误入账。
@@ -227,9 +253,26 @@ open class ScreenTextWatcher : AccessibilityService() {
         return AMOUNT_PATTERN.findAll(text).count() >= MAX_DETAIL_AMOUNTS
     }
 
-    /** 页面文本是否有交易/账单类特征词(粗筛,精确判定交给 AI)。 */
+    /** 明确不是已完成交易的状态，避免详情页把待付款/汇总页送入 AI。 */
+    fun isNonBookableStatus(text: String): Boolean {
+        return NON_BOOKABLE_KEYWORDS.any { text.contains(it) }
+    }
+
+    /**
+     * 页面文本是否有账单/订单**详情页**特征(粗筛,精确判定交给 AI)。
+     * 只收「详情页标题/状态/字段名」级强特征短语 —— 聊天口语里的单词
+     * (「我支付了」「退款了吗」「转账给你」)不会命中;宁漏勿误。
+     */
     fun hasTradeHint(text: String): Boolean {
         return TRADE_KEYWORDS.any { text.contains(it) }
+    }
+
+    /** 同一页面内容在不同捕获时刻可区分的原始事件键。 */
+    fun eventKey(pkg: String, fingerprint: String, timestamp: Long): String {
+        return MessageDigest.getInstance("SHA-256")
+            .digest("$pkg|$timestamp|$fingerprint".toByteArray())
+            .take(8)
+            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
     }
 
     /**
@@ -261,14 +304,27 @@ open class ScreenTextWatcher : AccessibilityService() {
     @Synchronized
     private fun enqueue(
         prefs: SharedPreferences,
+        eventKey: String,
         fingerprint: String,
         pkg: String,
         text: String,
         ts: Long,
-    ) {
+    ): Boolean {
+        val processed = loadFingerprints(prefs)
+        if (processed.contains(PROCESSED_EVENT_PREFIX + eventKey)) return false
         val arr = JSONArray(prefs.getString(KEY_QUEUE, null) ?: "[]")
+        for (i in 0 until arr.length()) {
+            val obj = arr.optJSONObject(i) ?: continue
+            if (obj.optString("eventKey") == eventKey ||
+                (obj.optString("eventKey").isEmpty() &&
+                    obj.optString("fingerprint") == fingerprint)
+            ) {
+                return false
+            }
+        }
         arr.put(
             JSONObject()
+                .put("eventKey", eventKey)
                 .put("fingerprint", fingerprint)
                 .put("package", pkg)
                 .put("text", text)
@@ -276,6 +332,7 @@ open class ScreenTextWatcher : AccessibilityService() {
         )
         while (arr.length() > MAX_QUEUE) arr.remove(0)
         prefs.edit().putString(KEY_QUEUE, arr.toString()).apply()
+        return true
     }
 
     @Synchronized
@@ -288,6 +345,7 @@ open class ScreenTextWatcher : AccessibilityService() {
             val obj = arr.optJSONObject(i) ?: continue
             result.add(
                 mapOf(
+                    "eventKey" to obj.optString("eventKey"),
                     "fingerprint" to obj.optString("fingerprint"),
                     "package" to obj.optString("package"),
                     "text" to obj.optString("text"),
@@ -299,17 +357,36 @@ open class ScreenTextWatcher : AccessibilityService() {
     }
 
     @Synchronized
-    fun ackQueue(context: Context, fingerprints: List<String>) {
-        if (fingerprints.isEmpty()) return
+    fun ackQueue(
+        context: Context,
+        fingerprints: List<String>,
+        eventKeys: List<String> = emptyList(),
+    ) {
+        if (fingerprints.isEmpty() && eventKeys.isEmpty()) return
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val raw = prefs.getString(KEY_QUEUE, null) ?: return
+        val wanted = (fingerprints + eventKeys).toSet()
         val arr = JSONArray(raw)
         val remaining = JSONArray()
+        val acked = mutableSetOf<String>()
         for (i in 0 until arr.length()) {
             val obj = arr.optJSONObject(i) ?: continue
-            if (fingerprints.contains(obj.optString("fingerprint"))) continue
-            remaining.put(obj)
+            val fp = obj.optString("fingerprint")
+            val key = obj.optString("eventKey")
+            if (wanted.contains(fp) || (key.isNotEmpty() && wanted.contains(key))) {
+                if (key.isNotEmpty()) {
+                    acked.add(PROCESSED_EVENT_PREFIX + key)
+                } else if (fp.isNotEmpty()) {
+                    acked.add(fp)
+                }
+            } else {
+                remaining.put(obj)
+            }
         }
+        if (acked.isEmpty()) return
+        val processed = loadFingerprints(prefs)
+        processed.addAll(acked)
+        saveFingerprints(prefs, processed)
         prefs.edit().putString(KEY_QUEUE, remaining.toString()).apply()
     }
 
@@ -328,11 +405,15 @@ open class ScreenTextWatcher : AccessibilityService() {
 
         const val MAX_FINGERPRINTS = 200
         const val MAX_QUEUE = 30
+        private const val PROCESSED_EVENT_PREFIX = "event:"
 
         /** 详情页自动记账白名单包名(完整的包名;此处用 contains 子串匹配,
             与 NotificationWatcher 同风格,与 accessibility_service_config.xml
             的精确匹配等效 —— XML 必须写完整包名,见该文件注释)。
-            招商银行 2026-09 已在真机核对补充。 */
+            招商银行 2026-09 已在真机核对补充;其余银行包名 2026-09 已逐家经
+            应用商店核验(同 NotificationWatcher.TRUSTED_PACKAGES 注释)。
+            注意:无障碍抓全页文本,银行 App 页面噪声大,故银行只开通知路、
+            不进本白名单 —— 只有「详情页文本可判读」的 App 才值得无障碍抓。 */
         private val TRUSTED_PACKAGES = listOf(
             "com.eg.android.AlipayGphone",    // 支付宝
             "com.ss.android.ugc.aweme",       // 抖音(含极速版,子串覆盖 lite)
@@ -368,14 +449,27 @@ open class ScreenTextWatcher : AccessibilityService() {
             "直降", "特价", "折扣"
         )
 
-        /** 交易/账单页特征词(粗筛)。注意避开「购物车/商品页」常见词。 */
+        /** 详情页特征词:标题/状态/字段名级短语(聊天口语不会碰巧出现)。
+            原「支付/消费/转账/付款」等单词过宽 —— 聊天里聊到钱就命中,
+            导致聊天页整页文本被送 AI,2026-09 收紧。 */
         private val TRADE_KEYWORDS = listOf(
-            "账单", "订单", "交易", "支付", "付款", "实付", "应付", "消费",
-            "扣款", "扣费", "退款", "充值", "收款", "转账", "代扣", "报销",
-            "成交", "已支付", "已付款", "支付成功", "交易详情", "订单详情",
-            "账单详情", "订单编号", "订单金额", "交易金额"
+            // 页面标题
+            "订单详情", "账单详情", "交易详情", "支付详情", "退款详情",
+            "订单结算", "支付结果",
+            // 交易状态
+            "支付成功", "付款成功", "交易成功", "已支付", "已付款",
+            "退款成功", "支付完成",
+            // 字段名/编号(详情页独有,聊天几乎不会整词出现)
+            "订单编号", "订单号", "交易单号", "转账单号", "商户单号",
+            "商家订单", "交易流水", "实付款", "实付金额", "付款金额",
+            "支付金额", "订单金额", "交易金额", "合计金额", "退款金额"
         )
 
+        private val NON_BOOKABLE_KEYWORDS = listOf(
+            "本期账单", "账单已出", "最低还款", "还款日", "待付款", "待支付",
+            "待确认", "订单确认", "交易关闭", "支付失败", "交易失败",
+            "支付未成功", "订单已关闭", "可用额度", "积分余额"
+        )
         private val AMOUNT_PATTERN = Regex("[¥￥]\\s*\\d|\\d[\\d,]*(\\.[\\d]{1,2})?\\s*元|\\d[\\d,]*(\\.[\\d]{1,2})?\\s*块")
 
         private fun log(msg: String) {

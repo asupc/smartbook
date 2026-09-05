@@ -10,6 +10,8 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
 import android.util.Log
+import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * 截图监听器
@@ -44,6 +46,52 @@ class ScreenshotObserver(
         private const val PREFS_NAME = "screenshot_monitor_prefs"
         private const val KEY_PROCESSED_PATHS = "processed_paths"
         private const val MAX_STORED_PATHS = 200 // 最多存储200条记录
+        private const val KEY_PENDING_QUEUE = "pending_queue"
+        private const val MAX_PENDING_QUEUE = 30
+
+        /** 读取待处理截图，读取不删除，处理完成由 Flutter ACK。 */
+        @Synchronized
+        fun peekQueue(context: Context): ArrayList<Map<String, String>> {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val arr = JSONArray(prefs.getString(KEY_PENDING_QUEUE, null) ?: "[]")
+            val result = ArrayList<Map<String, String>>(arr.length())
+            for (i in 0 until arr.length()) {
+                val obj = arr.optJSONObject(i) ?: continue
+                result.add(
+                    mapOf(
+                        "path" to obj.optString("path"),
+                        "timestamp" to obj.optString("timestamp"),
+                    )
+                )
+            }
+            return result
+        }
+
+        /** 终态 ACK：删除队列项并写入已完成路径缓存。 */
+        @Synchronized
+        fun ackQueue(context: Context, paths: List<String>) {
+            if (paths.isEmpty()) return
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val wanted = paths.toSet()
+            val arr = JSONArray(prefs.getString(KEY_PENDING_QUEUE, null) ?: "[]")
+            val remaining = JSONArray()
+            val acked = mutableSetOf<String>()
+            for (i in 0 until arr.length()) {
+                val obj = arr.optJSONObject(i) ?: continue
+                val path = obj.optString("path")
+                if (wanted.contains(path)) acked.add(path) else remaining.put(obj)
+            }
+            if (acked.isEmpty()) return
+            val processed = prefs.getString(KEY_PROCESSED_PATHS, null)
+                ?.split("|")?.filter { it.isNotEmpty() }?.toMutableList()
+                ?: mutableListOf()
+            processed.addAll(acked)
+            val trimmed = processed.takeLast(MAX_STORED_PATHS)
+            prefs.edit()
+                .putString(KEY_PENDING_QUEUE, remaining.toString())
+                .putString(KEY_PROCESSED_PATHS, trimmed.joinToString("|"))
+                .apply()
+        }
     }
 
     private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -177,27 +225,20 @@ class ScreenshotObserver(
                         }
 
                         // 检查是否是截图
-                        if (isScreenshot(imagePath, imageName) && !processedPaths.contains(imagePath)) {
+                        if (isScreenshot(imagePath, imageName) &&
+                            enqueuePending(imagePath, System.currentTimeMillis())) {
                             Log.d(TAG, "✅ 检测到新截图: $imagePath")
                             Log.d(TAG, "文件名: $imageName, 年龄=${imageAge}秒")
                             LoggerPlugin.info(TAG, "检测到新截图: $imageName")
 
-                            processedPaths.add(imagePath)
-                            saveProcessedPaths() // 持久化保存
-
+                            // 先写入持久化队列，再通知 Flutter。进程在 AI/DB
+                            // 处理前被杀时，启动 drain 仍能恢复；只有 Flutter ACK
+                            // 后才进入 completed path cache。
                             val callbackStartTime = System.currentTimeMillis()
                             onScreenshotDetected(imagePath)
                             val callbackElapsed = System.currentTimeMillis() - callbackStartTime
                             Log.d(TAG, "⏱️ [性能] 回调执行完成, 耗时=${callbackElapsed}ms")
                             LoggerPlugin.debug(TAG, "截图回调执行完成, 耗时=${callbackElapsed}ms")
-
-                            // 限制缓存大小
-                            if (processedPaths.size > MAX_STORED_PATHS) {
-                                val toRemove = processedPaths.take(50)
-                                processedPaths.removeAll(toRemove.toSet())
-                                saveProcessedPaths() // 保存修剪后的列表
-                                LoggerPlugin.info(TAG, "已处理路径缓存已修剪，当前数量: ${processedPaths.size}")
-                            }
                         }
                     }
                 }
@@ -272,27 +313,17 @@ class ScreenshotObserver(
                         }
 
                         // 检查是否是截图
-                        if (isScreenshot(imagePath, imageName) && !processedPaths.contains(imagePath)) {
+                        if (isScreenshot(imagePath, imageName) &&
+                            enqueuePending(imagePath, System.currentTimeMillis())) {
                             Log.d(TAG, "✅ 检测到新截图: $imagePath")
                             Log.d(TAG, "文件名: $imageName, 年龄=${imageAge}秒")
                             LoggerPlugin.info(TAG, "检测到新截图(兜底): $imageName")
-
-                            processedPaths.add(imagePath)
-                            saveProcessedPaths() // 持久化保存
 
                             val callbackStartTime = System.currentTimeMillis()
                             onScreenshotDetected(imagePath)
                             val callbackElapsed = System.currentTimeMillis() - callbackStartTime
                             Log.d(TAG, "⏱️ [性能] 回调执行完成, 耗时=${callbackElapsed}ms")
                             LoggerPlugin.debug(TAG, "截图回调执行完成(兜底), 耗时=${callbackElapsed}ms")
-
-                            // 限制缓存大小
-                            if (processedPaths.size > MAX_STORED_PATHS) {
-                                val toRemove = processedPaths.take(50)
-                                processedPaths.removeAll(toRemove.toSet())
-                                saveProcessedPaths() // 保存修剪后的列表
-                                LoggerPlugin.info(TAG, "已处理路径缓存已修剪(兜底)，当前数量: ${processedPaths.size}")
-                            }
                         }
                     }
                 }
@@ -304,6 +335,22 @@ class ScreenshotObserver(
         } catch (e: Exception) {
             Log.e(TAG, "检查新截图失败", e)
         }
+    }
+
+    /** 将截图路径写入待处理队列，队列项本身作为事件级幂等兜底。 */
+    @Synchronized
+    private fun enqueuePending(path: String, ts: Long): Boolean {
+        val processed = prefs.getString(KEY_PROCESSED_PATHS, null)
+            ?.split("|")?.filter { it.isNotEmpty() }?.toSet() ?: emptySet()
+        if (processed.contains(path)) return false
+        val arr = JSONArray(prefs.getString(KEY_PENDING_QUEUE, null) ?: "[]")
+        for (i in 0 until arr.length()) {
+            if (arr.optJSONObject(i)?.optString("path") == path) return false
+        }
+        arr.put(JSONObject().put("path", path).put("timestamp", ts))
+        while (arr.length() > MAX_PENDING_QUEUE) arr.remove(0)
+        prefs.edit().putString(KEY_PENDING_QUEUE, arr.toString()).apply()
+        return true
     }
 
     /**

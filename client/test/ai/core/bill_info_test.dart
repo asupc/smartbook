@@ -129,6 +129,21 @@ void main() {
       expect(BillInfo.fromJson({'amount': '无'}).amount, isNull);
     });
 
+    test('失败/取消状态优先于成功子串,避免误放行', () {
+      expect(
+        BillInfo.fromJson({'amount': -1, 'status': '已支付失败'}).settlementStatus,
+        BillSettlementStatus.failed,
+      );
+      expect(
+        BillInfo.fromJson({'amount': -1, 'status': '支付成功后冲正'}).settlementStatus,
+        BillSettlementStatus.reversed,
+      );
+      expect(
+        BillInfo.fromJson({'amount': -1, 'status': '本期账单已完成'}).settlementStatus,
+        BillSettlementStatus.summary,
+      );
+    });
+
     test('confidence 字符串数值兼容,缺失回落 1.0(旧模型视同高置信)', () {
       expect(
         BillInfo.fromJson({'amount': -1, 'confidence': '0.9'}).confidence,
@@ -198,8 +213,10 @@ void main() {
 
   group('BillInfo.currency(智能记账多币种 A4)', () {
     test('ISO 码大小写归一', () {
-      expect(BillInfo.fromJson({'amount': -1, 'currency': 'usd'}).currency, 'USD');
-      expect(BillInfo.fromJson({'amount': -1, 'currency': ' JPY '}).currency, 'JPY');
+      expect(
+          BillInfo.fromJson({'amount': -1, 'currency': 'usd'}).currency, 'USD');
+      expect(BillInfo.fromJson({'amount': -1, 'currency': ' JPY '}).currency,
+          'JPY');
     });
 
     test('兼容 currency_code / currencyCode 键名', () {
@@ -214,21 +231,27 @@ void main() {
     });
 
     test('口语别名走 alias 表', () {
-      expect(BillInfo.fromJson({'amount': -1, 'currency': '美元'}).currency, 'USD');
-      expect(BillInfo.fromJson({'amount': -1, 'currency': '日元'}).currency, 'JPY');
+      expect(
+          BillInfo.fromJson({'amount': -1, 'currency': '美元'}).currency, 'USD');
+      expect(
+          BillInfo.fromJson({'amount': -1, 'currency': '日元'}).currency, 'JPY');
     });
 
     test(r'AI 把 currency 回成 "$" 时仍解析成 USD(实测高频)', () {
-      expect(BillInfo.fromJson({'amount': -1, 'currency': r'$'}).currency, 'USD');
+      expect(
+          BillInfo.fromJson({'amount': -1, 'currency': r'$'}).currency, 'USD');
     });
 
     test('真歧义符号 ¥ 按缺失处理(CNY/JPY 猜错差 ~20 倍)', () {
-      expect(BillInfo.fromJson({'amount': -1, 'currency': '¥'}).currency, isNull);
+      expect(
+          BillInfo.fromJson({'amount': -1, 'currency': '¥'}).currency, isNull);
     });
 
     test('非法币种按缺失处理,不抛异常', () {
-      expect(BillInfo.fromJson({'amount': -1, 'currency': 'XYZ'}).currency, isNull);
-      expect(BillInfo.fromJson({'amount': -1, 'currency': 123}).currency, isNull);
+      expect(BillInfo.fromJson({'amount': -1, 'currency': 'XYZ'}).currency,
+          isNull);
+      expect(
+          BillInfo.fromJson({'amount': -1, 'currency': 123}).currency, isNull);
     });
 
     test('回归锁:老 payload 无 currency 键 → null,其余字段不受影响', () {

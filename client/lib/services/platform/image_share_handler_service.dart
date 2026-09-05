@@ -2,6 +2,9 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../automation/auto_billing_service.dart';
+import '../automation/auto_book_coordinator.dart';
+import '../automation/auto_book_event.dart';
+import '../../providers/automation_providers.dart';
 import '../system/logger_service.dart';
 
 /// 图片分享处理服务（Android专用）
@@ -11,6 +14,7 @@ class ImageShareHandlerService {
 
   final ProviderContainer _container;
   late final AutoBillingService _autoBillingService;
+  late final AutoBookCoordinator _coordinator;
 
   // 单例模式
   static ImageShareHandlerService? _instance;
@@ -21,7 +25,8 @@ class ImageShareHandlerService {
   }
 
   ImageShareHandlerService._internal(this._container) {
-    _autoBillingService = AutoBillingService(_container);
+    _autoBillingService = _container.read(autoBillingServiceProvider);
+    _coordinator = _container.read(autoBookCoordinatorProvider);
     _setupMethodCallHandler();
   }
 
@@ -49,11 +54,51 @@ class ImageShareHandlerService {
         return;
       }
 
-      // 调用AutoBillingService处理图片
-      await _autoBillingService.processScreenshot(
-        path,
-        showNotification: true,
+      final eventKey = await _coordinator.imageEventKey(path);
+      final execution = await _coordinator.execute(
+        input: AutoBookInput(
+          eventKey: eventKey,
+          source: AutoBookSource.sharedImage,
+          captureIntent: AutoBookCaptureIntent.userInitiated,
+          capturedAt: DateTime.now(),
+          contentHash: eventKey.startsWith('image:v1:')
+              ? eventKey.substring('image:v1:'.length)
+              : null,
+        ),
+        action: () => _autoBillingService.processScreenshot(
+          path,
+          showNotification: true,
+          eventKey: eventKey,
+        ),
+        updateFor: (result) => AutoBookEventUpdate(
+          state: result.aiNotConfigured
+              ? AutoBookState.captured
+              : result.retryable || result.failedCount > 0
+                  ? AutoBookState.retry
+                  : result.awaitingCount > 0
+                      ? AutoBookState.pending
+                      : result.shadowCount > 0
+                          ? AutoBookState.ignored
+                          : result.duplicateCount > 0
+                              ? AutoBookState.duplicate
+                              : result.success
+                                  ? AutoBookState.booked
+                                  : AutoBookState.ignored,
+          transactionId: result.firstTransactionId,
+          duplicateOfTransactionId: result.firstDuplicateTransactionId,
+          reason: result.aiNotConfigured
+              ? 'ai_not_configured'
+              : result.shadowCount > 0
+                  ? 'shadow_mode'
+                  : result.awaitingCount > 0
+                      ? 'pending_confirmation'
+                      : null,
+        ),
       );
+      if (execution.skipped) {
+        logger.info('ImageShare', '分享图片内容已被事件幂等拦截');
+        return;
+      }
       logger.info('ImageShare', '图片处理完成');
     } catch (e, stackTrace) {
       logger.error('ImageShare', '处理分享图片失败', e, stackTrace);

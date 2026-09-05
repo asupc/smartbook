@@ -5,6 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../automation/auto_billing_service.dart'
     show AutoBillingService, SmsProcessOutcome;
+import '../automation/auto_book_coordinator.dart';
+import '../automation/auto_book_event.dart';
+import '../data/source_channel_resolver.dart';
+import '../../providers/automation_providers.dart';
 
 /// 屏幕文本监听服务(账单详情页自动记账,Android 专用)。
 ///
@@ -22,6 +26,7 @@ class ScreenTextMonitorService {
 
   final ProviderContainer _container;
   late final AutoBillingService _autoBillingService;
+  late final AutoBookCoordinator _coordinator;
 
   bool _isEnabled = false;
   bool _bridgeRegistered = false;
@@ -39,7 +44,8 @@ class ScreenTextMonitorService {
   }
 
   ScreenTextMonitorService._internal(this._container) {
-    _autoBillingService = AutoBillingService(_container);
+    _autoBillingService = _container.read(autoBillingServiceProvider);
+    _coordinator = _container.read(autoBookCoordinatorProvider);
     _setupMethodCallHandler();
   }
 
@@ -55,8 +61,7 @@ class ScreenTextMonitorService {
   }
 
   Future<void> _enqueue(Future<void> Function() task) {
-    _processingChain =
-        _processingChain.catchError((_) {}).then((_) => task());
+    _processingChain = _processingChain.catchError((_) {}).then((_) => task());
     return _processingChain;
   }
 
@@ -128,24 +133,64 @@ class ScreenTextMonitorService {
         final pkg = (raw['package'] ?? '').toString();
         final text = (raw['text'] ?? '').toString();
         final fingerprint = (raw['fingerprint'] ?? '').toString();
+        final nativeEventKey = (raw['eventKey'] ?? '').toString().trim();
+        final timestamp = int.tryParse((raw['timestamp'] ?? '').toString());
+        final eventKey = nativeEventKey.isNotEmpty
+            ? 'screen:v3:$nativeEventKey'
+            : 'screen:v2:$fingerprint:${timestamp ?? 0}';
 
-        if (_autoBillingService.isScreenTextProcessed(fingerprint)) {
-          await _ack(fingerprint);
+        final alreadyWarned = _noAiNotified.contains(eventKey);
+        final execution = await _coordinator.execute(
+          input: AutoBookInput(
+            eventKey: eventKey,
+            source: AutoBookSource.screenText,
+            captureIntent: AutoBookCaptureIntent.automatic,
+            capturedAt: DateTime.now(),
+            sourceOccurredAt: timestamp == null
+                ? null
+                : DateTime.fromMillisecondsSinceEpoch(timestamp),
+            contentHash: fingerprint,
+            sourceChannel: SourceChannelResolver.channelForPackage(pkg),
+          ),
+          action: () => _autoBillingService.processScreenText(
+            pkg,
+            text,
+            // 成功入账始终通知;「AI 未配置」引导按指纹只提示一次
+            showNotification: true,
+            notifyAiUnconfigured: !alreadyWarned,
+            // Coordinator 已接管事件级幂等。
+            skipDedup: true,
+            eventKey: eventKey,
+          ),
+          updateFor: (outcome) => AutoBookEventUpdate(
+            state: switch (outcome) {
+              SmsProcessOutcome.success => AutoBookState.booked,
+              SmsProcessOutcome.pending => AutoBookState.pending,
+              SmsProcessOutcome.duplicate => AutoBookState.duplicate,
+              SmsProcessOutcome.shadow => AutoBookState.ignored,
+              SmsProcessOutcome.noTransaction => AutoBookState.ignored,
+              SmsProcessOutcome.noAiConfigured => AutoBookState.captured,
+              SmsProcessOutcome.failed => AutoBookState.retry,
+            },
+            reason: outcome == SmsProcessOutcome.noAiConfigured
+                ? 'ai_not_configured'
+                : outcome == SmsProcessOutcome.shadow
+                    ? 'shadow_mode'
+                    : null,
+          ),
+        );
+
+        if (execution.skipped) {
+          if (execution.terminal) await _ack(fingerprint, eventKey);
           continue;
         }
 
-        final alreadyWarned = _noAiNotified.contains(fingerprint);
-        final outcome = await _autoBillingService.processScreenText(
-          pkg,
-          text,
-          // 成功入账始终通知;「AI 未配置」引导按指纹只提示一次
-          showNotification: true,
-          notifyAiUnconfigured: !alreadyWarned,
-        );
+        final outcome = execution.value;
+        if (outcome == null) continue;
         if (outcome == SmsProcessOutcome.noAiConfigured) {
-          _noAiNotified.add(fingerprint);
-        } else {
-          await _ack(fingerprint);
+          _noAiNotified.add(eventKey);
+        } else if (outcome != SmsProcessOutcome.failed) {
+          await _ack(fingerprint, eventKey);
         }
       }
     } catch (_) {
@@ -166,11 +211,15 @@ class ScreenTextMonitorService {
     });
   }
 
-  Future<void> _ack(String fingerprint) async {
-    if (fingerprint.isEmpty) return;
+  Future<void> _ack(String fingerprint, String? eventKey) async {
+    if (fingerprint.isEmpty && (eventKey == null || eventKey.isEmpty)) return;
     try {
-      await _channel
-          .invokeMethod('ackPending', {'fingerprints': [fingerprint]});
+      await _channel.invokeMethod('ackPending', {
+        'fingerprints': fingerprint.isEmpty ? const <String>[] : [fingerprint],
+        'eventKeys': eventKey == null || eventKey.isEmpty
+            ? const <String>[]
+            : [eventKey.replaceFirst('screen:v3:', '')],
+      });
     } catch (_) {}
   }
 

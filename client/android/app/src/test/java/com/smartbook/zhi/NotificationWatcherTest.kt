@@ -65,4 +65,35 @@ class NotificationWatcherTest {
         assertTrue(Regex("^[0-9a-f]{16}$").matches(fp))
         assertEquals(fp, watcher.fingerprint("com.tencent.mm", "微信支付", "已支付45元"))
     }
+
+
+    @Test
+    fun `账单汇总和待支付失败通知被挡住`() {
+        assertTrue(watcher.isNonBookableStatus("本期账单总额5000元,最低还款500元"))
+        assertTrue(watcher.isNonBookableStatus("订单确认,待付款¥30.00"))
+        assertTrue(watcher.isNonBookableStatus("支付失败,金额¥30.00"))
+        assertFalse(watcher.isNonBookableStatus("支付成功,消费¥30.00"))
+    }
+
+    @Test
+    fun `通知元数据变化会形成不同指纹`() {
+        val base = watcher.fingerprint(
+            "com.tencent.mm", "微信支付", "已支付45元",
+        )
+        val withMetadata = watcher.fingerprint(
+            "com.tencent.mm", "微信支付", "已支付45元",
+            notificationKey = "key-a", notificationId = 10, postTime = 1000L,
+        )
+        val sameMetadata = watcher.fingerprint(
+            "com.tencent.mm", "微信支付", "已支付45元",
+            notificationKey = "key-a", notificationId = 10, postTime = 1000L,
+        )
+        val changedMetadata = watcher.fingerprint(
+            "com.tencent.mm", "微信支付", "已支付45元",
+            notificationKey = "key-a", notificationId = 10, postTime = 2000L,
+        )
+        assertFalse(base == withMetadata)
+        assertEquals(withMetadata, sameMetadata)
+        assertFalse(withMetadata == changedMetadata)
+    }
 }

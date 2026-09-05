@@ -3,10 +3,14 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../automation/auto_billing_service.dart';
+import '../automation/auto_book_coordinator.dart';
+import '../automation/auto_book_event.dart';
+import '../../providers/automation_providers.dart';
 
 /// Google Play 版本(CI 注入)。Photo & Video Permissions 政策禁止记账类 app
 /// 长期持有 READ_MEDIA_IMAGES,所以 Google Play 版本砍掉截屏自动记账功能。
-const _isGooglePlayBuild = bool.fromEnvironment('GOOGLE_PLAY', defaultValue: false);
+const _isGooglePlayBuild =
+    bool.fromEnvironment('GOOGLE_PLAY', defaultValue: false);
 
 /// 截图监听服务（Android专用）
 /// 监听系统截图事件，并调用通用的AutoBillingService进行OCR识别和记账
@@ -17,9 +21,11 @@ class ScreenshotMonitorService {
 
   final ProviderContainer _container;
   late final AutoBillingService _autoBillingService;
+  late final AutoBookCoordinator _coordinator;
 
   bool _isEnabled = false;
   bool _isMonitoring = false;
+  Future<void> _processingChain = Future<void>.value();
 
   // 单例模式
   static ScreenshotMonitorService? _instance;
@@ -30,7 +36,8 @@ class ScreenshotMonitorService {
   }
 
   ScreenshotMonitorService._internal(this._container) {
-    _autoBillingService = AutoBillingService(_container);
+    _autoBillingService = _container.read(autoBillingServiceProvider);
+    _coordinator = _container.read(autoBookCoordinatorProvider);
     _setupMethodCallHandler();
   }
 
@@ -40,9 +47,10 @@ class ScreenshotMonitorService {
     _channel.setMethodCallHandler((call) async {
       print('📸 [ScreenshotMonitor] 收到方法调用: ${call.method}');
       if (call.method == 'onScreenshotDetected') {
-        final path = call.arguments as String;
+        final path = (call.arguments ?? '').toString();
+        if (path.isEmpty) return;
         print('📸 [ScreenshotMonitor] 检测到截图，路径: $path');
-        await _handleScreenshot(path);
+        await _enqueue(() => _handleScreenshot(path));
       }
     });
   }
@@ -61,7 +69,8 @@ class ScreenshotMonitorService {
       print('📸 [ScreenshotMonitor] 开始启用截图监听...');
 
       if (_isGooglePlayBuild) {
-        throw UnsupportedError('Screenshot monitoring is not available in Google Play builds');
+        throw UnsupportedError(
+            'Screenshot monitoring is not available in Google Play builds');
       }
 
       // 只在 Android 平台启用
@@ -77,7 +86,9 @@ class ScreenshotMonitorService {
       _isEnabled = true;
       _isMonitoring = true;
 
-      print('✅ [ScreenshotMonitor] 截图监听已启用，_isEnabled=$_isEnabled, _isMonitoring=$_isMonitoring');
+      print(
+          '✅ [ScreenshotMonitor] 截图监听已启用，_isEnabled=$_isEnabled, _isMonitoring=$_isMonitoring');
+      await _enqueue(_drainPendingScreenshots);
     } catch (e) {
       print('❌ [ScreenshotMonitor] 启用截图监听失败: $e');
       rethrow;
@@ -103,10 +114,46 @@ class ScreenshotMonitorService {
     }
   }
 
+  Future<void> _enqueue(Future<void> Function() task) {
+    _processingChain = _processingChain.catchError((_) {}).then((_) => task());
+    return _processingChain;
+  }
+
+  /// 启动/桥接恢复 native 持久化截图队列。peek 不删除，只有事件进入终态
+  /// 后 ACK；retry/captured 项保留，等待下次启动或用户修复配置后继续。
+  Future<void> _drainPendingScreenshots() async {
+    if (!_isEnabled || !_isMonitoring) return;
+    try {
+      final items = await _channel
+              .invokeMethod<List<dynamic>>('peekPendingScreenshots') ??
+          const [];
+      for (final raw in items) {
+        if (!_isEnabled || !_isMonitoring) break;
+        if (raw is Map) {
+          final path = (raw['path'] ?? '').toString();
+          if (path.isNotEmpty) await _handleScreenshot(path);
+        }
+      }
+    } catch (e, st) {
+      // 队列桥接失败不影响监听；下次启动再 drain。
+      print('⚠️ [ScreenshotMonitor] 恢复截图队列失败: $e');
+    }
+  }
+
+  Future<void> _ackScreenshot(String path) async {
+    if (path.isEmpty) return;
+    try {
+      await _channel.invokeMethod('ackPendingScreenshots', {
+        'paths': [path],
+      });
+    } catch (_) {}
+  }
+
   /// 处理截图
   Future<void> _handleScreenshot(String path) async {
     print('📸 [ScreenshotMonitor] _handleScreenshot 被调用，path=$path');
-    print('📸 [ScreenshotMonitor] 当前状态: _isEnabled=$_isEnabled, _isMonitoring=$_isMonitoring');
+    print(
+        '📸 [ScreenshotMonitor] 当前状态: _isEnabled=$_isEnabled, _isMonitoring=$_isMonitoring');
 
     if (!_isEnabled || !_isMonitoring) {
       print('⚠️ [ScreenshotMonitor] 截图监听未启用或未监控，跳过处理');
@@ -116,8 +163,60 @@ class ScreenshotMonitorService {
     // 调用通用的AutoBillingService处理截图。
     // 静默模式:触发/识别中/非账单/失败不通知,只在成功入账时通知一次
     // (减少打扰;AI 未配置仍保留会话级一次性提示,便于发现配置缺失)。
-    final result =
-        await _autoBillingService.processScreenshot(path, notifyOnlyOnSuccess: true);
+    final eventKey = await _coordinator.imageEventKey(path);
+    final execution = await _coordinator.execute(
+      input: AutoBookInput(
+        eventKey: eventKey,
+        source: AutoBookSource.screenshot,
+        captureIntent: AutoBookCaptureIntent.automatic,
+        capturedAt: DateTime.now(),
+        contentHash: eventKey.startsWith('image:v1:')
+            ? eventKey.substring('image:v1:'.length)
+            : null,
+      ),
+      action: () => _autoBillingService.processScreenshot(
+        path,
+        notifyOnlyOnSuccess: true,
+        eventKey: eventKey,
+      ),
+      updateFor: (result) {
+        final state = result.aiNotConfigured
+            ? AutoBookState.captured
+            : result.retryable || result.failedCount > 0
+                ? AutoBookState.retry
+                : result.awaitingCount > 0
+                    ? AutoBookState.pending
+                    : result.shadowCount > 0
+                        ? AutoBookState.ignored
+                        : result.duplicateCount > 0
+                            ? AutoBookState.duplicate
+                            : result.success
+                                ? AutoBookState.booked
+                                : AutoBookState.ignored;
+        return AutoBookEventUpdate(
+          state: state,
+          transactionId: result.firstTransactionId,
+          duplicateOfTransactionId: result.firstDuplicateTransactionId,
+          reason: result.aiNotConfigured
+              ? 'ai_not_configured'
+              : result.shadowCount > 0
+                  ? 'shadow_mode'
+                  : result.awaitingCount > 0
+                      ? 'pending_confirmation'
+                      : null,
+        );
+      },
+    );
+
+    // 已完成事件(例如系统重复回调/图片分享副本)不再重复执行；原截图的
+    // 删除只对本次真正成功的执行生效。
+    if (execution.skipped) {
+      if (execution.terminal) await _ackScreenshot(path);
+      return;
+    }
+    final result = execution.value;
+    if (result == null) return;
+    if (execution.terminal) await _ackScreenshot(path);
 
     // 「记账成功自动删截图」:仅 AI 确认是账单且**全部**成功入账才删除。
     // 多笔识别里只要有笔进「待确认」候选队列(此时仍可能部分入账,result.success
