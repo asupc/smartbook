@@ -8,6 +8,7 @@ import '../../widgets/ui/primary_header.dart';
 import '../../widgets/ui/toast.dart';
 import '../../providers.dart';
 import '../../services/billing/pending_candidate.dart';
+import '../../services/automation/dedup_exempt_store.dart';
 import '../../services/platform/screenshot_monitor_service.dart';
 import '../../services/platform/sms_monitor_service.dart';
 import '../../services/platform/notify_monitor_service.dart';
@@ -104,7 +105,10 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
     final autoBookCheck = prefs.getBool('auto_book_enabled') ?? true;
     final shadowMode =
         await ref.read(autoBillingServiceProvider).isShadowModeEnabled();
-    final pendingCount = await PendingCandidateStore().count();
+    // 徽标与待确认页同一口径(P1-3):loadForReview 合并 event store 与 legacy
+    final pendingCount = (await PendingCandidateStore()
+            .loadForReview(ref.read(autoBookCoordinatorProvider).store))
+        .length;
 
     // 检查电池优化状态
     bool batteryOptimizationIgnored = false;
@@ -132,7 +136,9 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
     });
   }
 
-  /// 自动入账校验(候选制)开关:默认开;关闭=全部直接入账(旧行为)。
+  /// 自动入账总闸(`auto_book_enabled`,P0-2 已接回):默认开=候选制
+  /// (低置信/疑似重复进待确认,其余自动入账);关=所有识别结果一律先进
+  /// 待确认队列,不自动入账。
   Future<void> _toggleAutoBookCheck(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('auto_book_enabled', value);
@@ -559,7 +565,7 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
 
                 const SizedBox(height: 16),
 
-                // 自动入账校验(候选制):低置信/大额/疑似重复 → 待确认
+                // 自动入账总闸(P0-2 已接回):开=候选制;关=全部需手动确认
                 _buildSwitchCard(
                   context,
                   primaryColor,
@@ -593,6 +599,11 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
 
                 // 渠道→账户映射入口(M4)
                 _buildChannelMappingCard(context, primaryColor, l10n),
+
+                const SizedBox(height: 16),
+
+                // 判重豁免(P1-1):「仍记一笔」落下的规则,可查看/清除
+                _buildDedupExemptCard(context, primaryColor, l10n),
 
                 const SizedBox(height: 16),
 
@@ -746,6 +757,71 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
                 builder: (_) => const ChannelAccountMappingPage()),
           );
         },
+      ),
+    );
+  }
+
+  /// 判重豁免卡(P1-1):展示用户「仍记一笔」落下的豁免规则,支持清空。
+  Widget _buildDedupExemptCard(
+      BuildContext context, Color primaryColor, AppLocalizations l10n) {
+    final theme = Theme.of(context);
+    return Card(
+      child: ListTile(
+        leading: Icon(Icons.rule_outlined, color: primaryColor),
+        title: Text(l10n.dedupExemptTitle),
+        subtitle: Text(l10n.dedupExemptDesc),
+        trailing: Icon(Icons.chevron_right,
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+            size: 20),
+        onTap: () => _showDedupExemptDialog(l10n),
+      ),
+    );
+  }
+
+  Future<void> _showDedupExemptDialog(AppLocalizations l10n) async {
+    final theme = Theme.of(context);
+    final rules = await DedupExemptStore().list();
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l10n.dedupExemptTitle),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: rules.isEmpty
+              ? Text(l10n.dedupExemptEmpty)
+              : ListView(
+                  shrinkWrap: true,
+                  children: [
+                    for (final r in rules)
+                      ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.block, size: 18),
+                        title: Text(r.keyword,
+                            maxLines: 1, overflow: TextOverflow.ellipsis),
+                        subtitle: Text(
+                          '¥${r.amount.toStringAsFixed(2)} ±10%',
+                          style: theme.textTheme.bodySmall,
+                        ),
+                      ),
+                  ],
+                ),
+        ),
+        actions: [
+          if (rules.isNotEmpty)
+            TextButton(
+              onPressed: () async {
+                await DedupExemptStore().clear();
+                if (ctx.mounted) Navigator.of(ctx).pop();
+              },
+              child: Text(l10n.dedupExemptClear),
+            ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(l10n.commonConfirm),
+          ),
+        ],
       ),
     );
   }

@@ -103,6 +103,9 @@ class AppLocalizationsKo extends AppLocalizations {
   String get fabActionVoiceDisabled => 'AI 활성화 및 API 키 필요';
 
   @override
+  String get fabActionManual => '직접 입력';
+
+  @override
   String get voiceRecordingTitle => '음성 기록';
 
   @override
@@ -296,7 +299,7 @@ class AppLocalizationsKo extends AppLocalizations {
   }
 
   @override
-  String get homeNoRecordsSubtext => '하단의 플러스 버튼을 눌러 기록을 추가하세요';
+  String get homeNoRecordsSubtext => '아래 AI 어시스턴트를 눌러 기록하거나, 길게 눌러 직접 추가하세요';
 
   @override
   String get homeLastMonthReportSubtitle => '지난달 리포트를 보고 공유하세요';
@@ -4657,6 +4660,118 @@ class AppLocalizationsKo extends AppLocalizations {
   String get pendingCandidateReasonAnomaly => '이상 지출: 최근 기준선 초과';
 
   @override
+  String get pendingCandidateReasonAutoBookDisabled => '자동 기록이 꺼져 있어 확인 필요';
+
+  @override
+  String get pendingCandidatesArchivedHint => '오래된 일부 후보가 보관되었습니다 - 서둘러 확인하세요';
+
+  @override
+  String get autoBookDetailTitle => '자동 기록 상세';
+
+  @override
+  String get autoBookDetailState => '상태';
+
+  @override
+  String get autoBookDetailSource => '출처';
+
+  @override
+  String get autoBookDetailCapturedAt => '캡처 시각';
+
+  @override
+  String get autoBookDetailUpdatedAt => '갱신 시각';
+
+  @override
+  String get autoBookDetailAttempts => '시도 횟수';
+
+  @override
+  String get autoBookDetailError => '오류 정보';
+
+  @override
+  String get autoBookDetailReason => '사유';
+
+  @override
+  String get autoBookDetailEvidence => '원본 증거';
+
+  @override
+  String get autoBookDetailEvidenceCleared => '원본 증거는 보존 정책에 따라 삭제되었거나 저장되지 않았습니다';
+
+  @override
+  String get autoBookDetailItems => '파싱 항목';
+
+  @override
+  String get autoBookDetailNoItems => '항목 기록 없음';
+
+  @override
+  String get autoBookDetailRelatedTx => '관련 거래';
+
+  @override
+  String autoBookDetailOpenTx(int id) {
+    return '거래 #$id 보기';
+  }
+
+  @override
+  String get autoBookDetailRetry => '수동 재시도';
+
+  @override
+  String get autoBillingNotifyMergeTitle => '기존 거래에 병합됨';
+
+  @override
+  String autoBillingNotifyMergeBody(int count, String date, String amount) {
+    return '$count건이 $date ¥$amount 거래와 동일하다고 판단되어 병합되었습니다. 자동 기록 상세에서 취소할 수 있습니다';
+  }
+
+  @override
+  String get autoBookUndoMerge => '병합 취소(개별 거래로 복원)';
+
+  @override
+  String get autoBookUndoMergeDone => '대기 목록으로 복원되었습니다. 확인해 주세요';
+
+  @override
+  String get autoBookUndoMergeEmpty => '복원할 기록이 없습니다';
+
+  @override
+  String get dedupExemptTitle => '중복 판정 제외';
+
+  @override
+  String get dedupExemptDesc => '\'새 거래로 기록\' 확인 후 같은 상업자·같은 금액대는 다시 중복 판정되지 않습니다';
+
+  @override
+  String get dedupExemptEmpty => '제외 규칙 없음';
+
+  @override
+  String get dedupExemptClear => '제외 규칙 비우기';
+
+  @override
+  String get pendingBatchMode => '일괄 관리';
+
+  @override
+  String get pendingBatchSelectAll => '전체 선택';
+
+  @override
+  String get pendingBatchApprove => '일괄 승인';
+
+  @override
+  String get pendingBatchReject => '일괄 거절';
+
+  @override
+  String pendingBatchApproved(int count, int failed) {
+    return '$count건 승인, $failed건 실패(보존됨)';
+  }
+
+  @override
+  String pendingBatchRejected(Object count, Object failed) {
+    return '$count건 거절, $failed건 실패(보존됨)';
+  }
+
+  @override
+  String pendingBatchRejectAsk(Object count) {
+    return '선택한 $count건의 후보를 거절할까요?';
+  }
+
+  @override
+  String get pendingConfirmationPickCategory => '분류 선택';
+
+  @override
   String get pendingConfirmationSimilarTransaction => '유사한 기존 거래';
 
   @override
@@ -4684,13 +4799,13 @@ class AppLocalizationsKo extends AppLocalizations {
   String get autoDeleteScreenshotDesc => '스크린샷이 청구서로 인식되어 성공적으로 정산된 후 휴대폰 스크린샷을 자동으로 삭제합니다. 청구서가 아니거나 실패했거나 \'확인 대기\' 상태인 경우 유지됩니다.';
 
   @override
-  String get autoBookCheckTitle => '자동 기록 검증';
+  String get autoBookCheckTitle => '자동 기록 마스터 스위치';
 
   @override
-  String get autoBookCheckDesc => '저신뢰/고액/중복은 먼저 대기로 보내고 사람이 확인 후 기록';
+  String get autoBookCheckDesc => '켬: 저신뢰/중복 의심은 대기로 보내고 나머지는 자동 기록';
 
   @override
-  String get autoBookCheckDisabledDesc => '꺼짐: 전부 직접 기록(이전 동작)';
+  String get autoBookCheckDisabledDesc => '끔: 모든 인식 결과를 확인 후 기록';
 
   @override
   String get smartBillingChecking => '확인 중…';
@@ -4764,6 +4879,19 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String autoBillingNotifySuccessMultiBody(String amount) {
     return '총 ¥$amount';
+  }
+
+  @override
+  String get autoBillingNotifyPendingTitle => '자동 기록 확인 대기';
+
+  @override
+  String homePendingConfirmBanner(int count) {
+    return '자동 기록 $count건 확인 대기 중';
+  }
+
+  @override
+  String autoBillingNotifyPendingBody(int count, String amount) {
+    return '$count건이 확인 대기 중, 합계 ¥$amount';
   }
 
   @override
@@ -6436,6 +6564,9 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get automationDraftsDiscarded => '초안이 삭제되었습니다';
+
+  @override
+  String get automationDraftsImageGone => '원본 이미지가 시스템에 의해 삭제되어 재시도할 수 없습니다';
 
   @override
   String get automationDraftsRetryQueued => '인식이 다시 제출되었습니다';

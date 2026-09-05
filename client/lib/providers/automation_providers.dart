@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../services/automation/auto_billing_service.dart';
 import '../services/automation/auto_book_coordinator.dart';
+import '../services/billing/pending_candidate.dart';
 import 'database_providers.dart';
 
 /// 全局共享的自动记账 worker。
@@ -21,4 +22,13 @@ final autoBookCoordinatorProvider = Provider<AutoBookCoordinator>((ref) {
   final coordinator = AutoBookCoordinator(ref.watch(databaseProvider));
   ref.onDispose(coordinator.dispose);
   return coordinator;
+});
+
+/// 待确认候选数量:「我的」页角标与首页提醒条共用的唯一计数源(P1-3)。
+/// 口径与待确认页一致:loadForReview 合并 event store(cap 500)与
+/// legacy SharedPreferences 候选 —— 只数 legacy 会少报(超 100 条被淘汰、
+/// 或候选仅存在于 event store 时)。
+final pendingCandidateCountProvider = FutureProvider<int>((ref) async {
+  final eventStore = ref.watch(autoBookCoordinatorProvider).store;
+  return (await PendingCandidateStore().loadForReview(eventStore)).length;
 });

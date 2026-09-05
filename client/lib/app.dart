@@ -26,6 +26,8 @@ import 'providers/sync_providers.dart' as sp;
 import 'utils/voice_billing_helper.dart';
 import 'utils/image_billing_helper.dart';
 import 'pages/ai/ai_chat_page.dart';
+import 'ai/providers/ai_provider_config.dart';
+import 'ai/providers/ai_provider_manager.dart';
 import 'services/platform/app_link_service.dart';
 import 'services/platform/quick_actions_service.dart';
 import 'services/system/logger_service.dart';
@@ -592,9 +594,60 @@ class _BeeAppState extends ConsumerState<BeeApp>
     _overlayEntry = null;
   }
 
+  /// 扇形菜单动作（拖拽长按与短按弹层共用同一份，避免两处分叉）
+  List<SpeedDialAction> _fanMenuActions() {
+    final l10n = AppLocalizations.of(context);
+    return [
+      SpeedDialAction(
+        icon: Icons.camera_alt_rounded,
+        label: l10n.fabActionCamera,
+        onTap: () => ImageBillingHelper.openCameraForBilling(context, ref),
+      ),
+      SpeedDialAction(
+        icon: Icons.photo_library_rounded,
+        label: l10n.fabActionGallery,
+        onTap: () => ImageBillingHelper.pickImageForBilling(context, ref),
+      ),
+      SpeedDialAction(
+        icon: Icons.mic_rounded,
+        label: l10n.fabActionVoice,
+        onTap: () => VoiceBillingHelper.startVoiceBilling(context, ref),
+      ),
+      SpeedDialAction(
+        icon: Icons.edit_note_rounded,
+        label: l10n.fabActionManual,
+        // 手动记一笔：不依赖 AI 的一级入口（ux-optimization-plan P0-1）
+        onTap: () => Navigator.of(context, rootNavigator: true).push(
+          MaterialPageRoute(
+            builder: (_) => const TransactionEditorPage(
+              initialKind: 'expense',
+              quickAdd: true,
+            ),
+          ),
+        ),
+      ),
+    ];
+  }
+
   void _onLongPressStart(LongPressStartDetails details) {
     _expandController.forward();
     _showOverlay();
+  }
+
+  /// 中间按钮短按:AI 已配置 → 进 AI 聊天;未配置 → 弹扇形菜单兜底,
+  /// 保证「记一笔」等入口不依赖 AI 也能到达(ux-optimization-plan P0-1)。
+  Future<void> _onCenterTap() async {
+    final configured =
+        await AIProviderManager.isCapabilityConfigured(AICapabilityType.text);
+    if (!mounted) return;
+    if (configured) {
+      Navigator.of(context, rootNavigator: true).push(
+        MaterialPageRoute(builder: (_) => const AIChatPage()),
+      );
+    } else {
+      _expandController.forward();
+      _showOverlay();
+    }
   }
 
   void _onLongPressMoveUpdate(LongPressMoveUpdateDetails details) {
@@ -602,23 +655,7 @@ class _BeeAppState extends ConsumerState<BeeApp>
   }
 
   void _onLongPressEnd(LongPressEndDetails details) {
-    final centerActions = [
-      SpeedDialAction(
-        icon: Icons.camera_alt_rounded,
-        label: AppLocalizations.of(context).fabActionCamera,
-        onTap: () => ImageBillingHelper.openCameraForBilling(context, ref),
-      ),
-      SpeedDialAction(
-        icon: Icons.photo_library_rounded,
-        label: AppLocalizations.of(context).fabActionGallery,
-        onTap: () => ImageBillingHelper.pickImageForBilling(context, ref),
-      ),
-      SpeedDialAction(
-        icon: Icons.mic_rounded,
-        label: AppLocalizations.of(context).fabActionVoice,
-        onTap: () => VoiceBillingHelper.startVoiceBilling(context, ref),
-      ),
-    ];
+    final centerActions = _fanMenuActions();
 
     if (_hoveredIndex != null && _hoveredIndex! < centerActions.length) {
       final action = centerActions[_hoveredIndex!];
@@ -648,23 +685,7 @@ class _BeeAppState extends ConsumerState<BeeApp>
       builder: (context) => _SpeedDialOverlay(
         buttonPosition: position,
         buttonSize: size,
-        actions: [
-          SpeedDialAction(
-            icon: Icons.camera_alt_rounded,
-            label: AppLocalizations.of(context).fabActionCamera,
-            onTap: () => ImageBillingHelper.openCameraForBilling(context, ref),
-          ),
-          SpeedDialAction(
-            icon: Icons.photo_library_rounded,
-            label: AppLocalizations.of(context).fabActionGallery,
-            onTap: () => ImageBillingHelper.pickImageForBilling(context, ref),
-          ),
-          SpeedDialAction(
-            icon: Icons.mic_rounded,
-            label: AppLocalizations.of(context).fabActionVoice,
-            onTap: () => VoiceBillingHelper.startVoiceBilling(context, ref),
-          ),
-        ],
+        actions: _fanMenuActions(),
         animation: _expandAnimation,
         hoveredIndex: _hoveredIndex,
         backgroundColor: ref.read(primaryColorProvider),
@@ -687,12 +708,13 @@ class _BeeAppState extends ConsumerState<BeeApp>
       buttonPosition.dy + buttonSize.height / 2,
     );
 
-    final angles = [210.0, 270.0, 330.0];
-    const distance = 85.0;
+    // 四项扇形：均匀铺在按钮上方（270° 为正上），45° 间距
+    final angles = [202.5, 247.5, 292.5, 337.5];
+    const distance = 90.0;
     const buttonRadius = 26.0;
 
     int? newHoveredIndex;
-    for (int i = 0; i < 3 && i < angles.length; i++) {
+    for (int i = 0; i < angles.length; i++) {
       final angle = angles[i];
       final radians = angle * math.pi / 180;
       final offsetX = distance * math.cos(radians);
@@ -741,6 +763,9 @@ class _BeeAppState extends ConsumerState<BeeApp>
       _updateWidget();
       // 前台稳定后认领待处理深链(冷启动/主题变更重建后,在最终页面树上打开)
       _drainPendingDeepLink(trigger: 'resumed');
+      // 后台期间的自动记账捕获会在回到前台后 drain,待确认计数可能变化,
+      // 刷新让首页提醒条/「我的」角标及时反映(P0-3/P1-3)
+      ref.invalidate(pendingCandidateCountProvider);
       unawaited(ref.read(sp.rawEvidenceSyncServiceProvider).syncPending()
           .catchError((Object _) {}));
     }
@@ -862,13 +887,9 @@ class _BeeAppState extends ConsumerState<BeeApp>
                   ref.read(bottomTabIndexProvider.notifier).state = index;
                 }
               },
-              // 中间按钮 = AI 助手(对话/语音/图片记账一站入口)
-              onCenterTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const AIChatPage()),
-                );
-              },
+              // 中间按钮 = AI 助手(对话/语音/图片记账一站入口)。
+              // AI 未配置时短按弹扇形菜单(含「记一笔」),新用户不被 AI 挡路(P0-1)。
+              onCenterTap: _onCenterTap,
               onCenterLongPressStart: _onLongPressStart,
               onCenterLongPressMoveUpdate: _onLongPressMoveUpdate,
               onCenterLongPressEnd: _onLongPressEnd,
@@ -1182,8 +1203,9 @@ class _SpeedDialOverlay extends StatelessWidget {
       buttonPosition.dy + buttonSize.height / 2,
     );
 
-    final angles = [210.0, 270.0, 330.0];
-    const distance = 85.0;
+    // 四项扇形:与 _updateHoveredIndex 保持一致(45° 间距,270° 正上)
+    final angles = [202.5, 247.5, 292.5, 337.5];
+    const distance = 90.0;
 
     return AnimatedBuilder(
       animation: animation,
@@ -1219,6 +1241,16 @@ class _SpeedDialOverlay extends StatelessWidget {
                     isEnabled ? backgroundColor : Colors.grey.shade400;
                 final isHovered = i == hoveredIndex;
 
+                // 菜单项本身可点按:短按弹出的菜单没有「拖拽悬停-松开」交互,
+                // 不加点按路由时只能展开不能选择(P0-1 短按兜底路径依赖它)。
+                void select() {
+                  onDismiss?.call();
+                  final action = actions[i];
+                  if (action.enabled && action.onTap != null) {
+                    action.onTap!();
+                  }
+                }
+
                 return Positioned(
                   left: left,
                   top: top,
@@ -1229,23 +1261,27 @@ class _SpeedDialOverlay extends StatelessWidget {
                       child: AnimatedScale(
                         scale: isHovered ? 1.2 : 1.0,
                         duration: const Duration(milliseconds: 150),
-                        child: Material(
-                          color: bgColor,
-                          shape: const CircleBorder(),
-                          elevation: isHovered ? 8 : 4,
-                          child: Container(
-                            width: btnSize,
-                            height: btnSize,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: isHovered
-                                  ? Border.all(color: Colors.white, width: 3)
-                                  : null,
-                            ),
-                            child: Icon(
-                              actions[i].icon,
-                              color: Colors.white,
-                              size: 24,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: isEnabled ? select : null,
+                          child: Material(
+                            color: bgColor,
+                            shape: const CircleBorder(),
+                            elevation: isHovered ? 8 : 4,
+                            child: Container(
+                              width: btnSize,
+                              height: btnSize,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: isHovered
+                                    ? Border.all(color: Colors.white, width: 3)
+                                    : null,
+                              ),
+                              child: Icon(
+                                actions[i].icon,
+                                color: Colors.white,
+                                size: 24,
+                              ),
                             ),
                           ),
                         ),

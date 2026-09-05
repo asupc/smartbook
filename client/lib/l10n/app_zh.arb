@@ -32,6 +32,7 @@
   "fabActionGallery": "相册",
   "fabActionVoice": "语音",
   "fabActionVoiceDisabled": "需要启用AI并配置API Key",
+  "fabActionManual": "记一笔",
   "voiceRecordingTitle": "语音记账",
   "voiceRecordingPreparing": "准备录音...",
   "voiceRecordingInProgress": "正在录音...",
@@ -133,7 +134,7 @@
   "homeSearch": "搜索",
   "homeYear": "{year}年",
   "homeMonth": "{month}月",
-  "homeNoRecordsSubtext": "点击底部加号，马上记一笔",
+  "homeNoRecordsSubtext": "点击下方「AI 助手」记账，长按可手动记一笔",
   "homeLastMonthReportSubtitle": "查看上月消费报告并分享",
   "homeLastMonthReportView": "查看",
   "homeAnnualReportReminder": "{year}年度账单已生成，回顾你的财务足迹",
@@ -1804,6 +1805,70 @@
   "pendingCandidateReasonLarge": "大额消费",
   "pendingCandidateReasonLowConfidence": "低置信度,请核对",
   "pendingCandidateReasonAnomaly": "异常消费:高于近期基线",
+  "pendingCandidateReasonAutoBookDisabled": "自动入账已关闭,需手动确认",
+  "pendingCandidatesArchivedHint": "部分较旧候选已归档,请尽快处理",
+  "autoBookDetailTitle": "自动记账详情",
+  "autoBookDetailState": "状态",
+  "autoBookDetailSource": "来源",
+  "autoBookDetailCapturedAt": "捕获时间",
+  "autoBookDetailUpdatedAt": "更新时间",
+  "autoBookDetailAttempts": "尝试次数",
+  "autoBookDetailError": "错误信息",
+  "autoBookDetailReason": "原因",
+  "autoBookDetailEvidence": "原始证据",
+  "autoBookDetailEvidenceCleared": "原始证据已按留存策略清理或未留存",
+  "autoBookDetailItems": "解析子项",
+  "autoBookDetailNoItems": "无子项记录",
+  "autoBookDetailRelatedTx": "关联交易",
+  "autoBookDetailOpenTx": "查看交易 #{id}",
+  "@autoBookDetailOpenTx": {
+    "placeholders": {
+      "id": {
+        "type": "int"
+      }
+    }
+  },
+  "autoBookDetailRetry": "手动重试",
+  "autoBillingNotifyMergeTitle": "已合并到已有交易",
+  "autoBillingNotifyMergeBody": "{count} 笔与 {date} 的 ¥{amount} 判为同一笔，已合并，可在自动记账历史中撤销",
+  "@autoBillingNotifyMergeBody": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "date": {
+        "type": "String"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "autoBookUndoMerge": "撤销合并（恢复为一笔）",
+  "autoBookUndoMergeDone": "已恢复到待确认，请处理",
+  "autoBookUndoMergeEmpty": "没有可恢复的记录",
+  "dedupExemptTitle": "判重豁免",
+  "dedupExemptDesc": "确认「仍记一笔」后，同商户同金额段不再被判重",
+  "dedupExemptEmpty": "暂无豁免规则",
+  "dedupExemptClear": "清空豁免",
+  "pendingBatchMode": "批量管理",
+  "pendingBatchSelectAll": "全选",
+  "pendingBatchApprove": "批量确认",
+  "pendingBatchReject": "批量拒绝",
+  "pendingBatchApproved": "成功确认 {count} 条，失败 {failed} 条（已保留）",
+  "@pendingBatchApproved": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "failed": {
+        "type": "int"
+      }
+    }
+  },
+  "pendingBatchRejected": "成功拒绝 {count} 条，失败 {failed} 条（已保留）",
+  "pendingBatchRejectAsk": "确定拒绝选中的 {count} 条候选吗？",
+  "pendingConfirmationPickCategory": "选择分类",
   "pendingConfirmationSimilarTransaction": "相似已有交易",
   "pendingConfirmationCompare": "查看对比",
   "pendingConfirmationCandidate": "待确认候选",
@@ -1841,9 +1906,9 @@
   },
   "autoDeleteScreenshotTitle": "记账成功自动删截图",
   "autoDeleteScreenshotDesc": "截图被识别为账单并成功入账后,自动从相册删除;非账单、失败或进入「待确认」时保留",
-  "autoBookCheckTitle": "自动入账校验",
-  "autoBookCheckDesc": "低置信/大额/疑似重复先待确认,人工确认后入账",
-  "autoBookCheckDisabledDesc": "已关闭:全部直接入账(旧行为)",
+  "autoBookCheckTitle": "自动入账总闸",
+  "autoBookCheckDesc": "开启:低置信/疑似重复进待确认,其余自动入账",
+  "autoBookCheckDisabledDesc": "已关闭:所有识别结果需手动确认后入账",
   "smartBillingChecking": "正在检查…",
   "autoBillingNotifyRecognizeFailedTitle": "❌ 识别失败",
   "autoBillingNotifyRecognizeFailedBody": "无法从截图提取账单信息，请检查 AI 配置或图片",
@@ -1887,6 +1952,9 @@
     }
   },
   "autoBillingNotifySuccessMultiBody": "合计 ¥{amount}",
+  "autoBillingNotifyPendingTitle": "自动记账待确认",
+  "homePendingConfirmBanner": "有 {count} 笔自动记账待确认",
+  "autoBillingNotifyPendingBody": "{count} 笔支出待确认，合计 ¥{amount}",
   "@autoBillingNotifySuccessMultiBody": {
     "placeholders": {
       "amount": {
@@ -2797,6 +2865,7 @@
   "aiProviderNoApiKey": "未配置 API Key",
   "aiProviderApiKeyKeepHint": "留空保持现有 Key 不变",
   "automationDraftsDiscarded": "草稿已丢弃",
+  "automationDraftsImageGone": "原图已被系统清理，无法重试",
   "automationDraftsRetryQueued": "已重新提交识别",
   "automationDraftsDiscard": "丢弃草稿",
   "automationDraftsRetry": "重试识别",

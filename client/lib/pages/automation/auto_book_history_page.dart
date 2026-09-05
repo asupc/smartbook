@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/db.dart' as schema;
 import '../../providers.dart';
 import '../../widgets/ui/primary_header.dart';
+import 'auto_book_event_detail_page.dart';
 
 /// 自动入口处理历史。仅展示状态摘要，不展示原始短信/通知/页面文本。
 class AutoBookHistoryPage extends ConsumerStatefulWidget {
@@ -92,13 +93,18 @@ class _AutoBookHistoryPageState extends ConsumerState<AutoBookHistoryPage> {
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
+                  // 全部九态筛选(P1-2):failed/expired 曾缺失,失败无法定位
                   for (final state in const [
                     'all',
                     'booked',
-                    'duplicate',
                     'pending',
-                    'ignored',
+                    'duplicate',
                     'retry',
+                    'failed',
+                    'ignored',
+                    'expired',
+                    'processing',
+                    'captured',
                   ])
                     Padding(
                       padding: const EdgeInsets.only(right: 8),
@@ -157,9 +163,22 @@ class _AutoBookHistoryPageState extends ConsumerState<AutoBookHistoryPage> {
                                 subtitle: Text(
                                   '${event.updatedAt.toLocal()}\n'
                                   '${event.reason ?? '无附加原因'}'
-                                  '${event.transactionId == null ? '' : ' · 交易 #${event.transactionId}'}',
+                                  '${event.transactionId == null ? '' : ' · 交易 #${event.transactionId}'}'
+                                  '${event.lastError == null ? '' : '\n错误: ${event.lastError}'}',
+                                  maxLines: 4,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                                 isThreeLine: true,
+                                // 列表项可点进详情(P1-2):状态/原因/证据/错误全量可见
+                                onTap: () async {
+                                  await Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          AutoBookEventDetailPage(event: event),
+                                    ),
+                                  );
+                                  _reload();
+                                },
                               ),
                             );
                           },

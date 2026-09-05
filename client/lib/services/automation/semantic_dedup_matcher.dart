@@ -3,6 +3,7 @@ import '../../data/db.dart';
 import '../../data/repositories/base_repository.dart';
 import 'auto_book_event.dart';
 import 'auto_book_event_store.dart';
+import 'dedup_exempt_store.dart';
 
 /// 与某一笔已有交易的相似度结果。
 class SemanticDedupMatch {
@@ -86,6 +87,16 @@ class SemanticDedupMatcher {
     final time = bill.time;
     if (amount == null || amount.abs() <= 0 || time == null) return null;
 
+    // 豁免表(P1-1):用户「仍记一笔」裁定过的(商户/备注关键词,金额段)
+    // 不再参与判重 —— 同类误判不复发。命中即跳过该对(等价于把这对的
+    // score 压到阈值之下)。豁免表是增强能力,读取失败照常判重不阻断。
+    List<DedupExemptRule> exemptRules = const [];
+    try {
+      exemptRules = await DedupExemptStore().list();
+    } catch (_) {}
+    final billNoteNormalized =
+        _normalize(bill.merchant) ?? _normalize(bill.note);
+
     final rows = await repository.getTransactionsByDateRange(
       ledgerId: ledgerId,
       startDate: time.subtract(const Duration(days: 90)),
@@ -93,6 +104,15 @@ class SemanticDedupMatcher {
     );
     SemanticDedupMatch? best;
     for (final row in rows) {
+      if (DedupExemptStore.isExempt(
+        exemptRules,
+        billAmount: amount,
+        billNoteNormalized: billNoteNormalized,
+        txAmount: row.t.amount,
+        txNoteNormalized: _normalize(row.t.note),
+      )) {
+        continue;
+      }
       final candidate = _score(bill, row.t);
       if (candidate == null) continue;
       if (best == null || candidate.score > best.score) best = candidate;
@@ -176,6 +196,11 @@ class SemanticDedupMatcher {
         .trim();
     return normalized.isEmpty ? null : normalized;
   }
+
+  /// 提取豁免规则关键字(P1-1):与判重同一套规范化口径,保证「仍记一笔」
+  /// 时落的关键字能命中后续判重的比对文本。
+  static String? exemptKeyword(BillInfo bill) =>
+      _normalize(bill.merchant) ?? _normalize(bill.note);
 
   static bool _tokenOverlap(String a, String b) {
     final left =

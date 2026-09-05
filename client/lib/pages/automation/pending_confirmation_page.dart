@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,7 +13,11 @@ import '../../providers.dart';
 import '../../providers/ai_chat_providers.dart';
 import '../../providers/automation_providers.dart';
 import '../../services/billing/pending_candidate.dart';
+import '../../services/automation/semantic_dedup_matcher.dart';
+import '../../services/automation/dedup_exempt_store.dart';
 import '../../services/data/tag_seed_service.dart';
+import '../../widgets/category/category_selector.dart';
+import '../../widgets/biz/amount_editor_sheet.dart';
 import '../../widgets/ui/primary_header.dart';
 import '../../widgets/ui/toast.dart';
 import '../../utils/transaction_edit_utils.dart';
@@ -61,6 +66,14 @@ class _PendingConfirmationPageState
   bool _showDrafts = false;
   List<schema.AutoBookEvent> _drafts = const [];
 
+  /// legacy 队列触 cap 淘汰过的提示(P1-3):候选在确认页仍全部可见
+  /// (event store 合并口径),但要让用户知道有旧候选被归档了。
+  bool _archivedHint = false;
+
+  /// 批量操作模式(P1-4):长按候选进入;按当前筛选全选后批量确认/拒绝
+  bool _multiSelect = false;
+  final Set<String> _selectedIds = {};
+
   @override
   void initState() {
     super.initState();
@@ -83,11 +96,22 @@ class _PendingConfirmationPageState
     final matchedTransactions = await _loadMatchedTransactions(repo, list);
     if (!mounted || reloadToken != _reloadToken) return;
     final drafts = await ref.read(autoBookCoordinatorProvider).store.listDrafts();
+    // 候选已清空则归档提示失去意义,一并清掉
+    final archivedHint = list.isEmpty
+        ? false
+        : await _store.hasArchivedHint();
     if (!mounted || reloadToken != _reloadToken) return;
+    if (list.isEmpty) {
+      try {
+        await _store.clearArchivedHint();
+      } catch (_) {}
+    }
     setState(() {
       _candidates = list;
       _matchedTransactions = matchedTransactions;
       _drafts = drafts;
+      _archivedHint = archivedHint;
+      _selectedIds.clear();
       _loading = false;
     });
     // M2 统计维度 M5?此处刷新交易列表 provider,确认入账后 UI 即时反映
@@ -382,11 +406,25 @@ class _PendingConfirmationPageState
 
   Future<void> _retryDraft(schema.AutoBookEvent event) async {
     final l10n = AppLocalizations.of(context);
+    final payload = _draftPayloadOf(event);
     try {
       final service = ref.read(autoBillingServiceProvider);
       final replayed = await service.retryDraft(event);
       if (!mounted) return;
-      showToast(context, replayed ? l10n.automationDraftsRetryQueued : l10n.automationDraftsDiscarded);
+      // 重试失败时说明原因(P2-2):截图草稿的原始图片被系统清理是唯一
+      // 「无法重试」场景,沿用旧文案「已丢弃」会让用户以为草稿出了别的错
+      String toast;
+      if (replayed) {
+        toast = l10n.automationDraftsRetryQueued;
+      } else if (payload != null &&
+          payload.isImage &&
+          (payload.imagePath ?? '').isNotEmpty &&
+          !File(payload.imagePath!).existsSync()) {
+        toast = l10n.automationDraftsImageGone;
+      } else {
+        toast = l10n.automationDraftsDiscarded;
+      }
+      showToast(context, toast);
       await _reload();
     } catch (e) {
       if (mounted) showToast(context, '$e');
@@ -508,6 +546,8 @@ class _PendingConfirmationPageState
         return l10n.pendingCandidateReasonAnomaly;
       case 'lowConfidence':
         return l10n.pendingCandidateReasonLowConfidence;
+      case 'autoBookDisabled':
+        return l10n.pendingCandidateReasonAutoBookDisabled;
       case 'settlementUnknown':
         return '结算状态不明确,请核对是否已支付';
       case 'transferAccountMissing':
@@ -555,6 +595,16 @@ class _PendingConfirmationPageState
       if (choice == null) return;
       forceCreate = choice;
     }
+    // P1-1:用户裁定「这不是重复」→ 落豁免规则,同类误判不复发
+    if (forceCreate) {
+      final keyword = SemanticDedupMatcher.exemptKeyword(c.bill);
+      final amount = c.bill.amount?.abs();
+      if (keyword != null && amount != null) {
+        try {
+          await DedupExemptStore().add(keyword: keyword, amount: amount);
+        } catch (_) {}
+      }
+    }
     final bookkeeper = ref.read(aiBookkeeperProvider);
     final txId = await bookkeeper.approvePending(
       c,
@@ -597,34 +647,74 @@ class _PendingConfirmationPageState
     await _reload();
   }
 
-  Future<void> _editAndApprove(PendingCandidate c) async {
+  // ────────────────────────────────────────────────────────────────────
+  // 批量操作(P1-4):积压大量候选时逐条确认不可用。长按进入多选,
+  // 按当前筛选全选,批量确认/拒绝;任一条失败不中断其余,结束汇总。
+  // ────────────────────────────────────────────────────────────────────
+
+  void _enterMultiSelect(String candidateId) {
+    setState(() {
+      _multiSelect = true;
+      _selectedIds.add(candidateId);
+    });
+  }
+
+  void _toggleSelected(String candidateId) {
+    setState(() {
+      if (!_selectedIds.remove(candidateId)) {
+        _selectedIds.add(candidateId);
+      }
+      if (_selectedIds.isEmpty) _multiSelect = false;
+    });
+  }
+
+  void _selectAllVisible() {
+    setState(() {
+      _selectedIds.addAll(_visibleCandidates.map((c) => c.id));
+    });
+  }
+
+  List<PendingCandidate> get _selectedCandidates =>
+      _visibleCandidates.where((c) => _selectedIds.contains(c.id)).toList();
+
+  /// 批量确认:reason=duplicate 的条目默认「合并到已有交易」
+  /// (approvePending 非 forceCreate 路径即该语义),逐条幂等;
+  /// 单条失败不中断,结束后汇总 toast。
+  Future<void> _batchApprove() async {
     final l10n = AppLocalizations.of(context);
-    final bill = c.bill;
-    final amountCtrl =
-        TextEditingController(text: bill.amount?.toString() ?? '');
-    final noteCtrl = TextEditingController(text: bill.note ?? '');
-    final edited = await showDialog<bool>(
+    final targets = _selectedCandidates;
+    if (targets.isEmpty) return;
+    final bookkeeper = ref.read(aiBookkeeperProvider);
+    var ok = 0;
+    var failed = 0;
+    for (final c in targets) {
+      try {
+        final txId = await bookkeeper.approvePending(c, l10n: l10n);
+        if (txId != null) {
+          ok++;
+        } else {
+          failed++;
+        }
+      } catch (_) {
+        failed++;
+      }
+    }
+    if (!mounted) return;
+    showToast(context, l10n.pendingBatchApproved(ok, failed),
+        duration: const Duration(seconds: 3));
+    await _reload();
+  }
+
+  /// 批量拒绝:二次确认后逐条拒绝,单条失败不中断。
+  Future<void> _batchReject() async {
+    final l10n = AppLocalizations.of(context);
+    final targets = _selectedCandidates;
+    if (targets.isEmpty) return;
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(l10n.pendingConfirmationEdit),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: amountCtrl,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-              decoration:
-                  InputDecoration(labelText: l10n.pendingConfirmationAmount),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: noteCtrl,
-              decoration:
-                  InputDecoration(labelText: l10n.pendingConfirmationNote),
-            ),
-          ],
-        ),
+        title: Text(l10n.pendingBatchReject),
+        content: Text(l10n.pendingBatchRejectAsk(targets.length)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -632,26 +722,157 @@ class _PendingConfirmationPageState
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(l10n.pendingConfirmationConfirm),
+            child: Text(l10n.commonConfirm),
           ),
         ],
       ),
     );
-    if (edited != true || !mounted) return;
-    final amount = double.tryParse(amountCtrl.text.trim().replaceAll(',', ''));
-    if (amount == null) {
-      showToast(context, l10n.pendingConfirmationEditFailed);
-      return;
-    }
+    if (confirmed != true || !mounted) return;
     final bookkeeper = ref.read(aiBookkeeperProvider);
+    var ok = 0;
+    var failed = 0;
+    for (final c in targets) {
+      try {
+        await bookkeeper.rejectPending(c);
+        ok++;
+      } catch (_) {
+        failed++;
+      }
+    }
+    if (!mounted) return;
+    showToast(context, l10n.pendingBatchRejected(ok, failed),
+        duration: const Duration(seconds: 3));
+    await _reload();
+  }
+
+  /// 编辑确认(P1-5):旧对话框只能改金额/备注,而候选最常见的错误恰恰是
+  /// 分类/日期/账户。改为复用手动记账同款组件:
+  ///   1. CategorySelector 选分类(转账候选跳过);
+  ///   2. AmountEditorSheet 改金额/日期/账户/备注(回填候选字段);
+  ///   3. 保存即确认入账(用户显式编辑过=明确入账意图,forceCreate 并落豁免)。
+  Future<void> _editAndApprove(PendingCandidate c) async {
+    final l10n = AppLocalizations.of(context);
+    final bill = c.bill;
+    final ledgerId = c.bill.ledgerId;
+    if (ledgerId == null) return;
+    final kind = switch (bill.type) {
+      BillType.income => 'income',
+      BillType.transfer => 'transfer',
+      _ => 'expense',
+    };
+    final repo = ref.read(repositoryProvider);
+
+    // Step 1: 分类(按候选自带分类名预选;转账无分类概念,跳过)
+    schema.Category? picked;
+    final initialCategory = await _matchCategoryByName(bill.category, kind);
+    if (kind != 'transfer') {
+      if (!mounted) return;
+      final picked0 = await showModalBottomSheet<schema.Category>(
+        context: context,
+        isScrollControlled: true,
+        builder: (ctx) => SafeArea(
+          child: SizedBox(
+            height: MediaQuery.of(ctx).size.height * 0.65,
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                  child: Row(
+                    children: [
+                      Text(l10n.pendingConfirmationPickCategory,
+                          style: Theme.of(ctx).textTheme.titleMedium),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: Text(l10n.commonCancel),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: CategorySelector(
+                    kind: kind,
+                    initialCategoryId: initialCategory?.id,
+                    onCategorySelected: (cat) => Navigator.pop(ctx, cat),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      if (picked0 == null || !mounted) return;
+      picked = picked0;
+    } else {
+      picked = initialCategory;
+    }
+
+    // Step 2: AmountEditorSheet(手动记账同款,回填候选字段)
+    final initialAccountId =
+        await _matchAccountIdByName(bill.account, ledgerId);
+    double? finalAmount;
+    String? finalNote;
+    DateTime? finalDate;
+    int? finalAccountId;
+    if (!mounted) return;
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => AmountEditorSheet(
+        categoryName: picked?.name ?? bill.category ?? '',
+        categoryId: picked?.id,
+        categorySyncId: (picked?.id ?? 0) < 0 ? picked?.syncId : null,
+        initialDate: bill.time ?? DateTime.now(),
+        initialAmount: bill.amount,
+        initialNote: bill.note,
+        initialAccountId: initialAccountId,
+        showAccountPicker: true,
+        ledgerId: ledgerId,
+        transactionKind: kind,
+        onSubmit: (res) async {
+          finalAmount = res.amount;
+          finalNote = res.note;
+          finalDate = res.date;
+          finalAccountId = res.accountId;
+          if (ctx.mounted) Navigator.pop(ctx);
+        },
+      ),
+    );
+    if (!mounted) return;
+    if (finalAmount == null) return; // 用户取消
+
+    // 回填到候选 bill:createFromBill 按名称精确匹配分类/账户,把用户
+    // 选择的 id 反查成名称回填(synthetic 共享账户拿不到名称时保留原名)。
+    String? accountName = bill.account;
+    if (finalAccountId != null && finalAccountId! > 0) {
+      try {
+        accountName = (await repo.getAccount(finalAccountId!))?.name ??
+            accountName;
+      } catch (_) {}
+    }
     final editedCandidate = c.copyWith(
       candidateId: c.id,
-      bill: bill.copyWith(amount: amount, note: noteCtrl.text),
+      bill: bill.copyWith(
+        amount: finalAmount,
+        note: finalNote,
+        time: finalDate,
+        category: picked?.name ?? bill.category,
+        account: accountName,
+      ),
     );
-    final txId = await bookkeeper.approvePending(
-      editedCandidate,
-      l10n: l10n,
-    );
+    // 用户显式编辑后保存 = 明确「这笔记一笔」:跳过合并并落豁免规则(P1-1)
+    final keyword = SemanticDedupMatcher.exemptKeyword(editedCandidate.bill);
+    final amount = editedCandidate.bill.amount?.abs();
+    if (keyword != null && amount != null) {
+      try {
+        await DedupExemptStore().add(keyword: keyword, amount: amount);
+      } catch (_) {}
+    }
+    final txId = await ref.read(aiBookkeeperProvider).approvePending(
+          editedCandidate,
+          l10n: l10n,
+          forceCreate: true,
+        );
     if (mounted) {
       if (txId != null) {
         showToast(context, l10n.pendingConfirmationApproved);
@@ -664,6 +885,33 @@ class _PendingConfirmationPageState
       }
     }
     await _reload();
+  }
+
+  Future<schema.Category?> _matchCategoryByName(
+      String? name, String kind) async {
+    final n = name?.trim();
+    if (n == null || n.isEmpty) return null;
+    try {
+      final repo = ref.read(repositoryProvider);
+      final categories = await repo.getUsableCategories(kind);
+      for (final c in categories) {
+        if (c.name == n) return c;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<int?> _matchAccountIdByName(String? name, int ledgerId) async {
+    final n = name?.trim();
+    if (n == null || n.isEmpty) return null;
+    try {
+      final repo = ref.read(repositoryProvider);
+      final accounts = await repo.getAllAccounts();
+      for (final a in accounts) {
+        if (a.name == n && a.ledgerId == ledgerId && a.id > 0) return a.id;
+      }
+    } catch (_) {}
+    return null;
   }
 
   @override
@@ -681,6 +929,17 @@ class _PendingConfirmationPageState
             leadingIcon: Icons.fact_check_outlined,
             leadingPlain: true,
             actions: [
+              // 批量操作开关(P1-4)
+              IconButton(
+                tooltip: _multiSelect
+                    ? l10n.commonCancel
+                    : l10n.pendingBatchMode,
+                icon: Icon(_multiSelect ? Icons.close : Icons.checklist),
+                onPressed: () => setState(() {
+                  _multiSelect = !_multiSelect;
+                  _selectedIds.clear();
+                }),
+              ),
               IconButton(
                 tooltip: '自动记账历史',
                 icon: const Icon(Icons.history),
@@ -719,7 +978,55 @@ class _PendingConfirmationPageState
                     ? _buildDraftsList(theme)
                     : Column(
                     children: [
+                      if (_archivedHint)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                          child: Row(
+                            children: [
+                              Icon(Icons.archive_outlined,
+                                  size: 18,
+                                  color: Colors.orange.shade700),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  l10n.pendingCandidatesArchivedHint,
+                                  style: TextStyle(
+                                      fontSize: 12.5,
+                                      color: Colors.orange.shade700),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       if (_candidates.isNotEmpty) _buildFilters(context),
+                      // 批量选择条(P1-4):多选模式下按当前筛选全选 + 批量确认/拒绝
+                      if (_multiSelect && _candidates.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                          child: Row(
+                            children: [
+                              TextButton(
+                                onPressed: _selectAllVisible,
+                                child: Text(l10n.pendingBatchSelectAll),
+                              ),
+                              Text('${_selectedIds.length}',
+                                  style: theme.textTheme.titleSmall),
+                              const Spacer(),
+                              FilledButton.tonal(
+                                onPressed: _selectedIds.isEmpty
+                                    ? null
+                                    : _batchApprove,
+                                child: Text(l10n.pendingBatchApprove),
+                              ),
+                              const SizedBox(width: 8),
+                              OutlinedButton(
+                                onPressed:
+                                    _selectedIds.isEmpty ? null : _batchReject,
+                                child: Text(l10n.pendingBatchReject),
+                              ),
+                            ],
+                          ),
+                        ),
                       Expanded(
                         child: _visibleCandidates.isEmpty
                             ? Center(
@@ -736,10 +1043,15 @@ class _PendingConfirmationPageState
                                 itemBuilder: (context, index) {
                                   final c = _visibleCandidates[index];
                                   final bill = c.bill;
-                                  return Card(
-                                    margin: const EdgeInsets.only(bottom: 12),
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(12),
+                                  return _selectableCard(
+                                    context,
+                                    c,
+                                    theme,
+                                    child: Card(
+                                      margin:
+                                          const EdgeInsets.only(bottom: 12),
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(12),
                                       child: Column(
                                         crossAxisAlignment:
                                             CrossAxisAlignment.start,
@@ -882,12 +1194,47 @@ class _PendingConfirmationPageState
                                         ],
                                       ),
                                     ),
-                                  );
+                                  ),
+                                );
                                 },
                               ),
                       ),
                     ],
                   ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 多选包装(P1-4):普通模式长按进入多选;多选模式点按切换选中,
+  /// 右上角覆盖选中态图标。
+  Widget _selectableCard(
+    BuildContext context,
+    PendingCandidate c,
+    ThemeData theme, {
+    required Widget child,
+  }) {
+    if (!_multiSelect) {
+      return GestureDetector(
+        onLongPressStart: (_) => _enterMultiSelect(c.id),
+        child: child,
+      );
+    }
+    final selected = _selectedIds.contains(c.id);
+    return GestureDetector(
+      onTap: () => _toggleSelected(c.id),
+      onLongPressStart: (_) => _toggleSelected(c.id),
+      child: Stack(
+        children: [
+          child,
+          Positioned(
+            right: 10,
+            top: 10,
+            child: Icon(
+              selected ? Icons.check_circle : Icons.radio_button_unchecked,
+              color: selected ? theme.colorScheme.primary : Colors.black26,
+            ),
           ),
         ],
       ),

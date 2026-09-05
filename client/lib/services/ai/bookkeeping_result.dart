@@ -30,6 +30,10 @@ class BookkeepingResult {
   /// 影子模式下识别到、但刻意没有写入交易的账单数。
   final int shadowCount;
 
+  /// 进入「待确认」候选的金额绝对值之和(P0-3 通知正文只用金额与笔数,
+  /// 不含商户名/原始文本)。
+  final double pendingAbsAmount;
+
   /// 本次流程是否发生了可恢复的临时失败。自动入口据此保留事件并重试，
   /// 不能把网络/数据库异常误当成“非账单”。
   final bool retryable;
@@ -56,6 +60,7 @@ class BookkeepingResult {
     this.duplicateCount = 0,
     this.duplicateTransactionIds = const [],
     this.shadowCount = 0,
+    this.pendingAbsAmount = 0,
     this.retryable = false,
     this.aiNotConfigured = false,
   });

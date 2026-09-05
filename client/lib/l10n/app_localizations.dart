@@ -290,6 +290,12 @@ abstract class AppLocalizations {
   /// **'AI enabled & API Key required'**
   String get fabActionVoiceDisabled;
 
+  /// No description provided for @fabActionManual.
+  ///
+  /// In en, this message translates to:
+  /// **'Add entry'**
+  String get fabActionManual;
+
   /// No description provided for @voiceRecordingTitle.
   ///
   /// In en, this message translates to:
@@ -647,7 +653,7 @@ abstract class AppLocalizations {
   /// No description provided for @homeNoRecordsSubtext.
   ///
   /// In en, this message translates to:
-  /// **'Tap the plus button at the bottom to add a record'**
+  /// **'Tap the AI assistant below, or long-press it to add manually'**
   String get homeNoRecordsSubtext;
 
   /// No description provided for @homeLastMonthReportSubtitle.
@@ -8918,6 +8924,210 @@ abstract class AppLocalizations {
   /// **'Anomalous - above recent baseline'**
   String get pendingCandidateReasonAnomaly;
 
+  /// No description provided for @pendingCandidateReasonAutoBookDisabled.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto-booking is off; confirmation required'**
+  String get pendingCandidateReasonAutoBookDisabled;
+
+  /// No description provided for @pendingCandidatesArchivedHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Some older candidates were archived - please review soon'**
+  String get pendingCandidatesArchivedHint;
+
+  /// No description provided for @autoBookDetailTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto-booking detail'**
+  String get autoBookDetailTitle;
+
+  /// No description provided for @autoBookDetailState.
+  ///
+  /// In en, this message translates to:
+  /// **'State'**
+  String get autoBookDetailState;
+
+  /// No description provided for @autoBookDetailSource.
+  ///
+  /// In en, this message translates to:
+  /// **'Source'**
+  String get autoBookDetailSource;
+
+  /// No description provided for @autoBookDetailCapturedAt.
+  ///
+  /// In en, this message translates to:
+  /// **'Captured at'**
+  String get autoBookDetailCapturedAt;
+
+  /// No description provided for @autoBookDetailUpdatedAt.
+  ///
+  /// In en, this message translates to:
+  /// **'Updated at'**
+  String get autoBookDetailUpdatedAt;
+
+  /// No description provided for @autoBookDetailAttempts.
+  ///
+  /// In en, this message translates to:
+  /// **'Attempts'**
+  String get autoBookDetailAttempts;
+
+  /// No description provided for @autoBookDetailError.
+  ///
+  /// In en, this message translates to:
+  /// **'Error'**
+  String get autoBookDetailError;
+
+  /// No description provided for @autoBookDetailReason.
+  ///
+  /// In en, this message translates to:
+  /// **'Reason'**
+  String get autoBookDetailReason;
+
+  /// No description provided for @autoBookDetailEvidence.
+  ///
+  /// In en, this message translates to:
+  /// **'Original evidence'**
+  String get autoBookDetailEvidence;
+
+  /// No description provided for @autoBookDetailEvidenceCleared.
+  ///
+  /// In en, this message translates to:
+  /// **'Original evidence was cleared by the retention policy or never stored'**
+  String get autoBookDetailEvidenceCleared;
+
+  /// No description provided for @autoBookDetailItems.
+  ///
+  /// In en, this message translates to:
+  /// **'Parsed items'**
+  String get autoBookDetailItems;
+
+  /// No description provided for @autoBookDetailNoItems.
+  ///
+  /// In en, this message translates to:
+  /// **'No item records'**
+  String get autoBookDetailNoItems;
+
+  /// No description provided for @autoBookDetailRelatedTx.
+  ///
+  /// In en, this message translates to:
+  /// **'Related transaction'**
+  String get autoBookDetailRelatedTx;
+
+  /// No description provided for @autoBookDetailOpenTx.
+  ///
+  /// In en, this message translates to:
+  /// **'View transaction #{id}'**
+  String autoBookDetailOpenTx(int id);
+
+  /// No description provided for @autoBookDetailRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry manually'**
+  String get autoBookDetailRetry;
+
+  /// No description provided for @autoBillingNotifyMergeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Merged into an existing transaction'**
+  String get autoBillingNotifyMergeTitle;
+
+  /// No description provided for @autoBillingNotifyMergeBody.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} transaction(s) merged with the {date} ¥{amount} entry; undo available in auto-booking history'**
+  String autoBillingNotifyMergeBody(int count, String date, String amount);
+
+  /// No description provided for @autoBookUndoMerge.
+  ///
+  /// In en, this message translates to:
+  /// **'Undo merge (restore as separate entry)'**
+  String get autoBookUndoMerge;
+
+  /// No description provided for @autoBookUndoMergeDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Restored to pending; please review'**
+  String get autoBookUndoMergeDone;
+
+  /// No description provided for @autoBookUndoMergeEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing to restore'**
+  String get autoBookUndoMergeEmpty;
+
+  /// No description provided for @dedupExemptTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Dedup exemptions'**
+  String get dedupExemptTitle;
+
+  /// No description provided for @dedupExemptDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'After confirming \'keep as new entry\', the same merchant and amount range won\'t be deduplicated again'**
+  String get dedupExemptDesc;
+
+  /// No description provided for @dedupExemptEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No exemption rules'**
+  String get dedupExemptEmpty;
+
+  /// No description provided for @dedupExemptClear.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear exemptions'**
+  String get dedupExemptClear;
+
+  /// No description provided for @pendingBatchMode.
+  ///
+  /// In en, this message translates to:
+  /// **'Batch mode'**
+  String get pendingBatchMode;
+
+  /// No description provided for @pendingBatchSelectAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Select all'**
+  String get pendingBatchSelectAll;
+
+  /// No description provided for @pendingBatchApprove.
+  ///
+  /// In en, this message translates to:
+  /// **'Approve all'**
+  String get pendingBatchApprove;
+
+  /// No description provided for @pendingBatchReject.
+  ///
+  /// In en, this message translates to:
+  /// **'Reject all'**
+  String get pendingBatchReject;
+
+  /// No description provided for @pendingBatchApproved.
+  ///
+  /// In en, this message translates to:
+  /// **'Approved {count}, failed {failed} (kept)'**
+  String pendingBatchApproved(int count, int failed);
+
+  /// No description provided for @pendingBatchRejected.
+  ///
+  /// In en, this message translates to:
+  /// **'Rejected {count}, failed {failed} (kept)'**
+  String pendingBatchRejected(Object count, Object failed);
+
+  /// No description provided for @pendingBatchRejectAsk.
+  ///
+  /// In en, this message translates to:
+  /// **'Reject {count} selected candidates?'**
+  String pendingBatchRejectAsk(Object count);
+
+  /// No description provided for @pendingConfirmationPickCategory.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick a category'**
+  String get pendingConfirmationPickCategory;
+
   /// No description provided for @pendingConfirmationSimilarTransaction.
   ///
   /// In en, this message translates to:
@@ -8975,19 +9185,19 @@ abstract class AppLocalizations {
   /// No description provided for @autoBookCheckTitle.
   ///
   /// In en, this message translates to:
-  /// **'Auto-billing check'**
+  /// **'Auto-book master switch'**
   String get autoBookCheckTitle;
 
   /// No description provided for @autoBookCheckDesc.
   ///
   /// In en, this message translates to:
-  /// **'Low-confidence / large / duplicate entries go to pending first'**
+  /// **'On: low-confidence / likely duplicates go to pending; the rest book automatically'**
   String get autoBookCheckDesc;
 
   /// No description provided for @autoBookCheckDisabledDesc.
   ///
   /// In en, this message translates to:
-  /// **'Off - all entries booked directly (legacy)'**
+  /// **'Off: every recognition result needs manual confirmation'**
   String get autoBookCheckDisabledDesc;
 
   /// No description provided for @smartBillingChecking.
@@ -9121,6 +9331,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Total ¥{amount}'**
   String autoBillingNotifySuccessMultiBody(String amount);
+
+  /// No description provided for @autoBillingNotifyPendingTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto-bookkeeping needs confirmation'**
+  String get autoBillingNotifyPendingTitle;
+
+  /// No description provided for @homePendingConfirmBanner.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} auto-bookkeeping entries awaiting confirmation'**
+  String homePendingConfirmBanner(int count);
+
+  /// No description provided for @autoBillingNotifyPendingBody.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} transaction(s) awaiting confirmation, total ¥{amount}'**
+  String autoBillingNotifyPendingBody(int count, String amount);
 
   /// No description provided for @autoBillingNotifySuccessSingleBodyNote.
   ///
@@ -12307,6 +12535,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Draft discarded'**
   String get automationDraftsDiscarded;
+
+  /// No description provided for @automationDraftsImageGone.
+  ///
+  /// In en, this message translates to:
+  /// **'The original image was cleared by the system; retry unavailable'**
+  String get automationDraftsImageGone;
 
   /// No description provided for @automationDraftsRetryQueued.
   ///

@@ -200,12 +200,18 @@ class AutoBookFlow {
   /// 影子模式：执行识别/策略/判重，但不创建交易或候选。
   final bool shadowMode;
 
+  /// 自动入账总闸(设置页 `auto_book_enabled`)。关闭时**所有**通过语义
+  /// 闸门的识别结果也一律先进待确认队列，不自动入账
+  /// (ux-optimization-plan P0-2:接回死开关)。
+  final bool requireConfirmationForAll;
+
   const AutoBookFlow({
     required this.store,
     this.eventKey,
     this.eventStore,
     this.strictSemantic = true,
     this.shadowMode = false,
+    this.requireConfirmationForAll = false,
   });
 }
 
@@ -213,6 +219,10 @@ class AutoBookFlow {
 class PendingCandidateStore {
   static const _key = 'pending_candidates_v1';
   static const int maxCandidates = 100;
+
+  /// legacy 触 cap 淘汰最旧候选时置位(P1-3):候选数据本身仍在 event store
+  /// (确认页合并口径可见),但用户应知道有旧候选被归档、尽快处理。
+  static const _archivedHintKey = 'pending_candidates_archived_hint';
 
   // SharedPreferences 的 read-modify-write 不是原子的；AI 自动入口、候选页
   // 和确认操作可能同时触发，统一串行化避免互相覆盖候选。
@@ -246,17 +256,37 @@ class PendingCandidateStore {
   Future<void> save(List<PendingCandidate> list) =>
       _serial(() => _saveUnlocked(list));
 
-  /// 追加候选;同一 id 已存在则幂等跳过。超出容量删最旧(0 为最旧)。
+  /// 追加候选;同一 id 已存在则幂等跳过。超出容量淘汰最旧(0 为最旧),
+  /// 但不再无声(P1-3):淘汰时置位「已归档」提示,由确认页展示。
+  /// 候选数据本身始终同时写入 event store,确认页合并口径仍可见全部。
   Future<bool> add(PendingCandidate candidate) => _serial(() async {
         final list = await _loadUnlocked();
         if (list.any((c) => c.id == candidate.id)) return false;
         list.add(candidate);
+        var evicted = false;
         while (list.length > maxCandidates) {
           list.removeAt(0);
+          evicted = true;
         }
         await _saveUnlocked(list);
+        if (evicted) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setBool(_archivedHintKey, true);
+        }
         return true;
       });
+
+  /// legacy 队列是否发生过触 cap 淘汰(确认页顶部提示用)。
+  Future<bool> hasArchivedHint() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_archivedHintKey) ?? false;
+  }
+
+  /// 清除「已归档」提示(确认页候选清空后调用)。
+  Future<void> clearArchivedHint() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_archivedHintKey);
+  }
 
   Future<bool> remove(String id) => _serial(() async {
         final list = await _loadUnlocked();

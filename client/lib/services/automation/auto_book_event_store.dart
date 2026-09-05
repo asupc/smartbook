@@ -702,6 +702,25 @@ class AutoBookEventStore {
   Future<void> cleanupExpired() async {
     await cleanupExpiredRawEvidence();
     final now = DateTime.now();
+    // 曾有原始证据、证据已被留存策略清掉的过期事件:保留「已过期(证据已
+    // 清理)」占位行,历史页不再凭空消失(P1-2)。置 state=expired(终态,
+    // 不会再被 claim)+清 expiresAt(不再被本清理删除)。
+    try {
+      await (db.update(db.autoBookEvents)
+            ..where((t) => t.expiresAt.isNotNull() &
+                t.expiresAt.isSmallerThanValue(now) &
+                t.state.isNotIn(const ['expired']) &
+                t.rawEvidenceUploadState.equals(
+                    RawEvidenceUploadState.expired)))
+          .write(const schema.AutoBookEventsCompanion(
+        state: d.Value('expired'),
+        reason: d.Value('expired_evidence_cleared'),
+        expiresAt: d.Value(null),
+        nextRetryAt: d.Value(null),
+      ));
+    } catch (_) {
+      // 占位改造失败不阻断原删除路径(老库该列可能还没默认值)
+    }
     await (db.delete(db.autoBookEvents)
           ..where((t) =>
               t.expiresAt.isNotNull() &
@@ -709,7 +728,12 @@ class AutoBookEventStore {
               t.rawText.isNull() &
               t.rawTitle.isNull() &
               t.rawActor.isNull() &
-              t.rawMetadataJson.isNull()))
+              t.rawMetadataJson.isNull() &
+              // 已转占位的行(expiresAt 已置空)天然不命中上面的过期条件;
+              // 再排除一次,防御同一轮里 update/delete 的顺序竞态
+              t.rawEvidenceUploadState.isNotIn(const [
+                RawEvidenceUploadState.expired,
+              ])))
         .go();
   }
 

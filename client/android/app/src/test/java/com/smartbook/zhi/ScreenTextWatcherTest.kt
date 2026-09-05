@@ -29,6 +29,32 @@ class ScreenTextWatcherTest {
     }
 
     @Test
+    fun `微信京东账单详情裸数字金额被识别`() {
+        // 2026-09 真机走查漏记根因:微信支付账单详情(京东商户)的大字金额是
+        // 「-529.00」式裸数字,整页无 ¥/元,旧 AMOUNT_PATTERN 匹配不到金额被丢
+        val text = "账单详情\n京东平台商户\n-529.00\n交易成功\n" +
+            "支付方式 招商银行信用卡 (1467)\n" +
+            "创建时间 2026-09-05 20:28:42\n" +
+            "总订单编号 3612495000067592\n" +
+            "商户单号 14084282609052028410461797623\n" +
+            "服务详情 共1笔订单\n" +
+            "账单分类 家居家装\n对此账单有疑问"
+        assertTrue(watcher.hasAmount(text))
+        assertTrue(watcher.hasTradeHint(text))
+        assertFalse(watcher.shouldReject(text))
+        assertFalse(watcher.isNonBookableStatus(text))
+        assertFalse(watcher.isListPage(text))
+    }
+
+    @Test
+    fun `裸数字无小数尾不算金额`() {
+        // 订单号/流水号这类长整数不是金额,页面只有它们时仍应被丢弃
+        val text = "账单详情\n订单编号 3612495000067592\n商户单号 14084282609052028410461797623"
+        assertFalse(watcher.hasAmount(text))
+        assertTrue(watcher.hasTradeHint(text))
+    }
+
+    @Test
     fun `纯口语聊天无金额被跳过`() {
         val text = "今晚吃火锅吗?不见不散\n呵呵"
         assertFalse(watcher.hasAmount(text))

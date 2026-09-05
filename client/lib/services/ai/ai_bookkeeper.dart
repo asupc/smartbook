@@ -1,13 +1,16 @@
+import 'dart:convert';
 import 'dart:io';
 
 import '../../ai/core/ai_extraction_context.dart';
 import '../../ai/core/ai_extraction_engine.dart';
 import '../../ai/core/bill_info.dart';
 import '../../ai/core/prompt_builder.dart';
+import '../../data/db.dart' as schema;
 import '../../data/repositories/base_repository.dart';
 import '../../l10n/app_localizations.dart';
 import '../billing/bill_creation_service.dart';
 import '../billing/pending_candidate.dart';
+import '../data/tag_seed_service.dart';
 import '../system/logger_service.dart';
 import '../automation/auto_book_event.dart';
 import '../automation/auto_book_event_store.dart';
@@ -265,6 +268,79 @@ class AiBookkeeper {
     );
   }
 
+  /// 撤销强判重合并(P1-1):把 duplicate 子项按留存的结构化摘要重建为
+  /// 待确认候选,用户可选择「仍记一笔」;事件回到 pending。返回重建候选数
+  /// (0 = 没有可恢复内容:子项缺失/摘要已清/候选已在队列)。
+  Future<int> undoMerge(schema.AutoBookEvent event) async {
+    final store = _eventStore;
+    if (store == null) return 0;
+    final items = await store.itemsForEvent(event.id);
+    var rebuilt = 0;
+    for (final item in items) {
+      if (item.state != AutoBookState.duplicate.value) continue;
+      if (item.transactionId == null) continue;
+      final raw = item.billJson;
+      if (raw == null || raw.isEmpty) continue;
+      final Map<String, dynamic> payload;
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is! Map) continue;
+        payload = Map<String, dynamic>.from(decoded.cast<String, dynamic>());
+      } catch (_) {
+        continue;
+      }
+      final billPayload = payload['bill'] is Map
+          ? Map<String, dynamic>.from(payload['bill'] as Map)
+          : payload;
+      final BillInfo bill;
+      try {
+        bill = BillInfo.fromJson(billPayload);
+      } catch (_) {
+        continue;
+      }
+      if (bill.amount == null || bill.amount!.abs() <= 0) continue;
+      final ledgerId = bill.ledgerId ?? event.ledgerId;
+      if (ledgerId == null) continue;
+      final added = await PendingCandidateStore().add(PendingCandidate(
+        id: PendingCandidate.candidateId(bill),
+        bill: bill.copyWith(ledgerId: ledgerId),
+        billingTypes: _billingTypesForSource(event.source),
+        source: event.source,
+        capturedAt: DateTime.now(),
+        reason: 'duplicate',
+        eventKey: event.eventKey,
+        eventItemIndex: item.itemIndex,
+        semanticKey: item.semanticKey,
+        matchedTransactionId: item.transactionId,
+      ));
+      if (added) rebuilt++;
+    }
+    if (rebuilt > 0) {
+      await store.mark(
+        const AutoBookEventUpdate(
+          state: AutoBookState.pending,
+          reason: 'unmerge_requested',
+        ),
+        eventId: event.id,
+      );
+      logger.info(_tag, '强判重合并已撤销,候选重建进待确认',
+          'event=${event.eventKey}, rebuilt=$rebuilt');
+    }
+    return rebuilt;
+  }
+
+  List<String> _billingTypesForSource(String source) {
+    final primary = switch (source) {
+      'sms' => TagSeedService.billingTypeSms,
+      'notification' => TagSeedService.billingTypeNotification,
+      'screenText' || 'screen' => TagSeedService.billingTypeScreen,
+      'screenshot' || 'image' || 'sharedImage' =>
+        TagSeedService.billingTypeImage,
+      _ => TagSeedService.billingTypeAi,
+    };
+    return [primary, TagSeedService.billingTypeAi];
+  }
+
   Future<void> _markCandidateEvent(
     PendingCandidate candidate, {
     required AutoBookState state,
@@ -331,6 +407,7 @@ class AiBookkeeper {
     var ignoredCount = 0;
     var duplicateCount = 0;
     var shadowCount = 0;
+    var pendingAbsAmount = 0.0;
     final duplicateTransactionIds = <int>[];
 
     final eventStore = autoBookFlow?.eventStore;
@@ -526,13 +603,26 @@ class AiBookkeeper {
       }
 
       // M2 候选制:低置信 / 语义待确认 / 疑似重复 → 待确认队列,不入账。
+      // 自动入账总闸关闭(P0-2)时,即使全部通过语义校验也一律先进待确认。
       final requiresConfirmation = autoBookFlow != null &&
-          (policy.isPending || AutoBookRule.isLowConfidence(bill) || duplicate);
+          (autoBookFlow.requireConfirmationForAll ||
+              policy.isPending ||
+              AutoBookRule.isLowConfidence(bill) ||
+              duplicate);
       if (requiresConfirmation) {
-        final reason = duplicate
-            ? 'duplicate'
-            : _candidateReasonForPolicy(policy) ??
-                AutoBookRule.reasonKeyFor(bill: bill, duplicate: duplicate);
+        final String? reason;
+        if (autoBookFlow!.requireConfirmationForAll &&
+            !policy.isPending &&
+            !AutoBookRule.isLowConfidence(bill) &&
+            !duplicate) {
+          // 仅因总闸关闭进待确认:语义/置信/查重都没有拦它
+          reason = 'autoBookDisabled';
+        } else if (duplicate) {
+          reason = 'duplicate';
+        } else {
+          reason = _candidateReasonForPolicy(policy) ??
+              AutoBookRule.reasonKeyFor(bill: bill, duplicate: duplicate);
+        }
         await autoBookFlow.store.add(PendingCandidate(
           id: PendingCandidate.candidateId(bill),
           bill: bill,
@@ -546,6 +636,7 @@ class AiBookkeeper {
           matchScore: semanticMatch?.score,
         ));
         awaitingCount++;
+        pendingAbsAmount += bill.amount?.abs() ?? 0;
         await recordEventItem(
           index: i,
           bill: bill,
@@ -651,6 +742,7 @@ class AiBookkeeper {
       duplicateCount: duplicateCount,
       duplicateTransactionIds: List.unmodifiable(duplicateTransactionIds),
       shadowCount: shadowCount,
+      pendingAbsAmount: pendingAbsAmount,
     );
   }
 

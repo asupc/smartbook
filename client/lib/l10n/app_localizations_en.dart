@@ -103,6 +103,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get fabActionVoiceDisabled => 'AI enabled & API Key required';
 
   @override
+  String get fabActionManual => 'Add entry';
+
+  @override
   String get voiceRecordingTitle => 'Voice Billing';
 
   @override
@@ -296,7 +299,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get homeNoRecordsSubtext => 'Tap the plus button at the bottom to add a record';
+  String get homeNoRecordsSubtext => 'Tap the AI assistant below, or long-press it to add manually';
 
   @override
   String get homeLastMonthReportSubtitle => 'View and share last month\'s report';
@@ -4657,6 +4660,118 @@ class AppLocalizationsEn extends AppLocalizations {
   String get pendingCandidateReasonAnomaly => 'Anomalous - above recent baseline';
 
   @override
+  String get pendingCandidateReasonAutoBookDisabled => 'Auto-booking is off; confirmation required';
+
+  @override
+  String get pendingCandidatesArchivedHint => 'Some older candidates were archived - please review soon';
+
+  @override
+  String get autoBookDetailTitle => 'Auto-booking detail';
+
+  @override
+  String get autoBookDetailState => 'State';
+
+  @override
+  String get autoBookDetailSource => 'Source';
+
+  @override
+  String get autoBookDetailCapturedAt => 'Captured at';
+
+  @override
+  String get autoBookDetailUpdatedAt => 'Updated at';
+
+  @override
+  String get autoBookDetailAttempts => 'Attempts';
+
+  @override
+  String get autoBookDetailError => 'Error';
+
+  @override
+  String get autoBookDetailReason => 'Reason';
+
+  @override
+  String get autoBookDetailEvidence => 'Original evidence';
+
+  @override
+  String get autoBookDetailEvidenceCleared => 'Original evidence was cleared by the retention policy or never stored';
+
+  @override
+  String get autoBookDetailItems => 'Parsed items';
+
+  @override
+  String get autoBookDetailNoItems => 'No item records';
+
+  @override
+  String get autoBookDetailRelatedTx => 'Related transaction';
+
+  @override
+  String autoBookDetailOpenTx(int id) {
+    return 'View transaction #$id';
+  }
+
+  @override
+  String get autoBookDetailRetry => 'Retry manually';
+
+  @override
+  String get autoBillingNotifyMergeTitle => 'Merged into an existing transaction';
+
+  @override
+  String autoBillingNotifyMergeBody(int count, String date, String amount) {
+    return '$count transaction(s) merged with the $date ¥$amount entry; undo available in auto-booking history';
+  }
+
+  @override
+  String get autoBookUndoMerge => 'Undo merge (restore as separate entry)';
+
+  @override
+  String get autoBookUndoMergeDone => 'Restored to pending; please review';
+
+  @override
+  String get autoBookUndoMergeEmpty => 'Nothing to restore';
+
+  @override
+  String get dedupExemptTitle => 'Dedup exemptions';
+
+  @override
+  String get dedupExemptDesc => 'After confirming \'keep as new entry\', the same merchant and amount range won\'t be deduplicated again';
+
+  @override
+  String get dedupExemptEmpty => 'No exemption rules';
+
+  @override
+  String get dedupExemptClear => 'Clear exemptions';
+
+  @override
+  String get pendingBatchMode => 'Batch mode';
+
+  @override
+  String get pendingBatchSelectAll => 'Select all';
+
+  @override
+  String get pendingBatchApprove => 'Approve all';
+
+  @override
+  String get pendingBatchReject => 'Reject all';
+
+  @override
+  String pendingBatchApproved(int count, int failed) {
+    return 'Approved $count, failed $failed (kept)';
+  }
+
+  @override
+  String pendingBatchRejected(Object count, Object failed) {
+    return 'Rejected $count, failed $failed (kept)';
+  }
+
+  @override
+  String pendingBatchRejectAsk(Object count) {
+    return 'Reject $count selected candidates?';
+  }
+
+  @override
+  String get pendingConfirmationPickCategory => 'Pick a category';
+
+  @override
   String get pendingConfirmationSimilarTransaction => 'Similar existing transaction';
 
   @override
@@ -4684,13 +4799,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get autoDeleteScreenshotDesc => 'Delete the phone screenshot after it was recognized as a bill and booked. It is kept when not a bill, on failure, or when sent to pending.';
 
   @override
-  String get autoBookCheckTitle => 'Auto-billing check';
+  String get autoBookCheckTitle => 'Auto-book master switch';
 
   @override
-  String get autoBookCheckDesc => 'Low-confidence / large / duplicate entries go to pending first';
+  String get autoBookCheckDesc => 'On: low-confidence / likely duplicates go to pending; the rest book automatically';
 
   @override
-  String get autoBookCheckDisabledDesc => 'Off - all entries booked directly (legacy)';
+  String get autoBookCheckDisabledDesc => 'Off: every recognition result needs manual confirmation';
 
   @override
   String get smartBillingChecking => 'Checking...';
@@ -4764,6 +4879,19 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String autoBillingNotifySuccessMultiBody(String amount) {
     return 'Total ¥$amount';
+  }
+
+  @override
+  String get autoBillingNotifyPendingTitle => 'Auto-bookkeeping needs confirmation';
+
+  @override
+  String homePendingConfirmBanner(int count) {
+    return '$count auto-bookkeeping entries awaiting confirmation';
+  }
+
+  @override
+  String autoBillingNotifyPendingBody(int count, String amount) {
+    return '$count transaction(s) awaiting confirmation, total ¥$amount';
   }
 
   @override
@@ -6436,6 +6564,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get automationDraftsDiscarded => 'Draft discarded';
+
+  @override
+  String get automationDraftsImageGone => 'The original image was cleared by the system; retry unavailable';
 
   @override
   String get automationDraftsRetryQueued => 'Re-submitted for recognition';

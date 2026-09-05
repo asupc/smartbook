@@ -103,6 +103,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get fabActionVoiceDisabled => '需要启用AI并配置API Key';
 
   @override
+  String get fabActionManual => '记一笔';
+
+  @override
   String get voiceRecordingTitle => '语音记账';
 
   @override
@@ -296,7 +299,7 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get homeNoRecordsSubtext => '点击底部加号，马上记一笔';
+  String get homeNoRecordsSubtext => '点击下方「AI 助手」记账，长按可手动记一笔';
 
   @override
   String get homeLastMonthReportSubtitle => '查看上月消费报告并分享';
@@ -4657,6 +4660,118 @@ class AppLocalizationsZh extends AppLocalizations {
   String get pendingCandidateReasonAnomaly => '异常消费:高于近期基线';
 
   @override
+  String get pendingCandidateReasonAutoBookDisabled => '自动入账已关闭,需手动确认';
+
+  @override
+  String get pendingCandidatesArchivedHint => '部分较旧候选已归档,请尽快处理';
+
+  @override
+  String get autoBookDetailTitle => '自动记账详情';
+
+  @override
+  String get autoBookDetailState => '状态';
+
+  @override
+  String get autoBookDetailSource => '来源';
+
+  @override
+  String get autoBookDetailCapturedAt => '捕获时间';
+
+  @override
+  String get autoBookDetailUpdatedAt => '更新时间';
+
+  @override
+  String get autoBookDetailAttempts => '尝试次数';
+
+  @override
+  String get autoBookDetailError => '错误信息';
+
+  @override
+  String get autoBookDetailReason => '原因';
+
+  @override
+  String get autoBookDetailEvidence => '原始证据';
+
+  @override
+  String get autoBookDetailEvidenceCleared => '原始证据已按留存策略清理或未留存';
+
+  @override
+  String get autoBookDetailItems => '解析子项';
+
+  @override
+  String get autoBookDetailNoItems => '无子项记录';
+
+  @override
+  String get autoBookDetailRelatedTx => '关联交易';
+
+  @override
+  String autoBookDetailOpenTx(int id) {
+    return '查看交易 #$id';
+  }
+
+  @override
+  String get autoBookDetailRetry => '手动重试';
+
+  @override
+  String get autoBillingNotifyMergeTitle => '已合并到已有交易';
+
+  @override
+  String autoBillingNotifyMergeBody(int count, String date, String amount) {
+    return '$count 笔与 $date 的 ¥$amount 判为同一笔，已合并，可在自动记账历史中撤销';
+  }
+
+  @override
+  String get autoBookUndoMerge => '撤销合并（恢复为一笔）';
+
+  @override
+  String get autoBookUndoMergeDone => '已恢复到待确认，请处理';
+
+  @override
+  String get autoBookUndoMergeEmpty => '没有可恢复的记录';
+
+  @override
+  String get dedupExemptTitle => '判重豁免';
+
+  @override
+  String get dedupExemptDesc => '确认「仍记一笔」后，同商户同金额段不再被判重';
+
+  @override
+  String get dedupExemptEmpty => '暂无豁免规则';
+
+  @override
+  String get dedupExemptClear => '清空豁免';
+
+  @override
+  String get pendingBatchMode => '批量管理';
+
+  @override
+  String get pendingBatchSelectAll => '全选';
+
+  @override
+  String get pendingBatchApprove => '批量确认';
+
+  @override
+  String get pendingBatchReject => '批量拒绝';
+
+  @override
+  String pendingBatchApproved(int count, int failed) {
+    return '成功确认 $count 条，失败 $failed 条（已保留）';
+  }
+
+  @override
+  String pendingBatchRejected(Object count, Object failed) {
+    return '成功拒绝 $count 条，失败 $failed 条（已保留）';
+  }
+
+  @override
+  String pendingBatchRejectAsk(Object count) {
+    return '确定拒绝选中的 $count 条候选吗？';
+  }
+
+  @override
+  String get pendingConfirmationPickCategory => '选择分类';
+
+  @override
   String get pendingConfirmationSimilarTransaction => '相似已有交易';
 
   @override
@@ -4684,13 +4799,13 @@ class AppLocalizationsZh extends AppLocalizations {
   String get autoDeleteScreenshotDesc => '截图被识别为账单并成功入账后,自动从相册删除;非账单、失败或进入「待确认」时保留';
 
   @override
-  String get autoBookCheckTitle => '自动入账校验';
+  String get autoBookCheckTitle => '自动入账总闸';
 
   @override
-  String get autoBookCheckDesc => '低置信/大额/疑似重复先待确认,人工确认后入账';
+  String get autoBookCheckDesc => '开启:低置信/疑似重复进待确认,其余自动入账';
 
   @override
-  String get autoBookCheckDisabledDesc => '已关闭:全部直接入账(旧行为)';
+  String get autoBookCheckDisabledDesc => '已关闭:所有识别结果需手动确认后入账';
 
   @override
   String get smartBillingChecking => '正在检查…';
@@ -4764,6 +4879,19 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String autoBillingNotifySuccessMultiBody(String amount) {
     return '合计 ¥$amount';
+  }
+
+  @override
+  String get autoBillingNotifyPendingTitle => '自动记账待确认';
+
+  @override
+  String homePendingConfirmBanner(int count) {
+    return '有 $count 笔自动记账待确认';
+  }
+
+  @override
+  String autoBillingNotifyPendingBody(int count, String amount) {
+    return '$count 笔支出待确认，合计 ¥$amount';
   }
 
   @override
@@ -6438,6 +6566,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get automationDraftsDiscarded => '草稿已丢弃';
 
   @override
+  String get automationDraftsImageGone => '原图已被系统清理，无法重试';
+
+  @override
   String get automationDraftsRetryQueued => '已重新提交识别';
 
   @override
@@ -8000,6 +8131,9 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
   String get fabActionVoiceDisabled => '需要啟用AI並配置 GLM API';
 
   @override
+  String get fabActionManual => '記一筆';
+
+  @override
   String get voiceRecordingTitle => '語音記帳';
 
   @override
@@ -8193,7 +8327,7 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
   }
 
   @override
-  String get homeNoRecordsSubtext => '點擊底部加號，馬上記一筆';
+  String get homeNoRecordsSubtext => '點擊下方「AI 助手」記帳，長按可手動記一筆';
 
   @override
   String get homeLastMonthReportSubtitle => '查看上月消費報告並分享';
@@ -12554,6 +12688,118 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
   String get pendingCandidateReasonAnomaly => '異常消費:高於近期基線';
 
   @override
+  String get pendingCandidateReasonAutoBookDisabled => '自動入帳已關閉,需手動確認';
+
+  @override
+  String get pendingCandidatesArchivedHint => '部分較舊候選已歸檔,請盡快處理';
+
+  @override
+  String get autoBookDetailTitle => '自動記帳詳情';
+
+  @override
+  String get autoBookDetailState => '狀態';
+
+  @override
+  String get autoBookDetailSource => '來源';
+
+  @override
+  String get autoBookDetailCapturedAt => '擷取時間';
+
+  @override
+  String get autoBookDetailUpdatedAt => '更新時間';
+
+  @override
+  String get autoBookDetailAttempts => '嘗試次數';
+
+  @override
+  String get autoBookDetailError => '錯誤訊息';
+
+  @override
+  String get autoBookDetailReason => '原因';
+
+  @override
+  String get autoBookDetailEvidence => '原始證據';
+
+  @override
+  String get autoBookDetailEvidenceCleared => '原始證據已按留存策略清理或未留存';
+
+  @override
+  String get autoBookDetailItems => '解析子項';
+
+  @override
+  String get autoBookDetailNoItems => '無子項記錄';
+
+  @override
+  String get autoBookDetailRelatedTx => '關聯交易';
+
+  @override
+  String autoBookDetailOpenTx(int id) {
+    return '查看交易 #$id';
+  }
+
+  @override
+  String get autoBookDetailRetry => '手動重試';
+
+  @override
+  String get autoBillingNotifyMergeTitle => '已合併到已有交易';
+
+  @override
+  String autoBillingNotifyMergeBody(int count, String date, String amount) {
+    return '$count 筆與 $date 的 ¥$amount 判為同一筆，已合併，可在自動記帳歷史中撤銷';
+  }
+
+  @override
+  String get autoBookUndoMerge => '撤銷合併（恢復為一筆）';
+
+  @override
+  String get autoBookUndoMergeDone => '已恢復到待確認，請處理';
+
+  @override
+  String get autoBookUndoMergeEmpty => '沒有可恢復的記錄';
+
+  @override
+  String get dedupExemptTitle => '判重豁免';
+
+  @override
+  String get dedupExemptDesc => '確認「仍記一筆」後，同商戶同金額段不再被判重';
+
+  @override
+  String get dedupExemptEmpty => '暫無豁免規則';
+
+  @override
+  String get dedupExemptClear => '清空豁免';
+
+  @override
+  String get pendingBatchMode => '批次管理';
+
+  @override
+  String get pendingBatchSelectAll => '全選';
+
+  @override
+  String get pendingBatchApprove => '批次確認';
+
+  @override
+  String get pendingBatchReject => '批次拒絕';
+
+  @override
+  String pendingBatchApproved(int count, int failed) {
+    return '成功確認 $count 條，失敗 $failed 條（已保留）';
+  }
+
+  @override
+  String pendingBatchRejected(Object count, Object failed) {
+    return '成功拒絕 $count 條，失敗 $failed 條（已保留）';
+  }
+
+  @override
+  String pendingBatchRejectAsk(Object count) {
+    return '確定拒絕選中的 $count 條候選嗎？';
+  }
+
+  @override
+  String get pendingConfirmationPickCategory => '選擇分類';
+
+  @override
   String get pendingConfirmationSimilarTransaction => '相似已有交易';
 
   @override
@@ -12581,13 +12827,13 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
   String get autoDeleteScreenshotDesc => '截圖被識別為帳單並成功入帳後,自動從相簿刪除;非帳單、失敗或進入「待確認」時保留';
 
   @override
-  String get autoBookCheckTitle => '自動入帳校驗';
+  String get autoBookCheckTitle => '自動入帳總閘';
 
   @override
-  String get autoBookCheckDesc => '低置信/大額/疑似重複先待確認,人工確認後入帳';
+  String get autoBookCheckDesc => '開啟:低置信/疑似重複進待確認,其餘自動入帳';
 
   @override
-  String get autoBookCheckDisabledDesc => '已關閉:全部直接入帳(舊行為)';
+  String get autoBookCheckDisabledDesc => '已關閉:所有識別結果需手動確認後入帳';
 
   @override
   String get smartBillingChecking => '正在檢查…';
@@ -12661,6 +12907,19 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
   @override
   String autoBillingNotifySuccessMultiBody(String amount) {
     return '合計 ¥$amount';
+  }
+
+  @override
+  String get autoBillingNotifyPendingTitle => '自動記帳待確認';
+
+  @override
+  String homePendingConfirmBanner(int count) {
+    return '有 $count 筆自動記帳待確認';
+  }
+
+  @override
+  String autoBillingNotifyPendingBody(int count, String amount) {
+    return '$count 筆支出待確認，合計 ¥$amount';
   }
 
   @override
@@ -14333,6 +14592,9 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
 
   @override
   String get automationDraftsDiscarded => '草稿已丟棄';
+
+  @override
+  String get automationDraftsImageGone => '原圖已被系統清理，無法重試';
 
   @override
   String get automationDraftsRetryQueued => '已重新提交識別';

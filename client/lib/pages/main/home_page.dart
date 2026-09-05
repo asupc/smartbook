@@ -25,6 +25,8 @@ import '../../widgets/biz/ledger_picker_sheet.dart';
 import '../../widgets/biz/home_budget_summary.dart';
 import 'ledgers_page_new.dart';
 import '../../providers/shared_ledger_providers.dart';
+import '../../providers/automation_providers.dart';
+import '../automation/pending_confirmation_page.dart';
 
 // 优化版首页 - 使用FlutterListView实现精准定位和丝滑跳转
 class HomePage extends ConsumerStatefulWidget {
@@ -73,6 +75,15 @@ class _HomePageState extends ConsumerState<HomePage> {
   static const String _budgetSetupHintDismissedKey =
       'budget_setup_hint_dismissed';
 
+  // 待确认提醒条状态(P0-3):有待确认候选时首页提醒;
+  // 当日已点过/关过且数量未增加则不再显示(prefs 记日期+当时数量)。
+  static const String _pendingBannerDismissedDateKey =
+      'pending_banner_dismissed_date';
+  static const String _pendingBannerDismissedCountKey =
+      'pending_banner_dismissed_count';
+  String? _pendingBannerDismissedDate;
+  int _pendingBannerDismissedCount = 0;
+
   @override
   void initState() {
     super.initState();
@@ -80,6 +91,38 @@ class _HomePageState extends ConsumerState<HomePage> {
     _checkLastMonthReminder();
     _checkAnnualReportReminder();
     _checkBudgetSetupHint();
+    _loadPendingBannerDismissState();
+    // 首页展示期间候选可能变化(后台捕获冷启动 drain 后即 resumed),拉一次新
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) ref.invalidate(pendingCandidateCountProvider);
+    });
+  }
+
+  Future<void> _loadPendingBannerDismissState() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _pendingBannerDismissedDate =
+          prefs.getString(_pendingBannerDismissedDateKey);
+      _pendingBannerDismissedCount =
+          prefs.getInt(_pendingBannerDismissedCountKey) ?? 0;
+    });
+  }
+
+  /// 记录「今日已处理过提醒条」:点按进确认页或点关闭都算;
+  /// 数量再增加时提醒条会重新出现。
+  Future<void> _dismissPendingBanner(int count) async {
+    final now = DateTime.now();
+    final today = '${now.year}-${now.month}-${now.day}';
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_pendingBannerDismissedDateKey, today);
+    await prefs.setInt(_pendingBannerDismissedCountKey, count);
+    if (mounted) {
+      setState(() {
+        _pendingBannerDismissedDate = today;
+        _pendingBannerDismissedCount = count;
+      });
+    }
   }
 
   // 检查是否应该显示上月报告提醒
@@ -391,6 +434,98 @@ class _HomePageState extends ConsumerState<HomePage> {
                   // 关闭按钮（关闭后当月不再显示）
                   GestureDetector(
                     onTap: _dismissLastMonthReminder,
+                    behavior: HitTestBehavior.opaque,
+                    child: Icon(
+                      Icons.close,
+                      size: 18,
+                      color: isDark ? Colors.white38 : Colors.black26,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // 待确认提醒卡片(样式与月初提醒一致,P0-3)
+  Widget _buildPendingConfirmBanner(BuildContext context, int count) {
+    final l10n = AppLocalizations.of(context);
+    final primaryColor = ref.watch(primaryColorProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final accent = Colors.orange;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        boxShadow: isDark
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Stack(
+          children: [
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              child: Container(width: 4, color: accent),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+              child: Row(
+                children: [
+                  Icon(Icons.fact_check_outlined, color: accent, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      l10n.homePendingConfirmBanner(count),
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () async {
+                      await _dismissPendingBanner(count);
+                      if (!mounted) return;
+                      await Navigator.of(context).push(
+                        MaterialPageRoute(
+                            builder: (_) => const PendingConfirmationPage()),
+                      );
+                      if (mounted) {
+                        ref.invalidate(pendingCandidateCountProvider);
+                      }
+                    },
+                    child: Row(
+                      children: [
+                        Text(
+                          l10n.pendingConfirmationTitle,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: primaryColor,
+                          ),
+                        ),
+                        Icon(Icons.chevron_right,
+                            size: 18, color: primaryColor),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  GestureDetector(
+                    onTap: () => _dismissPendingBanner(count),
                     behavior: HitTestBehavior.opaque,
                     child: Icon(
                       Icons.close,
@@ -990,6 +1125,18 @@ class _HomePageState extends ConsumerState<HomePage> {
           // 年度账单提醒卡片（12月15日 - 次年1月31日）
           if (_showAnnualReportReminder)
             _buildAnnualReportReminderCard(context),
+          // 待确认提醒条(P0-3):有待确认候选必提醒;当日已点过且数量未增不再现
+          Consumer(builder: (context, ref, _) {
+            final count =
+                ref.watch(pendingCandidateCountProvider).valueOrNull ?? 0;
+            final now = DateTime.now();
+            final today = '${now.year}-${now.month}-${now.day}';
+            final suppressed = count <= 0 ||
+                (_pendingBannerDismissedDate == today &&
+                    _pendingBannerDismissedCount >= count);
+            if (suppressed) return const SizedBox.shrink();
+            return _buildPendingConfirmBanner(context, count);
+          }),
           // 预算设置引导卡片（无预算 + 未关闭过）
           Consumer(builder: (context, ref, _) {
             final overviewAsync = ref.watch(budgetOverviewProvider);

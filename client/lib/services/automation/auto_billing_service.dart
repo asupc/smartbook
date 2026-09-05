@@ -93,9 +93,10 @@ class AutoBillingService {
     _loadProcessedBillFingerprints();
   }
 
-  /// 自动入口始终经过候选/语义安全层。旧版「自动入账校验」开关不能再
+  /// 自动入口始终经过候选/语义安全层。旧版「自动入账校验」开关不能
   /// 关闭硬闸门或 event 幂等，否则一次误触发就可能把账单汇总写成消费；
-  /// 保留读取偏好仅为兼容旧数据，不让它绕过安全策略。
+  /// 语义硬闸门恒开。开关现在接回为「自动入账总闸」(P0-2):关=所有识别
+  /// 结果一律先进待确认队列，开=仅低置信/疑似重复进待确认(原候选制行为)。
   Future<AutoBookFlow> _autoBookFlow({String? eventKey}) async {
     final prefs = await SharedPreferences.getInstance();
     return AutoBookFlow(
@@ -104,6 +105,7 @@ class AutoBillingService {
       eventStore: _eventStore,
       strictSemantic: true,
       shadowMode: prefs.getBool(_shadowModeKey) ?? false,
+      requireConfirmationForAll: !(prefs.getBool('auto_book_enabled') ?? true),
     );
   }
 
@@ -497,6 +499,11 @@ class AutoBillingService {
         await _syncBillingToAiChat(result);
       }
 
+      // P0-3:截图路候选必反馈(不受 notifyOnlyOnSuccess 静默约束)
+      await _notifyPendingCandidates('screenshot', result);
+      // P1-1:强判重合并轻通知
+      await _notifyMergedCandidates(result);
+
       if (result.retryable || result.failedCount > 0) {
         if (showNotification && !notifyOnlyOnSuccess) {
           final l10n =
@@ -832,6 +839,12 @@ class AutoBillingService {
           outcome == SmsProcessOutcome.duplicate ||
           outcome == SmsProcessOutcome.shadow) {
         await _markSmsProcessed(fingerprint);
+        // P0-3:待确认必反馈(此前短信路候选静默入队)
+        if (outcome == SmsProcessOutcome.pending) {
+          await _notifyPendingCandidates('sms', result);
+        }
+        // P1-1:强判重合并轻通知(含 duplicate/静默合并路径)
+        await _notifyMergedCandidates(result);
         logger.info('AutoBilling', '短信已处理但未新建交易', outcome.name);
         return outcome;
       }
@@ -930,11 +943,30 @@ class AutoBillingService {
   /// 手动重试一个草稿(解除退避闸门后按原通道重跑识别)。
   /// 返回 true = 事件被重新执行(结果由通道通知/待确认页体现)。
   Future<bool> retryDraft(AutoBookEvent event) async {
-    final payload = AutoBookDraftPayload.fromJson(event.draftPayloadJson);
+    var payload = AutoBookDraftPayload.fromJson(event.draftPayloadJson);
+    // P1-2:retry 事件不一定有草稿(非瞬态异常不走草稿保存),用事件行上的
+    // 原始证据文本兜底重建;截图类没有路径无法重放,明示失败。
+    payload ??= _payloadFromRawEvidence(event);
     if (payload == null) return false;
     // 手动重试无视退避窗口
     await _eventStore?.resetRetryGate(event.id);
     return _replayDraft(event, payload);
+  }
+
+  /// 从事件行留存的原证据重建重放输入(文本通道);无可用证据返回 null。
+  AutoBookDraftPayload? _payloadFromRawEvidence(AutoBookEvent event) {
+    final text = event.rawText?.trim();
+    if (event.source == 'screenshot' || event.source == 'sharedImage') {
+      // 原图路径不落事件行,证据清理后无法重放
+      return null;
+    }
+    if (text == null || text.isEmpty) return null;
+    return AutoBookDraftPayload(
+      isImage: false,
+      text: text,
+      title: event.rawTitle,
+      actor: event.rawActor,
+    );
   }
 
   /// 自动重试所有到期草稿(联网恢复/登录就绪/周期触发)。
@@ -1151,6 +1183,12 @@ class AutoBillingService {
           outcome == SmsProcessOutcome.duplicate ||
           outcome == SmsProcessOutcome.shadow) {
         await _markNotifyProcessed(fingerprint);
+        // P0-3:待确认必反馈(此前通知路候选静默入队)
+        if (outcome == SmsProcessOutcome.pending) {
+          await _notifyPendingCandidates('notification', result);
+        }
+        // P1-1:强判重合并轻通知
+        await _notifyMergedCandidates(result);
         logger.info('AutoBilling', '通知已处理但未新建交易', outcome.name);
         return outcome;
       }
@@ -1349,6 +1387,12 @@ class AutoBillingService {
           outcome == SmsProcessOutcome.duplicate ||
           outcome == SmsProcessOutcome.shadow) {
         await _markScreenTextProcessed(fingerprint);
+        // P0-3:待确认必反馈(此前屏幕文本路候选静默入队)
+        if (outcome == SmsProcessOutcome.pending) {
+          await _notifyPendingCandidates('screenText', result);
+        }
+        // P1-1:强判重合并轻通知
+        await _notifyMergedCandidates(result);
         logger.info('AutoBilling', '屏幕文本已处理但未新建交易', outcome.name);
         return outcome;
       }
@@ -1523,6 +1567,115 @@ class AutoBillingService {
     return (note != null && note.isNotEmpty)
         ? l10n.autoBillingNotifySuccessSingleBodyNote(note)
         : l10n.autoBillingNotifySuccessSingleBodyDefault;
+  }
+
+  // ------------------------------------------------------------
+  // 待确认候选通知(P0-3):候选入队曾四路全静默,用户几天后才发现积压。
+  // 必反馈,但正文只含金额与笔数(与成功通知口径一致,不含商户名/原始
+  // 短信/通知/页面文本);独立通知 channel,可在系统设置单独关。
+  // 同一来源 10 分钟窗口内聚合计数,同一通知 ID 累加更新,不逐条轰炸。
+  // 自身通知已由 native NotificationWatcher 按包名过滤,无自反馈循环。
+  // ------------------------------------------------------------
+
+  /// 每来源的聚合状态(内存态;进程重启最多导致多弹一条,可接受)
+  static final Map<String, ({DateTime firstAt, int count, double amount})>
+      _pendingNotifyState = {};
+
+  static const _pendingNotifyIds = {
+    'screenshot': 1201,
+    'image': 1201,
+    'sms': 1202,
+    'notification': 1203,
+    'screenText': 1204,
+  };
+
+  /// 四路产生 pending 候选时调用;awaitingCount=0 时为 no-op。
+  Future<void> _notifyPendingCandidates(
+    String source,
+    BookkeepingResult result,
+  ) async {
+    final n = result.awaitingCount;
+    if (n <= 0) return;
+    final now = DateTime.now();
+    final prev = _pendingNotifyState[source];
+    final state = (prev != null && now.difference(prev.firstAt).inMinutes < 10)
+        ? (
+            firstAt: prev.firstAt,
+            count: prev.count + n,
+            amount: prev.amount + result.pendingAbsAmount,
+          )
+        : (firstAt: now, count: n, amount: result.pendingAbsAmount);
+    _pendingNotifyState[source] = state;
+
+    final l10n = lookupAppLocalizations(PlatformDispatcher.instance.locale);
+    const androidDetails = AndroidNotificationDetails(
+      'auto_book_pending',
+      '待确认提醒',
+      channelDescription: '自动记账进入待确认队列时的提醒(只含金额与笔数)',
+      importance: Importance.defaultImportance,
+      priority: Priority.defaultPriority,
+    );
+    const details = NotificationDetails(
+      android: androidDetails,
+      iOS: DarwinNotificationDetails(),
+    );
+    try {
+      await _notificationsPlugin.show(
+        _pendingNotifyIds[source] ?? 1209,
+        l10n.autoBillingNotifyPendingTitle,
+        l10n.autoBillingNotifyPendingBody(
+            state.count, state.amount.toStringAsFixed(2)),
+        details,
+      );
+    } catch (e) {
+      logger.warning('AutoBilling', '待确认通知发送失败(不中断记账): $e');
+    }
+  }
+
+  /// 强判重合并轻通知(P1-1):强语义(≥0.92)合并曾完全静默,真实消费被吞
+  /// 用户毫无感知。正文只含目标交易日期/金额/笔数(不含商户名,与 §6 隐私
+  /// 口径一致);撤销入口在自动记账历史详情页。
+  Future<void> _notifyMergedCandidates(BookkeepingResult result) async {
+    final ids = result.duplicateTransactionIds;
+    if (result.duplicateCount <= 0 || ids.isEmpty) return;
+    String dateLabel = '';
+    String amountLabel = '';
+    try {
+      final tx =
+          await _container.read(repositoryProvider).getTransactionById(ids.first);
+      if (tx != null) {
+        dateLabel = '${tx.happenedAt.month}/${tx.happenedAt.day}';
+        amountLabel = tx.amount.abs().toStringAsFixed(2);
+      }
+    } catch (e) {
+      logger.debug('AutoBilling', '查询判重目标交易失败,跳过合并通知', '$e');
+      return;
+    }
+    if (dateLabel.isEmpty) return;
+
+    final l10n = lookupAppLocalizations(PlatformDispatcher.instance.locale);
+    const androidDetails = AndroidNotificationDetails(
+      'auto_book_merge',
+      '判重合并提醒',
+      channelDescription: '强语义判重合并到已有交易时的轻提醒',
+      importance: Importance.low,
+      priority: Priority.low,
+    );
+    const details = NotificationDetails(
+      android: androidDetails,
+      iOS: DarwinNotificationDetails(),
+    );
+    try {
+      await _notificationsPlugin.show(
+        1251,
+        l10n.autoBillingNotifyMergeTitle,
+        l10n.autoBillingNotifyMergeBody(
+            result.duplicateCount, dateLabel, amountLabel),
+        details,
+      );
+    } catch (e) {
+      logger.warning('AutoBilling', '合并通知发送失败(不中断记账): $e');
+    }
   }
 
   /// 显示通知。

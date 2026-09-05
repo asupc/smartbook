@@ -35,6 +35,7 @@
   "fabActionGallery": "Gallery",
   "fabActionVoice": "Voice",
   "fabActionVoiceDisabled": "AI enabled & API Key required",
+  "fabActionManual": "Add entry",
   "voiceRecordingTitle": "Voice Billing",
   "voiceRecordingPreparing": "Preparing...",
   "voiceRecordingInProgress": "Recording...",
@@ -150,7 +151,7 @@
       }
     }
   },
-  "homeNoRecordsSubtext": "Tap the plus button at the bottom to add a record",
+  "homeNoRecordsSubtext": "Tap the AI assistant below, or long-press it to add manually",
   "homeLastMonthReportSubtitle": "View and share last month's report",
   "homeLastMonthReportView": "View",
   "homeAnnualReportReminder": "Your {year} Annual Report is ready",
@@ -1944,6 +1945,70 @@
   "pendingCandidateReasonLarge": "Large amount",
   "pendingCandidateReasonLowConfidence": "Low confidence - please verify",
   "pendingCandidateReasonAnomaly": "Anomalous - above recent baseline",
+  "pendingCandidateReasonAutoBookDisabled": "Auto-booking is off; confirmation required",
+  "pendingCandidatesArchivedHint": "Some older candidates were archived - please review soon",
+  "autoBookDetailTitle": "Auto-booking detail",
+  "autoBookDetailState": "State",
+  "autoBookDetailSource": "Source",
+  "autoBookDetailCapturedAt": "Captured at",
+  "autoBookDetailUpdatedAt": "Updated at",
+  "autoBookDetailAttempts": "Attempts",
+  "autoBookDetailError": "Error",
+  "autoBookDetailReason": "Reason",
+  "autoBookDetailEvidence": "Original evidence",
+  "autoBookDetailEvidenceCleared": "Original evidence was cleared by the retention policy or never stored",
+  "autoBookDetailItems": "Parsed items",
+  "autoBookDetailNoItems": "No item records",
+  "autoBookDetailRelatedTx": "Related transaction",
+  "autoBookDetailOpenTx": "View transaction #{id}",
+  "@autoBookDetailOpenTx": {
+    "placeholders": {
+      "id": {
+        "type": "int"
+      }
+    }
+  },
+  "autoBookDetailRetry": "Retry manually",
+  "autoBillingNotifyMergeTitle": "Merged into an existing transaction",
+  "autoBillingNotifyMergeBody": "{count} transaction(s) merged with the {date} ¥{amount} entry; undo available in auto-booking history",
+  "@autoBillingNotifyMergeBody": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "date": {
+        "type": "String"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "autoBookUndoMerge": "Undo merge (restore as separate entry)",
+  "autoBookUndoMergeDone": "Restored to pending; please review",
+  "autoBookUndoMergeEmpty": "Nothing to restore",
+  "dedupExemptTitle": "Dedup exemptions",
+  "dedupExemptDesc": "After confirming 'keep as new entry', the same merchant and amount range won't be deduplicated again",
+  "dedupExemptEmpty": "No exemption rules",
+  "dedupExemptClear": "Clear exemptions",
+  "pendingBatchMode": "Batch mode",
+  "pendingBatchSelectAll": "Select all",
+  "pendingBatchApprove": "Approve all",
+  "pendingBatchReject": "Reject all",
+  "pendingBatchApproved": "Approved {count}, failed {failed} (kept)",
+  "@pendingBatchApproved": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "failed": {
+        "type": "int"
+      }
+    }
+  },
+  "pendingBatchRejected": "Rejected {count}, failed {failed} (kept)",
+  "pendingBatchRejectAsk": "Reject {count} selected candidates?",
+  "pendingConfirmationPickCategory": "Pick a category",
   "pendingConfirmationSimilarTransaction": "Similar existing transaction",
   "pendingConfirmationCompare": "Compare",
   "pendingConfirmationCandidate": "Pending candidate",
@@ -1978,9 +2043,9 @@
   },
   "autoDeleteScreenshotTitle": "Auto-delete screenshot after billing",
   "autoDeleteScreenshotDesc": "Delete the phone screenshot after it was recognized as a bill and booked. It is kept when not a bill, on failure, or when sent to pending.",
-  "autoBookCheckTitle": "Auto-billing check",
-  "autoBookCheckDesc": "Low-confidence / large / duplicate entries go to pending first",
-  "autoBookCheckDisabledDesc": "Off - all entries booked directly (legacy)",
+  "autoBookCheckTitle": "Auto-book master switch",
+  "autoBookCheckDesc": "On: low-confidence / likely duplicates go to pending; the rest book automatically",
+  "autoBookCheckDisabledDesc": "Off: every recognition result needs manual confirmation",
   "smartBillingChecking": "Checking...",
   "autoBillingNotifyRecognizeFailedTitle": "❌ Recognition failed",
   "autoBillingNotifyRecognizeFailedBody": "Could not extract billing info from screenshot. Check AI config or the image.",
@@ -2024,6 +2089,26 @@
     }
   },
   "autoBillingNotifySuccessMultiBody": "Total ¥{amount}",
+  "autoBillingNotifyPendingTitle": "Auto-bookkeeping needs confirmation",
+  "homePendingConfirmBanner": "{count} auto-bookkeeping entries awaiting confirmation",
+  "@homePendingConfirmBanner": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "autoBillingNotifyPendingBody": "{count} transaction(s) awaiting confirmation, total ¥{amount}",
+  "@autoBillingNotifyPendingBody": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
   "@autoBillingNotifySuccessMultiBody": {
     "placeholders": {
       "amount": {
@@ -2868,6 +2953,7 @@
   "aiProviderNoApiKey": "API Key not configured",
   "aiProviderApiKeyKeepHint": "Leave blank to keep the current key",
   "automationDraftsDiscarded": "Draft discarded",
+  "automationDraftsImageGone": "The original image was cleared by the system; retry unavailable",
   "automationDraftsRetryQueued": "Re-submitted for recognition",
   "automationDraftsDiscard": "Discard draft",
   "automationDraftsRetry": "Retry recognition",

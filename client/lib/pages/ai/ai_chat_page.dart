@@ -685,7 +685,44 @@ class _AIChatPageState extends ConsumerState<AIChatPage>
       ),
       child: SafeArea(
         top: false, // 不保护顶部，避免额外空白
-        child: Row(
+        // AI 未配置时显示引导卡替代输入框:输入必然失败,引导用户先配置(P2-1)
+        child: (_apiValidation != null && !_apiValidation!.isValid)
+            ? Row(
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    color: ref.watch(primaryColorProvider),
+                    size: 22.0.scaled(context, ref),
+                  ),
+                  SizedBox(width: 10.0.scaled(context, ref)),
+                  Expanded(
+                    child: Text(
+                      AppLocalizations.of(context).aiChatConfigWarning,
+                      style: TextStyle(
+                        color: BeeTokens.textSecondary(context),
+                        fontSize: 13.0.scaled(context, ref),
+                      ),
+                    ),
+                  ),
+                  FilledButton.tonal(
+                    onPressed: () async {
+                      await Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const AISettingsPage(),
+                        ),
+                      );
+                      if (mounted) await _validateApiConfig();
+                    },
+                    style: FilledButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    child: Text(
+                      AppLocalizations.of(context).aiChatGoToSettings,
+                    ),
+                  ),
+                ],
+              )
+            : Row(
           children: [
             Expanded(
               child: TextField(
@@ -751,6 +788,31 @@ class _AIChatPageState extends ConsumerState<AIChatPage>
     );
   }
 
+  /// 未配置 AI 时的统一引导:snackbar 带「去设置」动作,直达 AI 设置页,
+  /// 返回后重新验证(P2-1)。失败只降级为 toast,不阻断。
+  void _showGoConfigureSnackBar() {
+    final l10n = AppLocalizations.of(context);
+    try {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+          content: Text(l10n.aiNotConfiguredHint),
+          duration: const Duration(seconds: 4),
+          action: SnackBarAction(
+            label: l10n.aiChatGoToSettings,
+            onPressed: () async {
+              await Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const AISettingsPage()),
+              );
+              if (mounted) await _validateApiConfig();
+            },
+          ),
+        ));
+    } catch (_) {
+      showToast(context, l10n.aiNotConfiguredHint);
+    }
+  }
+
   /// 显示图片记账来源选择(相册 / 拍照)
   void _showMediaSourceSheet() {
     if (_isLoading) return;
@@ -793,10 +855,11 @@ class _AIChatPageState extends ConsumerState<AIChatPage>
     if (_isLoading) return;
     final l10n = AppLocalizations.of(context);
 
-    // 与「相册/拍照」入口一致:未配置 vision 能力时直接提示
+    // 与「相册/拍照」入口一致:未配置 vision 能力时给可操作的引导
+    // (P2-1:纯 toast 无路径 → snackbar 带「去设置」直达 AI 设置页)
     if (!await AIProviderManager.isCapabilityConfigured(
         AICapabilityType.vision)) {
-      if (mounted) showToast(context, l10n.aiNotConfiguredHint);
+      if (mounted) _showGoConfigureSnackBar();
       return;
     }
     if (!mounted) return;

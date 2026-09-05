@@ -46,7 +46,7 @@ import '../../ai/providers/ai_provider_manager.dart' show AIProviderManager;
 import '../../services/platform/screenshot_monitor_service.dart';
 import '../../services/platform/sms_monitor_service.dart';
 import '../../services/platform/notify_monitor_service.dart';
-import '../../services/billing/pending_candidate.dart';
+import '../../providers/automation_providers.dart';
 import '../../pages/automation/pending_confirmation_page.dart';
 import '../../utils/ui_scale_extensions.dart';
 
@@ -94,13 +94,10 @@ class AutoBillingHealth {
   bool get isHealthy => issueCount == 0;
 }
 
-/// 自动记账健康检测:截图/短信/通知监听未开启、监听权限被撤、
-/// AI 文本或视觉未配置都会导致自动记账不可用。
-/// 待确认候选数量(M2 候选制):mine 页入口 badge。
-/// 进入页面/回到页面时 invalidate 即刷新。
-final pendingCandidateCountProvider = FutureProvider<int>((ref) async {
-  return PendingCandidateStore().count();
-});
+// 自动记账健康检测:截图/短信/通知监听未开启、监听权限被撤、
+// AI 文本或视觉未配置都会导致自动记账不可用。
+// 待确认候选数量(M2 候选制)的 pendingCandidateCountProvider 已上移到
+// providers/automation_providers.dart(P1-3 统一口径),与首页提醒条共用。
 
 final autoBillingHealthProvider = FutureProvider<AutoBillingHealth>((ref) async {
   final container = ref.container;
