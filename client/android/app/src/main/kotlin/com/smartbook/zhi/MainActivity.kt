@@ -377,6 +377,18 @@ class MainActivity: FlutterFragmentActivity() {
                     ScreenTextWatcher().ackQueue(this, fingerprints, eventKeys)
                     result.success(true)
                 }
+                // 识别决策环形队列(设置页「最近识别记录」,真机漏记排查用)
+                "getDecisions" -> {
+                    result.success(ScreenTextWatcher.loadDecisions(this))
+                }
+                "appendDecision" -> {
+                    // Dart 侧(drain/AI 段)补记决策,与原生判定拼成完整链路
+                    val pkg = call.argument<String>("pkg") ?: ""
+                    val decision = call.argument<String>("decision") ?: ""
+                    val detail = call.argument<String>("detail") ?: ""
+                    ScreenTextWatcher.recordDecision(this, pkg, decision, detail)
+                    result.success(true)
+                }
                 else -> result.notImplemented()
             }
         }

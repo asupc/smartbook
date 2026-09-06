@@ -140,6 +140,7 @@ class ScreenTextMonitorService {
     if (!await runtime.awaitReady()) {
       logger.info('ScreenTextMonitor',
           'AI 运行时未就绪(${runtime.state.name}),保留详情页队列待下次 drain');
+      await _logDecision('drain_deferred', 'AI 运行时未就绪(${runtime.state.name})');
       return;
     }
     try {
@@ -192,12 +193,14 @@ class ScreenTextMonitorService {
         );
 
         if (execution.skipped) {
+          await _logDecision('drain_skipped', 'pkg=$pkg state=${execution.state.value}');
           if (execution.terminal) await _ack(fingerprint, eventKey);
           continue;
         }
 
         final outcome = execution.value;
         if (outcome == null) continue;
+        await _logDecision('drain_${outcome.name}', 'pkg=$pkg');
         if (outcome == SmsProcessOutcome.noAiConfigured) {
           _noAiNotified.add(eventKey);
         }
@@ -221,6 +224,34 @@ class ScreenTextMonitorService {
         skipDedup: true,
       );
     });
+  }
+
+  /// 最近识别决策(原生环形队列,设置页「最近识别记录」排查真机漏记用)。
+  /// 不含页面文本 —— 只有决策码/命中关键词/长度计数。
+  Future<List<Map<String, String>>> recentDecisions() async {
+    if (!Platform.isAndroid) return const [];
+    try {
+      final res =
+          await _channel.invokeMethod<List<dynamic>>('getDecisions') ?? const [];
+      return [
+        for (final e in res)
+          if (e is Map) e.map((k, v) => MapEntry('$k', '$v')),
+      ];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// 追加一条 Dart 段(drain/AI)决策记录,与原生判定拼成完整链路。失败静默。
+  Future<void> _logDecision(String decision, String detail) async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _channel.invokeMethod('appendDecision', {
+        'pkg': 'app',
+        'decision': decision,
+        'detail': detail,
+      });
+    } catch (_) {}
   }
 
   Future<void> _ack(String fingerprint, String? eventKey) async {

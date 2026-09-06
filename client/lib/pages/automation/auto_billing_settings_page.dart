@@ -56,6 +56,7 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
   bool _isNotifyListenerGranted = false;
   bool _isScreenMonitorEnabled = false;
   bool _isScreenAccessibilityGranted = false;
+  List<Map<String, String>> _screenDecisions = const [];
   bool _autoBookCheckEnabled = true;
   bool _shadowModeEnabled = false;
   int _pendingCount = 0;
@@ -101,6 +102,7 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
     final notifyGranted = await _notifyMonitor.isListenerGranted();
     final screenEnabled = await _screenTextMonitor.isEnabled();
     final screenGranted = await _screenTextMonitor.isAccessibilityGranted();
+    final screenDecisions = await _screenTextMonitor.recentDecisions();
     final prefs = await SharedPreferences.getInstance();
     final autoBookCheck = prefs.getBool('auto_book_enabled') ?? true;
     final shadowMode =
@@ -128,6 +130,7 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
       _isNotifyListenerGranted = notifyGranted;
       _isScreenMonitorEnabled = screenEnabled;
       _isScreenAccessibilityGranted = screenGranted;
+      _screenDecisions = screenDecisions;
       _autoBookCheckEnabled = autoBookCheck;
       _shadowModeEnabled = shadowMode;
       _pendingCount = pendingCount;
@@ -565,6 +568,12 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
 
                 const SizedBox(height: 16),
 
+                // 最近识别记录(真机漏记排查):原生过滤闸 + Dart/AI 段结局,
+                // 每次抓取判定的决策码/命中词/计数,不含页面文本。
+                _buildScreenDecisionsCard(context, l10n),
+
+                const SizedBox(height: 16),
+
                 // 自动入账总闸(P0-2 已接回):开=候选制;关=全部需手动确认
                 _buildSwitchCard(
                   context,
@@ -674,6 +683,107 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
                 height: 1.5,
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 最近识别记录卡片(排查「打开了账单详情页却没记账」):
+  /// - enqueued + drain_success → 链路通,已入账;
+  /// - rejected/list_page 等决策 → 被哪道闸拦截一目了然;
+  /// - 打开详情页后一条新记录都没有 → 无障碍服务未生效(系统开关被关)。
+  /// 记录只含决策码/命中词/计数,不含页面文本(隐私同抓取约定)。
+  Widget _buildScreenDecisionsCard(BuildContext context, AppLocalizations l10n) {
+    final theme = Theme.of(context);
+    const labels = <String, String>{
+      'enqueued': '已捕获入队',
+      'drain_success': 'AI 已入账',
+      'drain_pending': '已进待确认',
+      'drain_duplicate': '重复账单,跳过',
+      'drain_noTransaction': 'AI 判非账单',
+      'drain_failed': '处理失败(将重试)',
+      'drain_permanentFailure': '处理失败(终态)',
+      'drain_noAiConfigured': 'AI 未配置',
+      'drain_deferred': 'AI 未就绪,待重试',
+      'drain_skipped': '事件去重跳过',
+      'skipped_disabled': '监听开关未开启',
+      'too_short': '页面文本过短',
+      'rejected': '命中垃圾词',
+      'marketing_no_hint': '纯营销页',
+      'chat_page': '聊天页黑名单',
+      'no_amount_or_hint': '缺金额/交易特征',
+      'list_page': '列表页(金额过多)',
+      'non_bookable': '不可入账状态',
+      'duplicate': '重复页面',
+    };
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.manage_search_outlined,
+                  size: 20,
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '最近识别记录（排查漏记）',
+                    style: theme.textTheme.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w600),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.refresh, size: 20),
+                  tooltip: '刷新',
+                  onPressed: _isLoading ? null : _loadMonitorStatus,
+                ),
+              ],
+            ),
+            if (_screenDecisions.isEmpty)
+              Text(
+                '暂无记录。去打开一笔账单/订单详情页，再回到此页点刷新：\n'
+                '· 出现新记录 → 决策码说明被哪道闸拦截（或已正常入账）\n'
+                '· 始终无记录 → 无障碍监听未生效，请检查系统无障碍开关',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                ),
+              )
+            else
+              ..._screenDecisions.reversed.take(10).map((d) {
+                final ts = int.tryParse(d['ts'] ?? '') ?? 0;
+                final time = DateTime.fromMillisecondsSinceEpoch(ts);
+                final hh = time.hour.toString().padLeft(2, '0');
+                final mm = time.minute.toString().padLeft(2, '0');
+                final ss = time.second.toString().padLeft(2, '0');
+                final code = d['decision'] ?? '';
+                return Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('$hh:$mm:$ss',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurface
+                                .withValues(alpha: 0.5),
+                          )),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          '${labels[code] ?? code}  ${d['detail'] ?? ''}',
+                          style: theme.textTheme.bodySmall,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
           ],
         ),
       ),

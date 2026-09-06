@@ -59,6 +59,7 @@ open class ScreenTextWatcher : AccessibilityService() {
     private var lastEventAt = 0L
     private var lastEventPkg = ""
     private var lastPageClass = ""
+    private var lastDisabledRecordAt = 0L
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val e = event ?: return
@@ -72,6 +73,12 @@ open class ScreenTextWatcher : AccessibilityService() {
             val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             if (!prefs.getBoolean(KEY_ENABLED, false)) {
                 log("白名单包可见但开关关闭,跳过: $pkg")
+                // 决策记录节流:事件风暴下 5s 一条,够设置页定位「开关没开」
+                val now = System.currentTimeMillis()
+                if (now - lastDisabledRecordAt > 5_000) {
+                    lastDisabledRecordAt = now
+                    recordDecision(this, pkg, "skipped_disabled", "监听开关未开启")
+                }
                 return
             }
 
@@ -121,32 +128,44 @@ open class ScreenTextWatcher : AccessibilityService() {
             val logLen = text.length
             if (text.length < MIN_TEXT_LENGTH) {
                 log("页面文本 < $MIN_TEXT_LENGTH 字符,丢弃过短页面: $pkg len=$logLen")
+                recordDecision(this, pkg, "too_short", "len=$logLen(<$MIN_TEXT_LENGTH,页面可能未加载完/无障碍树为空)")
                 return
             }
-            if (shouldReject(text)) {
+            val rejectHit = REJECT_KEYWORDS.firstOrNull { text.contains(it) }
+            if (rejectHit != null) {
                 log("页面内容命中垃圾特征,丢弃: $pkg len=$logLen")
+                recordDecision(this, pkg, "rejected", "命中垃圾词=$rejectHit")
                 return
             }
-            if (isMarketingPage(text)) {
+            val marketingHit = MARKETING_KEYWORDS.firstOrNull { text.contains(it) }
+            if (marketingHit != null && !hasTradeHint(text)) {
                 log("页面内容命中营销特征且无交易特征,丢弃: $pkg len=$logLen")
+                recordDecision(this, pkg, "marketing_no_hint", "命中营销词=$marketingHit")
                 return
             }
             if (isChatPage(pkg, lastPageClass)) {
                 log("页面类名命中聊天页黑名单,丢弃: $pkg/$lastPageClass len=$logLen")
+                recordDecision(this, pkg, "chat_page", "cls=$lastPageClass")
                 return
             }
+            val amountCount = AMOUNT_PATTERN.findAll(text).count()
             if (!hasAmount(text) || !hasTradeHint(text)) {
+                val why = if (!hasAmount(text)) "无金额" else "无交易特征"
                 log("无金额或无交易特征,丢弃: $pkg len=$logLen")
+                recordDecision(this, pkg, "no_amount_or_hint", "$why amounts=$amountCount")
                 return
             }
             // 列表页(整页几十条流水)金额会命中几十次,详情页单条账单只有 1~3 个
             // 金额。不挡列表页会把历史流水批量送 AI,重复/错误入账。
             if (isListPage(text)) {
                 log("命中列表页特征(金额出现 ${AMOUNT_PATTERN.findAll(text).count()} 次),丢弃: $pkg len=$logLen")
+                recordDecision(this, pkg, "list_page", "amounts=$amountCount(≥$MAX_DETAIL_AMOUNTS,整页流水/推荐流?)")
                 return
             }
-            if (isNonBookableStatus(text)) {
+            val nonBookableHit = NON_BOOKABLE_KEYWORDS.firstOrNull { text.contains(it) }
+            if (nonBookableHit != null) {
                 log("命中账单汇总/待支付/失败状态,丢弃: $pkg len=$logLen")
+                recordDecision(this, pkg, "non_bookable", "命中状态词=$nonBookableHit")
                 return
             }
 
@@ -156,9 +175,14 @@ open class ScreenTextWatcher : AccessibilityService() {
             val eventKey = eventKey(pkg, fingerprint, timestamp)
             if (!enqueue(prefs, eventKey, fingerprint, pkg, text, timestamp)) {
                 log("页面已在已处理记录或待处理队列中,丢弃: $pkg len=$logLen")
+                recordDecision(this, pkg, "duplicate", "同页面已在队列/已处理")
                 return
             }
             log("已入队详情页文本: $pkg len=$logLen")
+            recordDecision(
+                this, pkg, "enqueued",
+                "len=$logLen amounts=$amountCount hint=${TRADE_KEYWORDS.firstOrNull { text.contains(it) }}"
+            )
 
             try {
                 sendBroadcast(Intent(BRIDGE_ACTION).setPackage(packageName))
@@ -421,6 +445,55 @@ open class ScreenTextWatcher : AccessibilityService() {
         const val MAX_FINGERPRINTS = 200
         const val MAX_QUEUE = 30
         private const val PROCESSED_EVENT_PREFIX = "event:"
+
+        // ---- 识别决策环形队列(设置页「最近识别记录」,排查真机漏记用) ----
+        // 隐私:只存决策码/命中关键词/长度与计数,**绝不存页面文本** —— 文本仍
+        // 遵守「不入日志、不落盘,仅在 AI 已配置时发往用户配置的服务商」约定。
+        const val KEY_DECISIONS = "recent_decisions"
+        const val MAX_DECISIONS = 20
+        private const val MAX_DECISION_DETAIL = 120
+
+        /** 记录一条识别决策。任何线程可调;失败静默(诊断能力不能反噬主流程)。 */
+        fun recordDecision(context: Context, pkg: String, decision: String, detail: String) {
+            try {
+                val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                val arr = JSONArray(prefs.getString(KEY_DECISIONS, null) ?: "[]")
+                arr.put(
+                    JSONObject()
+                        .put("ts", System.currentTimeMillis())
+                        .put("pkg", pkg)
+                        .put("decision", decision)
+                        .put("detail", detail.take(MAX_DECISION_DETAIL))
+                )
+                while (arr.length() > MAX_DECISIONS) arr.remove(0)
+                prefs.edit().putString(KEY_DECISIONS, arr.toString()).apply()
+            } catch (_: Exception) {
+            }
+        }
+
+        /** 读取决策记录(时间正序),供设置页展示。 */
+        fun loadDecisions(context: Context): ArrayList<Map<String, String>> {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val raw = prefs.getString(KEY_DECISIONS, null) ?: return ArrayList()
+            return try {
+                val arr = JSONArray(raw)
+                val result = ArrayList<Map<String, String>>(arr.length())
+                for (i in 0 until arr.length()) {
+                    val obj = arr.optJSONObject(i) ?: continue
+                    result.add(
+                        mapOf(
+                            "ts" to obj.optLong("ts").toString(),
+                            "pkg" to obj.optString("pkg"),
+                            "decision" to obj.optString("decision"),
+                            "detail" to obj.optString("detail")
+                        )
+                    )
+                }
+                result
+            } catch (_: Exception) {
+                ArrayList()
+            }
+        }
 
         /** 详情页自动记账白名单包名(完整的包名;此处用 contains 子串匹配,
             与 NotificationWatcher 同风格,与 accessibility_service_config.xml
