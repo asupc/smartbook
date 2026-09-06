@@ -685,3 +685,70 @@ def test_relay_dedup_expired_identifier_ignored(monkeypatch, tmp_path) -> None:
         assert calls["n"] == 2
     finally:
         app.dependency_overrides.clear()
+
+
+# ──────────────────────────────────────────────────────────────────────
+# M2-5 上游 timeout 分档
+# ──────────────────────────────────────────────────────────────────────
+
+
+def test_relay_upstream_timeout_per_capability(monkeypatch, tmp_path) -> None:
+    """每个能力按计划表传上游 timeout,且都比客户端 deadline 小。
+
+    回归价值:四个入口以前共用 call_chat_text 的 120s 默认值 —— 自动记账文本
+    提取客户端 40s 就放弃了,上游还在跑,既白烧 token 又拿不到 502 日志。
+    自动记账(parse_tx_text)与自由聊天(chat)必须是不同档位。
+    """
+    Session = _make_client(monkeypatch, tmp_path)
+    try:
+        client = TestClient(app)
+        token = _register_and_login(client, "relay-timeout@example.com")
+        _seen: dict[str, float | None] = {}
+        _seed_ai_config(_get_user_id(Session, "relay-timeout@example.com"), Session)
+
+        async def fake_call(*, config, messages, temperature, disable_thinking, timeout=None):
+            _seen["chat"] = timeout
+            return type("R", (), {"content": "ok", "usage": None})()
+
+        async def fake_transcribe(*, config, audio_bytes, audio_mime, filename, timeout=None):
+            _seen["stt"] = timeout
+            return "ok"
+
+        monkeypatch.setattr("src.routers.ai.relay.call_chat_text", fake_call)
+        monkeypatch.setattr("src.routers.ai.relay.transcribe_audio", fake_transcribe)
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # 文本提取 35s < 客户端 40s
+        client.post("/api/v1/ai/relay/chat", headers=headers, json={
+            "messages": [{"role": "user", "content": "买了杯奶茶28块"}],
+            "entry_type": "parse_tx_text",
+        })
+        assert _seen["chat"] == 35.0
+
+        # 自由聊天 120s < 客户端 130s
+        client.post("/api/v1/ai/relay/chat", headers=headers, json={
+            "messages": [{"role": "user", "content": "你好"}],
+            "entry_type": "chat",
+        })
+        assert _seen["chat"] == 120.0
+
+        # 图片提取 60s < 客户端 65s
+        r = client.post(
+            "/api/v1/ai/relay/vision",
+            headers=headers,
+            data={"prompt": "分析截图"},
+            files={"image": ("shot.jpg", b"\xff\xd8\xff\xe0" + b"x" * 20, "image/jpeg")},
+        )
+        assert r.status_code == 200, r.text
+        assert _seen["chat"] == 60.0
+
+        # STT 60s < 客户端 65s
+        r = client.post(
+            "/api/v1/ai/relay/stt",
+            headers=headers,
+            files={"audio": ("rec.m4a", b"fake-audio", "audio/mp4")},
+        )
+        assert r.status_code == 200, r.text
+        assert _seen["stt"] == 60.0
+    finally:
+        app.dependency_overrides.clear()

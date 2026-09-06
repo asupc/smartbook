@@ -104,6 +104,15 @@ _MAX_AUDIO_BYTES = 10 * 1024 * 1024  # 10MB,语音录音足够
 _MAX_MESSAGES = 40
 _MAX_MESSAGES_TOTAL_CHARS = 100_000
 
+# M2-5 上游 timeout。每档都比客户端 deadline 小 5s:服务端先放弃,客户端才能
+# 拿到 502 AI_PROVIDER_ERROR(transient)并落 retry 状态;反过来客户端先超时,
+# 上游请求还在跑,既白烧 token 又没有失败日志。
+# 客户端 deadline 见 client/lib/ai/relay/ai_relay_client.dart(40/65/65/130s)。
+_UPSTREAM_TIMEOUT_PARSE_TEXT = 35.0  # 自动记账文本提取
+_UPSTREAM_TIMEOUT_CHAT = 120.0  # 自由聊天 / 问 AI,允许长推理
+_UPSTREAM_TIMEOUT_VISION = 60.0  # 图片提取
+_UPSTREAM_TIMEOUT_STT = 60.0  # 语音转写
+
 
 def _check_rate_limit(user_id: str) -> bool:
     now = time.monotonic()
@@ -231,6 +240,13 @@ async def relay_chat(
                 messages=messages,  # type: ignore[arg-type]
                 temperature=req.temperature,
                 disable_thinking=req.disable_thinking,
+                # 自动记账提取要抢在客户端 40s deadline 之前失败;自由聊天/问 AI
+                # 允许慢(长推理),用 120s 档。
+                timeout=(
+                    _UPSTREAM_TIMEOUT_PARSE_TEXT
+                    if req.entry_type == "parse_tx_text"
+                    else _UPSTREAM_TIMEOUT_CHAT
+                ),
             )
             usage = result.usage
             output_text = result.content
@@ -352,6 +368,7 @@ async def relay_vision(
                 messages=messages,
                 temperature=0.3,
                 disable_thinking=disable_thinking,
+                timeout=_UPSTREAM_TIMEOUT_VISION,
             )
             usage = result.usage
             output_text = result.content
@@ -452,6 +469,7 @@ async def relay_stt(
                 audio_bytes=audio_bytes,
                 audio_mime=mime or None,
                 filename=audio.filename,
+                timeout=_UPSTREAM_TIMEOUT_STT,
             )
             output_text = text
             return {
