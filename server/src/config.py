@@ -1,6 +1,7 @@
+import os
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,6 +21,14 @@ class Settings(BaseSettings):
 
     database_url: str = Field(default="sqlite:///./smartbook.db")
 
+    # ===== 数据根目录 =====
+    # 服务端产生的**所有**持久化数据(附件 / AI 记账截图 / 备份 / rclone 配置 /
+    # .jwt_secret / restore 工作区 …)都落在这个目录下的子目录,见下方
+    # _derive_storage_paths。本地开发默认 `./data`(WORKDIR 平级);
+    # Docker 镜像里 ENV DATA_DIR=/data,挂一个 volume 即可全量持久化。
+    # 任何单个子目录仍可用各自的 env(BACKUP_STORAGE_DIR 等)显式覆盖。
+    data_dir: str = Field(default="./data", alias="DATA_DIR")
+
     jwt_secret: str = Field(default="change-me-in-production-at-least-32-bytes")
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
@@ -28,14 +37,17 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:8080,http://localhost:5173,http://localhost:3000"
     rate_limit_window_seconds: int = 60
     rate_limit_max_requests: int = 30
-    backup_storage_dir: str = "./data/backups"
+    # 以下存储路径默认空串,统一由 _derive_storage_paths 从 data_dir 派生;
+    # 显式设置对应 env(或 init 参数)仍然生效 —— 包括故意设为空串禁用
+    # 某个子功能(如 ATTACHMENT_STORAGE_DIR= 关附件存储)。
+    backup_storage_dir: str = Field(default="", alias="BACKUP_STORAGE_DIR")
     backup_max_upload_bytes: int = 64 * 1024 * 1024
-    attachment_storage_dir: str = "./data/attachments"
+    attachment_storage_dir: str = Field(default="", alias="ATTACHMENT_STORAGE_DIR")
     attachment_max_upload_bytes: int = 64 * 1024 * 1024
     # AI 调用记录的输入图片(App 上报截图记账原图,Web 详情查看)。文件名
     # {log_id}.{ext},随日志行手动删除时一并删除(不落 DB,避免 blob 撑爆表;
     # AI 日志无自动保留期)。
-    ai_log_image_dir: str = "./data/ai_log_images"
+    ai_log_image_dir: str = Field(default="", alias="AI_LOG_IMAGE_DIR")
 
     # ===== 中转识别的账单唯一标识去重(/ai/relay/*) =====
     # App 识别请求到达后、调用 LLM 前,先在新请求文本里匹配该用户已识别过的
@@ -50,26 +62,23 @@ class Settings(BaseSettings):
     )
 
     # ===== rclone 备份模块 =====
-    # rclone.conf 路径(权限 0600,只 server 进程读写)。默认 `./data/rclone.conf`
-    # 配合本地开发(WORKDIR 平级 ./data)。**生产 Docker 镜像必须通过
-    # `RCLONE_CONFIG_PATH=/data/rclone.conf` env 覆盖**,跟 BACKUP_STORAGE_DIR /
-    # ATTACHMENT_STORAGE_DIR 一样落到 mounted volume 持久化。
-    # 没 alias 的话 Dockerfile 改 env 不生效 — 容器 WORKDIR /app 下 ./data 是
-    # docs-index COPY 来的临时层,容器重建就丢 rclone.conf,scheduled backup
-    # 找不到 conf 直接 fail(2026-05-14 线上事故)。
-    rclone_config_path: str = Field(
-        default="./data/rclone.conf", alias="RCLONE_CONFIG_PATH"
-    )
+    # rclone.conf 路径(权限 0600,只 server 进程读写)。默认从 data_dir 派生
+    # (`<DATA_DIR>/rclone.conf`),跟其他数据一样随挂载卷持久化 —— 历史教训:
+    # 容器 WORKDIR /app 下 ./data 是 docs-index COPY 来的临时层,rclone.conf
+    # 落临时层的话容器重建即丢,scheduled backup 找不到 conf 直接 fail
+    # (2026-05-14 线上事故)。
+    rclone_config_path: str = Field(default="", alias="RCLONE_CONFIG_PATH")
     # rclone 二进制路径,Docker 镜像里 apt 装的会在 /usr/bin/rclone。
     rclone_binary: str = "rclone"
-    # 备份打包 + 还原解压的临时区。需要 ≥ 2x DATA_DIR 大小。
-    backup_staging_dir: str = "./data/backup-staging"
+    # 备份打包 + 还原解压的临时区。需要 ≥ 2x data_dir 大小。
+    backup_staging_dir: str = Field(default="", alias="BACKUP_STAGING_DIR")
     # `local` 类型 rclone 远端的落盘根目录。rclone local backend 没有可配置
-    # root,`<name>:<path>` 的相对路径按子进程 cwd(/app)解析 —— 这里强制拼成
-    # 绝对路径落到 /data 挂载卷,避免备份写进容器 /app 可写层、重建即丢。
-    local_backup_dir: str = Field(default="/data/backup", alias="LOCAL_BACKUP_DIR")
+    # root,`<name>:<path>` 的相对路径按子进程 cwd(/app)解析 —— 派生时强制
+    # abspath(容器里 DATA_DIR=/data → /data/backup),避免备份写进容器 /app
+    # 可写层、重建即丢。
+    local_backup_dir: str = Field(default="", alias="LOCAL_BACKUP_DIR")
     # 还原(restore)隔离目录 —— 服务端只往这写,绝不动 live data。
-    restore_dir: str = "./data/restore"
+    restore_dir: str = Field(default="", alias="RESTORE_DIR")
     # 调度器开关。测试和某些命令行场景关掉避免后台 thread 干扰。
     backup_scheduler_enabled: bool = Field(default=True, alias="BACKUP_SCHEDULER_ENABLED")
     # 调度器时区(影响 cron 解释)。空 = 走 tzlocal(读 TZ env 或 /etc/localtime)。
@@ -127,6 +136,36 @@ class Settings(BaseSettings):
     # 整体替换内置上游链,指向 Frankfurter 兼容服务的根地址(如自托管
     # `docker run -d -p 8080:8080 lineofflight/frankfurter` → http://host:8080)。
     exchange_rate_upstream: str = Field(default="", alias="EXCHANGE_RATE_UPSTREAM")
+
+    @model_validator(mode="after")
+    def _derive_storage_paths(self) -> "Settings":
+        """未显式配置的存储路径统一派生自 data_dir(`<DATA_DIR>/<子目录>`)。
+
+        判据用 model_fields_set:env / init 里显式给了值(哪怕空串)就以给值为
+        准,完全没给才落默认子目录 —— 这样既保证「服务端产生的所有数据都在
+        数据根目录下」,又保留按目录单独覆盖 / 禁用的能力。local_backup_dir
+        额外做 abspath:rclone local backend 按子进程 cwd 解析相对路径,必须
+        是绝对路径(见字段注释)。
+        """
+        provided = set(self.model_fields_set)
+        derived = {
+            "backup_storage_dir": "backups",
+            "attachment_storage_dir": "attachments",
+            "ai_log_image_dir": "ai_log_images",
+            "rclone_config_path": "rclone.conf",
+            "backup_staging_dir": "backup-staging",
+            "restore_dir": "restore",
+        }
+        for field, sub in derived.items():
+            if field not in provided:
+                setattr(self, field, os.path.join(self.data_dir, sub))
+        if "local_backup_dir" not in provided:
+            setattr(
+                self,
+                "local_backup_dir",
+                os.path.join(os.path.abspath(self.data_dir), "backup"),
+            )
+        return self
 
     @property
     def cors_origin_list(self) -> list[str]:

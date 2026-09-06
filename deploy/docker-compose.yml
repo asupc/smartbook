@@ -35,7 +35,8 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8869}
       RATE_LIMIT_WINDOW_SECONDS: 60
       RATE_LIMIT_MAX_REQUESTS: 30
-      BACKUP_STORAGE_DIR: /data/backups
+      # 附件 / AI 记账截图 / 备份 / rclone 等存储路径全部由镜像 ENV
+      # DATA_DIR=/data 派生(见 server/src/config.py),统一落在下面的 volume。
       BACKUP_MAX_UPLOAD_BYTES: 67108864
       ALLOW_APP_RW_SCOPES: "true"
     volumes:

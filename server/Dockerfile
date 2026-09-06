@@ -82,16 +82,16 @@ COPY --from=frontend-builder /workspace/frontend/apps/web/dist /app/static
 # RAG docs 索引(没拉到时是空目录,server 会优雅降级到 fallback 提示)
 COPY --from=docs-index-fetcher /website/data /app/data
 
-# 数据目录:所有持久化数据(DB / 附件 / 备份 / 头像)统一放 /data,
-# 容器部署直接挂一个 volume 到 /data 就能全量备份。本地开发走 config.py
-# 的相对路径默认值(./data/*),两种场景互不干扰。
+# 数据目录:服务端产生的**所有**持久化数据(DB / 附件 / AI 记账截图 /
+# 备份 / rclone 配置 / .jwt_secret)统一放 /data —— 各存储路径未显式配置时
+# 由 src/config.py 从 DATA_DIR 派生子目录(backups / attachments /
+# ai_log_images / backup-staging / restore / rclone.conf),容器部署直接挂一个
+# volume 到 /data 就能全量备份。本地开发走默认 DATA_DIR=./data,两种场景
+# 互不干扰。/app/data 只剩 docs-index 的只读 RAG 索引,不再承载任何运行时写入。
 RUN mkdir -p /data /app/logs
 ENV APP_ENV=production \
     DATA_DIR=/data \
     DATABASE_URL=sqlite:////data/smartbook.db \
-    BACKUP_STORAGE_DIR=/data/backups \
-    ATTACHMENT_STORAGE_DIR=/data/attachments \
-    RCLONE_CONFIG_PATH=/data/rclone.conf \
     WEB_STATIC_DIR=/app/static \
     ALLOW_APP_RW_SCOPES=true \
     APP_VERSION=${VERSION}

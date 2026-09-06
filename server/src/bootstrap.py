@@ -2,7 +2,7 @@
 
 目前只处理 `JWT_SECRET`:
 - 用户自己设了强密钥 → 直接用,不干扰
-- 用户没设 / 用了占位符 → 读 `/data/.jwt_secret`,没有就随机生成 64 hex 并落盘
+- 用户没设 / 用了占位符 → 读 `<DATA_DIR>/.jwt_secret`,没有就随机生成 64 hex 并落盘
 
 这样 docker compose 最小配置只需要一个 volume,不用用户掏 `openssl rand` 再
 往 compose 里贴。单用户自部署场景下,密钥跟 DB 在同一个 volume,备份 /
@@ -46,7 +46,7 @@ def ensure_jwt_secret(data_dir: str | None = None) -> None:
     if _is_strong_secret(current):
         return
 
-    root = Path(data_dir or os.environ.get("DATA_DIR") or "/data")
+    root = Path(data_dir or os.environ.get("DATA_DIR") or "./data")
     secret_path = root / _SECRET_FILE_NAME
 
     if secret_path.exists() and secret_path.is_file():

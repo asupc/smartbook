@@ -41,7 +41,7 @@ def _generate_password() -> str:
 
 def _persist_password(password: str, email: str) -> Path | None:
     """把密码落到 DATA_DIR/.initial_admin_password,方便运维后续捞。"""
-    data_dir = os.environ.get("DATA_DIR") or "/data"
+    data_dir = os.environ.get("DATA_DIR") or "./data"
     target = Path(data_dir) / _PASSWORD_FILE_NAME
     try:
         target.parent.mkdir(parents=True, exist_ok=True)

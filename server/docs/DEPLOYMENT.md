@@ -8,7 +8,12 @@ docker compose up -d --build
 
 - Data volume: `smartbook_data` mounted at `/data`
 - Default DB URL: `sqlite:////data/smartbook.db`
-- Backup artifact dir: `/data/backups` (`BACKUP_STORAGE_DIR`)
+- All server-produced data lives under `/data` — the per-feature storage dirs
+  (backups / attachments / AI log images / backup-staging / restore /
+  `rclone.conf`) are derived from `DATA_DIR` by `src/config.py` when their
+  dedicated env (`BACKUP_STORAGE_DIR`, `ATTACHMENT_STORAGE_DIR`,
+  `AI_LOG_IMAGE_DIR`, ...) is not set. Override only to relocate a single
+  subdirectory.
 - App collaboration read/device scope: `ALLOW_APP_RW_SCOPES` defaults to `true` (set `false` only if you explicitly want to restrict App RW scopes)
 
 ## 2) Health checks
@@ -48,7 +53,7 @@ before overwriting** step required by WAL mode.
 
 - First boot auto-generates a 32-byte `JWT_SECRET` into `/data/.jwt_secret`; override the env var if you want to manage the key yourself.
 - Put the API behind your own TLS reverse proxy (Caddy / Nginx / Traefik / Cloudflare).
-- Keep `/data` on persistent storage — DB, attachments, backups, and the JWT secret all live there.
+- Keep `/data` on persistent storage — DB, attachments, AI bookkeeping screenshots, backups, and the JWT secret all live there.
 
 ## 5) App scope troubleshooting
 
