@@ -49,6 +49,37 @@ String resolveTransactionType({BillType? type, String? category}) {
   return 'expense';
 }
 
+/// 一批账单落库时共享的元数据缓存(M3-5)。
+///
+/// 分类池、账户池、账本本位币、标签 id 在一批账单落库期间是同一份,而
+/// [BillCreationService.createFromBill] 是逐笔调用的 —— 不缓存的话「一张图 10
+/// 笔」会把这些查询整整做 10 遍。批量调用方(`AiBookkeeper._persistAll`)构造
+/// 一次并透传给每一笔;不传时 service 内部临时建一个,只在这一笔内生效,行为与
+/// 改动前一致(仍能省掉同一笔内部对同一账户的重复 SELECT)。
+///
+/// 只缓存这一批内不会被改动的东西:自动记账串行执行,期间用户改不到分类/账户/
+/// 账本币种。标签是唯一批内会新增的,新建后立刻写回 [tagIdByName],后面几笔直接
+/// 命中。**缓存活得越久越危险**,不要把它提升成长生命周期单例。
+class BillCreationContext {
+  /// 交易类型('expense'/'income'/'transfer')→ 可用(叶子)分类池。
+  final Map<String, List<Category>> usableCategories = {};
+
+  /// 全部账户,口径与 `getAllAccounts()` 一致(**不**过滤隐藏/币种,过滤由各匹配
+  /// 环节自己做)。null = 还没加载。
+  List<Account>? accounts;
+
+  /// ledgerId → 本位币(大写)。
+  final Map<int, String> ledgerCurrency = {};
+
+  /// 标签名 → id,含本批新建的。null = 还没加载。
+  Map<String, int>? tagIdByName;
+
+  /// 本批已落库交易的实际分类/账户名。落库时顺手记下,调用方要展示「实际匹配到
+  /// 的分类」时不必再查 交易+分类+账户 三条 SQL。
+  final Map<int, ({String? categoryName, String? accountName})> resolvedNames =
+      {};
+}
+
 class BillCreationService {
   static const _tag = 'BillCreation';
 
@@ -74,7 +105,11 @@ class BillCreationService {
     /// M4:来源渠道(短信 sender / 通知 pkg 解析出的渠道名),AI 账户名未匹配
     /// 时按「渠道→账户映射」回退。手动/主动路径传 null。
     String? sourceChannel,
+
+    /// M3-5:同一批账单共享的元数据缓存。不传则本笔内部临时建一个。
+    BillCreationContext? context,
   }) async {
+    final ctx = context ?? BillCreationContext();
     final amount = bill.amount;
     if (amount == null || amount.abs() <= 0) {
       logger.warning(_tag, '[校验] amount 无效,跳过');
@@ -87,7 +122,7 @@ class BillCreationService {
         '[类型判断] type=${bill.type?.name} amount=$amount → $transactionType');
 
     // 2. 查询对应类型的所有可用分类
-    final categories = await _loadUsableCategories(transactionType);
+    final categories = await _usableCategories(transactionType, ctx);
 
     // 3. 匹配分类(AI 名称 → 完全匹配 → 模糊匹配 → 规则匹配 → 兜底"其他")
     var categoryId =
@@ -97,7 +132,7 @@ class BillCreationService {
     }
 
     // 3.5 账本本位币 + AI 给的币种(.docs/multi-currency-ai A1/A2)
-    final ledgerBase = await _ledgerCurrency(ledgerId);
+    final ledgerBase = await _ledgerCurrencyCached(ledgerId, ctx);
     final requestedCurrency = bill.currency?.trim().toUpperCase();
 
     // 4. 匹配账户。**账户候选池按这笔的币种筛**(A3,与手动记账
@@ -108,7 +143,7 @@ class BillCreationService {
     if (transactionType == 'transfer') {
       final source = bill.fromAccount ?? bill.account;
       if (source != null && source.trim().isNotEmpty) {
-        accountId = await _matchAccountByName(source, requestedCurrency);
+        accountId = await _matchAccountByName(source, requestedCurrency, ctx);
       }
       if (bill.toAccount != null && bill.toAccount!.trim().isNotEmpty) {
         // **跨币种转账守卫**(.docs/multi-currency-ledger 01 §4.4):转入账户必须
@@ -122,11 +157,11 @@ class BillCreationService {
         // 的是原币 amount,800 会当成 800 美元加到 USD 账户上,余额直接错。
         final fromCurrency = accountId == null
             ? null
-            : (await repo.getAccount(accountId))?.currency.toUpperCase();
+            : (await _accountById(accountId, ctx))?.currency.toUpperCase();
         final transferCurrency =
             fromCurrency ?? requestedCurrency ?? ledgerBase;
         toAccountId =
-            await _matchAccountByName(bill.toAccount!, transferCurrency);
+            await _matchAccountByName(bill.toAccount!, transferCurrency, ctx);
       }
       if (accountId != null && accountId == toAccountId) {
         toAccountId = null;
@@ -139,13 +174,14 @@ class BillCreationService {
         requestedCurrency: requestedCurrency,
         ledgerBase: ledgerBase,
         sourceChannel: sourceChannel,
+        ctx: ctx,
       );
     }
 
     // 4.5 定交易币种:命中账户 → 随账户(账户内不混币,L7/L12 的不变量);
     //     否则用 AI 给的;都没有 → 账本本位币。
     final matchedAccount =
-        accountId == null ? null : await repo.getAccount(accountId);
+        accountId == null ? null : await _accountById(accountId, ctx);
     final accountCurrency = (matchedAccount?.currency.isNotEmpty ?? false)
         ? matchedAccount!.currency.toUpperCase()
         : null;
@@ -191,20 +227,22 @@ class BillCreationService {
           billingTypes: billingTypes,
           customTagNames: customTagNames ?? bill.tags,
           l10n: l10n,
+          ctx: ctx,
         );
       }
     }
 
     // 7. 汇总日志
     String? categoryName;
-    String? accountName;
     if (categoryId != null) {
       categoryName =
           categories.firstWhereOrNull((c) => c.id == categoryId)?.name;
     }
-    if (accountId != null) {
-      accountName = (await repo.getAccount(accountId))?.name;
-    }
+    // 账户名直接取上面已解析的对象(M3-5:不再为一行日志多查一次)。
+    final accountName = matchedAccount?.name;
+    // 实际落库的分类/账户名记进 context,调用方展示卡片时不必再 enrich 查库。
+    ctx.resolvedNames[transactionId] =
+        (categoryName: categoryName, accountName: accountName);
     final typeStr = transactionType == 'income'
         ? '收入'
         : (transactionType == 'transfer' ? '转账' : '支出');
@@ -250,13 +288,51 @@ class BillCreationService {
   String _resolveType(BillInfo bill) =>
       resolveTransactionType(type: bill.type, category: bill.category);
 
-  Future<List<Category>> _loadUsableCategories(String type) async {
-    final top = await repo.getTopLevelCategories(type);
-    final all = <Category>[...top];
-    for (final c in top) {
-      all.addAll(await repo.getSubCategories(c.id));
-    }
-    return CategoryHierarchy.getUsableCategories(all);
+  /// 可用(叶子)分类池。M3-5:一条 SQL 拿完 —— 以前是「查一级分类 + 逐个一级
+  /// 分类查二级」,1 + N 次往返(N = 一级分类数),而且每笔账单都要跑一遍。
+  /// [repo].getUsableCategories 是同一套过滤(按 kind 全量取 +
+  /// [CategoryHierarchy.getUsableCategories] 去掉有子分类的父分类),也正是 AI
+  /// 提示词里那份分类清单的来源(`AiExtractionContext`)—— 两边同源,匹配的池子
+  /// 和给模型看的池子从此不会漂移。
+  Future<List<Category>> _loadUsableCategories(String type) =>
+      repo.getUsableCategories(type);
+
+  /// 见 [BillCreationContext]:同一批账单只查一次。
+  Future<List<Category>> _usableCategories(
+      String type, BillCreationContext ctx) async {
+    final hit = ctx.usableCategories[type];
+    if (hit != null) return hit;
+    final loaded = await _loadUsableCategories(type);
+    ctx.usableCategories[type] = loaded;
+    return loaded;
+  }
+
+  /// 全部账户,同一批只查一次(含隐藏账户,过滤由各匹配环节自己做)。
+  Future<List<Account>> _accountPool(BillCreationContext ctx) async {
+    final hit = ctx.accounts;
+    if (hit != null) return hit;
+    final loaded = await repo.getAllAccounts();
+    ctx.accounts = loaded;
+    return loaded;
+  }
+
+  /// 按 id 从账户池里取。池是「加载那一刻的全表」,正常不会缺;真缺了(渠道映射
+  /// 指向已删账户、并发新建)再单查一次,结果与改动前一致。
+  Future<Account?> _accountById(int id, BillCreationContext ctx) async {
+    final pool = await _accountPool(ctx);
+    final hit = pool.firstWhereOrNull((a) => a.id == id);
+    if (hit != null) return hit;
+    return repo.getAccount(id);
+  }
+
+  /// 账本本位币,同一批只查一次。
+  Future<String> _ledgerCurrencyCached(
+      int ledgerId, BillCreationContext ctx) async {
+    final hit = ctx.ledgerCurrency[ledgerId];
+    if (hit != null) return hit;
+    final value = await _ledgerCurrency(ledgerId);
+    ctx.ledgerCurrency[ledgerId] = value;
+    return value;
   }
 
   /// 按 AI 给的 category 名称匹配本地分类。完全匹配 → 模糊匹配 → 规则匹配。
@@ -335,6 +411,7 @@ class BillCreationService {
     required String? requestedCurrency,
     required String ledgerBase,
     String? sourceChannel,
+    required BillCreationContext ctx,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     final enabled = prefs.getBool('account_feature_enabled') ?? true;
@@ -357,15 +434,16 @@ class BillCreationService {
     if (aiAccountName == null || aiAccountName.isEmpty) {
       logger.debug(_tag, '[账户匹配] AI 未识别账户,使用默认账户');
       return _getDefaultAccountId(
-          transactionType, prefs, requestedCurrency ?? ledgerBase);
+          transactionType, prefs, requestedCurrency ?? ledgerBase, ctx);
     }
 
-    final matched = await _matchAccountByName(aiAccountName, requestedCurrency);
+    final matched =
+        await _matchAccountByName(aiAccountName, requestedCurrency, ctx);
     if (matched != null) return matched;
 
     logger.debug(_tag, '[账户匹配] "$aiAccountName" 未匹配,尝试默认账户');
     return _getDefaultAccountId(
-        transactionType, prefs, requestedCurrency ?? ledgerBase);
+        transactionType, prefs, requestedCurrency ?? ledgerBase, ctx);
   }
 
   /// 按名称匹配账户。完全 → 模糊 → 类型映射。
@@ -373,8 +451,9 @@ class BillCreationService {
   /// [currency] 非空时只在该币种的账户里找(AI 明确说了外币,就不该匹配到本位
   /// 币账户 —— 45 美元记成 45 元是比「没匹配到账户」严重得多的错);为空则全
   /// 币种可选,命中的账户反过来决定这笔的币种(L7)。
-  Future<int?> _matchAccountByName(String accountName, String? currency) async {
-    final allAccounts = await repo.getAllAccounts();
+  Future<int?> _matchAccountByName(
+      String accountName, String? currency, BillCreationContext ctx) async {
+    final allAccounts = await _accountPool(ctx);
     // 账户隐藏(#240):AI 自动记账不匹配隐藏账户(隐藏 = 不再作为新交易记账
     // 目标,与手动选择器 / Web AI 候选一致);未匹配则回落默认账户。
     final wanted = currency?.toUpperCase();
@@ -429,6 +508,7 @@ class BillCreationService {
     String transactionType,
     SharedPreferences prefs,
     String txCurrency,
+    BillCreationContext ctx,
   ) async {
     if (transactionType == 'transfer') return null;
     final key = transactionType == 'income'
@@ -437,7 +517,8 @@ class BillCreationService {
     final defaultId = prefs.getInt(key);
     if (defaultId == null) return null;
 
-    final account = await repo.getAccount(defaultId);
+    // M3-5:默认账户在已加载的账户池里验证,不再单查一次。
+    final account = await _accountById(defaultId, ctx);
     if (account == null) return null;
     if (account.currency.toUpperCase() != txCurrency.toUpperCase()) {
       logger.debug(_tag, '[默认账户] 币种不匹配: ${account.currency} vs $txCurrency');
@@ -499,6 +580,7 @@ class BillCreationService {
     List<String>? billingTypes,
     List<String>? customTagNames,
     AppLocalizations? l10n,
+    required BillCreationContext ctx,
   }) async {
     try {
       final names = <String>{};
@@ -511,16 +593,23 @@ class BillCreationService {
       }
       if (names.isEmpty) return;
 
+      // M3-5:标签名一次查全(整批共用),缺的才新建;新建后写回缓存,同一批
+      // 后面几笔直接命中,不再逐个 getTagByName。
+      final tagIdByName = await _tagIds(ctx);
       final tagIds = <int>[];
       for (final name in names) {
-        var tag = await repo.getTagByName(name);
-        if (tag == null) {
-          final color = TagSeedService.getRandomColor();
-          final id = await repo.createTag(name: name, color: color);
-          tagIds.add(id);
-        } else {
-          tagIds.add(tag.id);
+        final existing = tagIdByName[name];
+        if (existing != null) {
+          tagIds.add(existing);
+          continue;
         }
+        final color = TagSeedService.getRandomColor();
+        // 用 upsertTag 而非 createTag:缓存是本批开始时的快照,万一同名标签在这
+        // 期间被别的路径(同步拉取等)建出来,createTag 会抛 DuplicateNameException
+        // 把这一笔的全部标签一起丢掉;upsertTag 直接返回已有 id。
+        final id = await repo.upsertTag(name: name, color: color);
+        tagIdByName[name] = id;
+        tagIds.add(id);
       }
       if (tagIds.isNotEmpty) {
         await repo.addTagsToTransaction(
@@ -529,6 +618,16 @@ class BillCreationService {
     } catch (e, st) {
       logger.error(_tag, '[标签] 添加失败', e, st);
     }
+  }
+
+  /// 标签名 → id 映射,同一批只查一次(见 [BillCreationContext.tagIdByName])。
+  Future<Map<String, int>> _tagIds(BillCreationContext ctx) async {
+    final hit = ctx.tagIdByName;
+    if (hit != null) return hit;
+    final tags = await repo.getAllTags();
+    final map = <String, int>{for (final t in tags) t.name: t.id};
+    ctx.tagIdByName = map;
+    return map;
   }
 
   String _formatDateTime(DateTime dt) {

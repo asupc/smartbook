@@ -4,10 +4,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../automation/auto_billing_service.dart'
-    show AutoBillingService, SmsProcessOutcome;
+    show AutoBillingService, SmsProcessOutcome, SmsProcessOutcomeEvent;
 import '../automation/auto_book_coordinator.dart';
 import '../automation/auto_book_event.dart';
 import '../data/source_channel_resolver.dart';
+import '../../ai/core/ai_runtime_state.dart';
 import '../../providers/automation_providers.dart';
 import '../system/logger_service.dart' show logger;
 
@@ -82,7 +83,8 @@ class SmsMonitorService {
   /// 启用短信监听。
   ///
   /// 权限:调用方(设置页)负责先 [Permission.sms] 请求;此处只开关职责。
-  /// 启用后立即补处理积压队列。
+  /// M2-2:只 **await 到桥接注册**,积压队列交给 [scheduleDrain] 后台跑 ——
+  /// 冷启动恢复不能被整条队列的 AI 识别拖住(每条都要等中转往返)。
   Future<void> enable() async {
     if (!Platform.isAndroid) {
       throw UnsupportedError('仅支持 Android 平台');
@@ -92,7 +94,15 @@ class SmsMonitorService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_enabledKey, true);
     _isEnabled = true;
-    await _enqueue(drainPendingSms);
+    scheduleDrain();
+  }
+
+  /// 调度一次积压处理,**不阻塞调用方**(M2-2)。仍然进串行链,所以不会与
+  /// 桥接广播触发的 drain 并发。返回值只给测试 await。
+  Future<void> scheduleDrain() {
+    final done = _enqueue(drainPendingSms);
+    unawaited(done);
+    return done;
   }
 
   /// 禁用短信监听。native 侧标志置假后,SmsReceiver 直接丢弃新短信,
@@ -113,9 +123,20 @@ class SmsMonitorService {
 
   /// 补处理积压短信(启动时 / 桥接触发 / 启用时)。
   ///
-  /// peek 当前队列 → 逐项处理 → 除 noAiConfigured 外全部 ack。
+  /// peek 当前队列 → 逐项处理 → 按 [SmsProcessOutcomeEvent.canAckNativeQueue]
+  /// 决定是否出队。
   Future<void> drainPendingSms() async {
     if (!_isEnabled) return;
+    // M1-1:AI 运行时未就绪(Relay 尚未注入 / 离线 / 需要重新登录)时整条队列
+    // 原样保留。在这里硬跑只会拿到 relay_not_ready,白白吃掉事件的
+    // attemptCount 和退避窗口;更早的版本还会把它当成「不是账单」ACK 掉原始
+    // 短信,证据永久丢失。
+    final runtime = AiRuntimeCoordinator.instance;
+    if (!await runtime.awaitReady()) {
+      logger.info(
+          'SmsMonitor', 'AI 运行时未就绪(${runtime.state.name}),保留短信队列待下次 drain');
+      return;
+    }
     try {
       final items =
           await _channel.invokeMethod<List<dynamic>>('peekPendingSms') ??
@@ -168,22 +189,9 @@ class SmsMonitorService {
             skipDedup: true,
             eventKey: eventKey,
           ),
-          updateFor: (outcome) => AutoBookEventUpdate(
-            state: switch (outcome) {
-              SmsProcessOutcome.success => AutoBookState.booked,
-              SmsProcessOutcome.pending => AutoBookState.pending,
-              SmsProcessOutcome.duplicate => AutoBookState.duplicate,
-              SmsProcessOutcome.shadow => AutoBookState.ignored,
-              SmsProcessOutcome.noTransaction => AutoBookState.ignored,
-              SmsProcessOutcome.noAiConfigured => AutoBookState.captured,
-              SmsProcessOutcome.failed => AutoBookState.retry,
-            },
-            reason: outcome == SmsProcessOutcome.noAiConfigured
-                ? 'ai_not_configured'
-                : outcome == SmsProcessOutcome.shadow
-                    ? 'shadow_mode'
-                    : null,
-          ),
+          // M1-3:走向 → 事件状态的映射收敛到 SmsProcessOutcomeEvent,四路
+          // 监听共用一份,新增走向不会漏分支。
+          updateFor: (outcome) => outcome.eventUpdate,
         );
 
         if (execution.skipped) {
@@ -196,7 +204,9 @@ class SmsMonitorService {
         if (outcome == null) continue;
         if (outcome == SmsProcessOutcome.noAiConfigured) {
           _noAiNotified.add(eventKey);
-        } else if (outcome != SmsProcessOutcome.failed) {
+        }
+        // 只有终态才出队:可重试失败与「AI 未配置」必须留着原始短信。
+        if (outcome.canAckNativeQueue) {
           await _ack(fingerprint, eventKey);
         }
       }

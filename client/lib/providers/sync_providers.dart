@@ -15,6 +15,7 @@ import '../cloud/sync/sync_engine.dart';
 import '../cloud/sync/sync_providers.dart' as sync_p;
 import '../cloud/transactions_sync_manager.dart';
 import '../models/ledger_display_item.dart';
+import '../ai/core/ai_runtime_state.dart';
 import '../ai/providers/ai_provider_manager.dart';
 import '../ai/providers/ai_provider_factory.dart';
 import '../ai/relay/ai_relay_client.dart';
@@ -28,6 +29,10 @@ import '../services/system/logger_service.dart';
 import '../services/privacy/raw_evidence_sync_service.dart';
 import '../services/privacy/raw_evidence_remote_store.dart';
 import '../services/privacy/smartbook_raw_evidence_uploader.dart';
+import '../services/platform/notify_monitor_service.dart';
+import '../services/platform/screen_text_monitor_service.dart';
+import '../services/platform/screenshot_monitor_service.dart';
+import '../services/platform/sms_monitor_service.dart';
 import '../services/automation/auto_book_event_store.dart';
 import '../services/ui/avatar_service.dart';
 import '../models/note_history.dart';
@@ -153,9 +158,7 @@ final s3ConfigProvider = FutureProvider<CloudServiceConfig?>((ref) async {
 
 final authServiceProvider = FutureProvider<CloudAuthService>((ref) async {
   final activeAsync = ref.watch(activeCloudConfigProvider);
-  if (!activeAsync.hasValue) {
-    return NoopAuthService();
-  }
+  if (!activeAsync.hasValue) return NoopAuthService();
 
   final config = activeAsync.value!;
   if (!config.valid || config.type == CloudBackendType.local) {
@@ -174,15 +177,42 @@ final authServiceProvider = FutureProvider<CloudAuthService>((ref) async {
   return NoopAuthService();
 });
 
+/// AI Runtime ready 后补跑已启用的原生自动记账队列。
+///
+/// Monitor 的首轮 drain 只等待 Runtime 8 秒,避免启动期无限占链。如果云服务
+/// 初始化慢于这个窗口,这里在 Relay 注入成功的同一个状态变化点补调度;未启用
+/// 的 monitor 会在 drain 开头直接返回,不会触发平台调用。
+void _scheduleNativeAutoBookDrains(ProviderContainer container) {
+  if (!Platform.isAndroid) return;
+  try {
+    final drains = <Future<void>>[
+      ScreenshotMonitorService(container).scheduleDrain(),
+      SmsMonitorService(container).scheduleDrain(),
+      NotifyMonitorService(container).scheduleDrain(),
+      ScreenTextMonitorService(container).scheduleDrain(),
+    ];
+    for (final drain in drains) {
+      unawaited(drain);
+    }
+  } catch (e) {
+    logger.warning('CloudSync', 'AI Runtime ready 后补跑自动记账队列失败: $e');
+  }
+}
+
 // 防重入锁：避免 Provider 重建导致多个自动同步并发执行
 bool _autoSyncInProgress = false;
 
 final syncServiceProvider = Provider<SyncService>((ref) {
+  final runtime = AiRuntimeCoordinator.instance;
   final activeAsync = ref.watch(activeCloudConfigProvider);
-  if (!activeAsync.hasValue) return LocalOnlySyncService();
+  if (!activeAsync.hasValue) {
+    runtime.markInitializing();
+    return LocalOnlySyncService();
+  }
 
   final config = activeAsync.value!;
   if (!config.valid || config.type == CloudBackendType.local) {
+    runtime.markUnconfigured();
     return LocalOnlySyncService();
   }
 
@@ -191,6 +221,7 @@ final syncServiceProvider = Provider<SyncService>((ref) {
     final providerAsync = ref.watch(smartbookCloudProviderInstance);
     if (!providerAsync.hasValue || providerAsync.value == null) {
       // Provider 尚未初始化，返回 LocalOnly 等待
+      runtime.markInitializing();
       return LocalOnlySyncService();
     }
     final cloudProvider = providerAsync.value!;
@@ -320,8 +351,7 @@ final syncServiceProvider = Provider<SyncService>((ref) {
           await cloud.updateMyProfileAiConfig(aiConfig: snapshot);
           logger.info('CloudSync', 'AI prefs 已推送到 server');
         } catch (e, st) {
-          logger.warning(
-              'CloudSync', 'AI prefs 推送失败 (non-blocking): $e', st);
+          logger.warning('CloudSync', 'AI prefs 推送失败 (non-blocking): $e', st);
         }
       }());
     };
@@ -329,11 +359,29 @@ final syncServiceProvider = Provider<SyncService>((ref) {
     // AI 中转注入:云服务就绪后把 AiRelayClient 挂到工厂(全部 LLM 调用经
     // 服务端 /ai/relay/* 代理)与管理器(/ai/providers 配置 CRUD),并从服务端
     // 拉一次服务商列表(掩码视图)。未登录时保持 null,AI 功能会报错引导登录。
+    //
+    // M1-1:注入前后同步更新 AiRuntimeCoordinator —— 自动记账 drain 以它为准,
+    // 未 ready 时保留原生队列不 ACK,不再把「Relay 还没注入」当成「不是账单」。
     ref.listen(smartbookCloudProviderInstance, (prev, next) {
+      final runtime = AiRuntimeCoordinator.instance;
+      if (next.isLoading) {
+        runtime.markInitializing();
+        return;
+      }
+      if (next.hasError) {
+        runtime.markProviderError();
+        return;
+      }
       final cloud = next.asData?.value;
-      if (cloud == null) return;
+      if (cloud == null) {
+        runtime.markUnconfigured();
+        return;
+      }
       final auth = cloud.auth;
-      if (auth is! SmartBookCloudAuthService) return;
+      if (auth is! SmartBookCloudAuthService) {
+        runtime.markUnconfigured();
+        return;
+      }
       final relay = AiRelayClient(
         baseUrl: cloud.baseUrl ?? '',
         apiPrefix: cloud.apiPrefix ?? '/api/v1',
@@ -344,6 +392,10 @@ final syncServiceProvider = Provider<SyncService>((ref) {
       );
       AIProviderFactory.relayClient = relay;
       AIProviderManager.serverApi = relay;
+      runtime.markReady();
+      // Runtime 晚于启动 drain 变 ready 时,主动补跑四路原生队列。否则首轮
+      // awaitReady 超时后,积压短信/通知要等下次进程重启才有机会恢复。
+      _scheduleNativeAutoBookDrains(ref.container);
       unawaited(AIProviderManager.refreshFromServer());
       // 服务端恢复可达:补发离线识别草稿(自动记账瞬态失败攒下的)
       unawaited(() async {
@@ -470,12 +522,10 @@ final syncServiceProvider = Provider<SyncService>((ref) {
             newLedgerCount = await engine.syncLedgersFromServer();
             if (newLedgerCount > 0) {
               ref.read(ledgerListRefreshProvider.notifier).state++;
-              logger.info(
-                  'SyncProvider', '从 server 拉回 $newLedgerCount 个新账本');
+              logger.info('SyncProvider', '从 server 拉回 $newLedgerCount 个新账本');
             }
           } catch (e, st) {
-            logger.warning(
-                'SyncProvider', 'syncLedgersFromServer 失败: $e', st);
+            logger.warning('SyncProvider', 'syncLedgersFromServer 失败: $e', st);
           }
 
           // Step 1.5: 如果有新账本插进来，要从 cursor=0 把 sync_changes 重放
@@ -486,22 +536,22 @@ final syncServiceProvider = Provider<SyncService>((ref) {
           if (newLedgerCount > 0) {
             try {
               final replayed = await engine.replayAllChanges();
-              logger.info(
-                  'SyncProvider', '重放 sync_changes 应用 $replayed 条历史变更');
+              logger.info('SyncProvider', '重放 sync_changes 应用 $replayed 条历史变更');
             } catch (e, st) {
-              logger.warning(
-                  'SyncProvider', 'replayAllChanges 失败: $e', st);
+              logger.warning('SyncProvider', 'replayAllChanges 失败: $e', st);
             }
           }
 
           // Step 2: 账本就绪后再跑全量同步。sync() 的 pull 里每条 tx change
           // 都能按 ledger_sync_id / 本地 id fallback 正确映射。
           logger.info('SyncProvider', '开始自动同步 ledger=$currentLedgerId');
-          final result = await engine.sync(ledgerId: currentLedgerId.toString());
+          final result =
+              await engine.sync(ledgerId: currentLedgerId.toString());
           if (result.hasError) {
             logger.error('SyncProvider', '自动同步返回错误: ${result.error}');
           } else {
-            logger.info('SyncProvider', '自动同步成功: pushed=${result.pushed}, pulled=${result.pulled}');
+            logger.info('SyncProvider',
+                '自动同步成功: pushed=${result.pushed}, pulled=${result.pulled}');
           }
           ref.read(syncStatusRefreshProvider.notifier).state++;
           ref.read(ledgerListRefreshProvider.notifier).state++;
@@ -534,8 +584,7 @@ final syncServiceProvider = Provider<SyncService>((ref) {
             logger.info('SyncProvider', '从 server 拉回 $inserted 个新账本');
           }
         } catch (e, st) {
-          logger.warning(
-              'SyncProvider', 'syncLedgersFromServer 失败: $e', st);
+          logger.warning('SyncProvider', 'syncLedgersFromServer 失败: $e', st);
         }
       });
     }
@@ -587,12 +636,14 @@ final smartbookCloudProviderInstance =
       try {
         final user = await services.auth!.currentUser;
         if (user != null) {
-          logger.info('CloudSync', 'SmartBook Cloud session ready: ${user.email}');
+          logger.info(
+              'CloudSync', 'SmartBook Cloud session ready: ${user.email}');
         } else if (email != null && email.isNotEmpty) {
           logger.info('CloudSync', 'SmartBook Cloud 未登录,等首次 API 触发恢复');
         }
       } catch (e, st) {
-        logger.warning('CloudSync', 'SmartBook Cloud 初始 currentUser 失败: $e', st);
+        logger.warning(
+            'CloudSync', 'SmartBook Cloud 初始 currentUser 失败: $e', st);
       }
     }
     return provider;
@@ -602,7 +653,8 @@ final smartbookCloudProviderInstance =
   return null;
 });
 
-final rawEvidenceRemoteStoreProvider = FutureProvider<RawEvidenceRemoteStore?>((ref) async {
+final rawEvidenceRemoteStoreProvider =
+    FutureProvider<RawEvidenceRemoteStore?>((ref) async {
   final cloud = await ref.watch(smartbookCloudProviderInstance.future);
   return cloud == null ? null : SmartBookRawEvidenceRemoteStore(cloud);
 });
@@ -623,7 +675,8 @@ final rawEvidenceSyncServiceProvider = Provider<RawEvidenceSyncService>((ref) {
 
   ref.listen(smartbookCloudProviderInstance, (_, next) {
     final cloud = next.asData?.value;
-    service.uploader = cloud == null ? null : SmartBookRawEvidenceUploader(cloud, db);
+    service.uploader =
+        cloud == null ? null : SmartBookRawEvidenceUploader(cloud, db);
     trigger(); // cold start, sign-in or configuration/session restoration
   }, fireImmediately: true);
   // Table notifications also cover native capture with no transaction changes.
@@ -718,8 +771,8 @@ Future<void> reconcileProfileToServer({
       try {
         await cloud.updateMyProfileIncomeColorScheme(
             incomeIsRed: currentIncomeIsRed);
-        logger.info('CloudSync',
-            'reconcile: pushed income_is_red=$currentIncomeIsRed');
+        logger.info(
+            'CloudSync', 'reconcile: pushed income_is_red=$currentIncomeIsRed');
       } catch (e, st) {
         logger.warning('CloudSync', 'reconcile income 推送失败: $e', st);
       }
@@ -766,8 +819,8 @@ Future<void> reconcileProfileToServer({
         // 只在本地有实际内容时推 —— 新用户 providers 里只有默认 GLM 且
         // apiKey 为空,推上去也是空壳子,跳过避免污染。
         final providers = snapshot['providers'] as List? ?? const [];
-        final hasAnyValidProvider = providers.any((p) =>
-            p is Map && (p['apiKey'] as String?)?.isNotEmpty == true);
+        final hasAnyValidProvider = providers.any(
+            (p) => p is Map && (p['apiKey'] as String?)?.isNotEmpty == true);
         if (hasAnyValidProvider) {
           await cloud.updateMyProfileAiConfig(aiConfig: snapshot);
           logger.info('CloudSync',
@@ -909,9 +962,10 @@ void _applyThemeColorFromServer(Ref ref, String hex) {
 void _applyIncomeColorFromServer(Ref ref, bool incomeIsRed) {
   final current = ref.read(incomeExpenseColorSchemeProvider);
   if (current == incomeIsRed) return;
-  runApplyingFromServer(
-      () => ref.read(incomeExpenseColorSchemeProvider.notifier).state = incomeIsRed);
-  logger.info('profile_sync', 'applied income_is_red from server: $incomeIsRed');
+  runApplyingFromServer(() =>
+      ref.read(incomeExpenseColorSchemeProvider.notifier).state = incomeIsRed);
+  logger.info(
+      'profile_sync', 'applied income_is_red from server: $incomeIsRed');
 }
 
 void _applyDisplayNameFromServer(Ref ref, String name) {
@@ -938,7 +992,8 @@ Future<void> _applyBaseCurrencyFromServer(Ref ref, String code) async {
         () => ref.read(baseCurrencyProvider.notifier).state = normalized);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('baseCurrency', normalized);
-    logger.info('profile_sync', 'applied primary_currency from server: $normalized');
+    logger.info(
+        'profile_sync', 'applied primary_currency from server: $normalized');
   } catch (e, st) {
     logger.warning('profile_sync', 'apply primary currency failed: $e', st);
   }
@@ -986,7 +1041,8 @@ void _applyAppearanceFields(Ref ref, Map<String, dynamic> appearance) {
     // 推的)。认不出来就当没收到:写进去只会让本地又回到失效状态,和启动校正
     // 的降级来回打架 —— 本地降级成 none 推上去、server 又把旧 id 推下来。
     if (skin != kHeaderSkinNone && headerSkinById(skin) == null) {
-      logger.info('profile_sync', 'ignore unknown header_skin from server: $skin');
+      logger.info(
+          'profile_sync', 'ignore unknown header_skin from server: $skin');
     } else if (current != skin) {
       // 这里**只换皮肤 + 登记颜色意图**,颜色本身交给 _scheduleThemeSettle
       // 统一结算 —— 直接调 applyHeaderSkinWith 会和同批的 theme_color 事件
@@ -1196,7 +1252,8 @@ final remoteLedgersProvider =
     }
     return out;
   } catch (e, st) {
-    logger.warning('SyncProvider', 'remoteLedgersProvider: readLedgers 失败: $e', st);
+    logger.warning(
+        'SyncProvider', 'remoteLedgersProvider: readLedgers 失败: $e', st);
     return const [];
   }
 });

@@ -546,7 +546,7 @@ class BeeDatabase extends _$BeeDatabase {
   BeeDatabase.forTesting(QueryExecutor executor) : super(executor);
 
   @override
-  int get schemaVersion => 38; // v38: 自动记账离线识别草稿(draft_payload_json)
+  int get schemaVersion => 39; // v39: 统一索引(_ensureIndexes,新装/升级同一套)
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -1354,19 +1354,111 @@ class BeeDatabase extends _$BeeDatabase {
           if (from < 38) {
             // 自动记账离线识别草稿:瞬态失败(连不上服务端)时保存输入,
             // 手动/联网恢复后重试;终态清除。
-            await _addColumnIfMissing(
-                'auto_book_events',
-                'draft_payload_json',
+            await _addColumnIfMissing('auto_book_events', 'draft_payload_json',
                 'ALTER TABLE auto_book_events ADD COLUMN draft_payload_json TEXT;');
           }
+          // v39(M3-1):索引统一到 _ensureIndexes(),无条件跑一遍。
+          await _ensureIndexes();
         },
         onCreate: (m) async {
           await m.createAll();
           await customStatement(
               'CREATE UNIQUE INDEX IF NOT EXISTS idx_rate_override_pair '
               'ON exchange_rate_overrides (base_currency, quote_currency);');
+          await _ensureIndexes();
         },
       );
+
+  /// 建全部二级索引(M3-1)。onCreate / onUpgrade 结束时都调用。
+  ///
+  /// 拆出来的原因:历史上索引散落在各个 `if (from < N)` 分支里,而 onCreate 只
+  /// 有 createAll + 汇率唯一索引 —— **全新安装拿不到任何一条**,只有升级上来的
+  /// 老用户才跑在索引上。同一份 SQL 走两条路径才能保证行为一致。
+  ///
+  /// 全部 `CREATE INDEX IF NOT EXISTS`,可重复执行;以后加索引只在这里加一行 +
+  /// bump schemaVersion,不必再写 migration 分支。
+  ///
+  /// 按表分组 + 建前查 sqlite_master,并且**单条失败不致命**:onUpgrade 尾部是
+  /// 无条件执行的,半迁移库/只建了部分表的库里,一条 "no such table/column" 绝不
+  /// 能把启动卡死 —— 少一条索引只是慢一点,起不来是灾难。
+  Future<void> _ensureIndexes() async {
+    const byTable = <String, List<String>>{
+      'transactions': [
+        // 账本流水按时间倒序翻页(首页/明细/统计的主查询)。
+        'CREATE INDEX IF NOT EXISTS idx_transactions_ledger_time '
+            'ON transactions (ledger_id, happened_at DESC);',
+        // 自动记账判重、收支分类统计:先按账本 + 类型收窄再按时间。
+        'CREATE INDEX IF NOT EXISTS idx_transactions_ledger_type_time '
+            'ON transactions (ledger_id, type, happened_at DESC);',
+        'CREATE INDEX IF NOT EXISTS idx_transactions_sync_id '
+            'ON transactions (sync_id);',
+      ],
+      'transaction_tags': [
+        'CREATE INDEX IF NOT EXISTS idx_transaction_tags_transaction '
+            'ON transaction_tags (transaction_id);',
+        'CREATE INDEX IF NOT EXISTS idx_transaction_tags_tag '
+            'ON transaction_tags (tag_id);',
+      ],
+      'transaction_attachments': [
+        'CREATE INDEX IF NOT EXISTS idx_attachments_transaction '
+            'ON transaction_attachments (transaction_id);',
+      ],
+      'auto_book_events': [
+        // 到期草稿 / 待重试事件扫描:where state = ? and next_retry_at <= ?。
+        'CREATE INDEX IF NOT EXISTS idx_auto_book_state_retry '
+            'ON auto_book_events (state, next_retry_at);',
+      ],
+      'auto_book_event_items': [
+        // 语义去重按 semanticKey 反查历史 item。
+        'CREATE INDEX IF NOT EXISTS idx_auto_book_items_semantic '
+            'ON auto_book_event_items (semantic_key);',
+      ],
+      // 以下几张表的索引老版本只在 onUpgrade 分支里建过,新装缺失,一并收敛。
+      'accounts': [
+        'CREATE INDEX IF NOT EXISTS idx_accounts_sync_id '
+            'ON accounts (sync_id);',
+      ],
+      'categories': [
+        'CREATE INDEX IF NOT EXISTS idx_categories_sync_id '
+            'ON categories (sync_id);',
+      ],
+      'tags': [
+        'CREATE INDEX IF NOT EXISTS idx_tags_sync_id ON tags (sync_id);',
+      ],
+      'ledgers': [
+        'CREATE INDEX IF NOT EXISTS idx_ledgers_sync_id ON ledgers (sync_id);',
+      ],
+      'budgets': [
+        'CREATE INDEX IF NOT EXISTS idx_budgets_sync_id ON budgets (sync_id);',
+        'CREATE INDEX IF NOT EXISTS idx_budgets_ledger ON budgets (ledger_id);',
+        'CREATE INDEX IF NOT EXISTS idx_budgets_category '
+            'ON budgets (category_id);',
+        'CREATE INDEX IF NOT EXISTS idx_budgets_ledger_type '
+            'ON budgets (ledger_id, type);',
+      ],
+    };
+    final rows =
+        await customSelect("SELECT name FROM sqlite_master WHERE type='table'")
+            .get();
+    final existing = rows.map((r) => r.read<String>('name')).toSet();
+    final failed = <String>[];
+    for (final entry in byTable.entries) {
+      if (!existing.contains(entry.key)) continue;
+      for (final sql in entry.value) {
+        try {
+          await customStatement(sql);
+        } catch (e) {
+          // 列缺失(历史半迁移库)等情况:跳过这一条,不影响其它索引和启动。
+          failed.add('${entry.key}: $e');
+        }
+      }
+    }
+    // 只在有失败时打日志:_ensureIndexes 每次升级都会跑,成功是常态。
+    if (failed.isNotEmpty) {
+      logger.warning(
+          'DBMigration', '部分索引未建立(不影响功能,仅影响查询速度)', failed.join('; '));
+    }
+  }
 
   /// Migration helper: 列不存在再 ALTER ADD,避免 partial state 重跑时
   /// "duplicate column" 把启动卡死。

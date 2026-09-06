@@ -277,30 +277,8 @@ class AppLinkService {
           showNotification: true,
           eventKey: eventKey,
         ),
-        updateFor: (result) => AutoBookEventUpdate(
-          state: result.aiNotConfigured
-              ? AutoBookState.captured
-              : result.retryable || result.failedCount > 0
-                  ? AutoBookState.retry
-                  : result.awaitingCount > 0
-                      ? AutoBookState.pending
-                      : result.shadowCount > 0
-                          ? AutoBookState.ignored
-                          : result.duplicateCount > 0
-                              ? AutoBookState.duplicate
-                              : result.success
-                                  ? AutoBookState.booked
-                                  : AutoBookState.ignored,
-          transactionId: result.firstTransactionId,
-          duplicateOfTransactionId: result.firstDuplicateTransactionId,
-          reason: result.aiNotConfigured
-              ? 'ai_not_configured'
-              : result.shadowCount > 0
-                  ? 'shadow_mode'
-                  : result.awaitingCount > 0
-                      ? 'pending_confirmation'
-                      : null,
-        ),
+        // M1-3:走向映射收敛到 BookkeepingResultEvent。
+        updateFor: (result) => result.eventUpdate,
       );
       logger.info('AppLink', '快捷指令截图记账完成');
     } catch (e, st) {
@@ -639,30 +617,9 @@ class AppLinkService {
             showNotification: true,
             eventKey: eventKey,
           ),
-          updateFor: (result) => AutoBookEventUpdate(
-            state: result.aiNotConfigured
-                ? AutoBookState.captured
-                : result.retryable || result.failedCount > 0
-                    ? AutoBookState.retry
-                    : result.awaitingCount > 0
-                        ? AutoBookState.pending
-                        : result.shadowCount > 0
-                            ? AutoBookState.ignored
-                            : result.duplicateCount > 0
-                                ? AutoBookState.duplicate
-                                : result.success
-                                    ? AutoBookState.booked
-                                    : AutoBookState.ignored,
-            transactionId: result.firstTransactionId,
-            duplicateOfTransactionId: result.firstDuplicateTransactionId,
-            reason: result.shadowCount > 0
-                ? 'shadow_mode'
-                : result.awaitingCount > 0
-                    ? 'pending_confirmation'
-                    : result.aiNotConfigured
-                        ? 'ai_not_configured'
-                        : null,
-          ),
+          // M1-3:走向映射收敛到 BookkeepingResultEvent(permanentFailure 起前
+          // 这里没有出口,永久失败会被落成 ignored)。
+          updateFor: (result) => result.eventUpdate,
         );
         final textResult = execution.value;
         final message = execution.state == AutoBookState.pending
@@ -671,7 +628,9 @@ class AppLinkService {
                 ? '文本对应交易已存在'
                 : execution.state == AutoBookState.retry
                     ? '文本处理失败,稍后重试'
-                    : '文本处理完成';
+                    : execution.state == AutoBookState.failed
+                        ? '文本无法识别为账单'
+                        : '文本处理完成';
         return AppLinkResult.success(
           message: message,
           transactionId:

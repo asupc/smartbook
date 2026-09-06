@@ -4,11 +4,13 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../automation/auto_billing_service.dart'
-    show AutoBillingService, SmsProcessOutcome;
+    show AutoBillingService, SmsProcessOutcome, SmsProcessOutcomeEvent;
 import '../automation/auto_book_coordinator.dart';
 import '../automation/auto_book_event.dart';
 import '../data/source_channel_resolver.dart';
+import '../../ai/core/ai_runtime_state.dart';
 import '../../providers/automation_providers.dart';
+import '../system/logger_service.dart' show logger;
 
 /// 屏幕文本监听服务(账单详情页自动记账,Android 专用)。
 ///
@@ -94,6 +96,8 @@ class ScreenTextMonitorService {
   }
 
   /// 启用屏幕文本监听。未授权「无障碍」时抛 StateError(UI 层应引导授权)。
+  ///
+  /// M2-2:只 await 到桥接注册,积压队列交给 [scheduleDrain] 后台跑。
   Future<void> enable() async {
     if (!Platform.isAndroid) {
       throw UnsupportedError('仅支持 Android 平台');
@@ -106,7 +110,14 @@ class ScreenTextMonitorService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_enabledKey, true);
     _isEnabled = true;
-    await _enqueue(drainPending);
+    scheduleDrain();
+  }
+
+  /// 调度一次积压处理,不阻塞调用方(M2-2)。返回值只给测试 await。
+  Future<void> scheduleDrain() {
+    final done = _enqueue(drainPending);
+    unawaited(done);
+    return done;
   }
 
   Future<void> disable() async {
@@ -124,6 +135,13 @@ class ScreenTextMonitorService {
   /// 补处理积压屏幕文本(启动时 / 桥接触发 / 启用时),语义同通知 drain。
   Future<void> drainPending() async {
     if (!_isEnabled) return;
+    // M1-1:AI 运行时未就绪时保留整条队列,不消耗事件的退避窗口。
+    final runtime = AiRuntimeCoordinator.instance;
+    if (!await runtime.awaitReady()) {
+      logger.info('ScreenTextMonitor',
+          'AI 运行时未就绪(${runtime.state.name}),保留详情页队列待下次 drain');
+      return;
+    }
     try {
       final items =
           await _channel.invokeMethod<List<dynamic>>('peekPending') ?? const [];
@@ -169,22 +187,8 @@ class ScreenTextMonitorService {
             skipDedup: true,
             eventKey: eventKey,
           ),
-          updateFor: (outcome) => AutoBookEventUpdate(
-            state: switch (outcome) {
-              SmsProcessOutcome.success => AutoBookState.booked,
-              SmsProcessOutcome.pending => AutoBookState.pending,
-              SmsProcessOutcome.duplicate => AutoBookState.duplicate,
-              SmsProcessOutcome.shadow => AutoBookState.ignored,
-              SmsProcessOutcome.noTransaction => AutoBookState.ignored,
-              SmsProcessOutcome.noAiConfigured => AutoBookState.captured,
-              SmsProcessOutcome.failed => AutoBookState.retry,
-            },
-            reason: outcome == SmsProcessOutcome.noAiConfigured
-                ? 'ai_not_configured'
-                : outcome == SmsProcessOutcome.shadow
-                    ? 'shadow_mode'
-                    : null,
-          ),
+          // M1-3:与短信/通知共用一份走向映射。
+          updateFor: (outcome) => outcome.eventUpdate,
         );
 
         if (execution.skipped) {
@@ -196,7 +200,8 @@ class ScreenTextMonitorService {
         if (outcome == null) continue;
         if (outcome == SmsProcessOutcome.noAiConfigured) {
           _noAiNotified.add(eventKey);
-        } else if (outcome != SmsProcessOutcome.failed) {
+        }
+        if (outcome.canAckNativeQueue) {
           await _ack(fingerprint, eventKey);
         }
       }

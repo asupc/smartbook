@@ -34,7 +34,11 @@ class _FixedEngine implements AiExtractionEngine {
     AiExtractionContext ctx, {
     String billGuard = '',
   }) async =>
-      AiExtractionOutcome(bills: bills);
+      AiExtractionOutcome(
+        status:
+            bills.isEmpty ? ExtractionStatus.noBill : ExtractionStatus.success,
+        bills: bills,
+      );
 
   @override
   Future<List<BillInfo>> extractFromImage(
@@ -182,8 +186,7 @@ void main() {
 
     test('isExempt:关键字+金额段命中;金额段外/关键字不匹配不命中', () {
       final rules = [
-        DedupExemptRule(
-            keyword: '星巴克', amount: 38, createdAt: DateTime(2026)),
+        DedupExemptRule(keyword: '星巴克', amount: 38, createdAt: DateTime(2026)),
       ];
       expect(
         DedupExemptStore.isExempt(
@@ -219,8 +222,7 @@ void main() {
       );
     });
 
-    test('匹配器跳过豁免对:命中豁免 → findBest 返回 null;清空后恢复强匹配',
-        () async {
+    test('匹配器跳过豁免对:命中豁免 → findBest 返回 null;清空后恢复强匹配', () async {
       final time = DateTime(2026, 9, 4, 10, 30);
       final txId = await repo.addTransaction(
         ledgerId: ledgerId,

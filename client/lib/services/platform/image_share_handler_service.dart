@@ -70,30 +70,8 @@ class ImageShareHandlerService {
           showNotification: true,
           eventKey: eventKey,
         ),
-        updateFor: (result) => AutoBookEventUpdate(
-          state: result.aiNotConfigured
-              ? AutoBookState.captured
-              : result.retryable || result.failedCount > 0
-                  ? AutoBookState.retry
-                  : result.awaitingCount > 0
-                      ? AutoBookState.pending
-                      : result.shadowCount > 0
-                          ? AutoBookState.ignored
-                          : result.duplicateCount > 0
-                              ? AutoBookState.duplicate
-                              : result.success
-                                  ? AutoBookState.booked
-                                  : AutoBookState.ignored,
-          transactionId: result.firstTransactionId,
-          duplicateOfTransactionId: result.firstDuplicateTransactionId,
-          reason: result.aiNotConfigured
-              ? 'ai_not_configured'
-              : result.shadowCount > 0
-                  ? 'shadow_mode'
-                  : result.awaitingCount > 0
-                      ? 'pending_confirmation'
-                      : null,
-        ),
+        // M1-3:走向映射收敛到 BookkeepingResultEvent(与截图/deep-link 共用)。
+        updateFor: (result) => result.eventUpdate,
       );
       if (execution.skipped) {
         logger.info('ImageShare', '分享图片内容已被事件幂等拦截');

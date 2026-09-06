@@ -120,23 +120,48 @@ abstract class TransactionRepository {
   /// 根据ID获取单条交易
   Future<Transaction?> getTransactionById(int id);
 
+  /// 批量按 ID 取交易(M3-5)。一条 `id IN (...)` 换掉 N 次单查,顺序不保证,
+  /// 调用方要么只做集合运算,要么自行按 id 建映射。[ids] 为空返回空列表。
+  Future<List<Transaction>> getTransactionsByIds(List<int> ids);
+
   /// 获取指定月份的交易记录（带分类信息）
   ///
   /// [month] 为周期标签,约定传 DateTime(year, month, 1);实际范围由账本
   /// monthStartDay 决定:[y-m-起始日, y-(m+1)-起始日)。
-  Stream<List<({Transaction t, Category? category, Account? account, Account? toAccount})>> watchTransactionsWithCategoryInMonth({
+  Stream<
+      List<
+          ({
+            Transaction t,
+            Category? category,
+            Account? account,
+            Account? toAccount
+          })>> watchTransactionsWithCategoryInMonth({
     required int ledgerId,
     required DateTime month,
   });
 
   /// 获取指定年份的交易记录（带分类信息）
-  Stream<List<({Transaction t, Category? category, Account? account, Account? toAccount})>> watchTransactionsWithCategoryInYear({
+  Stream<
+      List<
+          ({
+            Transaction t,
+            Category? category,
+            Account? account,
+            Account? toAccount
+          })>> watchTransactionsWithCategoryInYear({
     required int ledgerId,
     required int year,
   });
 
   /// 获取指定分类和时间范围的交易记录（带分类信息）
-  Stream<List<({Transaction t, Category? category, Account? account, Account? toAccount})>> watchTransactionsForCategoryInRange({
+  Stream<
+      List<
+          ({
+            Transaction t,
+            Category? category,
+            Account? account,
+            Account? toAccount
+          })>> watchTransactionsForCategoryInRange({
     required int ledgerId,
     required DateTime start,
     required DateTime end,
@@ -248,6 +273,29 @@ abstract class TransactionRepository {
     required DateTime end,
   });
 
+  /// 自动记账判重候选(M3-2)。轻量查询,只返回纯 [Transaction] 行。
+  ///
+  /// 语义判重(`SemanticDedupMatcher._score`)只读金额/类型/币种/时间/备注,
+  /// 不需要分类/标签/附件/账户 —— 复用 [getTransactionsByDateRange] 那条富查询
+  /// 会按行触发 N+1(每行 4~5 条 SELECT,外加每个标签 1 条),90 天窗口下轻易
+  /// 上千次往返,且 99% 的行在打分第一步就被类型/金额筛掉。
+  ///
+  /// 过滤全部下推到 SQL:账本 + 类型 + 时间窗 `[start, end]` + 金额区间,按
+  /// happenedAt 降序取前 [limit] 条(最近的优先)。命中索引
+  /// `idx_transactions_ledger_type_time`。
+  ///
+  /// [minAmount] / [maxAmount] 为**绝对值**区间(非负),由调用方按判重容差算好;
+  /// 实现按 `amount` 的正负两个区间取并集,兼容支出记正数与记负数两种口径。
+  Future<List<Transaction>> getDedupCandidates({
+    required int ledgerId,
+    required String type,
+    required DateTime start,
+    required DateTime end,
+    required double minAmount,
+    required double maxAmount,
+    int limit = 200,
+  });
+
   /// 最近 [limit] 笔交易(按 happenedAt 降序),纯 [Transaction] 行、无分类/账户
   /// join、不做任何 exclude 过滤。
   ///
@@ -303,25 +351,29 @@ abstract class TransactionRepository {
   });
 
   /// 获取指定日期的所有交易（含分类、标签、附件、账户）
-  Future<List<({
-    Transaction t,
-    Category? category,
-    List<Tag> tags,
-    List<TransactionAttachment> attachments,
-    Account? account,
-  })>> getTransactionsByDate({
+  Future<
+      List<
+          ({
+            Transaction t,
+            Category? category,
+            List<Tag> tags,
+            List<TransactionAttachment> attachments,
+            Account? account,
+          })>> getTransactionsByDate({
     required int ledgerId,
     required DateTime date,
   });
 
   /// 获取指定时间范围的交易列表（用于日历当月列表）
-  Future<List<({
-    Transaction t,
-    Category? category,
-    List<Tag> tags,
-    List<TransactionAttachment> attachments,
-    Account? account,
-  })>> getTransactionsByDateRange({
+  Future<
+      List<
+          ({
+            Transaction t,
+            Category? category,
+            List<Tag> tags,
+            List<TransactionAttachment> attachments,
+            Account? account,
+          })>> getTransactionsByDateRange({
     required int ledgerId,
     required DateTime startDate,
     required DateTime endDate,

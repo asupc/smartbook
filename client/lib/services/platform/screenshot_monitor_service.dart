@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,7 +6,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../automation/auto_billing_service.dart';
 import '../automation/auto_book_coordinator.dart';
 import '../automation/auto_book_event.dart';
+import '../../ai/core/ai_runtime_state.dart';
 import '../../providers/automation_providers.dart';
+import '../system/logger_service.dart' show logger;
 
 /// Google Play 版本(CI 注入)。Photo & Video Permissions 政策禁止记账类 app
 /// 长期持有 READ_MEDIA_IMAGES,所以 Google Play 版本砍掉截屏自动记账功能。
@@ -88,11 +91,20 @@ class ScreenshotMonitorService {
 
       print(
           '✅ [ScreenshotMonitor] 截图监听已启用，_isEnabled=$_isEnabled, _isMonitoring=$_isMonitoring');
-      await _enqueue(_drainPendingScreenshots);
+      // M2-2:只 await 到 observer 注册,积压队列交给后台 drain,
+      // 冷启动恢复不被整队列的图片识别拖住。
+      scheduleDrain();
     } catch (e) {
       print('❌ [ScreenshotMonitor] 启用截图监听失败: $e');
       rethrow;
     }
+  }
+
+  /// 调度一次积压处理,不阻塞调用方(M2-2)。返回值只给测试 await。
+  Future<void> scheduleDrain() {
+    final done = _enqueue(_drainPendingScreenshots);
+    unawaited(done);
+    return done;
   }
 
   /// 禁用截图监听
@@ -123,6 +135,13 @@ class ScreenshotMonitorService {
   /// 后 ACK；retry/captured 项保留，等待下次启动或用户修复配置后继续。
   Future<void> _drainPendingScreenshots() async {
     if (!_isEnabled || !_isMonitoring) return;
+    // M1-1:AI 运行时未就绪时保留整条队列,不消耗事件的退避窗口。
+    final runtime = AiRuntimeCoordinator.instance;
+    if (!await runtime.awaitReady()) {
+      logger.info('ScreenshotMonitor',
+          'AI 运行时未就绪(${runtime.state.name}),保留截图队列待下次 drain');
+      return;
+    }
     try {
       final items = await _channel
               .invokeMethod<List<dynamic>>('peekPendingScreenshots') ??
@@ -179,33 +198,8 @@ class ScreenshotMonitorService {
         notifyOnlyOnSuccess: true,
         eventKey: eventKey,
       ),
-      updateFor: (result) {
-        final state = result.aiNotConfigured
-            ? AutoBookState.captured
-            : result.retryable || result.failedCount > 0
-                ? AutoBookState.retry
-                : result.awaitingCount > 0
-                    ? AutoBookState.pending
-                    : result.shadowCount > 0
-                        ? AutoBookState.ignored
-                        : result.duplicateCount > 0
-                            ? AutoBookState.duplicate
-                            : result.success
-                                ? AutoBookState.booked
-                                : AutoBookState.ignored;
-        return AutoBookEventUpdate(
-          state: state,
-          transactionId: result.firstTransactionId,
-          duplicateOfTransactionId: result.firstDuplicateTransactionId,
-          reason: result.aiNotConfigured
-              ? 'ai_not_configured'
-              : result.shadowCount > 0
-                  ? 'shadow_mode'
-                  : result.awaitingCount > 0
-                      ? 'pending_confirmation'
-                      : null,
-        );
-      },
+      // M1-3:走向映射收敛到 BookkeepingResultEvent,与图片分享/deep-link 共用。
+      updateFor: (result) => result.eventUpdate,
     );
 
     // 已完成事件(例如系统重复回调/图片分享副本)不再重复执行；原截图的

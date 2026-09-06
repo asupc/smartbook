@@ -11,7 +11,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  test('v33 to v38 adds raw evidence columns idempotently', () async {
+  test('v33 to v39 adds raw evidence columns idempotently', () async {
     final executor = NativeDatabase.memory(setup: (database) {
       database.execute('''
         CREATE TABLE auto_book_events (
@@ -33,7 +33,7 @@ void main() {
         await db.customSelect('PRAGMA table_info(auto_book_events)').get();
     final names = columns.map((row) => row.read<String>('name')).toSet();
 
-    expect(version.read<int>('user_version'), 38);
+    expect(version.read<int>('user_version'), 39);
     expect(
       names,
       containsAll(const [
@@ -64,7 +64,7 @@ void main() {
     expect(uploadState.read<String>('dflt_value'), "'not_requested'");
   });
 
-  test('v35 to v38 backfills independent expiry windows', () async {
+  test('v35 to v39 backfills independent expiry windows', () async {
     final executor = NativeDatabase.memory(setup: (database) {
       database.execute('''
         CREATE TABLE auto_book_events (

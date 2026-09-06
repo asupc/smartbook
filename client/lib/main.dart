@@ -78,16 +78,6 @@ Future<void> main() async {
     print('⚠️  通知服务初始化失败（可能在不支持的平台上运行）: $e');
   }
 
-  // 恢复用户的记账提醒设置（关键修复：应用重启后自动恢复提醒）
-  await _restoreUserReminder();
-
-  // 启动提醒监控服务（监听应用生命周期，自动恢复丢失的提醒）
-  try {
-    ReminderMonitorService().startMonitoring();
-  } catch (e) {
-    print('⚠️  提醒监控服务启动失败（可能在不支持的平台上运行）: $e');
-  }
-
   // 创建全局ProviderContainer（需要在周期交易生成之前创建，因为需要使用 repositoryProvider）
   // observers 必须挂在这里(根容器):无 override 的全局 provider 元素都挂载
   // 于根容器,riverpod 只通知元素所属容器的 observers;历史上挂在下面
@@ -106,6 +96,50 @@ Future<void> main() async {
   // 周期交易生成已移至 appSplashInitProvider 中（等待数据库完全初始化后执行）
   // await _generatePendingRecurringTransactions(container);
 
+  // [已删除] v1.15.0 账户独立迁移 & v2.7.1 转账分类迁移
+  // 所有活跃用户已完成，Drift onUpgrade 已覆盖相关 schema 变更
+  // 硬编码 SQL 重建表会导致新增字段丢失（如 sort_order），故移除
+
+  // 初始化图片分享处理服务（Android专属）
+  if (Platform.isAndroid) {
+    _setupImageShareHandler(container);
+  }
+
+  // 启动 URL 监听（用于快捷指令/AppLink 自动记账）
+  _setupUrlListener(container);
+
+  runApp(ProviderScope(
+    parent: container,
+    child: const MainApp(),
+  ));
+
+  // M2-1:其余恢复工作全部挪到首帧之后。这些任务都要串行等
+  // SharedPreferences、平台通道、数据库和原生队列注册,放在 runApp 之前会把
+  // 首帧一路推后(冷启动白屏);首帧不依赖它们的结果,放到帧回调里,用户先看
+  // 到界面,恢复在后台补齐。
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    unawaited(_bootstrapAfterFirstFrame(container));
+  });
+}
+
+/// 首帧之后的启动补齐(M2-1)。
+///
+/// 只放「首帧不需要其结果」的任务:提醒恢复、小组件回调、自动记账协调器与四路
+/// 监听恢复、孤立文件 GC。主题/应用模式/通知初始化仍留在 [main] 首帧前。
+///
+/// 每一步都自带 try/catch(或在 helper 内部兜住):这里跑在 framework 的帧回调
+/// 里,异常抛出去只会变成一条 FlutterError,还会吃掉后面所有恢复步骤。
+Future<void> _bootstrapAfterFirstFrame(ProviderContainer container) async {
+  // 恢复用户的记账提醒设置（关键修复：应用重启后自动恢复提醒）
+  await _restoreUserReminder();
+
+  // 启动提醒监控服务（监听应用生命周期，自动恢复丢失的提醒）
+  try {
+    ReminderMonitorService().startMonitoring();
+  } catch (e) {
+    print('⚠️  提醒监控服务启动失败（可能在不支持的平台上运行）: $e');
+  }
+
   // 恢复信用卡还款提醒
   try {
     final repo = container.read(repositoryProvider);
@@ -115,10 +149,6 @@ Future<void> main() async {
   } catch (e) {
     // 静默失败，不影响启动
   }
-
-  // [已删除] v1.15.0 账户独立迁移 & v2.7.1 转账分类迁移
-  // 所有活跃用户已完成，Drift onUpgrade 已覆盖相关 schema 变更
-  // 硬编码 SQL 重建表会导致新增字段丢失（如 sort_order），故移除
 
   // 注册小组件交互回调
   try {
@@ -135,35 +165,17 @@ Future<void> main() async {
     logger.warning('App', '自动记账协调器初始化失败(后续会按事件 retry)', '$e');
   }
 
-  // 恢复截图自动识别设置（Android专属），传入container
+  // 恢复四路自动记账监听（Android专属）。M2-2 后 enable() 只等桥接/observer
+  // 注册，积压队列由各自的 drain 在后台消化，不会卡住这里的串行恢复。
   await _restoreScreenshotMonitor(container);
-
-  // 恢复短信自动记账设置（Android专属）
   await _restoreSmsMonitor(container);
-
-  // 恢复通知自动记账设置（Android专属）
   await _restoreNotifyMonitor(container);
-
-  // 恢复账单详情页无障碍自动记账设置（Android专属）。
   await _restoreScreenTextMonitor(container);
-
-  // 初始化图片分享处理服务（Android专属）
-  if (Platform.isAndroid) {
-    _setupImageShareHandler(container);
-  }
-
-  // 启动 URL 监听（用于快捷指令/AppLink 自动记账）
-  _setupUrlListener(container);
 
   // 启动一次性磁盘孤立文件 GC(attachments / attachment_thumbs / custom_icons),
   // 清理历史版本遗留的文件。标志位 SharedPreferences 保证只跑一次。后台异步
   // 执行,失败不致命。
   unawaited(_runOrphanFileGcOnce(container));
-
-  runApp(ProviderScope(
-    parent: container,
-    child: const MainApp(),
-  ));
 }
 
 /// Provider observer to update widget on app start

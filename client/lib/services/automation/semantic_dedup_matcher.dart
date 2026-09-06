@@ -97,23 +97,32 @@ class SemanticDedupMatcher {
     final billNoteNormalized =
         _normalize(bill.merchant) ?? _normalize(bill.note);
 
-    final rows = await repository.getTransactionsByDateRange(
+    // M3-2:判重只用得到纯 Transaction 行,过滤条件(账本 / 类型 / 时间窗 /
+    // 金额区间)全部下推到 SQL。金额区间与 _score 的容差同源、时间窗口口径不变,
+    // 因此候选集就是「可能打出非 null 分数」的那一批,匹配结果与全量扫描等价。
+    final billAmount = amount.abs();
+    final amountTolerance = (billAmount * 0.01).clamp(0.01, 10.0).toDouble();
+    final rows = await repository.getDedupCandidates(
       ledgerId: ledgerId,
-      startDate: time.subtract(const Duration(days: 90)),
-      endDate: time.add(const Duration(days: 2)),
+      type: _typeValue(bill.type),
+      start: time.subtract(const Duration(days: 90)),
+      end: time.add(const Duration(days: 2)),
+      minAmount:
+          (billAmount - amountTolerance).clamp(0.0, billAmount).toDouble(),
+      maxAmount: billAmount + amountTolerance,
     );
     SemanticDedupMatch? best;
-    for (final row in rows) {
+    for (final tx in rows) {
       if (DedupExemptStore.isExempt(
         exemptRules,
         billAmount: amount,
         billNoteNormalized: billNoteNormalized,
-        txAmount: row.t.amount,
-        txNoteNormalized: _normalize(row.t.note),
+        txAmount: tx.amount,
+        txNoteNormalized: _normalize(tx.note),
       )) {
         continue;
       }
-      final candidate = _score(bill, row.t);
+      final candidate = _score(bill, tx);
       if (candidate == null) continue;
       if (best == null || candidate.score > best.score) best = candidate;
     }
