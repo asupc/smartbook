@@ -38,6 +38,11 @@ class BookkeepingResult {
   /// 不能把网络/数据库异常误当成“非账单”。
   final bool retryable;
 
+  /// 本次流程发生了**重试也不会好**的失败(参数非法 / 上游拒绝 / 响应结构
+  /// 不可解析)。M1-2:与 [retryable] 一样绝不能被当成「非账单」终结并 ACK
+  /// 原始队列,但不该继续退避重试,事件直接进 failed 让用户可见。
+  final bool permanentFailure;
+
   /// AI 能力尚未配置。与 retryable 分开，队列应保持 captured 状态而不是
   /// 进入永久 ignored。
   final bool aiNotConfigured;
@@ -62,6 +67,7 @@ class BookkeepingResult {
     this.shadowCount = 0,
     this.pendingAbsAmount = 0,
     this.retryable = false,
+    this.permanentFailure = false,
     this.aiNotConfigured = false,
   });
 

@@ -24,14 +24,22 @@ class AIProviderFactory {
     final client = relayClient;
     if (client == null) {
       logger.warning(logTag, '云服务未配置,AI 功能不可用');
-      throw AIException('需要登录并配置智记云服务后才能使用 AI 功能');
+      // M1-1:冷启动时 Relay 可能只是「还没注入」,与「用户从未配置云服务」
+      // 无法在这一层区分。两种情况都必须让自动入口保留事件(退避重试或等
+      // Runtime ready),因此统一标记 transient + 可区分错误码。
+      throw AIException(
+        '需要登录并配置智记云服务后才能使用 AI 功能',
+        transient: true,
+        code: 'relay_not_ready',
+      );
     }
     return client;
   }
 
   /// 空 / 掩码(`****1234`,来自服务端列表)都表示「本地没有真 key」——
   /// 测试时应走服务端按 provider id 用存储配置测试。
-  static bool isMaskedApiKey(String key) => key.isEmpty || key.startsWith('****');
+  static bool isMaskedApiKey(String key) =>
+      key.isEmpty || key.startsWith('****');
 
   // ============================================================
   // 基础能力接口
@@ -69,7 +77,8 @@ class AIProviderFactory {
         logInput: logInput,
       );
       if (result.duplicate) {
-        logger.info(tag, '服务端判重命中,跳过识别 (identifier=${result.matchedIdentifier})');
+        logger.info(
+            tag, '服务端判重命中,跳过识别 (identifier=${result.matchedIdentifier})');
       }
       return AIChatResult(
         content: result.content,
@@ -77,7 +86,7 @@ class AIProviderFactory {
         matchedIdentifier: result.matchedIdentifier,
       );
     } on AiRelayException catch (e) {
-      throw AIException(e.message, transient: e.transient);
+      throw AIException(e.message, transient: e.transient, code: e.errorCode);
     }
   }
 
@@ -134,7 +143,7 @@ class AIProviderFactory {
         logInput: logInput,
       );
     } on AiRelayException catch (e) {
-      throw AIException(e.message, transient: e.transient);
+      throw AIException(e.message, transient: e.transient, code: e.errorCode);
     }
   }
 
@@ -149,7 +158,7 @@ class AIProviderFactory {
     try {
       return await client.speechToText(audio);
     } on AiRelayException catch (e) {
-      throw AIException(e.message, transient: e.transient);
+      throw AIException(e.message, transient: e.transient, code: e.errorCode);
     }
   }
 
@@ -259,11 +268,17 @@ class AIChatResult {
 class AIException implements Exception {
   final String message;
 
-  /// true = 可恢复的临时失败(连不上服务端 / 超时 / 上游 5xx / 限流)。
-  /// 自动记账据此把输入保存为离线草稿等待重试。
+  /// true = 可恢复的临时失败(连不上服务端 / 超时 / 上游 5xx / 限流 / Relay
+  /// 尚未注入)。自动记账据此把输入保存为离线草稿等待重试,**绝不能**把这类
+  /// 失败当成「不是账单」而终结事件并 ACK 原始队列。
   final bool transient;
 
-  AIException(this.message, {this.transient = false});
+  /// 可区分的失败原因码(M1-1)。取值见 [AiRelayException.errorCode],另加
+  /// `relay_not_ready`(云服务未配置 / Relay 未注入)。仅用于日志与事件
+  /// reason,不含任何原文。
+  final String? code;
+
+  AIException(this.message, {this.transient = false, this.code});
 
   @override
   String toString() => message;

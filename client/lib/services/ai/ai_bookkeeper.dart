@@ -16,6 +16,7 @@ import '../automation/auto_book_event.dart';
 import '../automation/auto_book_event_store.dart';
 
 import '../automation/auto_book_policy.dart';
+import '../automation/auto_book_trace.dart';
 import '../automation/semantic_dedup_matcher.dart';
 import 'bookkeeping_result.dart';
 
@@ -84,16 +85,39 @@ class AiBookkeeper {
       context,
       billGuard: billGuard,
     );
-    if (outcome.duplicate) {
-      // 服务端识别前判重命中(账单唯一标识已存在):本次没有调用 LLM。
-      // duplicateCount>0 → handled=true:自动通道静默(不发通知、不进待
-      // 确认队列),监控层把事件置为 duplicate 终态。
-      logger.info(
-        _tag,
-        '服务端判重命中,跳过记账',
-        'identifier=${outcome.matchedIdentifier}',
-      );
-      return const BookkeepingResult(duplicateCount: 1);
+    switch (outcome.status) {
+      case ExtractionStatus.duplicate:
+        // 服务端识别前判重命中(账单唯一标识已存在):本次没有调用 LLM。
+        // duplicateCount>0 → handled=true:自动通道静默(不发通知、不进待
+        // 确认队列),监控层把事件置为 duplicate 终态。
+        logger.info(
+          _tag,
+          '服务端判重命中,跳过记账',
+          'identifier=${outcome.matchedIdentifier}',
+        );
+        return const BookkeepingResult(duplicateCount: 1);
+      case ExtractionStatus.retryableFailure:
+        // M1-2:临时失败(Relay 未就绪 / 网络 / 超时)绝不能退化成「空
+        // bills」,否则自动通道会把事件当「非账单」终结并 ACK 原生队列,
+        // 原始证据永久丢失。
+        logger.warning(
+          _tag,
+          '文本识别临时失败,保留事件等待重试',
+          'code=${outcome.errorCode}',
+        );
+        return const BookkeepingResult(retryable: true);
+      case ExtractionStatus.permanentFailure:
+        // 重试也不会好(参数非法 / 上游拒绝 / 响应不可解析):同样不能当
+        // 「非账单」,但不再走退避重试,事件直接进 failed 让用户可见。
+        logger.warning(
+          _tag,
+          '文本识别永久失败,不再重试',
+          'code=${outcome.errorCode}',
+        );
+        return const BookkeepingResult(permanentFailure: true);
+      case ExtractionStatus.success:
+      case ExtractionStatus.noBill:
+        break;
     }
     return _persistAll(
       bills: outcome.bills,
@@ -334,7 +358,9 @@ class AiBookkeeper {
       'sms' => TagSeedService.billingTypeSms,
       'notification' => TagSeedService.billingTypeNotification,
       'screenText' || 'screen' => TagSeedService.billingTypeScreen,
-      'screenshot' || 'image' || 'sharedImage' =>
+      'screenshot' ||
+      'image' ||
+      'sharedImage' =>
         TagSeedService.billingTypeImage,
       _ => TagSeedService.billingTypeAi,
     };
@@ -464,6 +490,10 @@ class AiBookkeeper {
     final saved = <BillInfo>[];
     final txIds = <int>[];
     var failed = 0;
+    // M3-5:整批账单共享分类池 / 账户池 / 标签映射 / 账本币种,"一张图 10 笔"
+    // 不再把同一批查询做 10 遍。生命周期严格限定在本次 _persistAll 内,
+    // 不要提升到字段(见 [BillCreationContext] 的缓存失效说明)。
+    final billContext = BillCreationContext();
 
     for (var i = 0; i < bills.length; i++) {
       final bill = _semanticPolicy.normalizeForPersistence(
@@ -666,6 +696,7 @@ class AiBookkeeper {
           billingTypes: billingTypes,
           l10n: l10n,
           sourceChannel: sourceChannel,
+          context: billContext,
         );
         if (txId == null) {
           failed++;
@@ -706,7 +737,7 @@ class AiBookkeeper {
         //    enrich 自带兜底不会抛,但即便抛了也要保 savedBills/txIds 长度对齐。
         BillInfo enriched;
         try {
-          enriched = await _enrichWithActualNames(bill, txId);
+          enriched = await _enrichWithActualNames(bill, txId, billContext);
         } catch (e, st) {
           logger.error(
               _tag, 'enrichWithActualNames 异常,用 AI 原始 BillInfo', e, st);
@@ -730,6 +761,14 @@ class AiBookkeeper {
     if (failed > 0) {
       logger.warning(_tag, '成功 ${txIds.length} 笔,失败 $failed 笔');
     }
+
+    // M0-1:自动记账链上补一段「解析→判重→落库」的耗时(主动路径无 trace)。
+    AutoBookTrace.current?.stage(
+      'persist',
+      outcome: failed > 0
+          ? 'partial_failed'
+          : (txIds.isEmpty ? 'no_transaction' : 'saved'),
+    );
 
     return BookkeepingResult(
       savedBills: List.unmodifiable(saved),
@@ -773,34 +812,32 @@ class AiBookkeeper {
     };
   }
 
-  /// 近 90 天本账本原始交易一次拉取,拆分出最近 24h 的 BillInfo
-  /// (疑似重复检测对比池,金额口径与原逻辑一致用 t.amount)。
-  /// 失败时整体降级(空 pool),不影响入账。
+  /// 最近 24h 本账本原始交易(疑似重复检测对比池,金额口径与原逻辑一致用
+  /// t.amount)。M3-3:基础规则只看 24 小时,不再拉 90 天再在内存里丢掉
+  /// 99% 的行。M3-2:改用纯 [Transaction] 查询,富查询会给每行再补
+  /// 分类/标签/附件/账户(N+1),这里一个字段都用不上。失败时整体降级(空
+  /// pool),不影响入账。
   Future<List<BillInfo>?> _loadBaseline(int ledgerId) async {
     try {
       final now = DateTime.now();
-      final rows = await _repo.getTransactionsByDateRange(
+      final rows = await _repo.getTransactionsByLedgerInRange(
         ledgerId: ledgerId,
-        startDate: now.subtract(const Duration(days: 90)),
-        endDate: now,
+        start: now.subtract(const Duration(hours: 24)),
+        end: now,
       );
-      final recent24h = now.subtract(const Duration(hours: 24));
       final recent = <BillInfo>[];
-      for (final r in rows) {
-        final t = r.t;
-        if (!t.happenedAt.isBefore(recent24h)) {
-          recent.add(BillInfo(
-            amount: t.amount,
-            time: t.happenedAt,
-            type: _billTypeFromString(t.type),
-            note: t.note,
-            ledgerId: ledgerId,
-          ));
-        }
+      for (final t in rows) {
+        recent.add(BillInfo(
+          amount: t.amount,
+          time: t.happenedAt,
+          type: _billTypeFromString(t.type),
+          note: t.note,
+          ledgerId: ledgerId,
+        ));
       }
       return recent;
     } catch (e) {
-      logger.warning(_tag, '加载 90 天基线失败,疑似重复判定降级', '$e');
+      logger.warning(_tag, '加载 24h 基线失败,疑似重复判定降级', '$e');
       return null;
     }
   }
@@ -823,9 +860,10 @@ class AiBookkeeper {
           ((ledger?.currency.isNotEmpty ?? false) ? ledger!.currency : 'CNY')
               .toUpperCase();
       final codes = <String>{};
-      for (final id in txIds) {
-        final tx = await _repo.getTransactionById(id);
-        if (tx == null) continue;
+      // M3-5:一条 `id IN (...)` 取回本批交易,不再逐笔 SELECT(顺序无关,这里
+      // 只做集合去重)。
+      final rows = await _repo.getTransactionsByIds(txIds);
+      for (final tx in rows) {
         final code = tx.currencyCode?.toUpperCase();
         if (code == null || code == base) continue;
         if (tx.nativeAmount == null || tx.nativeAmount == tx.amount) {
@@ -846,7 +884,22 @@ class AiBookkeeper {
 
   /// 查询实际入库的分类/账户名称,回填到 BillInfo。AI 给的可能是"奶茶"
   /// 但 BillCreationService 匹配到的可能是"餐饮",卡片要显示后者。
-  Future<BillInfo> _enrichWithActualNames(BillInfo bill, int txId) async {
+  ///
+  /// M3-5:落库时 [BillCreationService] 已经把实际用的分类/账户名记进
+  /// [BillCreationContext.resolvedNames],命中就直接用,省掉 交易 + 分类 +
+  /// 账户 三条 SELECT(每笔都有)。记录里的名称与查库结果同源:分类必定取自
+  /// 匹配用的分类池、账户就是落库那一行对象,而落库走的是 categoryId /
+  /// accountId 原值(没有 syncId override),所以两条路算出来是同一个名字。
+  /// 没有记录(单笔路径没传 context)才回落到查库。
+  Future<BillInfo> _enrichWithActualNames(
+      BillInfo bill, int txId, BillCreationContext? ctx) async {
+    final cached = ctx?.resolvedNames[txId];
+    if (cached != null) {
+      return bill.copyWith(
+        category: cached.categoryName ?? bill.category,
+        account: cached.accountName ?? bill.account,
+      );
+    }
     try {
       final tx = await _repo.getTransactionById(txId);
       if (tx == null) return bill;
@@ -870,4 +923,3 @@ class AiBookkeeper {
     }
   }
 }
-

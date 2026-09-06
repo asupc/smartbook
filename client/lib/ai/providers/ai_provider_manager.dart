@@ -83,11 +83,13 @@ class AIProviderManager {
   }
 
   /// 解析服务商缓存 JSON
-  static Future<List<AIServiceProviderConfig>> _parseProviders(String jsonStr) async {
+  static Future<List<AIServiceProviderConfig>> _parseProviders(
+      String jsonStr) async {
     try {
       final jsonList = jsonDecode(jsonStr) as List;
       var providers = jsonList
-          .map((e) => AIServiceProviderConfig.fromJson(e as Map<String, dynamic>))
+          .map((e) =>
+              AIServiceProviderConfig.fromJson(e as Map<String, dynamic>))
           .toList();
 
       // 确保智谱GLM始终存在
@@ -160,6 +162,10 @@ class AIProviderManager {
   /// 指定能力对应的 provider 是否已配置好(服务端有 key,本地体现为掩码非空)。
   /// v3.2.1 删 OCR 后,图片/语音记账完全依赖 AI,UI 调用前先检查,未配置直接
   /// 提示用户去 AI 设置页,避免 vision()/speechToText() 内部抛异常用户看不懂。
+  ///
+  /// M1-1:这里**只表达配置存在**,不代表运行时可调用。冷启动时本地配置缓存
+  /// 有效而 `AiRelayClient` 尚未注入的窗口内它同样返回 true。自动入口要判断
+  /// 「现在能不能调」必须另看 `AiRuntimeCoordinator.instance`。
   static Future<bool> isCapabilityConfigured(AICapabilityType type) async {
     final provider = await getProviderForCapability(type);
     return provider != null && provider.isValid;
@@ -206,7 +212,8 @@ class AIProviderManager {
   /// 直接添加服务商配置（保留原始 ID，用于配置导入）。
   /// 导入文件里来自新版本的 apiKey 是掩码 —— 掩码不算真 key,置空后由
   /// 服务端按 id 决定保留与否;旧版本导出的真 key 则原样上传。
-  static Future<void> addProviderWithConfig(AIServiceProviderConfig provider) async {
+  static Future<void> addProviderWithConfig(
+      AIServiceProviderConfig provider) async {
     final key = provider.apiKey;
     final upload = AIProviderFactory.isMaskedApiKey(key)
         ? provider.copyWith(apiKey: '')
@@ -244,7 +251,8 @@ class AIProviderManager {
   static Future<void> saveCapabilityBinding(AICapabilityBinding binding) async {
     await _requireServerApi().updateBinding(binding);
     await refreshFromServer();
-    logger.info(_tag, '保存能力绑定: text=${binding.textProviderId}, vision=${binding.visionProviderId}, speech=${binding.speechProviderId}');
+    logger.info(_tag,
+        '保存能力绑定: text=${binding.textProviderId}, vision=${binding.visionProviderId}, speech=${binding.speechProviderId}');
   }
 
   /// 设置单个能力的服务商
@@ -290,7 +298,9 @@ class AIProviderManager {
       if (providers.isEmpty && !(prefs.getBool(_keyLegacyMigrated) ?? false)) {
         await prefs.setBool(_keyLegacyMigrated, true);
         final locals = await getProviders();
-        final legacy = locals.where((p) => !AIProviderFactory.isMaskedApiKey(p.apiKey)).toList();
+        final legacy = locals
+            .where((p) => !AIProviderFactory.isMaskedApiKey(p.apiKey))
+            .toList();
         if (legacy.isNotEmpty) {
           logger.info(_tag, '迁移直连时代的本地服务商配置到服务端: ${legacy.length} 个');
           for (final p in legacy) {
@@ -360,7 +370,8 @@ class AIProviderManager {
     }
 
     final strategy = config['strategy'] as String?;
-    if (strategy != null && strategy.isNotEmpty &&
+    if (strategy != null &&
+        strategy.isNotEmpty &&
         prefs.getString('ai_strategy') != strategy) {
       await prefs.setString('ai_strategy', strategy);
     }
@@ -400,7 +411,8 @@ class AIProviderManager {
 
   /// 保存服务商列表缓存。变更走服务端后由 [refreshFromServer] 回读,这里只
   /// 供缓存初始化/迁移使用。
-  static Future<void> _saveCache(List<AIServiceProviderConfig> providers) async {
+  static Future<void> _saveCache(
+      List<AIServiceProviderConfig> providers) async {
     final prefs = await SharedPreferences.getInstance();
     final jsonStr = jsonEncode(providers.map((p) => p.toJson()).toList());
     await prefs.setString(_keyProviders, jsonStr);
@@ -424,8 +436,10 @@ class AIProviderManager {
     // 读取智谱 GLM 配置（使用正确的 key）
     final glmApiKey = prefs.getString('ai_glm_api_key') ?? '';
     final glmTextModel = prefs.getString('ai_glm_model') ?? 'glm-4-flash';
-    final glmVisionModel = prefs.getString('ai_glm_vision_model') ?? 'glm-4v-flash';
-    final glmAudioModel = prefs.getString('ai_glm_audio_model') ?? 'glm-4-voice';
+    final glmVisionModel =
+        prefs.getString('ai_glm_vision_model') ?? 'glm-4v-flash';
+    final glmAudioModel =
+        prefs.getString('ai_glm_audio_model') ?? 'glm-4-voice';
 
     logger.info(_tag, '迁移智谱配置: apiKey=${glmApiKey.isNotEmpty ? "已配置" : "未配置"}');
 
@@ -459,9 +473,8 @@ class AIProviderManager {
     await _saveCache(providers);
 
     // 设置能力绑定
-    final defaultProviderId = isCustom && customApiKey.isNotEmpty
-        ? 'custom_migrated'
-        : 'zhipu_glm';
+    final defaultProviderId =
+        isCustom && customApiKey.isNotEmpty ? 'custom_migrated' : 'zhipu_glm';
 
     final binding = AICapabilityBinding(
       textProviderId: defaultProviderId,

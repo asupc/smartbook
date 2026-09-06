@@ -36,8 +36,14 @@ class _FakeEngine implements AiExtractionEngine {
   }) async =>
       duplicate
           ? AiExtractionOutcome(
-              duplicate: true, matchedIdentifier: matchedIdentifier)
-          : AiExtractionOutcome(bills: bills);
+              status: ExtractionStatus.duplicate,
+              matchedIdentifier: matchedIdentifier)
+          : AiExtractionOutcome(
+              status: bills.isEmpty
+                  ? ExtractionStatus.noBill
+                  : ExtractionStatus.success,
+              bills: bills,
+            );
 
   @override
   Future<List<BillInfo>> extractFromImage(

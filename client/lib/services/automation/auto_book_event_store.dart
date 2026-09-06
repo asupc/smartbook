@@ -181,16 +181,16 @@ class AutoBookEventStore {
       AutoBookState.ignored ||
       AutoBookState.pending ||
       AutoBookState.failed ||
-      AutoBookState.expired => true,
+      AutoBookState.expired =>
+        true,
       _ => false,
     };
     await (db.update(db.autoBookEvents)..where((t) => t.id.equals(eventId)))
         .write(
       schema.AutoBookEventsCompanion(
         state: d.Value(update.state.value),
-        draftPayloadJson: isTerminal
-            ? const d.Value(null)
-            : const d.Value.absent(),
+        draftPayloadJson:
+            isTerminal ? const d.Value(null) : const d.Value.absent(),
         transactionId: update.transactionId == null
             ? const d.Value.absent()
             : d.Value(update.transactionId),
@@ -599,7 +599,8 @@ class AutoBookEventStore {
   Future<List<schema.AutoBookEvent>> listDrafts({int limit = 50}) {
     return (db.select(db.autoBookEvents)
           ..where((t) => t.draftPayloadJson.isNotNull())
-          ..where((t) => t.state.isIn(['captured', 'processing', 'retry', 'failed']))
+          ..where((t) =>
+              t.state.isIn(['captured', 'processing', 'retry', 'failed']))
           ..orderBy([
             (t) => d.OrderingTerm(
                   expression: t.capturedAt,
@@ -637,10 +638,17 @@ class AutoBookEventStore {
     ));
   }
 
-  /// 手动重试前解除退避闸门(nextRetryAt 置空,让 claim 立即可拿)。
+  /// 手动重试前把事件恢复成「可被 claim」:清空退避闸门 nextRetryAt,并把
+  /// failed 退回 retry —— failed 是终态,claim 会直接拒绝,重放就成了空操作
+  /// (M1-4)。只放开 failed:booked/duplicate/pending/ignored/expired 的内容
+  /// 已被消化或证据已消失,不能靠重放复活。
   Future<void> resetRetryGate(int eventId) async {
+    final event = await findById(eventId);
     await (db.update(db.autoBookEvents)..where((t) => t.id.equals(eventId)))
         .write(schema.AutoBookEventsCompanion(
+      state: event?.state == AutoBookState.failed.value
+          ? d.Value(AutoBookState.retry.value)
+          : const d.Value.absent(),
       nextRetryAt: const d.Value(null),
       updatedAt: d.Value(DateTime.now()),
     ));
@@ -707,11 +715,12 @@ class AutoBookEventStore {
     // 不会再被 claim)+清 expiresAt(不再被本清理删除)。
     try {
       await (db.update(db.autoBookEvents)
-            ..where((t) => t.expiresAt.isNotNull() &
+            ..where((t) =>
+                t.expiresAt.isNotNull() &
                 t.expiresAt.isSmallerThanValue(now) &
                 t.state.isNotIn(const ['expired']) &
-                t.rawEvidenceUploadState.equals(
-                    RawEvidenceUploadState.expired)))
+                t.rawEvidenceUploadState
+                    .equals(RawEvidenceUploadState.expired)))
           .write(const schema.AutoBookEventsCompanion(
         state: d.Value('expired'),
         reason: d.Value('expired_evidence_cleared'),

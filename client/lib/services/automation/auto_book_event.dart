@@ -18,6 +18,15 @@ enum AutoBookSource {
 
 extension AutoBookSourceValue on AutoBookSource {
   String get value => name;
+
+  /// 从事件行读回来源(草稿重放需要用原通道重建 [AutoBookInput])。
+  /// 未知值按 manual 处理,不会被误当成某个自动入口。
+  static AutoBookSource parse(String? raw) {
+    return AutoBookSource.values.firstWhere(
+      (s) => s.value == raw,
+      orElse: () => AutoBookSource.manual,
+    );
+  }
 }
 
 /// 触发意图。自动入口和用户主动入口必须分开，策略不能混用。
@@ -35,6 +44,14 @@ extension AutoBookCaptureIntentValue on AutoBookCaptureIntent {
         AutoBookCaptureIntent.importData => 'import',
         AutoBookCaptureIntent.recurring => 'recurring',
       };
+
+  /// 从事件行读回触发意图(注意 importData 的存储值是 `import`,不等于 name)。
+  static AutoBookCaptureIntent parse(String? raw) {
+    return AutoBookCaptureIntent.values.firstWhere(
+      (i) => i.value == raw,
+      orElse: () => AutoBookCaptureIntent.automatic,
+    );
+  }
 }
 
 /// 自动记账事件生命周期。

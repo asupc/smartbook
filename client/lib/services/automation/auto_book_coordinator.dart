@@ -7,6 +7,7 @@ import '../../data/db.dart';
 import '../../services/system/logger_service.dart';
 import 'auto_book_event.dart';
 import 'auto_book_event_store.dart';
+import 'auto_book_trace.dart';
 
 /// 已经取得处理租约的事件上下文。业务层可以在创建交易后先写入
 /// transactionId，再执行其它易失败的副作用，缩小“交易已落库但事件未关联”的
@@ -101,9 +102,13 @@ class AutoBookCoordinator {
     required Future<T> Function(AutoBookEventContext context) action,
     required AutoBookEventUpdate Function(T value) updateFor,
   }) async {
+    // M0-1:trace 覆盖整条链(claim → 业务 → 终态)。挂在 Zone 上，下层
+    // (中转客户端/记账应用层)不改签名就能打点；主动路径没有 trace。
+    final trace = AutoBookTrace.forInput(input);
     final claim = await store.claim(input);
     if (!claim.acquired) {
       final state = AutoBookStateValue.parse(claim.event.state);
+      trace.stage('claim', outcome: 'skipped_${state.value}');
       logger.debug(_tag, '事件已处理/正在处理，跳过',
           '${input.sourceValue}:${input.eventKey} state=${claim.event.state}');
       return AutoBookExecution<T>(
@@ -117,10 +122,25 @@ class AutoBookCoordinator {
     }
 
     final context = AutoBookEventContext(store: store, event: claim.event);
+    trace.attemptCount = claim.event.attemptCount;
+    trace.stage('claim', outcome: 'acquired');
     try {
-      final value = await action(context);
+      final value = await trace.run(() => action(context));
       final update = updateFor(value);
-      await store.mark(update, eventId: claim.event.id);
+      if (update.state == AutoBookState.retry && update.nextRetryAt == null) {
+        // M1-3:业务层返回的 retryable 结果统一走 markRetry —— mark() 会把
+        // nextRetryAt 原样写成 null,退避闸门失效后桥接广播/启动 drain 会
+        // 立刻重跑同一事件,形成忙循环。attemptCount 由 claim 递增,这里按
+        // 它算 30s→2m→8m→30m→2h 阶梯。
+        await store.markRetry(
+          eventId: claim.event.id,
+          attemptCount: claim.event.attemptCount,
+          error: update.reason ?? 'retryable_outcome',
+        );
+      } else {
+        await store.mark(update, eventId: claim.event.id);
+      }
+      trace.stage('event_terminal', outcome: update.state.value);
       return AutoBookExecution<T>(
         skipped: false,
         value: value,
@@ -140,6 +160,7 @@ class AutoBookCoordinator {
       } catch (markError, markStack) {
         logger.error(_tag, '记录自动记账 retry 状态失败', markError, markStack);
       }
+      trace.stage('event_terminal', outcome: 'exception');
       logger.error(_tag, '自动记账事件执行失败', e, st);
       rethrow;
     }

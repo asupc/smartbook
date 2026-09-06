@@ -26,7 +26,11 @@ class _FixedEngine implements AiExtractionEngine {
     AiExtractionContext ctx, {
     String billGuard = '',
   }) async =>
-      AiExtractionOutcome(bills: bills);
+      AiExtractionOutcome(
+        status:
+            bills.isEmpty ? ExtractionStatus.noBill : ExtractionStatus.success,
+        bills: bills,
+      );
 
   @override
   Future<List<BillInfo>> extractFromImage(

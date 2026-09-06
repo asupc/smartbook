@@ -40,14 +40,94 @@ enum SmsProcessOutcome {
   /// AI 识别到的账单已与已有 canonical transaction 判重，未创建新交易。
   duplicate,
 
-  /// 处理失败(AI 调用/落库异常,丢弃,避免对同一短信反复重试)
+  /// 处理失败但**可重试**(网络/超时/中转未就绪/落库异常):队列项保留,
+  /// 事件进 retry 走退避阶梯。
   failed,
+
+  /// 处理失败且**重试也不会好**(参数非法/上游拒绝/响应不可解析):
+  /// 事件进 failed 终态对用户可见,原始队列项可以 ACK。
+  permanentFailure,
 
   /// 影子模式识别完成，但刻意没有创建交易。
   shadow,
 
   /// 短信已接收但 AI text 未配置 —— 保留队列,配置后下次启动补记
   noAiConfigured,
+}
+
+/// 处理走向 → 事件生命周期状态的**唯一**映射(M1-3)。
+///
+/// 四路监听 + 草稿重放共用它:任何一路自己写 switch,新增走向时都可能漏掉
+/// 分支,把失败落成 `ignored` 终态并 ACK 原生队列 —— 原始短信/通知就永久
+/// 消失了。改这里请连带确认 [SmsProcessOutcome] 的全部成员都有出口。
+extension SmsProcessOutcomeEvent on SmsProcessOutcome {
+  AutoBookState get eventState => switch (this) {
+        SmsProcessOutcome.success => AutoBookState.booked,
+        SmsProcessOutcome.pending => AutoBookState.pending,
+        SmsProcessOutcome.duplicate => AutoBookState.duplicate,
+        SmsProcessOutcome.shadow => AutoBookState.ignored,
+        SmsProcessOutcome.noTransaction => AutoBookState.ignored,
+        // 未配置 AI:保持 captured,配置好后由下次 drain 重跑,不占退避窗口。
+        SmsProcessOutcome.noAiConfigured => AutoBookState.captured,
+        SmsProcessOutcome.failed => AutoBookState.retry,
+        SmsProcessOutcome.permanentFailure => AutoBookState.failed,
+      };
+
+  /// 事件行上的原因码(retry 走 markRetry 时作为 lastError)。不含任何原文。
+  String? get eventReason => switch (this) {
+        SmsProcessOutcome.noAiConfigured => 'ai_not_configured',
+        SmsProcessOutcome.shadow => 'shadow_mode',
+        SmsProcessOutcome.noTransaction => 'no_bill',
+        SmsProcessOutcome.failed => 'ai_retryable',
+        SmsProcessOutcome.permanentFailure => 'ai_permanent_failure',
+        _ => null,
+      };
+
+  AutoBookEventUpdate get eventUpdate =>
+      AutoBookEventUpdate(state: eventState, reason: eventReason);
+
+  /// 原生队列项是否可以 ACK(删除持久化的原始短信/通知)。
+  /// 只有到达终态才允许 —— retryable 失败与未配置都必须保留证据。
+  bool get canAckNativeQueue => switch (this) {
+        SmsProcessOutcome.failed || SmsProcessOutcome.noAiConfigured => false,
+        _ => true,
+      };
+}
+
+/// [BookkeepingResult] → 事件生命周期状态的**唯一**映射(M1-3)。
+///
+/// 直接返回 result 的入口(截图 / 图片分享 / deep-link)共用它。判定顺序与
+/// [SmsProcessOutcomeEvent] 保持一致:三条失败轴必须先于「没识别到账单」,
+/// 否则临时失败会被落成 ignored 终态。
+extension BookkeepingResultEvent on BookkeepingResult {
+  AutoBookState get eventState {
+    if (aiNotConfigured) return AutoBookState.captured;
+    if (retryable || failedCount > 0) return AutoBookState.retry;
+    if (permanentFailure) return AutoBookState.failed;
+    if (awaitingCount > 0) return AutoBookState.pending;
+    if (shadowCount > 0) return AutoBookState.ignored;
+    if (success) return AutoBookState.booked;
+    if (duplicateCount > 0) return AutoBookState.duplicate;
+    return AutoBookState.ignored;
+  }
+
+  /// 事件行上的原因码,不含任何原文。
+  String? get eventReason {
+    if (aiNotConfigured) return 'ai_not_configured';
+    if (retryable || failedCount > 0) return 'ai_retryable';
+    if (permanentFailure) return 'ai_permanent_failure';
+    if (shadowCount > 0) return 'shadow_mode';
+    if (awaitingCount > 0) return 'pending_confirmation';
+    if (!handled) return 'no_bill';
+    return null;
+  }
+
+  AutoBookEventUpdate get eventUpdate => AutoBookEventUpdate(
+        state: eventState,
+        transactionId: firstTransactionId,
+        duplicateOfTransactionId: firstDuplicateTransactionId,
+        reason: eventReason,
+      );
 }
 
 /// 自动记账服务 - 通用核心逻辑
@@ -664,7 +744,15 @@ class AutoBillingService {
             evidenceText: text,
           );
 
-      if (result.retryable || result.failedCount > 0) {
+      if (result.retryable ||
+          result.permanentFailure ||
+          result.failedCount > 0) {
+        // M1-2:识别失败走结果路径(engine 不再抛异常);可重试失败存离线
+        // 草稿,等联网/登录恢复后重跑,不能被当成「没识别到金额」。
+        if (result.retryable) {
+          await _saveDraftForEvent(
+              eventKey, AutoBookDraftPayload(isImage: false, text: text));
+        }
         if (showNotification) {
           await _showFinalNotification(
             progressId: notificationId,
@@ -824,7 +912,14 @@ class AutoBillingService {
         }
         return outcome;
       }
-      if (outcome == SmsProcessOutcome.failed) {
+      if (outcome == SmsProcessOutcome.failed ||
+          outcome == SmsProcessOutcome.permanentFailure) {
+        // M1-2:识别失败走结果路径(engine 不再抛异常),不标记指纹;
+        // 可重试失败额外存离线草稿,等联网/登录恢复后重跑。
+        if (result.retryable) {
+          await _saveDraftForEvent(eventKey,
+              AutoBookDraftPayload(isImage: false, text: body, actor: sender));
+        }
         if (showNotification) {
           await _showFinalNotification(
             progressId: notificationId,
@@ -986,11 +1081,19 @@ class AutoBillingService {
           await store.clearDraft(event.id);
           continue;
         }
-        final replayed0 = await _replayDraft(event, payload);
-        if (replayed0) replayed++;
+        // M1-4:重放改走 Coordinator 后,业务异常会在 markRetry 之后原样抛出。
+        // 单条草稿失败不能带走整批(后面的草稿本来都能跑)。
+        try {
+          final replayed0 = await _replayDraft(event, payload);
+          if (replayed0) replayed++;
+        } catch (e) {
+          logger.warning('AutoBilling', '单条草稿重放失败(继续下一条)',
+              'key=${autoBookHash(event.eventKey, length: 12)} $e');
+        }
       }
       if (drafts.isNotEmpty) {
-        logger.info('AutoBilling', '离线草稿自动重试完成', 'due=${drafts.length}, replayed=$replayed');
+        logger.info('AutoBilling', '离线草稿自动重试完成',
+            'due=${drafts.length}, replayed=$replayed');
       }
       return replayed;
     } catch (e) {
@@ -1001,67 +1104,147 @@ class AutoBillingService {
     }
   }
 
-  /// 按事件原通道重跑识别(coordinator 复用同一 eventKey 幂等)。
-  Future<bool> _replayDraft(AutoBookEvent event, AutoBookDraftPayload payload) async {
+  /// 按事件原通道重跑识别 —— **必须经过 Coordinator**(M1-4)。
+  ///
+  /// 裸调用 `process*` 时事件不会被 claim,也没有状态回写:重试成功后事件仍
+  /// 停在 retry、attemptCount 不增长、退避阶梯不推进,草稿也要靠 process 内
+  /// 部路径顺手清;两个入口(手动重试 / 联网自动补偿)还可能同时跑同一事件。
+  /// 走 `execute` 后与四路监听共用同一份 claim/租约/退避/走向映射,终态时
+  /// `mark()` 一条 UPDATE 同时写状态和清草稿。
+  ///
+  /// 返回 true = 本次真的重新执行了(false = 证据已消失或事件被幂等跳过)。
+  Future<bool> _replayDraft(
+      AutoBookEvent event, AutoBookDraftPayload payload) async {
     final key = event.eventKey;
-    switch (event.source) {
-      case 'screenshot':
-      case 'sharedImage':
+    final coordinator = _container.read(autoBookCoordinatorProvider);
+    final input = _replayInput(event);
+    final actor = payload.actor ?? event.rawActor ?? '';
+    final text = payload.text ?? event.rawText ?? '';
+
+    // 被幂等跳过(终态 / 租约未过期 / 退避未到)时返回 false,调用方据此决定
+    // 提示文案,不会把「跳过」当成「已重新执行」。
+    Future<bool> run<T>(
+      Future<T> Function() action,
+      AutoBookEventUpdate Function(T value) updateFor,
+    ) async {
+      final execution = await coordinator.execute(
+        input: input,
+        action: action,
+        updateFor: updateFor,
+      );
+      return !execution.skipped;
+    }
+
+    switch (input.source) {
+      case AutoBookSource.screenshot:
+      case AutoBookSource.sharedImage:
         final path = payload.imagePath ?? '';
         if (path.isEmpty || !File(path).existsSync()) {
-          // 原图已被清理,无法重跑:清草稿,用户可在草稿列表刷新后看到它消失
-          await _eventStore?.clearDraft(event.id);
+          await _markReplayEvidenceMissing(event);
           return false;
         }
-        await processScreenshot(path, showNotification: true, eventKey: key);
-        return true;
-      case 'sms':
-        await processSms(
-          payload.actor ?? event.rawActor ?? '',
-          payload.text ?? event.rawText ?? '',
-          showNotification: true,
-          skipDedup: true,
-          eventKey: key,
+        return run<BookkeepingResult>(
+          () => processScreenshot(path, showNotification: true, eventKey: key),
+          (result) => result.eventUpdate,
         );
-        return true;
-      case 'notification':
-        await processNotification(
-          payload.actor ?? event.rawActor ?? '',
-          payload.title ?? event.rawTitle ?? '',
-          payload.text ?? event.rawText ?? '',
-          showNotification: true,
-          skipDedup: true,
-          eventKey: key,
+      case AutoBookSource.sms:
+        return run<SmsProcessOutcome>(
+          () => processSms(
+            actor,
+            text,
+            showNotification: true,
+            skipDedup: true,
+            eventKey: key,
+          ),
+          (outcome) => outcome.eventUpdate,
         );
-        return true;
-      case 'screenText':
-        await processScreenText(
-          payload.actor ?? event.rawActor ?? '',
-          payload.text ?? event.rawText ?? '',
-          showNotification: true,
-          skipDedup: true,
-          eventKey: key,
+      case AutoBookSource.notification:
+        return run<SmsProcessOutcome>(
+          () => processNotification(
+            actor,
+            payload.title ?? event.rawTitle ?? '',
+            text,
+            showNotification: true,
+            skipDedup: true,
+            eventKey: key,
+          ),
+          (outcome) => outcome.eventUpdate,
         );
-        return true;
+      case AutoBookSource.screenText:
+        return run<SmsProcessOutcome>(
+          () => processScreenText(
+            actor,
+            text,
+            showNotification: true,
+            skipDedup: true,
+            eventKey: key,
+          ),
+          (outcome) => outcome.eventUpdate,
+        );
       default:
         // deepLinkText / 其它文本通道
-        final text = payload.text ?? event.rawText ?? '';
         if (text.isEmpty) {
-          await _eventStore?.clearDraft(event.id);
+          await _markReplayEvidenceMissing(event);
           return false;
         }
-        await processTextResult(text, showNotification: true, eventKey: key);
-        return true;
+        return run<BookkeepingResult>(
+          () => processTextResult(text, showNotification: true, eventKey: key),
+          (result) => result.eventUpdate,
+        );
     }
+  }
+
+  /// 从事件行重建重放输入(M1-4)。
+  ///
+  /// 事件已经存在,`ensure()` 会按 eventKey 回读原行,这里的字段只在原行已被
+  /// 过期清理、需要重新落行时生效 —— 所以来源/意图/时间/通道都取事件行原值,
+  /// 不用 now()。raw* 证据一律不重新提交:草稿正文是否落盘由捕获时的留存
+  /// 策略决定,重放不能绕过它把正文再写一次。
+  AutoBookInput _replayInput(AutoBookEvent event) {
+    return AutoBookInput(
+      eventKey: event.eventKey,
+      source: AutoBookSourceValue.parse(event.source),
+      captureIntent: AutoBookCaptureIntentValue.parse(event.captureIntent),
+      ledgerId: event.ledgerId,
+      capturedAt: event.capturedAt,
+      sourceOccurredAt: event.sourceOccurredAt,
+      sourceChannel: event.sourceChannel,
+      externalId: event.externalId,
+      contentHash: event.contentHash,
+      expiresAt: event.expiresAt,
+    );
+  }
+
+  /// 草稿要重放的原始证据已经不在了(截图原图被系统/用户清掉、文本证据到期
+  /// 被清理):落 expired 终态 + 原因码,历史页能看到「为什么停下」,而不是
+  /// 草稿静默蒸发(M1-4)。终态 `mark()` 会同时清空 draftPayloadJson。
+  Future<void> _markReplayEvidenceMissing(AutoBookEvent event) async {
+    final store = _eventStore;
+    if (store == null) return;
+    await store.mark(
+      const AutoBookEventUpdate(
+        state: AutoBookState.expired,
+        reason: 'draft_evidence_missing',
+      ),
+      eventId: event.id,
+    );
+    logger.info('AutoBilling', '草稿原始证据已消失,事件置为 expired',
+        'key=${autoBookHash(event.eventKey, length: 12)} source=${event.source}');
   }
 
   /// 将统一结果映射为队列可理解的状态。失败优先于 pending，避免部分
   /// 成功时把尚未落库的账单误当作已完成；saved transaction 会在调用方先做
   /// post-process，下一次 retry 再由语义去重兜底。
+  ///
+  /// M1-2:三条失败轴(aiNotConfigured / retryable / permanentFailure)都必须
+  /// 有各自出口 —— 任何一条落到末尾的 `noTransaction` 都等于把失败当「不是
+  /// 账单」终结并 ACK 原始队列,证据永久丢失。
   SmsProcessOutcome _outcomeForResult(BookkeepingResult result) {
+    if (result.aiNotConfigured) return SmsProcessOutcome.noAiConfigured;
     if (result.failedCount > 0 || result.retryable) {
       return SmsProcessOutcome.failed;
     }
+    if (result.permanentFailure) return SmsProcessOutcome.permanentFailure;
     if (result.awaitingCount > 0) return SmsProcessOutcome.pending;
     if (result.shadowCount > 0) return SmsProcessOutcome.shadow;
     if (result.success) return SmsProcessOutcome.success;
@@ -1168,7 +1351,16 @@ class AutoBillingService {
         }
         return outcome;
       }
-      if (outcome == SmsProcessOutcome.failed) {
+      if (outcome == SmsProcessOutcome.failed ||
+          outcome == SmsProcessOutcome.permanentFailure) {
+        // M1-2:识别失败走结果路径(engine 不再抛异常),不标记指纹;
+        // 可重试失败额外存离线草稿,等联网/登录恢复后重跑。
+        if (result.retryable) {
+          await _saveDraftForEvent(
+              eventKey,
+              AutoBookDraftPayload(
+                  isImage: false, text: body, title: title, actor: pkg));
+        }
         if (showNotification) {
           await _showFinalNotification(
             progressId: notificationId,
@@ -1372,7 +1564,14 @@ class AutoBillingService {
         }
         return outcome;
       }
-      if (outcome == SmsProcessOutcome.failed) {
+      if (outcome == SmsProcessOutcome.failed ||
+          outcome == SmsProcessOutcome.permanentFailure) {
+        // M1-2:识别失败走结果路径(engine 不再抛异常),不标记指纹;
+        // 可重试失败额外存离线草稿,等联网/登录恢复后重跑。
+        if (result.retryable) {
+          await _saveDraftForEvent(eventKey,
+              AutoBookDraftPayload(isImage: false, text: text, actor: pkg));
+        }
         if (showNotification && !notifyOnlyOnSuccess) {
           await _showFinalNotification(
             progressId: notificationId,
@@ -1641,8 +1840,9 @@ class AutoBillingService {
     String dateLabel = '';
     String amountLabel = '';
     try {
-      final tx =
-          await _container.read(repositoryProvider).getTransactionById(ids.first);
+      final tx = await _container
+          .read(repositoryProvider)
+          .getTransactionById(ids.first);
       if (tx != null) {
         dateLabel = '${tx.happenedAt.month}/${tx.happenedAt.day}';
         amountLabel = tx.amount.abs().toStringAsFixed(2);

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import '../../services/system/logger_service.dart';
@@ -17,12 +18,12 @@ import 'prompt_builder.dart';
 /// 中转现场直接落库(`ai_analysis_logs`,截图原文随请求落盘),引擎层不再
 /// 事后上报。
 abstract class AiExtractionEngine {
-  /// 从文本提取账单信息。[AiExtractionOutcome.bills] 空 list 表示失败或无
-  /// 有效账单;[AiExtractionOutcome.duplicate] = 服务端识别前判重命中
-  /// (订单号/流水号已存在),App 端应静默跳过 —— 不记账不通知。
+  /// 从文本提取账单信息。结果一律由 [AiExtractionOutcome.status] 表达:
+  /// `noBill`(模型明确说不是账单)与 `retryableFailure` / `permanentFailure`
+  /// (调用/解析失败)是**不同**语义,自动入口据此决定重试还是终结事件。
   ///
-  /// 可恢复的临时失败(连不上服务端/超时)会以 [AIException](transient=true)
-  /// 抛出,由自动入口保存草稿等待重试;其它失败返回空 outcome。
+  /// M1-2:禁止用「空 bills」代表异常 —— 那会让瞬态失败被当成「非账单」而
+  /// 误 ACK 原始队列项,事件永久丢失。
   ///
   /// [billGuard] 前置过滤段，截图/自动路径传入 [PromptBuilder.billGuardForImage]，
   /// 聊天等主动输入传空字符串。
@@ -63,22 +64,67 @@ class AudioExtractionResult {
   });
 }
 
+/// 一次文本提取的结果语义(M1-2)。
+///
+/// 关键约束:**「没有账单」和「调用失败」必须是不同状态**。旧实现把两者都
+/// 表达成空 bills,导致 Relay 未就绪 / 网络抖动被自动入口当成「不是交易」,
+/// 事件被终结并 ACK 原始队列 —— 真实短信永久丢失。
+enum ExtractionStatus {
+  /// 模型正常返回,解析出至少一笔账单。
+  success,
+
+  /// 模型正常返回,但明确不是账单(或解析后没有有效账单)。
+  /// **只有这个状态允许把事件终结为 ignored 并 ACK 原始队列。**
+  noBill,
+
+  /// 服务端识别前判重命中:本次没有调用 LLM,按重复账单静默处理。
+  duplicate,
+
+  /// 临时失败(Relay 未注入 / 会话恢复中 / 网络 / 超时 / 限流 / 上游 5xx),
+  /// 应退避后重试。
+  retryableFailure,
+
+  /// 永久失败(参数非法 / 上游拒绝 / 响应结构不可解析),重试无意义,
+  /// 事件进 failed 并对用户可见。
+  permanentFailure,
+}
+
 /// 一次文本提取的完整结果。
 class AiExtractionOutcome {
+  /// 结果语义。调用方**必须**按它分支,不得只看 [bills] 是否为空。
+  final ExtractionStatus status;
+
   final List<BillInfo> bills;
 
-  /// 服务端识别前判重命中:该输入包含已识别过的账单唯一标识,
-  /// 本次没有调用 LLM, bills 为空。应用层按「重复账单」静默处理。
-  final bool duplicate;
+  /// 可区分的失败原因码(见 [AIException.code]),失败时才有值。
+  /// 只用于日志与事件 reason,不含任何输入原文。
+  final String? errorCode;
 
-  /// 命中的归一化唯一标识(订单号/流水号)。
+  /// 可直接展示给用户的脱敏提示,失败时才有值。
+  final String? safeMessage;
+
+  /// 命中的归一化唯一标识(订单号/流水号),仅 [ExtractionStatus.duplicate]。
   final String? matchedIdentifier;
 
   const AiExtractionOutcome({
+    required this.status,
     this.bills = const [],
-    this.duplicate = false,
+    this.errorCode,
+    this.safeMessage,
     this.matchedIdentifier,
   });
+
+  /// 服务端识别前判重命中:该输入包含已识别过的账单唯一标识,
+  /// 本次没有调用 LLM。应用层按「重复账单」静默处理。
+  bool get duplicate => status == ExtractionStatus.duplicate;
+
+  /// 调用/解析失败(与「不是账单」严格区分)。
+  bool get failed =>
+      status == ExtractionStatus.retryableFailure ||
+      status == ExtractionStatus.permanentFailure;
+
+  /// 可退避重试。
+  bool get retryable => status == ExtractionStatus.retryableFailure;
 }
 
 /// 默认实现:`PromptBuilder` + `AIProviderFactory` + `JsonResponseParser`。
@@ -102,7 +148,10 @@ class DefaultAiExtractionEngine implements AiExtractionEngine {
   }) async {
     if (text.trim().isEmpty) {
       logger.warning(_tag, '输入文本为空');
-      return const AiExtractionOutcome();
+      return const AiExtractionOutcome(
+        status: ExtractionStatus.noBill,
+        errorCode: 'empty_input',
+      );
     }
     try {
       final prompt = _promptBuilder.build(
@@ -128,20 +177,39 @@ class DefaultAiExtractionEngine implements AiExtractionEngine {
         // 服务端识别前判重:同一笔账单(订单号/流水号)已识别过,
         // 本次没有调用 LLM。应用层据此静默跳过(不记账不通知)。
         return AiExtractionOutcome(
-          duplicate: true,
+          status: ExtractionStatus.duplicate,
           matchedIdentifier: response.matchedIdentifier,
         );
       }
-      return AiExtractionOutcome(bills: _parser.parse(response.content));
+      final bills = _parser.parse(response.content);
+      return AiExtractionOutcome(
+        status:
+            bills.isEmpty ? ExtractionStatus.noBill : ExtractionStatus.success,
+        bills: bills,
+      );
     } on AIException catch (e) {
-      // 可恢复的临时失败(连不上服务端等)向上抛,让自动入口保存草稿重试;
-      // 其它失败(参数/配置/上游拒绝)按"无有效账单"处理。
-      if (e.transient) rethrow;
-      logger.warning(_tag, '文本账单提取失败: ${e.message}');
-      return const AiExtractionOutcome();
+      // M1-2:失败不再退化成空 bills。transient(Relay 未就绪 / 网络 / 超时 /
+      // 限流 / 上游 5xx / 会话待恢复)→ retryableFailure,自动入口保存草稿并
+      // 退避;其余(参数 / 配置 / 上游拒绝)→ permanentFailure,进 failed 让
+      // 用户可见,两者都**不允许**被当成「不是账单」。
+      logger.warning(_tag, '文本账单提取失败: ${e.message} (code=${e.code})');
+      return AiExtractionOutcome(
+        status: e.transient
+            ? ExtractionStatus.retryableFailure
+            : ExtractionStatus.permanentFailure,
+        errorCode: e.code ?? (e.transient ? 'transient' : 'permanent'),
+        safeMessage: e.message,
+      );
     } catch (e, st) {
       logger.error(_tag, '文本账单提取异常', e, st);
-      return const AiExtractionOutcome();
+      final transient = e is SocketException || e is TimeoutException;
+      return AiExtractionOutcome(
+        status: transient
+            ? ExtractionStatus.retryableFailure
+            : ExtractionStatus.permanentFailure,
+        errorCode: transient ? 'network' : 'unexpected',
+        safeMessage: transient ? '网络异常,稍后自动重试' : 'AI 识别异常',
+      );
     }
   }
 
