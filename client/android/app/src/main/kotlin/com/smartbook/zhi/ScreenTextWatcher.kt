@@ -127,6 +127,10 @@ open class ScreenTextWatcher : AccessibilityService() {
                 log("页面内容命中垃圾特征,丢弃: $pkg len=$logLen")
                 return
             }
+            if (isMarketingPage(text)) {
+                log("页面内容命中营销特征且无交易特征,丢弃: $pkg len=$logLen")
+                return
+            }
             if (isChatPage(pkg, lastPageClass)) {
                 log("页面类名命中聊天页黑名单,丢弃: $pkg/$lastPageClass len=$logLen")
                 return
@@ -221,8 +225,19 @@ open class ScreenTextWatcher : AccessibilityService() {
     // ------------------------------------------------------------
 
     fun shouldReject(text: String): Boolean {
-        return REJECT_KEYWORDS.any { text.contains(it) } ||
-            MARKETING_KEYWORDS.any { text.contains(it) }
+        return REJECT_KEYWORDS.any { text.contains(it) }
+    }
+
+    /**
+     * 营销页拒识:营销词命中 **且** 页面没有详情页强交易特征时才整页丢弃。
+     * 真实账单详情页会把「立减/满减/优惠券」作为抵扣行内嵌(如支付宝账单
+     * 详情的「碰一下立减 -0.44」),营销词整页子串一票否决会把真账单当
+     * 营销页丢弃(2026-09-06 真机漏记根因);而纯营销/活动页(领券中心、
+     * 秒杀频道)不会带「账单详情/交易成功/订单金额」这类强特征,仍在此被
+     * 挡 —— 就算漏过,后面还有列表页/不可入账状态两道闸和 AI 最终判定兜底。
+     */
+    fun isMarketingPage(text: String): Boolean {
+        return MARKETING_KEYWORDS.any { text.contains(it) } && !hasTradeHint(text)
     }
 
     /** 页面文本中是否出现金额(¥/￥ 前缀或 x元/x块 写法)。 */
@@ -442,6 +457,8 @@ open class ScreenTextWatcher : AccessibilityService() {
             "身份验证", "考试", "取件码", "网页链接", "点击链接", "查看链接"
         )
 
+        /** 营销特征词:本路径不做一票否决,只在页面无详情页交易特征时拒识
+            (见 isMarketingPage —— 真实账单详情常内嵌「立减/满减」抵扣行)。 */
         private val MARKETING_KEYWORDS = listOf(
             "退订", "回复TD", "优惠券", "消费券", "满减", "秒杀", "邀请码", "购物节",
             "双11", "双十一", "618", "促销", "特惠", "会员日", "立减",

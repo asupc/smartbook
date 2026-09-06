@@ -110,7 +110,39 @@ class ScreenTextWatcherTest {
 
     @Test
     fun `营销页面被拒`() {
-        assertTrue(watcher.shouldReject("618大促,满减优惠券,领券立减100"))
+        // 无详情页交易特征的纯营销页仍被拒(经 isMarketingPage 组合闸)
+        val text = "618大促,满减优惠券,领券立减100"
+        assertFalse(watcher.shouldReject(text))
+        assertTrue(watcher.isMarketingPage(text))
+    }
+
+    @Test
+    fun `支付宝账单详情含立减抵扣行不再被营销词误杀`() {
+        // 2026-09-06 真机漏记根因:支付宝账单详情把优惠写成「碰一下立减 -0.44」,
+        // 「立减」命中营销词后整页一票否决。真实详情页有标题/状态级强特征,
+        // 营销词只在无交易特征时才拒识。
+        val text = "账单详情\n邻哒超市\n-3.56\n交易成功\n" +
+            "订单金额 4.00\n碰一下立减 -0.44\n" +
+            "支付时间 2026-09-06 17:46:26\n" +
+            "付款方式 招商银行信用卡(1467)\n" +
+            "商品说明 2000455268711460\n" +
+            "收款方全称 *强(个人)\n" +
+            "账单管理\n账单分类 日用百货\n计入收支"
+        assertFalse(watcher.shouldReject(text))
+        assertFalse(watcher.isMarketingPage(text))
+        assertTrue(watcher.hasAmount(text))
+        assertTrue(watcher.hasTradeHint(text))
+        assertFalse(watcher.isListPage(text))
+        assertFalse(watcher.isNonBookableStatus(text))
+    }
+
+    @Test
+    fun `有交易特征的营销活动页不整页拒识由后续闸门兜底`() {
+        // 京东订单详情常见「促销 -¥x」抵扣行:有强交易特征,营销词让位,
+        // 是否入账交给列表页/状态闸与 AI 判定
+        val text = "订单详情\n促销 -¥10.00\n优惠券 -¥5.00\n实付款 ¥89.00\n交易成功"
+        assertFalse(watcher.isMarketingPage(text))
+        assertTrue(watcher.hasTradeHint(text))
     }
 
     @Test
