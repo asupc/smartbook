@@ -7218,11 +7218,11 @@ class AppLocalizationsZh extends AppLocalizations {
   String get syncForceRestoreConfirmTitle => '以服务端为准恢复？';
 
   @override
-  String get syncForceRestoreConfirmBody => '将清空当前账本的本地交易与预算，并从服务端重新下载。此操作不可撤销。';
+  String get syncForceRestoreConfirmBody => '将清空当前账本的本地交易与预算，并用服务端数据覆盖账户、分类与标签（本地多出的条目会被删除，且影响所有账本共用的数据）。此操作不可撤销。';
 
   @override
-  String syncForceRestoreSuccess(int tx, int budget) {
-    return '已按服务端恢复（交易 $tx 笔，预算 $budget 笔）';
+  String syncForceRestoreSuccess(int tx, int budget, int accounts, int categories, int tags) {
+    return '已按服务端恢复：交易 $tx 笔、预算 $budget 笔、账户 $accounts 个、分类 $categories 个、标签 $tags 个';
   }
 
   @override

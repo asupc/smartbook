@@ -1353,18 +1353,24 @@ class SyncEngine implements app.SyncService {
     return (inserted: result.inserted, deletedDup: 0);
   }
 
-  /// 「以服务端为准」强制恢复当前账本：清空本地交易 + 预算，从 /sync/full
-  /// 权威快照重建，并把 pull cursor 推进到服务端 latest_cursor。
+  /// 「以服务端为准」强制恢复当前账本：清空本地交易 + 预算，**并用服务端
+  /// 快照覆盖重建账户/分类/标签**，从 /sync/full 权威快照重建，把 pull
+  /// cursor 推进到服务端 latest_cursor。
   ///
   /// 用于 pull 侧整页 apply 失败导致 cursor 卡住、本地与云端分叉后的手动自救。
   /// 关键安全约束（见计划）：
-  /// - 清空与重建都**绕过 ChangeTracker**（db 直写 + recordChanges:false），
-  ///   绝不把 delete / upsert 记进 local_changes，避免恢复后反向推服务端造成
-  ///   二次覆盖或删光服务端数据。
-  /// - 只清交易 + 预算（ledger-scoped），**不碰 account/category/tag**（
-  ///   user-global 共享数据）。
+  /// - 清空与重建都**绕过 ChangeTracker 的 user change 记录**（db 直写 +
+  ///   不走 repo.create*），绝不把 delete / upsert 记成未推送 local_changes，
+  ///   避免恢复后反向推服务端造成二次覆盖或删光服务端数据。重建出的每个
+  ///   user-global 实体都会补打 `recordPulledFromServer` 标记，防止
+  ///   [_backfillLegacyUserGlobalChanges] 把它们当 legacy 再反推回服务端。
+  /// - 交易/预算只清当前账本（ledger-scoped）；账户/分类/标签是 user-global
+  ///   共享数据，**整表按快照覆盖**：快照里没有的本地行（含 NULL syncId 的
+  ///   seed 残留）会被删除 —— 这是「本地分类 53 vs 云端 96」这类差异的收敛
+  ///   手段。删除语义与 pull delete 一致（tag 关联清除、分类图标文件清理）。
   /// - 推进 cursor 到 latest_cursor，跳过导致卡住的历史坏 change。
-  Future<({int inserted, int restoredBudgets})> forceRestoreFromServer({
+  Future<({int inserted, int restoredBudgets, int restoredAccounts,
+          int restoredCategories, int restoredTags})> forceRestoreFromServer({
     required int ledgerId,
   }) async {
     logger.info('SyncEngine', 'forceRestoreFromServer: 以服务端为准恢复 ledger=$ledgerId');
@@ -1377,7 +1383,13 @@ class SyncEngine implements app.SyncService {
     final content = snap.content;
     if (content == null) {
       logger.warning('SyncEngine', 'forceRestoreFromServer: 服务端无快照，中止');
-      return (inserted: 0, restoredBudgets: 0);
+      return (
+        inserted: 0,
+        restoredBudgets: 0,
+        restoredAccounts: 0,
+        restoredCategories: 0,
+        restoredTags: 0
+      );
     }
 
     // 1. 清空本地交易（级联删 tags / attachments）+ 预算。直接 db 写，不记 change。
@@ -1411,13 +1423,14 @@ class SyncEngine implements app.SyncService {
           .go();
     });
 
-    // 3. 从权威快照重建交易（recordChanges:false，不反向回流）。
-    //    ⚠️ 不能用 importTransactionsJson：它内部会连账户/分类/标签一起导入，
-    //    且 importAccounts/importCategories/importTags 不看 recordChanges，
-    //    无条件走 repo.create* 记 user-global change 推回服务端 → 服务端
-    //    账户/分类/标签膨胀（正是「以服务端为准后服务端变多」的根因）。
-    //    这里只重建交易：用本地现有 account/category/tag 构建映射（只查不导），
-    //    直接调 importTransactions。
+    // 3. 用服务端快照覆盖重建账户/分类/标签（见 [_restoreUserGlobalFromSnapshot]）。
+    //    ⚠️ 不能用 importTransactionsJson 的账户/分类/标签导入：它走
+    //    repo.create* 记 user-global change 推回服务端 → 服务端账户/分类/标签
+    //    膨胀（正是「以服务端为准后服务端变多」的根因）。
+    final restored = await _restoreUserGlobalFromSnapshot(content);
+
+    // 4. 从权威快照重建交易（recordChanges:false，不反向回流）。映射表在
+    //    user-global 重建**之后**构建，交易才能挂上刚重建的账户/分类/标签。
     final importData = parseJsonToImportData(content);
     final accountNameToId = <String, int>{
       for (final a in await repo.getAllAccounts()) a.name: a.id,
@@ -1445,17 +1458,18 @@ class SyncEngine implements app.SyncService {
     );
     final result = (inserted: importResult.inserted,);
 
-    // 4. 从权威快照重建预算（轻量解析，db 直写保留 syncId，不记 change）。
+    // 5. 从权威快照重建预算（轻量解析，db 直写保留 syncId，不记 change）。
+    //    在分类重建之后执行，分类预算的 syncId 才解析得到。
     final restoredBudgets = await _restoreBudgetsFromSnapshot(ledgerId, content);
 
-    // 5. 推进 cursor 到服务端 latest_cursor，跳过卡住的历史坏 change。
+    // 6. 推进 cursor 到服务端 latest_cursor，跳过卡住的历史坏 change。
     if (snap.latestCursor > 0) {
       await appCursor.commit(snap.latestCursor);
       logger.info('SyncEngine',
           'forceRestoreFromServer: cursor 推进到 ${snap.latestCursor}');
     }
 
-    // 6. 重建附件。
+    // 7. 重建附件。
     try {
       await downloadAttachments(ledgerId: ledgerId);
     } catch (e, st) {
@@ -1463,8 +1477,487 @@ class SyncEngine implements app.SyncService {
     }
 
     logger.info('SyncEngine',
-        'forceRestoreFromServer 完成: 交易 ${result.inserted} 笔, 预算 $restoredBudgets 笔');
-    return (inserted: result.inserted, restoredBudgets: restoredBudgets);
+        'forceRestoreFromServer 完成: 交易 ${result.inserted} 笔, 预算 $restoredBudgets 笔, '
+        '账户 ${restored.accounts}(删${restored.deletedAccounts}) '
+        '分类 ${restored.categories}(删${restored.deletedCategories}) '
+        '标签 ${restored.tags}(删${restored.deletedTags})');
+    return (
+      inserted: result.inserted,
+      restoredBudgets: restoredBudgets,
+      restoredAccounts: restored.accounts,
+      restoredCategories: restored.categories,
+      restoredTags: restored.tags,
+    );
+  }
+
+  /// 从 /sync/full 快照 JSON **覆盖重建** user-global 实体（账户/分类/标签）。
+  ///
+  /// 语义对齐 pull 的 `_apply*Change` upsert（syncId 命中更新、NULL-syncId
+  /// seed 按名收编、自定义图标入队下载），但整批跑在一个事务里且不产生任何
+  /// 未推送 change：
+  /// - 快照里**没有**的本地行（NULL syncId 残留、同 syncId 重复行）按 pull
+  ///   delete 同款语义删除（tag 关联清除、分类图标文件清理、子先于父）；
+  /// - 每个重建实体补打 `recordPulledFromServer` 标记，防止 legacy backfill
+  ///   把它们再推回服务端（「以服务端为准后服务端变多」的根因）；
+  /// - 先作废全部未推送的 user-global change —— 恢复后本地旧意图不得再上推。
+  ///
+  /// 快照缺某个数组的 key（老服务端）时**跳过**该类型（不删不建）；key 存在
+  /// 但为空列表则按服务端权威清空。分类重建先一级后二级，预算重建依赖此顺序。
+  Future<({int accounts, int categories, int tags, int deletedAccounts,
+          int deletedCategories, int deletedTags})>
+      _restoreUserGlobalFromSnapshot(String content) async {
+    const zeros = (
+      accounts: 0,
+      categories: 0,
+      tags: 0,
+      deletedAccounts: 0,
+      deletedCategories: 0,
+      deletedTags: 0,
+    );
+    final decoded = jsonDecode(content);
+    if (decoded is! Map<String, dynamic>) return zeros;
+    // key 缺失 = 老服务端不提供该类型，跳过（绝不能误当空集清空本地）
+    final accountsRaw =
+        decoded['accounts'] is List ? decoded['accounts'] as List : null;
+    final categoriesRaw =
+        decoded['categories'] is List ? decoded['categories'] as List : null;
+    final tagsRaw = decoded['tags'] is List ? decoded['tags'] as List : null;
+    if (accountsRaw == null && categoriesRaw == null && tagsRaw == null) {
+      return zeros;
+    }
+
+    var restoredAccounts = 0, restoredCategories = 0, restoredTags = 0;
+    var deletedAccounts = 0, deletedCategories = 0, deletedTags = 0;
+
+    await db.transaction(() async {
+      // 0) 作废本地 user-global 未推送意图：以服务端为准后，本地旧改名/新建
+      //    不得再经 push 覆盖权威数据。已推送的 marker 行保留（防 backfill）。
+      await (db.delete(db.localChanges)
+            ..where((c) => c.entityType
+                    .isIn(['account', 'category', 'tag']) &
+                c.pushedAt.isNull()))
+          .go();
+
+      // ---------- 账户 ----------
+      if (accountsRaw != null) {
+        final snapSyncIds = <String>{};
+        for (final raw in accountsRaw) {
+          if (raw is! Map<String, dynamic>) continue;
+          final syncId = (raw['syncId'] as String?)?.trim();
+          if (syncId == null || syncId.isEmpty) continue;
+          snapSyncIds.add(syncId);
+          final name = raw['name'] as String? ?? '';
+          final type = raw['type'] as String? ?? 'cash';
+          final currency = raw['currency'] as String? ?? 'CNY';
+          final initialBalance =
+              (raw['initialBalance'] as num?)?.toDouble() ?? 0.0;
+          final sortOrder = (raw['sortOrder'] as num?)?.toInt() ?? 0;
+          final hidden =
+              raw.containsKey('hidden') ? (raw['hidden'] as bool? ?? false) : null;
+
+          // syncId 命中 → 更新；miss → 按 name 收编 NULL-syncId seed 行
+          // （与 _applyAccountChange 一致，避免同名重复并保住本地 int id）。
+          var existing = await (db.select(db.accounts)
+                ..where((a) => a.syncId.equals(syncId))
+                ..limit(1))
+              .getSingleOrNull();
+          if (existing == null && name.isNotEmpty) {
+            existing = await (db.select(db.accounts)
+                  ..where((a) => a.name.equals(name))
+                  ..where((a) => a.syncId.isNull())
+                  ..limit(1))
+                .getSingleOrNull();
+          }
+
+          int localId;
+          if (existing != null) {
+            localId = existing.id;
+            await (db.update(db.accounts)..where((a) => a.id.equals(localId)))
+                .write(AccountsCompanion(
+              name: d.Value(name),
+              type: d.Value(type),
+              currency: d.Value(currency),
+              initialBalance: d.Value(initialBalance),
+              sortOrder: d.Value(sortOrder),
+              creditLimit: d.Value((raw['creditLimit'] as num?)?.toDouble()),
+              billingDay: d.Value((raw['billingDay'] as num?)?.toInt()),
+              paymentDueDay: d.Value((raw['paymentDueDay'] as num?)?.toInt()),
+              bankName: d.Value(raw['bankName'] as String?),
+              cardLastFour: d.Value(raw['cardLastFour'] as String?),
+              note: d.Value(raw['note'] as String?),
+              syncId: d.Value(syncId),
+              hidden:
+                  hidden == null ? const d.Value.absent() : d.Value(hidden),
+            ));
+          } else {
+            localId = await db.into(db.accounts).insert(
+                  AccountsCompanion.insert(
+                    ledgerId: 0, // user-global 约定，同 _applyAccountChange
+                    name: name,
+                    type: d.Value(type),
+                    currency: d.Value(currency),
+                    initialBalance: d.Value(initialBalance),
+                    sortOrder: d.Value(sortOrder),
+                    creditLimit:
+                        d.Value((raw['creditLimit'] as num?)?.toDouble()),
+                    billingDay: d.Value((raw['billingDay'] as num?)?.toInt()),
+                    paymentDueDay:
+                        d.Value((raw['paymentDueDay'] as num?)?.toInt()),
+                    bankName: d.Value(raw['bankName'] as String?),
+                    cardLastFour: d.Value(raw['cardLastFour'] as String?),
+                    note: d.Value(raw['note'] as String?),
+                    syncId: d.Value(syncId),
+                    hidden: d.Value(hidden ?? false),
+                  ),
+                );
+          }
+          await changeTracker.recordPulledFromServer(
+            entityType: 'account',
+            entityId: localId,
+            entitySyncId: syncId,
+            ledgerId: 0,
+          );
+          restoredAccounts++;
+        }
+
+        // 删除快照里没有的行（含 NULL syncId 残留、同 syncId 的重复行）
+        final rows = await (db.select(db.accounts)
+              ..orderBy([(a) => d.OrderingTerm.asc(a.id)]))
+            .get();
+        final seen = <String>{};
+        final extraIds = <int>[];
+        final extraSyncIds = <String>[];
+        for (final a in rows) {
+          final s = a.syncId;
+          if (s != null && snapSyncIds.contains(s)) {
+            if (!seen.add(s)) {
+              extraIds.add(a.id);
+              extraSyncIds.add(s);
+            }
+          } else {
+            extraIds.add(a.id);
+            if (s != null) extraSyncIds.add(s);
+          }
+        }
+        if (extraIds.isNotEmpty) {
+          // 残留 change 全清（含老 pushed marker），防 push 复活已删实体
+          await (db.delete(db.localChanges)
+                ..where((c) => c.entityType.equals('account') &
+                    c.entitySyncId.isIn(extraSyncIds)))
+              .go();
+          await (db.delete(db.accounts)..where((a) => a.id.isIn(extraIds)))
+              .go();
+          deletedAccounts = extraIds.length;
+        }
+      }
+
+      // ---------- 分类（先一级后二级，二级挂父） ----------
+      if (categoriesRaw != null) {
+        final maps =
+            categoriesRaw.whereType<Map<String, dynamic>>().toList();
+        final snapSyncIds = <String>{};
+        final level1 = <Map<String, dynamic>>[];
+        final level2 = <Map<String, dynamic>>[];
+        for (final raw in maps) {
+          final syncId = (raw['syncId'] as String?)?.trim();
+          if (syncId == null || syncId.isEmpty) continue;
+          snapSyncIds.add(syncId);
+          final parentName = raw['parentName'] as String?;
+          if ((raw['level'] as num?)?.toInt() == 2 &&
+              parentName != null &&
+              parentName.isNotEmpty) {
+            level2.add(raw);
+          } else {
+            level1.add(raw);
+          }
+        }
+
+        Future<int> upsertCategory(Map<String, dynamic> raw,
+            {required bool isLevel2}) async {
+          final syncId = (raw['syncId'] as String?)!.trim();
+          final name = raw['name'] as String? ?? '';
+          final kind = raw['kind'] as String? ?? 'expense';
+          final level = isLevel2 ? 2 : ((raw['level'] as num?)?.toInt() ?? 1);
+          final sortOrder = (raw['sortOrder'] as num?)?.toInt() ?? 0;
+          final icon = raw['icon'] as String?;
+          final iconType = raw['iconType'] as String? ?? 'material';
+
+          int? parentId;
+          if (isLevel2) {
+            final parentName = raw['parentName'] as String?;
+            if (parentName != null && parentName.isNotEmpty) {
+              final parent = await (db.select(db.categories)
+                    ..where((c) => c.name.equals(parentName))
+                    ..where((c) => c.kind.equals(kind))
+                    ..where((c) => c.level.equals(1))
+                    ..limit(1))
+                  .getSingleOrNull();
+              parentId = parent?.id;
+            }
+          }
+
+          var existing = await (db.select(db.categories)
+                ..where((c) => c.syncId.equals(syncId))
+                ..limit(1))
+              .getSingleOrNull();
+          if (existing == null && name.isNotEmpty) {
+            existing = await (db.select(db.categories)
+                  ..where((c) => c.name.equals(name))
+                  ..where((c) => c.kind.equals(kind))
+                  ..where((c) => c.syncId.isNull())
+                  ..limit(1))
+                .getSingleOrNull();
+          }
+
+          // 自定义图标:快照里的 customIconPath 是 A 端本地路径,绝不能直接落
+          // (照抄 _applyCategoryChange §Phase 3):本地已含 cloudFileId → 保留;
+          // 否则写 null 并入队下载,drain 后写本地真实路径。
+          final cloudFileId = raw['iconCloudFileId'] as String?;
+          String? resolvedCustomIconPath;
+          var needIconDownload = false;
+          if (iconType == 'custom' &&
+              cloudFileId != null &&
+              cloudFileId.isNotEmpty) {
+            if (existing != null &&
+                (existing.customIconPath ?? '').contains(cloudFileId)) {
+              resolvedCustomIconPath = existing.customIconPath;
+            } else {
+              needIconDownload = true;
+            }
+          }
+
+          int localId;
+          if (existing != null) {
+            localId = existing.id;
+            await (db.update(db.categories)
+                  ..where((c) => c.id.equals(localId)))
+                .write(CategoriesCompanion(
+              name: d.Value(name),
+              kind: d.Value(kind),
+              level: d.Value(level),
+              sortOrder: d.Value(sortOrder),
+              icon: d.Value(icon),
+              iconType: d.Value(iconType),
+              customIconPath: d.Value(resolvedCustomIconPath),
+              communityIconId:
+                  d.Value(raw['communityIconId'] as String?),
+              parentId: d.Value(parentId),
+              syncId: d.Value(syncId),
+            ));
+          } else {
+            localId = await db.into(db.categories).insert(
+                  CategoriesCompanion.insert(
+                    name: name,
+                    kind: kind,
+                    level: d.Value(level),
+                    sortOrder: d.Value(sortOrder),
+                    icon: d.Value(icon),
+                    iconType: d.Value(iconType),
+                    customIconPath: d.Value(resolvedCustomIconPath),
+                    communityIconId:
+                        d.Value(raw['communityIconId'] as String?),
+                    parentId: d.Value(parentId),
+                    syncId: d.Value(syncId),
+                  ),
+                );
+          }
+          if (needIconDownload && cloudFileId != null) {
+            pendingCustomIconJobs.add(CustomIconDownloadJob(
+              categoryId: localId,
+              cloudFileId: cloudFileId,
+              expectedPath: raw['customIconPath'] as String?,
+            ));
+          }
+          await changeTracker.recordPulledFromServer(
+            entityType: 'category',
+            entityId: localId,
+            entitySyncId: syncId,
+            ledgerId: 0,
+          );
+          return localId;
+        }
+
+        for (final raw in level1) {
+          await upsertCategory(raw, isLevel2: false);
+          restoredCategories++;
+        }
+        for (final raw in level2) {
+          await upsertCategory(raw, isLevel2: true);
+          restoredCategories++;
+        }
+
+        // 删除快照里没有的分类:子先于父(与 _applyCategoryChange delete 一致),
+        // 图标文件先清理(行删了就查不到路径),被删父分类下幸存的子分类脱挂。
+        final rows = await (db.select(db.categories)
+              ..orderBy([(c) => d.OrderingTerm.asc(c.id)]))
+            .get();
+        final seen = <String>{};
+        final extraIds = <int>[];
+        final extraSyncIds = <String>[];
+        final extraChildIds = <int>[]; // 有父的先删
+        for (final c in rows) {
+          final s = c.syncId;
+          final isDup = s != null && snapSyncIds.contains(s) && !seen.add(s);
+          final isExtra = s == null || !snapSyncIds.contains(s) || isDup;
+          if (!isExtra) continue;
+          extraIds.add(c.id);
+          if (s != null) extraSyncIds.add(s);
+          if (c.parentId != null) extraChildIds.add(c.id);
+        }
+        if (extraIds.isNotEmpty) {
+          // 只清被删行自身的图标文件 —— 不能用 _cleanupCategoryIconFilesOnDisk,
+          // 它会把被删父分类下**幸存**子分类的图标文件一并删掉(pull 场景子行
+          // 必然同删,这里子行会保留,删了文件图标就断了)。
+          final extraRows =
+              await (db.select(db.categories)..where((c) => c.id.isIn(extraIds)))
+                  .get();
+          final iconPaths = <String>[];
+          for (final r in extraRows) {
+            final cp = r.customIconPath;
+            if (cp != null && cp.trim().isNotEmpty) iconPaths.add(cp);
+          }
+          await (db.delete(db.localChanges)
+                ..where((c) => c.entityType.equals('category') &
+                    c.entitySyncId.isIn(extraSyncIds)))
+              .go();
+          if (extraChildIds.isNotEmpty) {
+            await (db.delete(db.categories)
+                  ..where((c) => c.id.isIn(extraChildIds)))
+                .go();
+          }
+          final extraParentIds =
+              extraIds.where((id) => !extraChildIds.contains(id)).toList();
+          if (extraParentIds.isNotEmpty) {
+            await (db.delete(db.categories)
+                  ..where((c) => c.id.isIn(extraParentIds)))
+                .go();
+          }
+          // 幸存子分类的父被删 → 脱挂,防止 parentId 悬挂
+          await (db.update(db.categories)
+                ..where((c) => c.parentId.isIn(extraIds)))
+              .write(CategoriesCompanion(parentId: d.Value(null)));
+          deletedCategories = extraIds.length;
+          // 图标文件删除失败不影响 DB 状态(与 pull 的磁盘清理同策略)
+          if (iconPaths.isNotEmpty) {
+            try {
+              final appDir = await getApplicationDocumentsDirectory();
+              final iconDir = Directory('${appDir.path}/custom_icons');
+              for (final rel in iconPaths) {
+                final f = File('${iconDir.path}/${p.basename(rel)}');
+                if (await f.exists()) {
+                  try {
+                    await f.delete();
+                  } catch (e) {
+                    logger.warning('SyncEngine',
+                        'forceRestore: unlink custom icon failed ${p.basename(rel)}: $e');
+                  }
+                }
+              }
+            } catch (e) {
+              logger.warning('SyncEngine', 'forceRestore: 清理分类图标文件失败', e);
+            }
+          }
+        }
+      }
+
+      // ---------- 标签 ----------
+      if (tagsRaw != null) {
+        final snapSyncIds = <String>{};
+        for (final raw in tagsRaw) {
+          if (raw is! Map<String, dynamic>) continue;
+          final syncId = (raw['syncId'] as String?)?.trim();
+          if (syncId == null || syncId.isEmpty) continue;
+          snapSyncIds.add(syncId);
+          final name = raw['name'] as String? ?? '';
+          final color = raw['color'] as String?;
+          final sortOrder = (raw['sortOrder'] as num?)?.toInt() ?? 0;
+
+          var existing = await (db.select(db.tags)
+                ..where((t) => t.syncId.equals(syncId))
+                ..limit(1))
+              .getSingleOrNull();
+          if (existing == null && name.isNotEmpty) {
+            existing = await (db.select(db.tags)
+                  ..where((t) => t.name.equals(name))
+                  ..where((t) => t.syncId.isNull())
+                  ..limit(1))
+                .getSingleOrNull();
+          }
+
+          int localId;
+          if (existing != null) {
+            localId = existing.id;
+            await (db.update(db.tags)..where((t) => t.id.equals(localId)))
+                .write(TagsCompanion(
+              name: d.Value(name),
+              color: d.Value(color),
+              sortOrder: d.Value(sortOrder),
+              syncId: d.Value(syncId),
+            ));
+          } else {
+            localId = await db.into(db.tags).insert(
+                  TagsCompanion.insert(
+                    name: name,
+                    color: d.Value(color),
+                    sortOrder: d.Value(sortOrder),
+                    syncId: d.Value(syncId),
+                  ),
+                );
+          }
+          await changeTracker.recordPulledFromServer(
+            entityType: 'tag',
+            entityId: localId,
+            entitySyncId: syncId,
+            ledgerId: 0,
+          );
+          restoredTags++;
+        }
+
+        final rows = await (db.select(db.tags)
+              ..orderBy([(t) => d.OrderingTerm.asc(t.id)]))
+            .get();
+        final seen = <String>{};
+        final extraIds = <int>[];
+        final extraSyncIds = <String>[];
+        for (final t in rows) {
+          final s = t.syncId;
+          final isDup = s != null && snapSyncIds.contains(s) && !seen.add(s);
+          final isExtra = s == null || !snapSyncIds.contains(s) || isDup;
+          if (!isExtra) continue;
+          extraIds.add(t.id);
+          if (s != null) extraSyncIds.add(s);
+        }
+        if (extraIds.isNotEmpty) {
+          await (db.delete(db.localChanges)
+                ..where((c) => c.entityType.equals('tag') &
+                    c.entitySyncId.isIn(extraSyncIds)))
+              .go();
+          await (db.delete(db.transactionTags)
+                ..where((tt) => tt.tagId.isIn(extraIds)))
+              .go();
+          await (db.delete(db.tags)..where((t) => t.id.isIn(extraIds))).go();
+          deletedTags = extraIds.length;
+        }
+      }
+    });
+
+    // 事务提交后:下载重建分类缺失的自定义图标(与 pull 同款异步 drain)
+    if (pendingCustomIconJobs.isNotEmpty) {
+      unawaited(drainCustomIconQueue());
+    }
+
+    logger.info('SyncEngine',
+        'forceRestore user-global: 账户 $restoredAccounts(删$deletedAccounts) '
+        '分类 $restoredCategories(删$deletedCategories) '
+        '标签 $restoredTags(删$deletedTags)');
+    return (
+      accounts: restoredAccounts,
+      categories: restoredCategories,
+      tags: restoredTags,
+      deletedAccounts: deletedAccounts,
+      deletedCategories: deletedCategories,
+      deletedTags: deletedTags,
+    );
   }
 
   /// 从 /sync/full 快照 JSON 的 `budgets` 数组重建预算（db 直写，不记 change）。

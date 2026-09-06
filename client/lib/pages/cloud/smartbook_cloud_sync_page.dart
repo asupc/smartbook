@@ -125,8 +125,8 @@ class _SmartBookCloudSyncPageState extends ConsumerState<SmartBookCloudSyncPage>
     }
   }
 
-  /// 「以服务端为准」强制恢复：清空当前账本本地交易+预算，从服务端权威快照
-  /// 重建并推进 cursor。带二次确认（破坏性操作，不可撤销）。
+  /// 「以服务端为准」强制恢复：清空当前账本本地交易+预算，并用服务端快照
+  /// 覆盖重建账户/分类/标签，推进 cursor。带二次确认（破坏性操作，不可撤销）。
   Future<void> _forceRestore() async {
     if (!mounted) return;
     final engine = ref.read(syncServiceProvider);
@@ -146,8 +146,10 @@ class _SmartBookCloudSyncPageState extends ConsumerState<SmartBookCloudSyncPage>
     try {
       final res = await engine.forceRestoreFromServer(ledgerId: ledgerId);
       if (!mounted) return;
-      showToast(context,
-          l10n.syncForceRestoreSuccess(res.inserted, res.restoredBudgets));
+      showToast(
+          context,
+          l10n.syncForceRestoreSuccess(res.inserted, res.restoredBudgets,
+              res.restoredAccounts, res.restoredCategories, res.restoredTags));
       // 刷新健康面板 + 首页统计，让用户看到恢复结果。
       final report = await engine.checkSyncHealth(ledgerId: ledgerId);
       if (mounted) setState(() => _latestReport = report);

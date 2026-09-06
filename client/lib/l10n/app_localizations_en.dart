@@ -7218,11 +7218,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get syncForceRestoreConfirmTitle => 'Restore from server?';
 
   @override
-  String get syncForceRestoreConfirmBody => 'This will clear local transactions and budgets for the current ledger, then re-download them from the server. This cannot be undone.';
+  String get syncForceRestoreConfirmBody => 'This will clear local transactions and budgets for the current ledger, and overwrite accounts, categories and tags with the server\'s data (local entries missing on the server are deleted, affecting data shared across ledgers). This cannot be undone.';
 
   @override
-  String syncForceRestoreSuccess(int tx, int budget) {
-    return 'Restored from server ($tx transactions, $budget budgets)';
+  String syncForceRestoreSuccess(int tx, int budget, int accounts, int categories, int tags) {
+    return 'Restored from server: $tx transactions, $budget budgets, $accounts accounts, $categories categories, $tags tags';
   }
 
   @override

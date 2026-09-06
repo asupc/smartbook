@@ -359,6 +359,26 @@ class FakeSmartBookCloudProvider extends SmartBookCloudProvider {
 
   final List<SmartBookCloudWriteCommitMeta> writeCreateLedgerCalls = [];
 
+  // ====== /sync/full 权威快照(forceRestoreFromServer 用) ======
+
+  final Map<String, ({String? content, int latestCursor})> _fullSnapshots = {};
+
+  /// 测试入口:注入服务端 /sync/full 快照(path 与 fullPush 的 ledger.syncId 对齐)
+  void setFakeFullSnapshot({
+    required String ledgerId,
+    required String content,
+    int latestCursor = 0,
+  }) {
+    _fullSnapshots[ledgerId] = (content: content, latestCursor: latestCursor);
+  }
+
+  @override
+  Future<({String? content, int latestCursor})> downloadFullSnapshot({
+    required String path,
+  }) async {
+    return _fullSnapshots[path] ?? (content: null, latestCursor: 0);
+  }
+
   @override
   Future<SmartBookCloudWriteCommitMeta> writeCreateLedger({
     String? ledgerId,

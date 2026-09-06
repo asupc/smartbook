@@ -4,6 +4,8 @@
 // 链路。Day 1:smoke test 验证 fake provider 能跟 SyncEngine 兜上,跑通空 pull
 // 路径。Day 2 加更多场景(脏数据 / 单飞 / web 新建账本 / busy retry 等)。
 
+import 'dart:convert';
+
 import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_cloud_sync/flutter_cloud_sync.dart';
@@ -531,6 +533,245 @@ void main() {
       expect(provider.writeCreateLedgerCalls, isEmpty,
           reason: 'Editor 角色永不应触发 fullPush');
       expect(result.hasError, isFalse);
+    });
+  });
+
+  group('forceRestoreFromServer(以服务端为准)', () {
+    test('账户/分类/标签按快照覆盖重建:seed 收编 + 多余行删除 + 无反向 change',
+        () async {
+      final ledgerId = await db.into(db.ledgers).insert(
+            LedgersCompanion.insert(name: 'L', syncId: const Value('L1')),
+          );
+
+      // 本地 user-global 现状:NULL-syncId seed + 快照里没有的多余行
+      final seedAccId = await db.into(db.accounts).insert(
+            AccountsCompanion.insert(ledgerId: 0, name: '现金'),
+          );
+      await db.into(db.accounts).insert(AccountsCompanion.insert(
+            ledgerId: 0,
+            name: '本地多余账户',
+            syncId: const Value('acc-extra'),
+          ));
+      final seedCatId = await db.into(db.categories).insert(
+            CategoriesCompanion.insert(name: '餐饮', kind: 'expense'),
+          );
+      await db.into(db.categories).insert(CategoriesCompanion.insert(
+            name: '多余分类',
+            kind: 'expense',
+            syncId: const Value('cat-extra'),
+          ));
+      await db.into(db.tags).insert(TagsCompanion.insert(
+            name: '多余标签',
+            syncId: const Value('tag-extra'),
+          ));
+
+      // 本地未推送 user-global 意图:恢复后必须作废(防反推服务端)
+      await changeTracker.recordUserGlobalChange(
+        entityType: 'account',
+        entityId: seedAccId,
+        entitySyncId: 'acc-local-intent',
+        action: 'upsert',
+      );
+
+      // 本地一条交易:恢复后清掉、从快照重建
+      await repo.insertTransactionsBatch([
+        TransactionsCompanion.insert(
+          ledgerId: ledgerId,
+          type: 'expense',
+          amount: 1.0,
+          syncId: const Value('tx-local'),
+        ),
+      ]);
+
+      const snapshot = {
+        'count': 1,
+        'items': [
+          {
+            'syncId': 'tx-srv',
+            'type': 'expense',
+            'amount': 12.0,
+            'happenedAt': '2026-09-06T10:00:00Z',
+            'categoryName': '餐饮',
+            'categoryKind': 'expense',
+            'accountName': '现金',
+          },
+        ],
+        'accounts': [
+          {
+            'syncId': 'acc-1',
+            'name': '现金',
+            'type': 'cash',
+            'currency': 'CNY',
+            'initialBalance': 0,
+            'hidden': false,
+          },
+          {
+            'syncId': 'acc-2',
+            'name': '招行卡',
+            'type': 'card',
+            'currency': 'CNY',
+            'hidden': false,
+          },
+        ],
+        'categories': [
+          {
+            'syncId': 'cat-1',
+            'name': '餐饮',
+            'kind': 'expense',
+            'level': 1,
+            'sortOrder': 0,
+          },
+          {
+            'syncId': 'cat-2',
+            'name': '交通',
+            'kind': 'expense',
+            'level': 1,
+            'sortOrder': 1,
+          },
+        ],
+        'tags': [
+          {'syncId': 'tag-1', 'name': '食'},
+        ],
+        'budgets': [],
+      };
+      provider.setFakeFullSnapshot(
+        ledgerId: 'L1',
+        content: jsonEncode(snapshot),
+        latestCursor: 42,
+      );
+
+      final res = await engine.forceRestoreFromServer(ledgerId: ledgerId);
+
+      expect(res.inserted, 1);
+      expect(res.restoredAccounts, 2);
+      expect(res.restoredCategories, 2);
+      expect(res.restoredTags, 1);
+
+      // 账户:seed「现金」被 acc-1 收编(保住原 int id),多余账户删除
+      final accs = await db.select(db.accounts).get();
+      expect(accs.map((a) => a.syncId).toSet(), {'acc-1', 'acc-2'});
+      expect(accs.firstWhere((a) => a.syncId == 'acc-1').id, seedAccId);
+
+      // 分类:seed「餐饮」被 cat-1 收编,多余分类删除
+      final cats = await db.select(db.categories).get();
+      expect(cats.map((c) => c.syncId).toSet(), {'cat-1', 'cat-2'});
+      expect(cats.firstWhere((c) => c.syncId == 'cat-1').id, seedCatId);
+
+      final tags = await db.select(db.tags).get();
+      expect(tags.map((t) => t.syncId).toSet(), {'tag-1'});
+
+      // 交易清掉重建,并挂上收编后的分类/账户 int id
+      final txs = await db.select(db.transactions).get();
+      expect(txs, hasLength(1));
+      expect(txs.single.syncId, 'tx-srv');
+      expect(txs.single.categoryId, seedCatId);
+      expect(txs.single.accountId, seedAccId);
+
+      // 无未推送 change(交易/预算/账户/分类/标签全部干净)
+      expect(await changeTracker.getUnpushedChanges(), isEmpty);
+
+      // 重建实体有 pulled-from-server 标记(防 legacy backfill 反推)
+      final globalChanges = await (db.select(db.localChanges)
+            ..where((c) => c.entityType.isIn(['account', 'category', 'tag'])))
+          .get();
+      expect(
+        globalChanges.map((m) => '${m.entityType}/${m.entitySyncId}').toSet(),
+        containsAll(['account/acc-1', 'category/cat-1', 'tag/tag-1']),
+      );
+      expect(globalChanges.every((m) => m.pushedAt != null), isTrue);
+
+      // cursor 推进到快照 latest_cursor
+      expect(await engine.appCursor.read(), 42);
+    });
+
+    test('快照缺 accounts key(老服务端)→ 本地账户不动', () async {
+      final ledgerId = await db.into(db.ledgers).insert(
+            LedgersCompanion.insert(name: 'L', syncId: const Value('L1')),
+          );
+      await db.into(db.accounts).insert(
+            AccountsCompanion.insert(ledgerId: 0, name: '现金'),
+          );
+
+      provider.setFakeFullSnapshot(
+        ledgerId: 'L1',
+        content: jsonEncode({
+          'count': 0,
+          'items': [],
+          'categories': [],
+          'tags': [],
+          'budgets': [],
+        }),
+        latestCursor: 7,
+      );
+
+      final res = await engine.forceRestoreFromServer(ledgerId: ledgerId);
+
+      // accounts key 缺失 → 跳过该类型,绝不能当空集清空本地
+      expect(res.restoredAccounts, 0);
+      expect(await db.select(db.accounts).get(), hasLength(1));
+    });
+
+    test('二级分类挂父 + 幸存子分类随被删父脱挂', () async {
+      final ledgerId = await db.into(db.ledgers).insert(
+            LedgersCompanion.insert(name: 'L', syncId: const Value('L1')),
+          );
+
+      // 本地:一个快照里没有的父分类 + 挂在它下面的快照分类(子)
+      final extraParentId = await db.into(db.categories).insert(
+            CategoriesCompanion.insert(
+                name: '多余父', kind: 'expense', syncId: const Value('cat-xp')),
+          );
+      final childId = await db.into(db.categories).insert(
+            CategoriesCompanion.insert(
+              name: '地铁',
+              kind: 'expense',
+              level: const Value(2),
+              parentId: Value(extraParentId),
+              syncId: const Value('cat-sub'),
+            ),
+          );
+
+      provider.setFakeFullSnapshot(
+        ledgerId: 'L1',
+        content: jsonEncode({
+          'count': 0,
+          'items': [],
+          'accounts': [],
+          'categories': [
+            // 先一级后二级(服务端快照顺序保证)
+            {
+              'syncId': 'cat-p',
+              'name': '交通',
+              'kind': 'expense',
+              'level': 1,
+              'sortOrder': 0,
+            },
+            {
+              'syncId': 'cat-sub',
+              'name': '地铁',
+              'kind': 'expense',
+              'level': 2,
+              'sortOrder': 0,
+              'parentName': '交通',
+            },
+          ],
+          'tags': [],
+          'budgets': [],
+        }),
+        latestCursor: 3,
+      );
+
+      await engine.forceRestoreFromServer(ledgerId: ledgerId);
+
+      final cats = await db.select(db.categories).get();
+      // 多余父删除;幸存子分类「地铁」被快照收编并改挂到新父「交通」下
+      expect(cats.map((c) => c.syncId).toSet(), {'cat-p', 'cat-sub'});
+      final sub = cats.firstWhere((c) => c.syncId == 'cat-sub');
+      expect(sub.id, childId, reason: '子分类被收编,保住原 int id');
+      final parent = cats.firstWhere((c) => c.syncId == 'cat-p');
+      expect(sub.parentId, parent.id);
+      expect(cats.where((c) => c.syncId == 'cat-xp'), isEmpty,
+          reason: '多余父分类应被删除');
     });
   });
 

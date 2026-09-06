@@ -3328,14 +3328,23 @@
   },
   "syncForceRestoreTitle": "Restore from server",
   "syncForceRestoreConfirmTitle": "Restore from server?",
-  "syncForceRestoreConfirmBody": "This will clear local transactions and budgets for the current ledger, then re-download them from the server. This cannot be undone.",
-  "syncForceRestoreSuccess": "Restored from server ({tx} transactions, {budget} budgets)",
+  "syncForceRestoreConfirmBody": "This will clear local transactions and budgets for the current ledger, and overwrite accounts, categories and tags with the server's data (local entries missing on the server are deleted, affecting data shared across ledgers). This cannot be undone.",
+  "syncForceRestoreSuccess": "Restored from server: {tx} transactions, {budget} budgets, {accounts} accounts, {categories} categories, {tags} tags",
   "@syncForceRestoreSuccess": {
     "placeholders": {
       "tx": {
         "type": "int"
       },
       "budget": {
+        "type": "int"
+      },
+      "accounts": {
+        "type": "int"
+      },
+      "categories": {
+        "type": "int"
+      },
+      "tags": {
         "type": "int"
       }
     }
