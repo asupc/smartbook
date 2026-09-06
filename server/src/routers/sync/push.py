@@ -233,7 +233,7 @@ async def push_changes(
             db.add(row_change)
             db.flush()
             try:
-                apply_user_change_to_projection(
+                extra_fanout = apply_user_change_to_projection(
                     db,
                     user_id=current_user.id,
                     change=row_change,
@@ -259,6 +259,11 @@ async def push_changes(
                     "sync_id": change.entity_sync_id,
                     "payload": change.payload or {"sync_id": change.entity_sync_id},
                 })
+                # category delete 的服务端级联会连带删掉子分类(见
+                # sync_applier._delete_user_category_cascade),这些子分类的
+                # delete 也要 fan-out,否则成员端镜像留僵尸子分类。
+                if extra_fanout:
+                    pending_shared_resource_events.extend(extra_fanout)
         else:
             assert ledger is not None
             # §7 共享账本:mobile 历史路径未在本地 transactions.created_by_user_id

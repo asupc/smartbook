@@ -39,9 +39,10 @@ account / category / tag 是 user-global 实体,name 变了之后 ReadTxProjecti
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any, Callable, Optional
 
-from sqlalchemy import delete as sa_delete, select
+from sqlalchemy import and_, delete as sa_delete, or_, select
 from sqlalchemy.orm import Session
 
 from . import projection
@@ -56,6 +57,8 @@ from .models import (
     UserTagProjection,
 )
 from .services.category_icon import resolve_icon_by_name
+
+logger = logging.getLogger(__name__)
 
 
 # 哪些 entity_type 可以走单条 change 的 projection 应用(其它 entity
@@ -306,6 +309,91 @@ def _delete_user_category(db: Session, user_id: str, sync_id: str) -> None:
     _compact_entity_upsert_events(
         db, user_id=user_id, entity_type="category", entity_sync_id=sync_id,
     )
+
+
+def _delete_user_category_cascade(
+    db: Session, *, user_id: str, change: SyncChange,
+) -> list[dict[str, Any]]:
+    """删分类 + 级联删子分类,返回需要 fan-out 给共享账本成员的额外事件。
+
+    mobile 端删父分类时本地已把子分类行一并删掉(LocalCategoryRepository
+    .deleteCategory / sync pull apply 都级联),但 push 上来的只有父分类
+    一条 delete change —— server 不级联的话,子分类 projection 行会留下
+    parent 悬空的僵尸行:web 端按 parent_name 分组所以不可见,但会进
+    /sync/full 全量重建、污染 workspace 数据。级联时给每个子分类补一条
+    delete SyncChange(事件日志完整,落后设备 pull 到后 apply 是 no-op),
+    并作为 shared_resource 事件 fan-out 给成员(成员镜像端只按单条删,
+    不自己级联)。
+    """
+    sync_id = change.entity_sync_id
+    row = db.scalar(
+        select(UserCategoryProjection).where(
+            UserCategoryProjection.user_id == user_id,
+            UserCategoryProjection.sync_id == sync_id,
+        )
+    )
+    _delete_user_category(db, user_id, sync_id)
+    if row is None:
+        return []
+    name = (row.name or "").strip()
+    kind = (row.kind or "").strip()
+    if not name:
+        return []
+    # 子分类识别:parent_sync_id(新数据,稳定 FK)优先,parent_name + kind
+    # 兜底(老数据只维护了 name 引用)。(name, kind) 在 upsert 侧有查重,
+    # 不会误伤同名兄弟。
+    children = db.scalars(
+        select(UserCategoryProjection).where(
+            UserCategoryProjection.user_id == user_id,
+            UserCategoryProjection.sync_id != sync_id,
+            or_(
+                UserCategoryProjection.parent_sync_id == sync_id,
+                and_(
+                    UserCategoryProjection.parent_name == name,
+                    UserCategoryProjection.kind == kind,
+                ),
+            ),
+        )
+    ).all()
+    extra_fanout: list[dict[str, Any]] = []
+    for child in children:
+        child_file_ids = projection.collect_category_icon_fileids(
+            db, user_id=user_id, sync_id=child.sync_id,
+        )
+        projection.delete_category(db, user_id=user_id, sync_id=child.sync_id)
+        projection.gc_orphan_attachments(
+            db, user_id=user_id, file_ids=child_file_ids,
+        )
+        _compact_entity_upsert_events(
+            db, user_id=user_id, entity_type="category",
+            entity_sync_id=child.sync_id,
+        )
+        db.add(
+            SyncChange(
+                user_id=user_id,
+                ledger_id=None,
+                scope="user",
+                entity_type="category",
+                entity_sync_id=child.sync_id,
+                action="delete",
+                payload_json={"syncId": child.sync_id},
+                updated_at=change.updated_at,
+                updated_by_device_id=change.updated_by_device_id,
+                updated_by_user_id=change.updated_by_user_id,
+            )
+        )
+        extra_fanout.append({
+            "resource_type": "category",
+            "action": "delete",
+            "sync_id": child.sync_id,
+            "payload": {"syncId": child.sync_id},
+        })
+    if children:
+        logger.info(
+            "sync.apply.category_delete_cascade user=%s parent=%s children=%d",
+            user_id, sync_id, len(children),
+        )
+    return extra_fanout
 
 
 def _delete_budget(db: Session, ledger_id: str, sync_id: str, user_id: str) -> None:
@@ -628,12 +716,15 @@ def apply_user_change_to_projection(
     *,
     user_id: str,
     change: SyncChange,
-) -> None:
+) -> list[dict[str, Any]]:
     """把一条 **user-scope** SyncChange 投到 user_*_projection 上。
 
     流程跟 ledger-scope 对偶,但:
       - 主键查 / 写都按 (user_id, sync_id),跟账本无关
       - rename cascade 也按 user_id 跨该用户所有 ledger 刷 read_tx_projection
+
+    返回级联产生的额外 fan-out 事件(目前只有 category delete 级联子分类
+    会产生),caller(shared_resource fan-out)负责追加广播;普通应用返回 []。
 
     防御性:entity_type 必须在 USER_GLOBAL_ENTITY_TYPES,否则 caller 错路径。
     """
@@ -646,15 +737,17 @@ def apply_user_change_to_projection(
 
     # --- delete --------------------------------------------------------- #
     if change.action == "delete":
+        if change.entity_type == "category":
+            return _delete_user_category_cascade(db, user_id=user_id, change=change)
         handler = _USER_DELETE_DISPATCH.get(change.entity_type)
         if handler is not None:
             handler(db, user_id, sync_id)
-        return
+        return []
 
     # --- upsert --------------------------------------------------------- #
     payload = _parse_payload(change.payload_json)
     if payload is None:
-        return
+        return []
     payload.setdefault("syncId", sync_id)
 
     # rename cascade 必须先于 upsert 当前实体 —— 用的是"旧名" match tx 行。
@@ -687,6 +780,7 @@ def apply_user_change_to_projection(
             source_change_id=change.change_id,
             payload=merged,
         )
+    return []
 
 
 def _parse_payload(raw: Any) -> Optional[dict]:

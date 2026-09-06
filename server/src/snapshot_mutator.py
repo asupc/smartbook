@@ -703,33 +703,46 @@ def delete_category(snapshot: dict, category_id: str, payload: dict | None = Non
     _assert_actor_can_modify(category, payload or {})
     old_name = str(category.get("name") or "").strip()
     old_kind = str(category.get("kind") or "").strip()
-    # 严格策略(跟 AccountsPage / mobile 对齐):有子分类或关联交易时拒绝删除,
-    # 要求用户先迁移这些数据。比"允许删除并 orphan"安全 — 避免误删导致一堆
-    # 无主交易污染 ledger。前端也有同款拦截,这里是兜底服务端校验防止旧客户
-    # 端 / 直接 API 调用绕过。
+    # 删除策略(跟 mobile 端 _deleteCategory 对齐):本分类 + 所有子分类都
+    # 没有关联交易时允许删除,子分类随父分类一起级联移除;家族里只要还有
+    # 交易就整单拒绝,要求先迁移数据。前端有同款拦截,这里是兜底服务端
+    # 校验防止旧客户端 / 直接 API 调用绕过。
     if old_name and old_kind:
-        child_count = sum(
-            1
+        children = [
+            row
             for row in categories
             if str(row.get("syncId") or "") != category_id
             and str(row.get("parentName") or "").strip() == old_name
             and str(row.get("kind") or "").strip() == old_kind
-        )
-        if child_count > 0:
-            raise ValueError(
-                f"write validation failed: category has {child_count} child categories"
-            )
+        ]
+        family_names = {old_name}
+        for row in children:
+            child_name = str(row.get("name") or "").strip()
+            if child_name:
+                family_names.add(child_name)
         tx_count = sum(
             1
             for tx in _ensure_list(target, "items")
-            if tx.get("categoryName") == old_name
-            and tx.get("categoryKind") == old_kind
+            if str(tx.get("categoryKind") or "").strip() == old_kind
+            and str(tx.get("categoryName") or "").strip() in family_names
         )
         if tx_count > 0:
             raise ValueError(
                 f"write validation failed: category has {tx_count} transactions"
             )
-    categories.pop(idx)
+        categories.pop(idx)
+        # 级联移除子分类行。_commit_write 的 _diff_entity_list 按 prev/next
+        # snapshot diff,每个被移除的子分类 syncId 自动补 delete 事件 +
+        # projection 删除 + 图标 GC,其他设备 pull 后跟 mobile 本地级联对齐。
+        child_ids = {str(row.get("syncId") or "") for row in children}
+        if child_ids:
+            target["categories"] = [
+                row
+                for row in categories
+                if str(row.get("syncId") or "") not in child_ids
+            ]
+    else:
+        categories.pop(idx)
     return target
 
 

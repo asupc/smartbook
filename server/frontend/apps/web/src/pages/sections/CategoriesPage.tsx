@@ -189,33 +189,26 @@ export function CategoriesPage() {
         onEdit={enterEdit}
         onRowClick={(row) => dispatchOpenDetailCategory(row, { defaultScope: 'all' })}
         onDelete={(row) => {
-          // 跟 mobile + AccountsPage 对齐:有关联交易 / 子分类 → 拒删,要求
-          // 用户先迁移这些数据。比"允许删除并 orphan 子分类/交易"更严格。
+          // 跟 mobile _deleteCategory 对齐:本分类 + 所有子分类加起来没有
+          // 任何关联交易才允许删除;子分类随父分类一起级联删除(服务端
+          // snapshot mutator 同步级联,并为每个子分类补 delete 事件)。
           const ws =
             (rows.find((r) => r.id === row.id) as WorkspaceCategory | undefined) ||
             (row as WorkspaceCategory)
-          const txCount = ws.tx_count ?? 0
-          if (txCount > 0) {
-            toast.error(
-              t('categories.delete.blockedByTransactions', {
-                name: ws.name,
-                count: txCount,
-              }),
-              t('notice.error'),
-            )
-            return
-          }
-          const childCount = rows.filter(
+          const children = rows.filter(
             (r) =>
               r.id !== ws.id &&
               r.parent_name === ws.name &&
               r.kind === ws.kind,
-          ).length
-          if (childCount > 0) {
+          )
+          const familyTxCount =
+            (ws.tx_count ?? 0) +
+            children.reduce((acc, child) => acc + (txCountById[child.id] ?? 0), 0)
+          if (familyTxCount > 0) {
             toast.error(
-              t('categories.delete.blockedByChildren', {
+              t('categories.delete.blockedByTransactions', {
                 name: ws.name,
-                count: childCount,
+                count: familyTxCount,
               }),
               t('notice.error'),
             )
