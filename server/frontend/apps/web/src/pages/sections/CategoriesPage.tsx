@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import {
+  batchMoveTransactions,
   createCategory,
   deleteCategory,
   fetchWorkspaceCategories,
@@ -15,6 +16,7 @@ import {
 } from '@smartbook/api-client'
 import { useT, useToast } from '@smartbook/ui'
 import {
+  BatchMoveDialog,
   CategoriesPanel,
   ConfirmDialog,
   categoryDefaults,
@@ -52,6 +54,13 @@ export function CategoriesPage() {
   // 编辑 dialog 受控开关 — CategoriesPanel 行编辑、CategoryDetailDialog 联动
   // 编辑都通过这个 state 触发;由 panel 内部 onCreate/onEdit 也会切到 true。
   const [editDialogOpen, setEditDialogOpen] = useState(false)
+
+  // 批量移动交易 —— 双入口共用:
+  //  - batchMoveTxIds === undefined → entry A(整分类全量,还需拉全量 tx_ids)
+  //  - batchMoveTxIds = string[]    → entry B(勾选的部分,直接提交)
+  const [batchMoveSource, setBatchMoveSource] = useState<WorkspaceCategory | null>(null)
+  const [batchMoveTxIds, setBatchMoveTxIds] = useState<string[] | undefined>(undefined)
+  const [moveSaving, setMoveSaving] = useState(false)
 
   // detail 弹窗已迁到 GlobalEntityDialogs(AppShell 顶层)。本页只负责
   // dispatch openDetailCategory 让全局打开;同时监听 openEditCategory
@@ -172,6 +181,119 @@ export function CategoriesPage() {
     }
   }
 
+  // 批量移动:打开选目标分类的 dialog。entry A(txIds undefined)表示"整分类
+  // 全量",确认时才分页拉全量 tx_ids;entry B 直接带上勾选的 ids。
+  const handleBatchMove = useCallback(
+    (source: WorkspaceCategory, txIds?: string[]) => {
+      if (!activeLedgerId) {
+        toast.error(t('shell.selectLedgerFirst'), t('notice.error'))
+        return
+      }
+      setBatchMoveSource(source)
+      setBatchMoveTxIds(txIds)
+    },
+    [activeLedgerId, toast, t]
+  )
+
+  /** 分页拉某分类的全量 tx sync_ids(entry A)。limit 500 循环直到 total。 */
+  const fetchAllCategoryTxIds = useCallback(
+    async (categoryId: string): Promise<string[]> => {
+      const ids: string[] = []
+      let offset = 0
+      let total = Infinity
+      while (ids.length < total && offset < 10000) {
+        const page = await fetchWorkspaceTransactions(token, {
+          categorySyncId: categoryId,
+          limit: 500,
+          offset,
+        })
+        if (ids.length === 0) total = page.total
+        for (const item of page.items) {
+          if (item.id) ids.push(item.id)
+        }
+        offset += page.items.length
+        if (page.items.length === 0) break
+      }
+      return ids
+    },
+    [token]
+  )
+
+  /** 把 tx_ids 切成 <=200 的组(server 单次上限)。 */
+  const chunk = useCallback((ids: string[], size = 200): string[][] => {
+    const out: string[][] = []
+    for (let i = 0; i < ids.length; i += size) out.push(ids.slice(i, i + size))
+    return out
+  }, [])
+
+  const confirmBatchMove = useCallback(
+    async (target: WorkspaceCategory) => {
+      if (!activeLedgerId || !batchMoveSource) return
+      // 已选分类不可再作为目标(排除自身)
+      if (target.id === batchMoveSource.id) {
+        toast.error(t('categories.batchMove.sameSource'), t('notice.error'))
+        return
+      }
+      setMoveSaving(true)
+      try {
+        let txIds = batchMoveTxIds
+        if (txIds === undefined) {
+          // entry A:先拉全量,再切批提交
+          txIds = await fetchAllCategoryTxIds(batchMoveSource.id)
+        }
+        if (txIds.length === 0) {
+          toast.info(t('categories.batchMove.noTransactions'), t('notice.info'))
+          return
+        }
+        let movedCount = 0
+        let failedCount = 0
+        for (const group of chunk(txIds)) {
+          const result = await retryOnConflict(activeLedgerId, (base) =>
+            batchMoveTransactions(token, {
+              ledgerId: activeLedgerId,
+              txIds: group,
+              targetCategoryId: target.id,
+              baseChangeId: base,
+            })
+          )
+          movedCount += result.moved_tx_ids.length
+          failedCount += result.failed.length
+        }
+        setBatchMoveSource(null)
+        setBatchMoveTxIds(undefined)
+        // 旧的源/目标分类笔数会变,刷新整份 rows + 详情交易
+        await refresh()
+        notifySuccess(
+          t('categories.batchMove.success', {
+            moved: movedCount,
+            failed: failedCount,
+            target: target.name,
+          })
+        )
+      } catch (err) {
+        if (isWriteConflict(err)) await refresh()
+        notifyError(err)
+      } finally {
+        setMoveSaving(false)
+      }
+    },
+    [
+      activeLedgerId,
+      batchMoveSource,
+      batchMoveTxIds,
+      token,
+      fetchAllCategoryTxIds,
+      chunk,
+      retryOnConflict,
+      isWriteConflict,
+      refresh,
+      toast,
+      t,
+      notifySuccess,
+      notifyError,
+    ]
+  )
+
   return (
     <>
       <CategoriesPanel
@@ -188,6 +310,10 @@ export function CategoriesPage() {
         onReset={() => setForm(categoryDefaults())}
         onEdit={enterEdit}
         onRowClick={(row) => dispatchOpenDetailCategory(row, { defaultScope: 'all' })}
+        loadCategoryTransactions={async (categorySyncId, offset) =>
+          fetchWorkspaceTransactions(token, { categorySyncId, limit: 20, offset })
+        }
+        onBatchMove={handleBatchMove}
         onDelete={(row) => {
           // 跟 mobile _deleteCategory 对齐:本分类 + 所有子分类加起来没有
           // 任何关联交易才允许删除;子分类随父分类一起级联删除(服务端
@@ -242,6 +368,32 @@ export function CategoriesPage() {
         cancelText={t('confirm.cancel')}
         onCancel={() => setPendingDelete(null)}
         onConfirm={() => void confirmDelete()}
+      />
+      {/* 批量移动交易 —— 选目标分类。候选 = 与源分类同 kind 的全部分类(排除源自身)。 */}
+      <BatchMoveDialog
+        open={!!batchMoveSource}
+        onClose={() => {
+          if (!moveSaving) {
+            setBatchMoveSource(null)
+            setBatchMoveTxIds(undefined)
+          }
+        }}
+        count={
+          batchMoveTxIds !== undefined
+            ? batchMoveTxIds.length
+            : txCountById[batchMoveSource?.id ?? ''] ?? batchMoveSource?.tx_count ?? 0
+        }
+        rows={
+          batchMoveSource
+            ? rows.filter(
+                (r) => r.kind === batchMoveSource.kind && r.id !== batchMoveSource.id
+              )
+            : []
+        }
+        kind={(batchMoveSource?.kind as 'expense' | 'income') ?? 'expense'}
+        iconPreviewUrlByFileId={iconPreviewByFileId}
+        saving={moveSaving}
+        onConfirm={(target) => void confirmBatchMove(target)}
       />
       {/* CategoryDetailDialog 已迁到 GlobalEntityDialogs。本页 onClickCategory 现
           dispatch openDetailCategory 让全局弹窗渲染。 */}

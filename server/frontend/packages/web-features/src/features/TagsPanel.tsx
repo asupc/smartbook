@@ -1,4 +1,4 @@
-import { useMemo, useState, type ChangeEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from 'react'
 
 import {
   Button,
@@ -13,13 +13,18 @@ import {
   useT
 } from '@smartbook/ui'
 
-import type { ReadTag } from '@smartbook/api-client'
+import type { ReadTag, WorkspaceTag, WorkspaceTransactionPage } from '@smartbook/api-client'
 
+import { TransactionList } from '../components/TransactionList'
 import type { TagForm } from '../forms'
 import {
   TAG_COLOR_PALETTE,
-  tagTextColorOn
+  tagTextColorOn,
 } from '../lib/tagColorPalette'
+
+/** 右栏详情「最近交易」加载器 —— 页面用 token 实现并传入(panel 在共享包里,
+ *  不持有 auth)。返回分页 `{ items, total, limit, offset }`。 */
+type TagRecentLoader = (tagSyncId: string, offset: number) => Promise<WorkspaceTransactionPage>
 
 type TagsPanelProps = {
   form: TagForm
@@ -37,15 +42,176 @@ type TagsPanelProps = {
   onDelete?: (row: ReadTag) => void
   /** 点击卡片（非编辑/删除按钮）触发：外层用来打开"标签详情+交易"弹窗。 */
   onClickTag?: (tag: ReadTag) => void
+  /** 右栏详情「最近交易」加载器。传了才在选中标签时拉取交易。 */
+  loadTagTransactions?: TagRecentLoader
 }
 
-/**
- * 标签管理面板。
+/** 标签详情 —— 右栏:色块 + 名称 + KPI + 最近交易(无限滚动)。 */
+function TagDetailPane({
+  tag,
+  stats,
+  showCreatorColumn,
+  canManage,
+  onEdit,
+  onDelete,
+  onClickTag,
+  loadTransactions,
+}: {
+  tag: ReadTag
+  stats?: { count: number; expense: number; income: number }
+  showCreatorColumn: boolean
+  canManage: boolean
+  onEdit: (row: ReadTag) => void
+  onDelete?: (row: ReadTag) => void
+  onClickTag?: (tag: ReadTag) => void
+  loadTransactions?: TagRecentLoader
+}) {
+  const t = useT()
+  const [page, setPage] = useState<{ items: WorkspaceTransactionPage['items']; total: number }>({
+    items: [],
+    total: 0,
+  })
+  const [loading, setLoading] = useState(false)
+  const color = tag.color || '#94a3b8'
+
+  const resetPage = useCallback(() => {
+    setPage({ items: [], total: 0 })
+    setLoading(false)
+  }, [])
+
+  useEffect(() => {
+    resetPage()
+    if (!loadTransactions || !tag?.id) return
+    let cancelled = false
+    setLoading(true)
+    loadTransactions(tag.id, 0)
+      .then((pg) => {
+        if (cancelled) return
+        setPage({ items: pg.items, total: pg.total })
+      })
+      .catch(() => {
+        if (!cancelled) resetPage()
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [tag?.id, loadTransactions, resetPage])
+
+  const loadMore = useCallback(() => {
+    if (!loadTransactions || !tag?.id || loading) return
+    const nextOffset = page.items.length
+    setLoading(true)
+    loadTransactions(tag.id, nextOffset)
+      .then((pg) => {
+        setPage((prev) => ({ items: [...prev.items, ...pg.items], total: pg.total }))
+      })
+      .finally(() => setLoading(false))
+  }, [loadTransactions, tag?.id, loading, page.items.length])
+
+  const fmt = (v: number) =>
+    v.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const hasMore = page.total > page.items.length
+
+  return (
+    <div className="flex h-full flex-col gap-4">
+      {/* 头部 */}
+      <div className="flex items-start gap-3 border-b border-border/50 pb-4">
+        <span
+          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-lg font-bold text-white shadow-sm"
+          style={{ background: color }}
+        >
+          #
+        </span>
+        <div className="min-w-0 flex-1">
+          <h3 className="truncate text-lg font-semibold">{tag.name}</h3>
+          <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+            {showCreatorColumn ? (
+              <span>创建者 {tag.created_by_email || tag.created_by_user_id || '-'}</span>
+            ) : null}
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => onEdit(tag)}>
+            {t('common.edit')}
+          </Button>
+          {onDelete ? (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!canManage}
+              style={{ color: 'hsl(var(--destructive))', borderColor: 'hsl(var(--destructive) / 0.5)' }}
+              onClick={() => onDelete(tag)}
+            >
+              {t('common.delete')}
+            </Button>
+          ) : null}
+        </div>
+      </div>
+
+      {/* KPI */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="rounded-xl border border-border/40 bg-card/50 p-3">
+          <div className="text-xs text-muted-foreground">{t('tags.detail.count')}</div>
+          <div className="mt-1 font-mono text-xl font-bold tabular-nums">
+            {stats?.count ?? 0}
+          </div>
+        </div>
+        <div className="rounded-xl border border-border/40 bg-card/50 p-3">
+          <div className="text-xs text-muted-foreground">{t('tags.detail.expense')}</div>
+          <div className="mt-1 font-mono text-xl font-bold tabular-nums text-expense">
+            {fmt(stats?.expense ?? 0)}
+          </div>
+        </div>
+        <div className="rounded-xl border border-border/40 bg-card/50 p-3">
+          <div className="text-xs text-muted-foreground">{t('tags.detail.income')}</div>
+          <div className="mt-1 font-mono text-xl font-bold tabular-nums text-income">
+            {fmt(stats?.income ?? 0)}
+          </div>
+        </div>
+      </div>
+
+      {/* 最近交易 */}
+      {loadTransactions ? (
+        <div className="min-h-0 flex-1">
+          <h4 className="mb-2 text-xs font-semibold text-muted-foreground">
+            {t('tags.detail.recentTransactions')}
+          </h4>
+          <TransactionList
+            items={page.items}
+            variant="compact"
+            loading={loading}
+            hasMore={hasMore}
+            onLoadMore={hasMore ? loadMore : undefined}
+            className="max-h-[360px] overflow-y-auto pr-1"
+            emptyTitle={t('tags.detail.noTransactions')}
+          />
+        </div>
+      ) : null}
+
+      {/* 底部提示:点击可打开标准详情弹窗(若有 onClickTag) */}
+      {onClickTag ? (
+        <div className="mt-auto pt-2">
+          <Button variant="ghost" size="sm" onClick={() => onClickTag(tag)}>
+            {t('tags.detail.openFull')}
+          </Button>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+/** 标签管理面板 —— 双栏「列表 + 详情」。
  *
- * 这一版加了:
+ * - 左栏 标签列表(色点 + # 名 + 笔数徽章)。
+ * - 右栏 选中标签的详情(色块 + 名称 + KPI 笔数/支出/收入 + 最近交易)。
+ *
+ * 保留:
  * - "新建标签" 按钮(顶部右上角,以及 EmptyState CTA)
  * - 编辑/新建对话框里的 20 色调色板(`TAG_COLOR_PALETTE`,跟 app 一一对齐)
- * - 前端查重:保存前先用现有 `rows`(workspace tags,已经按用户作用域查回)
+ * - 前端查重:保存前先用现有 `rows`(workspace tags,已按用户作用域查回)
  *   检查同名,不让用户走完一圈 server 才报错。server 自身仍然兜底 dedup,
  *   双重保险。
  */
@@ -61,19 +227,17 @@ export function TagsPanel({
   onReset,
   onEdit,
   onDelete,
-  onClickTag
+  onClickTag,
+  loadTagTransactions,
 }: TagsPanelProps) {
   const t = useT()
   const [open, setOpen] = useState(false)
   const [duplicateError, setDuplicateError] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const hasStats = Boolean(statsById)
-  const fmt = (v: number) =>
-    v.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
   // 同名查重:把当前用户已有标签名字小写化收成 Set,提交时 O(1) 查。编辑模
   // 式下排除自己 (form.editingId 对应的行) 以允许"改色不改名"。
-  // rows 是 fetchWorkspaceTags 返回的,已经按 current_user.id 过滤,所以这
-  // 里的 dedup 自然是"用户作用域"的,不是单账本作用域。
   const existingNamesLower = useMemo(() => {
     const set = new Set<string>()
     for (const row of rows) {
@@ -114,6 +278,9 @@ export function TagsPanel({
     }
   }
 
+  const isEmpty = rows.length === 0
+  const selected = rows.find((r) => r.id === selectedId) ?? null
+
   return (
     <>
       {/* 顶部操作条:右上角"新建标签"。即使 rows 为空也保留(EmptyState 那边
@@ -124,7 +291,7 @@ export function TagsPanel({
         </div>
       ) : null}
 
-      {rows.length === 0 ? (
+      {isEmpty ? (
         <EmptyState
           icon={
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none"
@@ -143,106 +310,60 @@ export function TagsPanel({
           }
         />
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {rows.map((row) => {
-            const stats = statsById?.[row.id]
-            const color = row.color || '#94a3b8'
-            return (
-              <div
-                key={row.id}
-                className={`group relative overflow-hidden rounded-2xl border border-border/50 bg-card/80 p-5 backdrop-blur-sm transition-all hover:-translate-y-0.5 hover:border-border hover:shadow-lg ${
-                  onClickTag ? 'cursor-pointer' : ''
-                }`}
-                onClick={() => onClickTag?.(row)}
-              >
-                {/* 磨砂色斑 + tag 颜色的渐变底，整张卡有"主题色"感。dark 模式下
-                    opacity 稍微拉一点避免过暗。 */}
-                <div
-                  className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full blur-3xl"
-                  style={{ background: color, opacity: 0.18 }}
-                  aria-hidden
-                />
-                <div
-                  className="pointer-events-none absolute inset-x-0 bottom-0 h-20 opacity-40"
-                  style={{
-                    background: `linear-gradient(to top, ${color}14, transparent)`
-                  }}
-                  aria-hidden
-                />
-                <div className="relative space-y-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex min-w-0 items-center gap-2.5">
-                      {/* 左侧"#"徽章用 tag 颜色填充，像社交软件 hashtag 风格 */}
-                      <span
-                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-base font-bold text-white shadow-sm"
-                        style={{ background: color }}
-                      >
-                        #
+        <div className="grid h-[calc(100vh-160px)] min-h-[420px] grid-cols-[280px_1fr] gap-4">
+          {/* 左栏 列表 */}
+          <div className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-border/50 bg-card/40 p-2">
+            <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto">
+              {rows.map((row) => {
+                const color = row.color || '#94a3b8'
+                const count = statsById?.[row.id]?.count ?? 0
+                const active = row.id === selectedId
+                return (
+                  <button
+                    key={row.id}
+                    type="button"
+                    onClick={() => setSelectedId(row.id)}
+                    className={`flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-left text-sm transition-colors ${
+                      active ? 'bg-primary/15 text-primary' : 'hover:bg-accent/40 hover:text-foreground'
+                    }`}
+                  >
+                    <span
+                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-xs font-bold text-white"
+                      style={{ background: color }}
+                    >
+                      #
+                    </span>
+                    <span className="min-w-0 truncate">{row.name}</span>
+                    {count > 0 ? (
+                      <span className="ml-auto shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground tabular-nums">
+                        {count}
                       </span>
-                      <span className="truncate text-base font-semibold">{row.name}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 opacity-0 transition-opacity group-hover:opacity-100">
-                      <button
-                        className="rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-primary/15 hover:text-primary"
-                        disabled={!canManage}
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          startEdit(row)
-                        }}
-                      >
-                        {t('common.edit')}
-                      </button>
-                      {onDelete ? (
-                        <button
-                          className="rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                          disabled={!canManage}
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            onDelete(row)
-                          }}
-                        >
-                          {t('common.delete')}
-                        </button>
-                      ) : null}
-                    </div>
-                  </div>
-                  {hasStats ? (
-                    <div className="space-y-2">
-                      {/* 主统计：笔数放最显眼位 */}
-                      <div className="flex items-baseline gap-1.5">
-                        <span className="font-mono text-2xl font-bold tabular-nums">
-                          {stats?.count ?? 0}
-                        </span>
-                        <span className="text-[11px] text-muted-foreground">{t('tags.count.unit')}</span>
-                      </div>
-                      {/* 次要统计：支出/收入左右排 */}
-                      <div className="flex items-center justify-between gap-3 rounded-lg border border-border/40 bg-background/40 px-3 py-2 text-xs">
-                        <div className="flex items-center gap-1.5 text-expense">
-                          <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
-                          <span className="font-mono font-semibold">
-                            {stats ? fmt(stats.expense) : '0.00'}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1.5 text-income">
-                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                          <span className="font-mono font-semibold">
-                            {stats ? fmt(stats.income) : '0.00'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  ) : null}
-                  {showCreatorColumn ? (
-                    <div className="truncate text-[11px] text-muted-foreground">
-                      {row.created_by_email || row.created_by_user_id || '-'}
-                    </div>
-                  ) : null}
-                </div>
+                    ) : null}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* 右栏 详情 */}
+          <div className="min-h-0 overflow-y-auto rounded-xl border border-border/50 bg-card/40 p-4">
+            {selected ? (
+              <TagDetailPane
+                tag={selected}
+                stats={hasStats ? statsById?.[selected.id] : undefined}
+                showCreatorColumn={showCreatorColumn}
+                canManage={canManage}
+                onEdit={startEdit}
+                onDelete={onDelete}
+                onClickTag={onClickTag}
+                loadTransactions={loadTagTransactions}
+              />
+            ) : (
+              <div className="flex h-full min-h-[420px] items-center justify-center text-sm text-muted-foreground">
+                {t('tags.list.select')}
               </div>
-            )
-          })}
+            )}
+          </div>
         </div>
       )}
 

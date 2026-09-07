@@ -8,6 +8,10 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
   Input,
   Label,
   Pagination,
@@ -31,13 +35,10 @@ import type {
   ReadCategory,
   ReadTag,
   ReadTransaction,
-  WorkspaceCategory,
 } from '@smartbook/api-client'
 
 import { CurrencySelectorTrigger } from '../components/CurrencySelector'
-import { CategoryPickerDialog } from '../components/CategoryPickerDialog'
 import { CategoryIcon } from '../components/CategoryIcon'
-import { TagPickerDialog } from '../components/TagPickerDialog'
 import { TagChip } from '../components/TagChip'
 import { buildTagColorMap, tagTextColorOn } from '../lib/tagColorPalette'
 import { currencySymbol } from '../lib/currencies'
@@ -284,8 +285,6 @@ export function TransactionsPanel({
   const t = useT()
   const open = dialogOpen
   const setOpen = onDialogOpenChange
-  const [categoryPickerOpen, setCategoryPickerOpen] = useState(false)
-  const [tagPickerOpen, setTagPickerOpen] = useState(false)
 
   const dedupSortNames = (names: string[]) =>
     names
@@ -307,36 +306,21 @@ export function TransactionsPanel({
     }
     return accountOptions
   }
+  // 分类下拉选项:跟当前 tx_type 一致、去重、按名排序。
   const categoryOptions = categories
     .filter((row) => row.kind === form.tx_type)
     .map((row) => row.name.trim())
     .filter((name) => name.length > 0)
     .filter((name, index, self) => self.indexOf(name) === index)
     .sort((a, b) => a.localeCompare(b))
-  // tag 选择改用 TagPickerDialog,组件自己做 dedup + 搜索 + chip 渲染,这里
-  // 不再需要 tagOptions 派生(只保留 tagColorByName 给 trigger 按钮的小 chip
-  // 渲染上色用)。
-  // 按 name 反查 tag 颜色，tx 列表行里给每个标签 badge 上色。大小写不敏感。
+  // tag 选择已改内联 DropdownMenu,不再用 TagPickerDialog。tagColorByName
+  // 给触发器 chip + 列表项颜色块渲染上色用。
   const tagColorByName = new Map<string, string>()
   for (const row of tags) {
     const key = (row.name || '').trim().toLowerCase()
     if (!key) continue
     if (row.color && !tagColorByName.has(key)) tagColorByName.set(key, row.color)
   }
-
-  // 当前选中的分类 row(按 name + kind 反查),给 CategoryPicker 高亮 + 触发
-  // 按钮显示图标。和 TransactionList 行内渲染保持同源。
-  const selectedCategoryRow = useMemo<WorkspaceCategory | null>(() => {
-    const name = (form.category_name || '').trim().toLowerCase()
-    if (!name) return null
-    return (
-      (categories as WorkspaceCategory[]).find(
-        (row) =>
-          row.kind === form.tx_type &&
-          (row.name || '').trim().toLowerCase() === name,
-      ) ?? null
-    )
-  }, [categories, form.category_name, form.tx_type])
 
   const isTransfer = form.tx_type === 'transfer'
   // 非转账允许不选账户（与 mobile 保持一致，tx.accountId 本来就是 nullable）；
@@ -377,7 +361,7 @@ export function TransactionsPanel({
     })
   }
 
-  // 表列数:8 列(时间/记录时间/类型/分类/账户/标签/金额/操作)+ 选择模式首列。
+  // 表列数:8 列(时间/金额/类型/分类/账户/标签/记录时间/操作)+ 选择模式首列。
   // showCreatorColumn/showLedgerColumn 不再映射为独立列(创建人 chip 内嵌于
   // 分类列),保留参数仅为 API 兼容。
   const colCount = 8 + (selectionMode ? 1 : 0)
@@ -396,12 +380,12 @@ export function TransactionsPanel({
               <TableRow>
                 {selectionMode ? <TableHead className="bc-table-head w-[40px]"><input type="checkbox" aria-label="select" className="h-4 w-4 cursor-pointer accent-primary" /></TableHead> : null}
                 <TableHead className="bc-table-head">{t('transactions.table.time')}</TableHead>
-                <TableHead className="bc-table-head">{t('transactions.table.createdAt')}</TableHead>
+                <TableHead className="bc-table-head">{t('transactions.table.amount')}</TableHead>
                 <TableHead className="bc-table-head">{t('transactions.table.type')}</TableHead>
                 <TableHead className="bc-table-head">{t('transactions.table.category')}</TableHead>
                 <TableHead className="bc-table-head">{t('transactions.table.account')}</TableHead>
                 <TableHead className="bc-table-head">{t('transactions.table.tags')}</TableHead>
-                <TableHead className="bc-table-head">{t('transactions.table.amount')}</TableHead>
+                <TableHead className="bc-table-head">{t('transactions.table.createdAt')}</TableHead>
                 <TableHead className="bc-table-head">{t('transactions.table.ops')}</TableHead>
               </TableRow>
             </TableHeader>
@@ -528,35 +512,33 @@ export function TransactionsPanel({
               {isTransfer ? (
                 <Input disabled value={t('common.none')} />
               ) : (
-                // 跟同行的 SelectTrigger 视觉对齐:h-10 + bg-muted + border-input,
-                // 图标用 h-6 w-6 圆形塞得进 40px 高度,不撑大行高。
-                <button
-                  type="button"
+                <Select
+                  value={categoryValue || '__none__'}
                   disabled={dictionariesLoading}
-                  onClick={() => setCategoryPickerOpen(true)}
-                  className="flex h-10 w-full items-center gap-2 rounded-md border border-input bg-muted px-3 py-2 text-left text-sm shadow-sm transition-colors hover:bg-accent/40 disabled:cursor-not-allowed disabled:opacity-50"
+                  onValueChange={(value) =>
+                    onFormChange({
+                      ...form,
+                      category_name: value === '__none__' ? '' : value,
+                      category_kind: form.tx_type,
+                    })
+                  }
                 >
-                  {selectedCategoryRow ? (
-                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/15">
-                      <CategoryIcon
-                        icon={selectedCategoryRow.icon}
-                        iconType={selectedCategoryRow.icon_type}
-                        iconCloudFileId={selectedCategoryRow.icon_cloud_file_id}
-                        iconPreviewUrlByFileId={iconPreviewUrlByFileId}
-                        size={16}
-                        className="text-primary"
-                      />
-                    </span>
-                  ) : null}
-                  <span
-                    className={`flex-1 truncate ${
-                      categoryValue ? '' : 'text-muted-foreground'
-                    }`}
-                  >
-                    {categoryValue || t('transactions.placeholder.categoryName')}
-                  </span>
-                  <span className="text-xs text-muted-foreground opacity-60">▾</span>
-                </button>
+                  <SelectTrigger>
+                    <SelectValue placeholder={t('transactions.placeholder.categoryName')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">
+                      <span className="text-muted-foreground">
+                        {t('common.none')}
+                      </span>
+                    </SelectItem>
+                    {categoryOptions.map((name) => (
+                      <SelectItem key={name} value={name}>
+                        {name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               )}
             </div>
 
@@ -650,46 +632,72 @@ export function TransactionsPanel({
 
             <div className="space-y-1">
               <Label>{t('tags.title')}</Label>
-              {/* tag 多选改用 TagPickerDialog —— mobile 风格的 chip 选择,带搜索
-                  + 颜色块,比 DropdownMenu 直观。trigger 按钮里把已选标签缩略
-                  显示成彩色 chip,空时占位文案。视觉上跟同行的 SelectTrigger 同高。 */}
-              <button
-                type="button"
-                disabled={dictionariesLoading}
-                onClick={() => setTagPickerOpen(true)}
-                className="flex h-10 w-full items-center gap-2 rounded-md border border-input bg-muted px-3 py-2 text-left text-sm shadow-sm transition-colors hover:bg-accent/40 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <span className="flex flex-1 items-center gap-1 overflow-hidden">
-                  {selectedTags.length === 0 ? (
-                    <span className="text-muted-foreground">
-                      {t('common.none')}
-                    </span>
-                  ) : (
-                    <span className="flex flex-wrap items-center gap-1 overflow-hidden">
-                      {selectedTags.slice(0, 3).map((name) => {
-                        const color = tagColorByName.get(name.toLowerCase()) || '#94a3b8'
-                        const fg = tagTextColorOn(color)
-                        return (
-                          <span
-                            key={name}
-                            className="inline-flex h-5 max-w-[120px] items-center rounded-full px-1.5 text-[11px] leading-none"
-                            style={{ background: color, color: fg }}
-                            title={name}
-                          >
-                            <span className="truncate">{name}</span>
+              {/* tag 多选改为内联 DropdownMenu —— 无需打开弹窗,直接在触发器下
+                  展开勾选列表,已选标签在触发器里以彩色 chip 缩略展示。 */}
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  disabled={dictionariesLoading}
+                  className="flex h-10 w-full items-center gap-2 rounded-md border border-input bg-muted px-3 py-2 text-left text-sm shadow-sm transition-colors hover:bg-accent/40 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <span className="flex flex-1 items-center gap-1 overflow-hidden">
+                    {selectedTags.length === 0 ? (
+                      <span className="text-muted-foreground">
+                        {t('common.none')}
+                      </span>
+                    ) : (
+                      <span className="flex flex-wrap items-center gap-1 overflow-hidden">
+                        {selectedTags.slice(0, 3).map((name) => {
+                          const color = tagColorByName.get(name.toLowerCase()) || '#94a3b8'
+                          const fg = tagTextColorOn(color)
+                          return (
+                            <span
+                              key={name}
+                              className="inline-flex h-5 max-w-[120px] items-center rounded-full px-1.5 text-[11px] leading-none"
+                              style={{ background: color, color: fg }}
+                              title={name}
+                            >
+                              <span className="truncate">{name}</span>
+                            </span>
+                          )
+                        })}
+                        {selectedTags.length > 3 ? (
+                          <span className="text-[11px] text-muted-foreground">
+                            +{selectedTags.length - 3}
                           </span>
-                        )
-                      })}
-                      {selectedTags.length > 3 ? (
-                        <span className="text-[11px] text-muted-foreground">
-                          +{selectedTags.length - 3}
-                        </span>
-                      ) : null}
-                    </span>
-                  )}
-                </span>
-                <span className="text-xs text-muted-foreground opacity-60">▾</span>
-              </button>
+                        ) : null}
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-xs text-muted-foreground opacity-60">▾</span>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-56 max-h-72 overflow-y-auto">
+                  {tags.map((tag) => {
+                    const name = (tag.name || '').trim()
+                    if (!name) return null
+                    const color = tagColorByName.get(name.toLowerCase()) || '#94a3b8'
+                    const fg = tagTextColorOn(color)
+                    const checked = selectedTags.includes(name)
+                    return (
+                      <DropdownMenuCheckboxItem
+                        key={name}
+                        checked={checked}
+                        onSelect={() => {
+                          const next = checked
+                            ? selectedTags.filter((n) => n !== name)
+                            : [...selectedTags, name]
+                          onFormChange({ ...form, tags: next })
+                        }}
+                      >
+                        <span
+                          className="mr-2 inline-block h-2 w-2 rounded-full"
+                          style={{ background: color }}
+                        />
+                        <span className="truncate">{name}</span>
+                      </DropdownMenuCheckboxItem>
+                    )
+                  })}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
             <div className="space-y-1 md:col-span-2">
               <Label>{t('transactions.table.note')}</Label>
@@ -774,37 +782,6 @@ export function TransactionsPanel({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* 标签 picker —— chip 多选,跟 TagsPanel 卡片视觉一致。 */}
-      <TagPickerDialog
-        open={tagPickerOpen}
-        onClose={() => setTagPickerOpen(false)}
-        tags={tags}
-        selectedNames={selectedTags}
-        onChange={(names) => onFormChange({ ...form, tags: names })}
-        onClearAll={() => onFormChange({ ...form, tags: [] })}
-      />
-
-      {/* 分类 picker —— 跟 mobile category_selector_dialog 同样的网格 + 子级
-          展开交互。expense / income 切换跟随 form.tx_type;转账类型不开 picker。
-          移除"未分类"footer —— 非转账交易必选分类(对齐 mobile transaction_editor_page,
-          page 层 onSaveTransaction 也会再 guard 一次)。 */}
-      <CategoryPickerDialog
-        open={categoryPickerOpen}
-        onClose={() => setCategoryPickerOpen(false)}
-        kind={form.tx_type === 'income' ? 'income' : 'expense'}
-        rows={categories as WorkspaceCategory[]}
-        iconPreviewUrlByFileId={iconPreviewUrlByFileId}
-        selectedId={selectedCategoryRow?.id}
-        title={t('transactions.placeholder.categoryName')}
-        onSelect={(cat) => {
-          onFormChange({
-            ...form,
-            category_name: cat.name.trim(),
-            category_kind: form.tx_type,
-          })
-        }}
-      />
     </>
   )
 }
@@ -934,8 +911,35 @@ function TransactionRowCell({
       <TableCell className="whitespace-nowrap font-mono tabular-nums text-xs text-muted-foreground">
         {formatTableDateTime(row.happened_at)}
       </TableCell>
-      <TableCell className="whitespace-nowrap font-mono tabular-nums text-xs text-muted-foreground">
-        {row.created_at ? formatTableDateTime(row.created_at) : '-'}
+      <TableCell className="whitespace-nowrap text-left">
+        <span className={`font-mono tabular-nums font-bold ${
+          amountTone === 'positive' ? 'text-income'
+            : amountTone === 'negative' ? 'text-expense'
+              : 'text-foreground'
+        }`}>
+          {sign}
+          {isForeignCurrency ? currencySymbolByCode(row.currency_code as string) : ''}
+          {(row.amount ?? 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </span>
+        {isForeignCurrency ? (
+          <span className="ml-1 font-mono tabular-nums text-[10px] text-muted-foreground" title={t('transactions.convertedToBase')}>
+            ≈{(row.native_amount as number).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </span>
+        ) : null}
+        {hasAttachments && firstAttachment ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              void onPreviewAttachment?.(attachments, 0)
+            }}
+            className="ml-1 inline-flex items-center gap-1 rounded border border-border/60 bg-muted/30 px-1 py-0.5 text-[10px] text-muted-foreground hover:border-primary/40 hover:text-primary"
+            title={firstAttachment.originalName || firstAttachment.fileName || t('attachment.default')}
+          >
+            <span aria-hidden>📎</span>
+            <span className="font-mono tabular-nums">{attachments.length}</span>
+          </button>
+        ) : null}
       </TableCell>
       <TableCell className="whitespace-nowrap">
         <Badge variant={row.tx_type === 'transfer' ? 'secondary' : row.tx_type === 'income' ? 'outline' : 'default'}>
@@ -975,35 +979,8 @@ function TransactionRowCell({
           )}
         </div>
       </TableCell>
-      <TableCell className="whitespace-nowrap text-right">
-        <span className={`font-mono tabular-nums font-bold ${
-          amountTone === 'positive' ? 'text-income'
-            : amountTone === 'negative' ? 'text-expense'
-              : 'text-foreground'
-        }`}>
-          {sign}
-          {isForeignCurrency ? currencySymbolByCode(row.currency_code as string) : ''}
-          {(row.amount ?? 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-        </span>
-        {isForeignCurrency ? (
-          <span className="ml-1 font-mono tabular-nums text-[10px] text-muted-foreground" title={t('transactions.convertedToBase')}>
-            ≈{(row.native_amount as number).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </span>
-        ) : null}
-        {hasAttachments && firstAttachment ? (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              void onPreviewAttachment?.(attachments, 0)
-            }}
-            className="ml-1 inline-flex items-center gap-1 rounded border border-border/60 bg-muted/30 px-1 py-0.5 text-[10px] text-muted-foreground hover:border-primary/40 hover:text-primary"
-            title={firstAttachment.originalName || firstAttachment.fileName || t('attachment.default')}
-          >
-            <span aria-hidden>📎</span>
-            <span className="font-mono tabular-nums">{attachments.length}</span>
-          </button>
-        ) : null}
+      <TableCell className="whitespace-nowrap font-mono tabular-nums text-xs text-muted-foreground">
+        {row.created_at ? formatTableDateTime(row.created_at) : '-'}
       </TableCell>
       <TableCell className="whitespace-nowrap">
         <div className="flex items-center gap-3">

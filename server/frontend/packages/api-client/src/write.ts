@@ -120,6 +120,50 @@ export async function batchDeleteTransactions(
   )
 }
 
+export type BatchMoveTxFailure = {
+  tx_id: string
+  reason: 'not_found' | 'permission_denied' | 'conflict' | 'invalid_target_category'
+  message?: string | null
+}
+
+export type BatchMoveTxResponse = {
+  ledger_id: string
+  base_change_id: number
+  new_change_id: number
+  server_timestamp: string
+  moved_tx_ids: string[]
+  failed: BatchMoveTxFailure[]
+}
+
+/**
+ * POST /write/ledgers/{id}/transactions/batch/move — 批量把交易移到目标分类。
+ *
+ * - 单次最多 200 条(server 上限,超量需前端切批)
+ * - 服务端一次 snapshot 锁 + 一次 SyncChange broadcast,跨设备实时更新
+ * - 目标分类不存在 → server 返回 422 (reason=invalid_target_category)
+ */
+export async function batchMoveTransactions(
+  token: string,
+  options: {
+    ledgerId: string
+    txIds: string[]
+    targetCategoryId: string
+    baseChangeId?: number
+    idempotencyKey?: string
+  }
+): Promise<BatchMoveTxResponse> {
+  return authedPost<BatchMoveTxResponse>(
+    `/write/ledgers/${encodeURIComponent(options.ledgerId)}/transactions/batch/move`,
+    token,
+    {
+      tx_ids: options.txIds,
+      target_category_id: options.targetCategoryId,
+      base_change_id: options.baseChangeId ?? 0,
+    },
+    options.idempotencyKey
+  )
+}
+
 export async function createAccount(
   token: string,
   ledgerId: string,

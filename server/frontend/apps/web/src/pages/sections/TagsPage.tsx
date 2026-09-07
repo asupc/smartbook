@@ -144,6 +144,9 @@ export function TagsPage() {
             color: row.color || '#F59E0B',
           })
         }}
+        loadTagTransactions={async (tagSyncId, offset) =>
+          fetchWorkspaceTransactions(token, { tagSyncId, limit: 20, offset })
+        }
         onDelete={(row) => {
           // 关联交易 > 0 直接拦,不让走 confirm dialog,跟 app 端行为对齐。
           // server 也有兜底校验(snapshot_mutator.delete_tag)防止漏网。

@@ -66,6 +66,8 @@ export type AIProvider = {
   audioModel?: string
   /** 接口协议:'openai'(OpenAI-compatible,缺省)| 'anthropic'(/v1/messages)。 */
   protocol?: 'openai' | 'anthropic'
+  /** 一次多图批量识别时该服务商最多并行处理的图片数(1-32)。 */
+  visionConcurrency?: number
   createdAt?: string // ISO 8601
 }
 

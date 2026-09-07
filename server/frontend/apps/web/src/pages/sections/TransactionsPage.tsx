@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate as useNavigateRR, useSearchParams } from 'react-router-dom'
 
 import { routePath, type AppRoute } from '../../state/router'
@@ -19,7 +19,7 @@ import { useLedgers } from '../../context/LedgersContext'
 import { useSharedLedgerResources } from '../../context/SharedLedgerResourcesContext'
 import { bundleToReadResources } from '../../lib/shared-ledger-mappers'
 
-import { CheckSquare, Download, Plus, SlidersHorizontal } from 'lucide-react'
+import { CheckSquare, Download, Plus } from 'lucide-react'
 
 import { Button, Input, Modal, Select, Tooltip } from 'antd'
 import {
@@ -51,7 +51,6 @@ import {
   fetchReadLedgerDetail,
   fetchReadLedgers,
   type WorkspaceAccount,
-  type WorkspaceCategory,
   type WorkspaceTransaction,
   fetchProfileMe,
   fetchWorkspaceAccounts,
@@ -66,9 +65,7 @@ import {
 import {
   resolveCurrencyFields,
   loadRatesToBase,
-  CategoryPickerDialog,
   ConfirmDialog,
-  TagPickerDialog,
   TransactionsPanel,
   canManageLedger,
   canWriteTransactions,
@@ -138,7 +135,6 @@ type TxFilter = {
 }
 
 const TX_PAGE_SIZE_DEFAULT = 20
-const fieldLabelStyle: CSSProperties = { fontWeight: 500, marginBottom: 4, display: 'block' }
 // v1 → v2:加了 amount range / date range / category / tag 过滤,key 升版避免
 // 旧 storage 数据 partial 回填出空字段。
 const TX_FILTER_STORAGE_PREFIX = 'smartbook:web:txFilter:v2'
@@ -388,12 +384,7 @@ export function TransactionsPage() {
   const [txWriteLedgerId, setTxWriteLedgerId] = useState('')
 
   const [txFilterApplied, setTxFilterApplied] = useState<TxFilter>(defaultTxFilter)
-  const [txFilterDraft, setTxFilterDraft] = useState<TxFilter>(defaultTxFilter)
-  const [txFilterOpen, setTxFilterOpen] = useState(false)
-  // filter dialog 内嵌的 category / tag picker。这两个 dialog 跟 filter dialog
-  // 同级渲染(filter dialog z-index 之外),避免嵌套 dialog 导致 portal 抖动。
-  const [txFilterCategoryPickerOpen, setTxFilterCategoryPickerOpen] = useState(false)
-  const [txFilterTagPickerOpen, setTxFilterTagPickerOpen] = useState(false)
+  // 查询条件全部平铺在搜索区,不再用弹窗展示。分类/标签筛选直接内联 antd Select。
 
   const [txForm, setTxForm] = useState<TxForm>(txDefaults)
   // tx dialog 显隐 lift 到 page,这样"新建交易"按钮可以跟搜索/筛选放同一
@@ -530,6 +521,42 @@ export function TransactionsPage() {
         a.localeCompare(b)
       ),
     [accounts]
+  )
+  // 分类筛选下拉选项 —— 全部已存在分类(不按当前 txType 收窄:筛查询是用户
+  // 自由需求,任何分类都能作为过滤条件,不套 form 的"同 kind"限制)。
+  const txFilterCategoryOptions = useMemo(
+    () => {
+      const out = txWriteCategories
+        .filter((row) => (row.name || '').trim().length > 0)
+        .map((row) => ({ value: row.id, label: (row.name || '').trim() }))
+      // 已选的 categorySyncId 若不在候选里(筛选已持久化但分类列表未加载/
+      // 已删),兜底补一条展示存储的 name,避免下拉只显示一串 id。
+      if (
+        txFilterApplied.categorySyncId &&
+        !out.some((o) => o.value === txFilterApplied.categorySyncId)
+      ) {
+        out.unshift({
+          value: txFilterApplied.categorySyncId,
+          label: txFilterApplied.categoryName || txFilterApplied.categorySyncId,
+        })
+      }
+      return out
+    },
+    [txWriteCategories, txFilterApplied.categorySyncId, txFilterApplied.categoryName]
+  )
+  // 标签筛选下拉选项 —— 已选中的 tagName 若不在候选里,兜底补进(跨端乱数据)。
+  const txFilterTagOptions = useMemo(
+    () => {
+      const out = txWriteTags
+        .filter((row) => (row.name || '').trim().length > 0)
+        .map((row) => ({ value: row.id, label: (row.name || '').trim() }))
+      const currentName = (txFilterApplied.tagName || '').trim()
+      if (currentName && !out.some((o) => o.label === currentName)) {
+        out.unshift({ value: txFilterApplied.tagSyncId || currentName, label: currentName })
+      }
+      return out
+    },
+    [txWriteTags, txFilterApplied.tagName, txFilterApplied.tagSyncId]
   )
   // visibleNavGroups 已搬到 AppHeader。
   // headerCoreItems / headerMoreGroups / avatarMenuItems / moreMenuActive
@@ -822,7 +849,6 @@ export function TransactionsPage() {
     const effectiveQ = urlQ && urlQ.trim().length > 0 ? urlQ : nextFilter.q
     setListQuery(effectiveQ)
     setTxFilterApplied({ ...nextFilter, q: effectiveQ })
-    setTxFilterDraft({ ...nextFilter, q: effectiveQ })
     setTxPage(1)
     queueMicrotask(() => {
       txFilterRestoreInProgressRef.current = false
@@ -879,7 +905,6 @@ export function TransactionsPage() {
       const now = new Date()
       const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
       setTxFilterApplied((prev) => ({ ...prev, dateFrom: todayStr, dateTo: todayStr }))
-      setTxFilterDraft((prev) => ({ ...prev, dateFrom: todayStr, dateTo: todayStr }))
       consumed.push('range')
     }
 
@@ -1101,59 +1126,15 @@ export function TransactionsPage() {
     }
   }
 
-  const activeTxQuery = listQuery || txFilterApplied.q
-  // 任何 filter 字段非空 = 1 个激活点。按钮上小圆点徽章靠它显隐;计数本身
-  // 不展示具体数字(够用即可,具体是哪几个看 dialog 里勾选状态)。
-  const txFilterActiveCount =
-    Number(Boolean(activeTxQuery)) +
-    Number(Boolean(txFilterApplied.txType)) +
-    Number(Boolean(txFilterApplied.accountName)) +
-    Number(Boolean(txFilterApplied.amountMin)) +
-    Number(Boolean(txFilterApplied.amountMax)) +
-    Number(Boolean(txFilterApplied.dateFrom)) +
-    Number(Boolean(txFilterApplied.dateTo)) +
-    Number(Boolean(txFilterApplied.categorySyncId)) +
-    Number(Boolean(txFilterApplied.tagSyncId))
-
-  const onOpenTxFilter = () => {
-    // draft 必须 mirror 全部 applied 字段(原版只搬 q/txType/accountName,
-    // 现在加了 amount/date/category/tag,漏一个就会被默认空值覆盖,等于关闭
-    // 弹窗就把已应用过滤丢了)。
-    setTxFilterDraft({
-      ...txFilterApplied,
-      q: listQuery || txFilterApplied.q,
-    })
-    setTxFilterOpen(true)
-  }
-
-  // 平铺在搜索行的「交易类型 / 日期」筛选:改动即生效(同 keyword 的即时语义),
-  // 并同步 mirror 到 draft,打开筛选弹窗时保持一致。
+  // 查询条件全部平铺在搜索区,改动即生效(同 keyword 的即时语义)。不再有
+  // 独立"应用 / 重置"按钮 —— 每个控件直接写入 applied,paginate 归 1。
   const onInlineTxFilterPatch = useCallback(
     (patch: Partial<TxFilter>) => {
       setTxFilterApplied((prev) => ({ ...prev, ...patch }))
-      setTxFilterDraft((prev) => ({ ...prev, ...patch }))
       setTxPage(1)
     },
     [],
   )
-
-  const onApplyTxFilter = () => {
-    const next = { ...txFilterDraft }
-    // 整体替换 applied(不再 spread prev),保证 draft 里清掉的字段也真的清掉。
-    setTxFilterApplied(next)
-    setListQuery(next.q)
-    setTxPage(1)
-    setTxFilterOpen(false)
-  }
-
-  const onResetTxFilter = () => {
-    const next = defaultTxFilter()
-    setTxFilterDraft(next)
-    setTxFilterApplied(next)
-    setListQuery('')
-    setTxPage(1)
-    setTxFilterOpen(false)
-  }
 
   const resolveTxAttachmentPreviewUrl = useCallback(
     async (attachment: AttachmentRef): Promise<string | null> => {
@@ -1611,8 +1592,6 @@ export function TransactionsPage() {
 
   // tagStatsById 已迁到 TagsPage。
 
-  const showTxFilter = route.section === 'transactions'
-
   // ──────────────── 批量选择 ────────────────
   // 切账本 / 离开交易页 / 修改 filter 时清空 selection,避免选中态横跨上下文
   // 后用户操作错对象。dataset 变了再保留 selection 没意义。
@@ -1775,21 +1754,20 @@ export function TransactionsPage() {
 
           {route.section === 'transactions' ? (
             <div className="space-y-3">
-              {/* 交易搜索简化：keyword + 可选 filter 按钮，去掉 Card 包裹与
-                  admin 用户选择（admin 场景走单独页，普通用户不需要暴露）。
-                  左组 = 搜索输入 + 筛选;右组 = 导出 / 新建,
-                  ml-auto 套在右组上(而不是单按钮),即便其中一个 button 隐藏
-                  另一个仍会贴右,不会跟左组贴在一起。 */}
+              {/* 交易搜索简化：keyword + 全部查询条件平铺在搜索区，去掉 Card
+                  包裹与 admin 用户选择（admin 场景走单独页，普通用户不需要暴露）。
+                  查询条件不再用弹窗展示，全部内联、改动即生效；分类 / 标签用
+                  picker 弹窗选择（独立于搜索行下方渲染）。左组 = 搜索输入 + 各
+                  条件控件;右组 = 导出 / 新建,ml-auto 套在右组上(而不是单按钮),
+                  即便其中一个 button 隐藏另一个仍会贴右,不会跟左组贴在一起。 */}
               <div className="flex flex-wrap items-center gap-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <Input
-                    className="w-[220px] lg:w-[300px]"
+                    className="w-[140px] lg:w-[190px]"
                     placeholder={t('shell.placeholder.keyword')}
                     value={listQuery}
                     onChange={(event) => setListQuery(event.target.value)}
                   />
-                  {/* 交易类型 / 日期范围平铺在搜索行(改动即生效),其余条件
-                      (账户/金额/分类/标签)留在筛选弹窗。 */}
                   <Select
                     className="w-[110px]"
                     value={txFilterApplied.txType || 'all'}
@@ -1804,6 +1782,22 @@ export function TransactionsPage() {
                       { value: 'expense', label: t('enum.txType.expense') },
                       { value: 'income', label: t('enum.txType.income') },
                       { value: 'transfer', label: t('enum.txType.transfer') },
+                    ]}
+                  />
+                  <Select
+                    className="w-[110px]"
+                    value={txFilterApplied.accountName || '__all__'}
+                    aria-label={t('shell.accountFilter')}
+                    showSearch
+                    optionFilterProp="label"
+                    onChange={(value) =>
+                      onInlineTxFilterPatch({
+                        accountName: value === '__all__' ? '' : value,
+                      })
+                    }
+                    options={[
+                      { value: '__all__', label: t('shell.filter.all') },
+                      ...txFilterAccountOptions.map((name) => ({ value: name, label: name })),
                     ]}
                   />
                   <Input
@@ -1825,20 +1819,91 @@ export function TransactionsPage() {
                       onInlineTxFilterPatch({ dateTo: event.target.value })
                     }
                   />
-                  {showTxFilter ? (
-                    <div className="relative">
-                      <Tooltip title={t('shell.filter.title')}>
-                        <Button
-                          size="small"
-                          icon={<SlidersHorizontal className="h-4 w-4" />}
-                          aria-label={t('shell.filter.title')}
-                          onClick={onOpenTxFilter}
-                        />
-                      </Tooltip>
-                      {txFilterActiveCount > 0 ? (
-                        <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-primary" />
-                      ) : null}
-                    </div>
+                  <Input
+                    type="number"
+                    className="w-[110px]"
+                    min="0"
+                    step="0.01"
+                    aria-label={t('shell.filter.amountMin')}
+                    placeholder={t('shell.filter.amountMin')}
+                    value={txFilterApplied.amountMin}
+                    onChange={(event) =>
+                      onInlineTxFilterPatch({ amountMin: event.target.value })
+                    }
+                  />
+                  <span className="text-xs text-muted-foreground">–</span>
+                  <Input
+                    type="number"
+                    className="w-[110px]"
+                    min="0"
+                    step="0.01"
+                    aria-label={t('shell.filter.amountMax')}
+                    placeholder={t('shell.filter.amountMax')}
+                    value={txFilterApplied.amountMax}
+                    onChange={(event) =>
+                      onInlineTxFilterPatch({ amountMax: event.target.value })
+                    }
+                  />
+                  <Select
+                    className="w-[130px]"
+                    value={txFilterApplied.categorySyncId || '__all__'}
+                    aria-label={t('shell.filter.category')}
+                    showSearch
+                    placeholder={t('shell.filter.category')}
+                    optionFilterProp="label"
+                    onChange={(value) => {
+                      if (value === '__all__') {
+                        onInlineTxFilterPatch({ categorySyncId: '', categoryName: '' })
+                        return
+                      }
+                      const hit = txWriteCategories.find((row) => row.id === value)
+                      onInlineTxFilterPatch({
+                        categorySyncId: value,
+                        categoryName: hit?.name || '',
+                      })
+                    }}
+                    options={[
+                      { value: '__all__', label: t('shell.filter.all') },
+                      ...txFilterCategoryOptions,
+                    ]}
+                  />
+                  <Select
+                    className="w-[130px]"
+                    value={txFilterApplied.tagSyncId || '__all__'}
+                    aria-label={t('shell.filter.tag')}
+                    showSearch
+                    placeholder={t('shell.filter.tag')}
+                    optionFilterProp="label"
+                    onChange={(value) => {
+                      if (value === '__all__') {
+                        onInlineTxFilterPatch({ tagSyncId: '', tagName: '' })
+                        return
+                      }
+                      const hit = txWriteTags.find((row) => row.id === value)
+                      onInlineTxFilterPatch({
+                        tagSyncId: value,
+                        tagName: hit?.name || value,
+                      })
+                    }}
+                    options={[
+                      { value: '__all__', label: t('shell.filter.all') },
+                      ...txFilterTagOptions,
+                    ]}
+                  />
+                  {txFilterApplied.categorySyncId || txFilterApplied.tagSyncId ? (
+                    <Button
+                      size="small"
+                      onClick={() =>
+                        onInlineTxFilterPatch({
+                          categorySyncId: '',
+                          categoryName: '',
+                          tagSyncId: '',
+                          tagName: '',
+                        })
+                      }
+                    >
+                      {t('shell.filter.reset')}
+                    </Button>
                   ) : null}
                 </div>
                 <div className="ml-auto flex items-center gap-2">
@@ -2074,243 +2139,11 @@ export function TransactionsPage() {
 
       {/* AccountDetailDialog 已跟 accounts section 一起迁到 AccountsPage */}
 
-      <Modal
-        open={txFilterOpen}
-        title={t('shell.filter.title')}
-        width={512}
-        onCancel={() => setTxFilterOpen(false)}
-        destroyOnHidden
-        footer={[
-          <Button key="reset" size="small" onClick={() => void onResetTxFilter()}>
-            {t('shell.filter.reset')}
-          </Button>,
-          <Button key="apply" size="small" type="primary" onClick={() => void onApplyTxFilter()}>
-            {t('shell.filter.apply')}
-          </Button>,
-        ]}
-        styles={{ body: { maxHeight: '70vh', overflowY: 'auto' } }}
-      >
-          <div className="grid gap-3">
-            <div>
-              <label style={fieldLabelStyle}>{t('shell.searchTx')}</label>
-              <Input
-                placeholder={t('shell.placeholder.keyword')}
-                value={txFilterDraft.q}
-                onChange={(event) => setTxFilterDraft((prev) => ({ ...prev, q: event.target.value }))}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label style={fieldLabelStyle}>{t('shell.txFilter')}</label>
-                <Select
-                  value={txFilterDraft.txType || 'all'}
-                  onChange={(value) =>
-                    setTxFilterDraft((prev) => ({
-                      ...prev,
-                      txType: value === 'all' ? '' : (value as TxFilter['txType'])
-                    }))
-                  }
-                  options={[
-                    { value: 'all', label: t('shell.filter.all') },
-                    { value: 'expense', label: t('enum.txType.expense') },
-                    { value: 'income', label: t('enum.txType.income') },
-                    { value: 'transfer', label: t('enum.txType.transfer') },
-                  ]}
-                  style={{ width: '100%' }}
-                />
-              </div>
-              <div>
-                <label style={fieldLabelStyle}>{t('shell.accountFilter')}</label>
-                <Select
-                  value={txFilterDraft.accountName || '__all__'}
-                  onChange={(value) =>
-                    setTxFilterDraft((prev) => ({
-                      ...prev,
-                      accountName: value === '__all__' ? '' : value,
-                    }))
-                  }
-                  options={[
-                    { value: '__all__', label: t('shell.filter.all') },
-                    ...txFilterAccountOptions.map((name) => ({ value: name, label: name })),
-                  ]}
-                  style={{ width: '100%' }}
-                />
-              </div>
-            </div>
+      {/* 交易筛选弹窗已移除 —— 全部查询条件(交易类型/账户/日期/金额/分类/标签)
+          改为平铺在搜索区,改动即生效。 */}
 
-            {/* 日期范围 — date 输入,跟 mobile search_page 等价(start/end)。
-                后端用半开区间 happened_at < dateTo,这里 dateTo 自动 +1 天。 */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label style={fieldLabelStyle}>{t('shell.filter.dateFrom')}</label>
-                <Input
-                  type="date"
-                  value={txFilterDraft.dateFrom}
-                  onChange={(event) =>
-                    setTxFilterDraft((prev) => ({ ...prev, dateFrom: event.target.value }))
-                  }
-                />
-              </div>
-              <div>
-                <label style={fieldLabelStyle}>{t('shell.filter.dateTo')}</label>
-                <Input
-                  type="date"
-                  value={txFilterDraft.dateTo}
-                  onChange={(event) =>
-                    setTxFilterDraft((prev) => ({ ...prev, dateTo: event.target.value }))
-                  }
-                />
-              </div>
-            </div>
-
-            {/* 金额范围 — number,允许小数 */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label style={fieldLabelStyle}>{t('shell.filter.amountMin')}</label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="0"
-                  value={txFilterDraft.amountMin}
-                  onChange={(event) =>
-                    setTxFilterDraft((prev) => ({ ...prev, amountMin: event.target.value }))
-                  }
-                />
-              </div>
-              <div>
-                <label style={fieldLabelStyle}>{t('shell.filter.amountMax')}</label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="∞"
-                  value={txFilterDraft.amountMax}
-                  onChange={(event) =>
-                    setTxFilterDraft((prev) => ({ ...prev, amountMax: event.target.value }))
-                  }
-                />
-              </div>
-            </div>
-
-            {/* 分类 + 标签 — 简单显示选中名,点 trigger 弹 picker dialog。空 =
-                不限。提供"清除"按钮一键解绑。 */}
-            <div>
-              <label style={fieldLabelStyle}>{t('shell.filter.category')}</label>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setTxFilterCategoryPickerOpen(true)}
-                  className="flex h-10 flex-1 items-center gap-2 rounded-md border border-input bg-muted px-3 py-2 text-left text-sm shadow-sm transition-colors hover:bg-accent/40"
-                >
-                  <span className={`flex-1 truncate ${
-                    txFilterDraft.categoryName ? '' : 'text-muted-foreground'
-                  }`}>
-                    {txFilterDraft.categoryName || t('shell.filter.all')}
-                  </span>
-                  <span className="text-xs text-muted-foreground opacity-60">▾</span>
-                </button>
-                {txFilterDraft.categorySyncId ? (
-                  <Button
-                    size="small"
-                    onClick={() =>
-                      setTxFilterDraft((prev) => ({
-                        ...prev,
-                        categorySyncId: '',
-                        categoryName: '',
-                      }))
-                    }
-                  >
-                    {t('common.remove')}
-                  </Button>
-                ) : null}
-              </div>
-            </div>
-            <div>
-              <label style={fieldLabelStyle}>{t('shell.filter.tag')}</label>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setTxFilterTagPickerOpen(true)}
-                  className="flex h-10 flex-1 items-center gap-2 rounded-md border border-input bg-muted px-3 py-2 text-left text-sm shadow-sm transition-colors hover:bg-accent/40"
-                >
-                  <span className={`flex-1 truncate ${
-                    txFilterDraft.tagName ? '' : 'text-muted-foreground'
-                  }`}>
-                    {txFilterDraft.tagName || t('shell.filter.all')}
-                  </span>
-                  <span className="text-xs text-muted-foreground opacity-60">▾</span>
-                </button>
-                {txFilterDraft.tagSyncId ? (
-                  <Button
-                    size="small"
-                    onClick={() =>
-                      setTxFilterDraft((prev) => ({
-                        ...prev,
-                        tagSyncId: '',
-                        tagName: '',
-                      }))
-                    }
-                  >
-                    {t('common.remove')}
-                  </Button>
-                ) : null}
-              </div>
-            </div>
-          </div>
-      </Modal>
-
-      {/* Filter dialog 内的"分类 / 标签 picker" — 复用统一组件,跟 transaction
-          表单的选择器一致。category picker 不显示父级 0 笔限制(filter 是查询
-          需求,任何已存在分类都能筛)。 */}
-      <CategoryPickerDialog
-        open={txFilterCategoryPickerOpen}
-        onClose={() => setTxFilterCategoryPickerOpen(false)}
-        kind={txFilterDraft.txType === 'income' ? 'income' : 'expense'}
-        // ReadCategory shape ≈ WorkspaceCategory(后者只多 ledger_id/name/tx_count
-        // 等可选字段),CategoryPicker 只用其中的 syncId/name/icon/parent_id 字段,
-        // 行为兼容,这里强转避免上层换 fetch 接口。
-        rows={txWriteCategories as unknown as WorkspaceCategory[]}
-        iconPreviewUrlByFileId={categoryIconPreviewByFileId}
-        selectedId={txFilterDraft.categorySyncId || undefined}
-        title={t('shell.filter.category')}
-        onSelect={(cat) =>
-          setTxFilterDraft((prev) => ({
-            ...prev,
-            categorySyncId: cat.id,
-            categoryName: cat.name,
-          }))
-        }
-      />
-      <TagPickerDialog
-        open={txFilterTagPickerOpen}
-        onClose={() => setTxFilterTagPickerOpen(false)}
-        tags={txWriteTags}
-        // filter 只支持单 tag(server tag_sync_id 是单值参数);转成单选语义:
-        // selectedNames 只放当前选中的那一个。
-        selectedNames={txFilterDraft.tagName ? [txFilterDraft.tagName] : []}
-        onChange={(names) => {
-          // 用户在 multi-select picker 里勾任意一个,我们当作"切换到这个"。
-          // 取数组里最后一个非空的当作单选结果(用户最近的勾选意图)。
-          const last = names.length > 0 ? names[names.length - 1] : ''
-          if (!last) {
-            setTxFilterDraft((prev) => ({ ...prev, tagSyncId: '', tagName: '' }))
-            return
-          }
-          const tagRow = txWriteTags.find(
-            (row) => (row.name || '').trim().toLowerCase() === last.trim().toLowerCase(),
-          )
-          setTxFilterDraft((prev) => ({
-            ...prev,
-            tagSyncId: tagRow?.id || '',
-            tagName: tagRow?.name || last,
-          }))
-        }}
-        title={t('shell.filter.tag')}
-        onClearAll={() =>
-          setTxFilterDraft((prev) => ({ ...prev, tagSyncId: '', tagName: '' }))
-        }
-      />
+      {/* 查询条件已全部平铺在搜索区,不再用弹窗展示;分类/标签筛选直接内联
+          antd Select(见搜索区)。两个 picker 弹窗已移除。 */}
 
       <Modal
         open={attachmentPreview.open}
