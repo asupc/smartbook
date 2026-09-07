@@ -473,6 +473,8 @@ class DuplicateRecord(BaseModel):
     sync_id: str
     amount: float
     happened_at: datetime
+    # 记录时间(服务端首次落库时刻);存量行可能为 NULL。
+    created_at: datetime | None = None
     tx_type: str
     note: str | None = None
     account_name: str | None = None
@@ -539,6 +541,8 @@ class ReadTransactionOut(BaseModel):
     tx_type: str
     amount: float
     happened_at: datetime
+    # 记录时间(服务端首次落库时刻)。存量行/旧版本可能为 NULL,前端显示 "-"。
+    created_at: datetime | None = None
     note: str | None
     category_name: str | None
     category_kind: str | None

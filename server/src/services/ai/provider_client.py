@@ -38,6 +38,106 @@ from ...models import User, UserProfile
 logger = logging.getLogger(__name__)
 
 
+# Anthropic 协议适配(/v1/messages) ────────────────────────────────────────
+#
+# provider 的 `protocol` 字段 = "anthropic" 时,所有 chat / vision 调用改走
+# Anthropic Messages API:消息 shape(system 独立字段 / content blocks)、
+# vision(base64 source)、响应(content[].text)都不同;鉴权头也不同
+# (x-api-key + anthropic-version,不是 Bearer)。STT Anthropic 没有 ——
+# protocol=anthropic 的 provider 一律不支持语音转写。
+
+
+def _normalize_anthropic_base_url(base_url: str) -> str:
+    """baseUrl 允许带或不带 /v1:统一剥掉尾部 /v1 后自己拼 /v1/messages,
+    用户填 https://api.anthropic.com 和 https://api.anthropic.com/v1 等价。"""
+    return base_url.rstrip("/").removesuffix("/v1")
+
+
+def _anthropic_system_and_messages(
+    messages: list[dict[str, object]],
+) -> tuple[str, list[dict[str, object]]]:
+    """OpenAI messages → Anthropic (system, messages)。system 独立传;
+    字符串 content 包成 [{"type":"text",...}]。"""
+    system_parts: list[str] = []
+    out: list[dict[str, object]] = []
+    for m in messages:
+        role = m.get("role")
+        content = m.get("content")
+        if role == "system":
+            if isinstance(content, str):
+                system_parts.append(content)
+            continue
+        if isinstance(content, str):
+            block_content: list[dict[str, object]] = [
+                {"type": "text", "text": content}
+            ]
+        elif isinstance(content, list):
+            block_content = []
+            for part in content:
+                if not isinstance(part, dict):
+                    continue
+                if part.get("type") == "text":
+                    block_content.append({"type": "text", "text": part.get("text") or ""})
+                elif part.get("type") == "image_url":
+                    # OpenAI data URL → Anthropic base64 source
+                    url = (part.get("image_url") or {}).get("url") or ""
+                    if url.startswith("data:"):
+                        header, _, b64 = url.partition(",")
+                        mime = header[len("data:") :].split(";")[0] or "image/png"
+                        block_content.append(
+                            {
+                                "type": "image",
+                                "source": {"type": "base64", "media_type": mime, "data": b64},
+                            }
+                        )
+        else:
+            block_content = [{"type": "text", "text": ""}]
+        # Anthropic messages 首条必须是 user;assistant 开头的对话丢掉开头
+        if not out and role == "assistant":
+            continue
+        out.append({"role": "user" if role != "assistant" else "assistant", "content": block_content})
+    if not out:
+        out = [{"role": "user", "content": [{"type": "text", "text": ""}]}]
+    return "\n\n".join(system_parts), out
+
+
+def _anthropic_usage_to_openai(usage: dict | None) -> dict | None:
+    """Anthropic usage{input_tokens,output_tokens} → OpenAI 命名,日志落库用。"""
+    if not isinstance(usage, dict):
+        return None
+    return {
+        "prompt_tokens": usage.get("input_tokens"),
+        "completion_tokens": usage.get("output_tokens"),
+        "total_tokens": (usage.get("input_tokens") or 0) + (usage.get("output_tokens") or 0),
+    }
+
+
+def _anthropic_text_from_response(data: dict) -> str:
+    return "".join(
+        b.get("text") or ""
+        for b in data.get("content") or []
+        if isinstance(b, dict) and b.get("type") == "text"
+    )
+
+
+async def _post_anthropic_adaptive(
+    client: httpx.AsyncClient, url: str, headers: dict, payload: dict,
+) -> httpx.Response:
+    """POST /v1/messages;max_tokens 被拒(部分模型有上限)时逐步砍半重发。"""
+    payload = dict(payload)
+    resp = await client.post(url, headers=headers, json=payload)
+    for _ in range(3):
+        if resp.status_code < 400:
+            return resp
+        low = resp.text.lower()
+        if "max_tokens" in payload and "max_tokens" in low:
+            payload = {**payload, "max_tokens": max(256, int(payload["max_tokens"]) // 2)}
+            resp = await client.post(url, headers=headers, json=payload)
+            continue
+        break
+    return resp
+
+
 # Embedding(server-side,跟 build 时同步配置) ──────────────────────────────
 
 
@@ -86,6 +186,7 @@ class ChatProviderConfig:
     model: str           # textModel / visionModel / audioModel(按 kind)
     name: str | None = None
     is_built_in: bool = False  # 内置智谱(音频走 input_audio 消息,非 /audio/transcriptions)
+    protocol: str = "openai"   # "openai"(OpenAI-compatible) | "anthropic"(/v1/messages)
 
 
 class ChatProviderError(RuntimeError):
@@ -242,6 +343,8 @@ def _resolve_provider_by_kind(
         model=model,
         name=matched.get("name"),
         is_built_in=bool(matched.get("isBuiltIn")),
+        # 存量配置没有 protocol 字段 → openai(行为与升级前一致)
+        protocol=matched.get("protocol") or "openai",
     )
 
 
@@ -396,14 +499,22 @@ async def call_chat_json(
     max_retries: int = 1,
     disable_thinking: bool = False,
 ) -> ChatJSONResult:
-    """调 OpenAI-compatible /chat/completions(非 stream),返 ChatJSONResult。
+    """调 provider chat API(非 stream),返 ChatJSONResult。
 
-    重试策略:
+    protocol=openai 走 /chat/completions;protocol=anthropic 走 /v1/messages。
+
+    重试策略(openai 分支):
     - attempt 0:带 `response_format={"type": "json_object"}`(部分 provider 支持,提高准确率)
     - attempt 1+:去掉 `response_format`(兼容不支持该参数的 provider,有些网关传了会卡死)
     - 都依赖 `_try_parse_json` 鲁棒抽 JSON(允许 markdown code block 包裹 / 前后缀文字)
     """
     import time
+
+    if config.protocol == "anthropic":
+        return await _call_chat_json_anthropic(
+            config=config, messages=messages, timeout=timeout,
+            max_retries=max_retries,
+        )
 
     last_exc: Exception | None = None
     url = f"{config.base_url}/chat/completions"
@@ -497,6 +608,73 @@ async def call_chat_json(
     raise last_exc or JsonParseFailedError("unknown JSON parse failure")
 
 
+async def _call_chat_json_anthropic(
+    *,
+    config: ChatProviderConfig,
+    messages: list[dict[str, object]],
+    timeout: float,
+    max_retries: int,
+) -> ChatJSONResult:
+    """/v1/messages JSON 提取 — call_chat_json 的 Anthropic 分支(温度自适应
+    降档 + max_tokens 砍半重试,复用 _try_parse_json)。"""
+    import time
+
+    last_exc: Exception | None = None
+    system, a_messages = _anthropic_system_and_messages(messages)
+    headers = {
+        "x-api-key": config.api_key,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json",
+    }
+    url = f"{_normalize_anthropic_base_url(config.base_url)}/v1/messages"
+
+    for attempt in range(max_retries + 1):
+        temperature = 0.2 if attempt == 0 else 0.05
+        payload: dict[str, object] = {
+            "model": config.model,
+            "messages": a_messages,
+            "max_tokens": 4096,
+            "temperature": temperature,
+        }
+        if system:
+            payload["system"] = system
+        t0 = time.monotonic()
+        logger.info(
+            "ai.call_chat_json_anthropic provider=%s model=%s attempt=%d msgs=%d",
+            config.provider_id, config.model, attempt + 1, len(a_messages),
+        )
+        try:
+            async with httpx.AsyncClient(
+                timeout=timeout,
+                verify=get_settings().ai_http_verify_ssl,
+            ) as client:
+                resp = await _post_anthropic_adaptive(client, url, headers, payload)
+            if resp.status_code >= 400:
+                raise ChatProviderError(
+                    f"provider {config.provider_id} returned {resp.status_code}: {resp.text[:200]}"
+                )
+            data = resp.json()
+            content = _anthropic_text_from_response(data)
+            parsed = _try_parse_json(content or "")
+            if parsed is not None:
+                return ChatJSONResult(parsed=parsed, usage=_anthropic_usage_to_openai(data.get("usage")))
+            last_exc = JsonParseFailedError(
+                f"LLM did not return parseable JSON (attempt {attempt + 1}); "
+                f"raw[:120]={content[:120]!r}",
+                raw_content=content or "",
+            )
+        except httpx.TimeoutException as exc:
+            last_exc = ChatProviderError(
+                f"provider {config.provider_id} timed out after {time.monotonic() - t0:.1f}s"
+            )
+            if attempt < max_retries:
+                continue
+            raise last_exc from exc
+        except httpx.HTTPError as exc:
+            raise ChatProviderError(f"network error: {exc}") from exc
+    raise last_exc or JsonParseFailedError("unknown JSON parse failure")
+
+
 # Plain-text chat call(非 streaming、非 JSON 模式,/ai/relay/* 中转用) ────
 
 
@@ -516,14 +694,24 @@ async def call_chat_text(
     disable_thinking: bool = False,
     timeout: float = 120.0,
 ) -> ChatTextResult:
-    """调 OpenAI-compatible /chat/completions(非 stream),返回原始 content。
+    """调 provider(OpenAI-compatible /chat/completions 或 Anthropic /v1/messages),
+    返回原始 content。
 
     与 `call_chat_json` 的区别:不附加 response_format、不做 JSON 抽取、不重试
     —— 提示词与输出解析都是 App 端业务(/ai/relay/* 只做密钥代管 + 转发),
     content 原样回给客户端,由客户端的 JsonResponseParser 鲁棒解析。
     参数自适应摘除(_post_chat_adaptive)与 GLM thinking 关闭逻辑保持一致。
+    Anthropic protocol 时消息 shape / 鉴权头 / 响应解析走 _anthropic_* 系列。
     """
     import time
+
+    if config.protocol == "anthropic":
+        return await _call_chat_text_anthropic(
+            config=config,
+            messages=messages,
+            temperature=temperature,
+            timeout=timeout,
+        )
 
     url = f"{config.base_url}/chat/completions"
     headers = {
@@ -583,6 +771,64 @@ async def call_chat_text(
     )
 
 
+async def _call_chat_text_anthropic(
+    *,
+    config: ChatProviderConfig,
+    messages: list[dict[str, object]],
+    temperature: float,
+    timeout: float,
+) -> ChatTextResult:
+    """/v1/messages 非流式调用 — call_chat_text 的 Anthropic 分支。"""
+    import time
+
+    system, a_messages = _anthropic_system_and_messages(messages)
+    payload: dict[str, object] = {
+        "model": config.model,
+        "messages": a_messages,
+        "max_tokens": 4096,
+        "temperature": temperature,
+    }
+    if system:
+        payload["system"] = system
+    headers = {
+        "x-api-key": config.api_key,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json",
+    }
+    url = f"{_normalize_anthropic_base_url(config.base_url)}/v1/messages"
+
+    t0 = time.monotonic()
+    logger.info(
+        "ai.call_chat_text_anthropic provider=%s model=%s msgs=%d",
+        config.provider_id, config.model, len(a_messages),
+    )
+    try:
+        async with httpx.AsyncClient(
+            timeout=timeout,
+            verify=get_settings().ai_http_verify_ssl,
+        ) as client:
+            resp = await _post_anthropic_adaptive(client, url, headers, payload)
+    except httpx.TimeoutException as exc:
+        elapsed = time.monotonic() - t0
+        logger.warning("ai.call_chat_text_anthropic timeout provider=%s elapsed=%.2fs", config.provider_id, elapsed)
+        raise ChatProviderError(
+            f"provider {config.provider_id} timed out after {elapsed:.1f}s"
+        ) from exc
+    except httpx.HTTPError as exc:
+        logger.warning("ai.call_chat_text_anthropic http error provider=%s err=%s", config.provider_id, exc)
+        raise ChatProviderError(f"network error: {exc}") from exc
+
+    if resp.status_code >= 400:
+        raise ChatProviderError(
+            f"provider {config.provider_id} returned {resp.status_code}: {resp.text[:200]}"
+        )
+    data = resp.json()
+    return ChatTextResult(
+        content=_anthropic_text_from_response(data),
+        usage=_anthropic_usage_to_openai(data.get("usage")),
+    )
+
+
 # Audio transcription(/ai/relay/stt 用) ────────────────────────────────────
 
 _STT_PROMPT = "请将语音内容转换为文字，只返回识别的文字内容，不要添加任何解释或标点修饰。"
@@ -614,7 +860,12 @@ async def transcribe_audio(
     timeout: float = 120.0,
 ) -> str:
     """语音转文字:按 provider 类型分派 OpenAI /audio/transcriptions 或
-    智谱 input_audio。返回识别文本(可能为空串)。失败抛 ChatProviderError。"""
+    智谱 input_audio。返回识别文本(可能为空串)。失败抛 ChatProviderError。
+    Anthropic 协议没有 STT 接口,直接报错(能力绑定 UI 不该让用户绑到这一步)。"""
+    if config.protocol == "anthropic":
+        raise ChatProviderError(
+            f"provider {config.provider_id} uses Anthropic protocol which has no speech-to-text API"
+        )
     headers = {"Authorization": f"Bearer {config.api_key}"}
     try:
         async with httpx.AsyncClient(
@@ -700,13 +951,21 @@ async def stream_chat_completion(
     messages: list[dict[str, str]],
     timeout: float = 30.0,
 ) -> AsyncIterator[str]:
-    """调 provider /chat/completions stream=true,yield 增量 content。
+    """调 provider stream=true,yield 增量 content。
 
-    OpenAI-compatible API:GLM / OpenAI / DeepSeek / 智谱 / SiliconFlow 都走同一套。
-    SSE 解析:每行 `data: {...}`,看 choices[0].delta.content。`data: [DONE]` 结束。
+    protocol=openai:OpenAI-compatible /chat/completions SSE(GLM / OpenAI /
+    DeepSeek / 智谱 / SiliconFlow 都走同一套),每行 `data: {...}` 看
+    choices[0].delta.content,`data: [DONE]` 结束。
+    protocol=anthropic:/v1/messages SSE,看 content_block_delta 的
+    delta.text,message_stop 结束。
 
     出错抛 ChatProviderError(不细分:对前端来说就是「AI 服务出错,请重试 / 检查 key」)。
     """
+    if config.protocol == "anthropic":
+        async for chunk in _stream_chat_anthropic(config=config, messages=messages, timeout=timeout):
+            yield chunk
+        return
+
     payload = {
         "model": config.model,
         "messages": messages,
@@ -769,5 +1028,62 @@ async def stream_chat_completion(
             raise ChatProviderError(
                 f"provider {config.provider_id} stream failed after stripping params"
             )
+    except httpx.HTTPError as exc:
+        raise ChatProviderError(f"network error: {exc}") from exc
+
+
+async def _stream_chat_anthropic(
+    *,
+    config: ChatProviderConfig,
+    messages: list[dict[str, str]],
+    timeout: float,
+) -> AsyncIterator[str]:
+    """/v1/messages SSE 流式 — stream_chat_completion 的 Anthropic 分支。
+    system 已在 messages 里由 caller 传,这里复用统一的 system 抽取。"""
+    system, a_messages = _anthropic_system_and_messages(messages)  # type: ignore[arg-type]
+    payload: dict[str, object] = {
+        "model": config.model,
+        "messages": a_messages,
+        "max_tokens": 4096,
+        "stream": True,
+    }
+    if system:
+        payload["system"] = system
+    headers = {
+        "x-api-key": config.api_key,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+    }
+    url = f"{_normalize_anthropic_base_url(config.base_url)}/v1/messages"
+
+    try:
+        async with httpx.AsyncClient(
+            timeout=timeout,
+            verify=get_settings().ai_http_verify_ssl,
+        ) as client:
+            async with client.stream("POST", url, headers=headers, json=payload) as resp:
+                if resp.status_code >= 400:
+                    body = (await resp.aread()).decode("utf-8", errors="replace")
+                    raise ChatProviderError(
+                        f"provider {config.provider_id} returned {resp.status_code}: {body[:200]}"
+                    )
+                async for line in resp.aiter_lines():
+                    if not line or not line.strip().startswith("data:"):
+                        continue
+                    payload_str = line.strip()[len("data:"):].strip()
+                    try:
+                        chunk = json.loads(payload_str)
+                    except (ValueError, TypeError):
+                        logger.warning("ai.chat anthropic malformed SSE chunk: %s", payload_str[:80])
+                        continue
+                    etype = chunk.get("type")
+                    if etype == "content_block_delta":
+                        delta = chunk.get("delta") or {}
+                        text = delta.get("text")
+                        if text:
+                            yield text
+                    elif etype == "message_stop":
+                        return
     except httpx.HTTPError as exc:
         raise ChatProviderError(f"network error: {exc}") from exc

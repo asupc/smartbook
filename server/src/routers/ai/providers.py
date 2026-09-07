@@ -23,7 +23,7 @@ import time
 from typing import Any, Literal
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -41,6 +41,13 @@ from ...services.ai.ai_config_store import (
     is_unset_key,
     load_ai_config,
     mask_api_key,
+)
+from ...services.ai.builtin_providers import (
+    BUILTIN_PROVIDER_IDS,
+    BUILTIN_PROVIDER_TEMPLATES,
+    KNOWN_PROTOCOLS,
+    PROTOCOL_OPENAI,
+    ensure_builtin_providers,
 )
 
 import httpx
@@ -63,6 +70,7 @@ class ProviderUpsertIn(BaseModel):
     textModel: str = Field(default="", max_length=128)
     visionModel: str = Field(default="", max_length=128)
     audioModel: str = Field(default="", max_length=128)
+    protocol: str | None = Field(default=None, max_length=32)
     createdAt: str | None = Field(default=None, max_length=40)
 
 
@@ -73,6 +81,7 @@ class ProviderPatchIn(BaseModel):
     textModel: str | None = Field(default=None, max_length=128)
     visionModel: str | None = Field(default=None, max_length=128)
     audioModel: str | None = Field(default=None, max_length=128)
+    protocol: str | None = Field(default=None, max_length=32)
 
 
 class BindingIn(BaseModel):
@@ -96,6 +105,7 @@ class ProviderOut(BaseModel):
     textModel: str
     visionModel: str
     audioModel: str
+    protocol: str = PROTOCOL_OPENAI
     createdAt: str | None = None
 
 
@@ -114,6 +124,7 @@ class ProviderTestOut(BaseModel):
 
 def _to_out(p: dict[str, Any]) -> ProviderOut:
     key = p.get("apiKey") or ""
+    protocol = p.get("protocol") or PROTOCOL_OPENAI
     return ProviderOut(
         id=p.get("id") or "",
         name=p.get("name") or "",
@@ -124,12 +135,43 @@ def _to_out(p: dict[str, Any]) -> ProviderOut:
         textModel=p.get("textModel") or "",
         visionModel=p.get("visionModel") or "",
         audioModel=p.get("audioModel") or "",
+        protocol=protocol if protocol in KNOWN_PROTOCOLS else PROTOCOL_OPENAI,
         createdAt=p.get("createdAt"),
     )
 
 
 def _load_profile(db: Session, user_id: str) -> UserProfile | None:
     return db.scalar(select(UserProfile).where(UserProfile.user_id == user_id))
+
+
+def _validate_protocol(protocol: str | None) -> str:
+    """protocol 写入口校验:None / 空 = openai 缺省;非法值 400。"""
+    if not protocol:
+        return PROTOCOL_OPENAI
+    if protocol not in KNOWN_PROTOCOLS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error_code": "AI_PROVIDER_INVALID",
+                "message": f"protocol must be one of {sorted(KNOWN_PROTOCOLS)}, got {protocol!r}",
+            },
+        )
+    return protocol
+
+
+async def _broadcast_providers_changed(request: Request, *, user_id: str) -> None:
+    """providers/binding 变更后广播 profile_change,让其它登录设备实时拉
+    /ai/providers 刷新掩码缓存(修复「App 改了配置,另一台设备不生效」)。
+    广播不带 ai_config 本体;客户端收到后各自走 refreshFromServer。失败不 break 请求。"""
+    try:
+        ws_manager = getattr(request.app.state, "ws_manager", None)
+        if ws_manager is None:
+            logger.info("ai.providers.broadcast: ws_manager unavailable, skip user=%s", user_id)
+            return
+        await ws_manager.broadcast_to_user(user_id, {"type": "profile_change", "ai_providers_changed": True})
+        logger.info("ai.providers.broadcast: done user=%s", user_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("ai.providers.broadcast: failed user=%s err=%s", user_id, exc)
 
 
 def _save_config(db: Session, profile: UserProfile | None, user_id: str, cfg: dict) -> UserProfile:
@@ -146,11 +188,20 @@ def _save_config(db: Session, profile: UserProfile | None, user_id: str, cfg: di
 
 @router.get("/providers", response_model=ProviderListOut)
 def list_providers(
+    response: Response,
     _scopes: set[str] = Depends(_PROVIDERS_SCOPE_DEP),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ProviderListOut:
-    cfg = load_ai_config(_load_profile(db, current_user.id))
+    profile = _load_profile(db, current_user.id)
+    cfg = load_ai_config(profile)
+    # 内置服务商目录(智谱 / DeepSeek / Kimi / MiniMax / 小米 MiMo)缺哪个补
+    # 哪个,并给内置行补 protocol 缺省。有补齐动作时落库,下次不再写;
+    # X-AI-Providers-Seeded 头给客户端/排查用。
+    cfg, changed = ensure_builtin_providers(cfg)
+    if changed:
+        _save_config(db, profile, current_user.id, cfg)
+        response.headers["X-AI-Providers-Seeded"] = "1"
     return ProviderListOut(
         providers=[_to_out(p) for p in get_providers(cfg)],
         binding=get_binding(cfg),
@@ -161,8 +212,9 @@ def list_providers(
 
 
 @router.post("/providers", response_model=ProviderOut, status_code=status.HTTP_201_CREATED)
-def create_provider(
+async def create_provider(
     payload: ProviderUpsertIn,
+    request: Request,
     _scopes: set[str] = Depends(_PROVIDERS_SCOPE_DEP),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -177,10 +229,10 @@ def create_provider(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"error_code": "AI_PROVIDER_EXISTS", "message": f"provider id {provider_id!r} already exists"},
         )
-    if payload.isBuiltIn and provider_id != BUILTIN_PROVIDER_ID:
+    if payload.isBuiltIn and provider_id not in BUILTIN_PROVIDER_IDS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"error_code": "AI_PROVIDER_INVALID", "message": "isBuiltIn is reserved for the built-in provider"},
+            detail={"error_code": "AI_PROVIDER_INVALID", "message": "isBuiltIn is reserved for built-in providers"},
         )
 
     provider: dict[str, Any] = {
@@ -192,12 +244,14 @@ def create_provider(
         "textModel": payload.textModel,
         "visionModel": payload.visionModel,
         "audioModel": payload.audioModel,
+        "protocol": _validate_protocol(payload.protocol),
     }
     if payload.createdAt:
         provider["createdAt"] = payload.createdAt
     providers.append(provider)
     cfg["providers"] = providers
     _save_config(db, profile, current_user.id, cfg)
+    await _broadcast_providers_changed(request, user_id=current_user.id)
     return _to_out(provider)
 
 
@@ -205,9 +259,10 @@ def create_provider(
 
 
 @router.patch("/providers/{provider_id}", response_model=ProviderOut)
-def update_provider(
+async def update_provider(
     provider_id: str,
     payload: ProviderPatchIn,
+    request: Request,
     _scopes: set[str] = Depends(_PROVIDERS_SCOPE_DEP),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -230,11 +285,14 @@ def update_provider(
         provider["visionModel"] = payload.visionModel
     if payload.audioModel is not None:
         provider["audioModel"] = payload.audioModel
+    if payload.protocol is not None:
+        provider["protocol"] = _validate_protocol(payload.protocol)
     if payload.apiKey is not None and not is_unset_key(payload.apiKey):
         provider["apiKey"] = payload.apiKey
 
     cfg["providers"] = get_providers(cfg)
     _save_config(db, _load_profile(db, current_user.id), current_user.id, cfg)
+    await _broadcast_providers_changed(request, user_id=current_user.id)
     return _to_out(provider)
 
 
@@ -242,20 +300,27 @@ def update_provider(
 
 
 @router.delete("/providers/{provider_id}")
-def delete_provider(
+async def delete_provider(
     provider_id: str,
+    request: Request,
     _scopes: set[str] = Depends(_PROVIDERS_SCOPE_DEP),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict[str, bool]:
     cfg = load_ai_config(_load_profile(db, current_user.id))
+    # 内置 id 保护优先于存在性检查:目录还没被 GET 种进 DB 时也拒绝(不是 404)
+    if provider_id in BUILTIN_PROVIDER_IDS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error_code": "AI_PROVIDER_BUILTIN", "message": "built-in provider cannot be deleted"},
+        )
     provider = find_provider(cfg, provider_id)
     if provider is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"error_code": "AI_PROVIDER_NOT_FOUND", "message": f"provider {provider_id!r} not found"},
         )
-    if provider.get("isBuiltIn") or provider_id == BUILTIN_PROVIDER_ID:
+    if provider.get("isBuiltIn"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"error_code": "AI_PROVIDER_BUILTIN", "message": "built-in provider cannot be deleted"},
@@ -270,6 +335,7 @@ def delete_provider(
     if binding:
         cfg["binding"] = binding
     _save_config(db, _load_profile(db, current_user.id), current_user.id, cfg)
+    await _broadcast_providers_changed(request, user_id=current_user.id)
     return {"ok": True}
 
 
@@ -277,8 +343,9 @@ def delete_provider(
 
 
 @router.put("/providers/binding")
-def update_binding(
+async def update_binding(
     payload: BindingIn,
+    request: Request,
     _scopes: set[str] = Depends(_PROVIDERS_SCOPE_DEP),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -291,6 +358,7 @@ def update_binding(
     }
     cfg["binding"] = binding
     _save_config(db, _load_profile(db, current_user.id), current_user.id, cfg)
+    await _broadcast_providers_changed(request, user_id=current_user.id)
     return {"binding": binding}
 
 
@@ -317,6 +385,7 @@ async def test_stored_provider(
     api_key = provider.get("apiKey") or ""
     base_url = (provider.get("baseUrl") or "").rstrip("/")
     model = provider.get(model_key) or ""
+    protocol = provider.get("protocol") or PROTOCOL_OPENAI
     if not api_key or not base_url or not model:
         return ProviderTestOut(
             success=False,
@@ -327,10 +396,16 @@ async def test_stored_provider(
     started = time.monotonic()
     try:
         if cap == "text":
-            preview = await _test_text(base_url, api_key, model)
+            preview = await _test_text(base_url, api_key, model, protocol=protocol)
         elif cap == "vision":
-            preview = await _test_vision(base_url, api_key, model)
+            preview = await _test_vision(base_url, api_key, model, protocol=protocol)
         else:
+            if protocol == "anthropic":
+                return ProviderTestOut(
+                    success=False,
+                    error_code="AI_TEST_MISSING_FIELDS",
+                    error_message="Anthropic protocol has no speech-to-text API",
+                )
             preview = await _test_speech(base_url, api_key, model)
         latency = int((time.monotonic() - started) * 1000)
         logger.info(

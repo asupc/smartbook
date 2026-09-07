@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { Button, Input, Modal } from 'antd'
+import { Button, Input, Modal, Select } from 'antd'
 import { Loader2 } from 'lucide-react'
 
 import {
@@ -46,6 +46,8 @@ export function ProviderEditDialog({ open, initial, saving = false, onClose, onS
   const [textModel, setTextModel] = useState('')
   const [visionModel, setVisionModel] = useState('')
   const [audioModel, setAudioModel] = useState('')
+  // 接口协议:openai(OpenAI-compatible,缺省)| anthropic(/v1/messages)
+  const [protocol, setProtocol] = useState<'openai' | 'anthropic'>('openai')
   // 测试结果按 capability 缓存,form 改动后清空(测的是旧值,不再有效)
   const [testResults, setTestResults] = useState<Record<TestProviderCapability, TestProviderResult | null>>({
     text: null,
@@ -63,6 +65,7 @@ export function ProviderEditDialog({ open, initial, saving = false, onClose, onS
     setTextModel(initial?.textModel ?? '')
     setVisionModel(initial?.visionModel ?? '')
     setAudioModel(initial?.audioModel ?? '')
+    setProtocol(initial?.protocol ?? 'openai')
     setTestResults({ text: null, vision: null, speech: null })
     setRunAllStatus('idle')
   }, [open, initial])
@@ -78,15 +81,16 @@ export function ProviderEditDialog({ open, initial, saving = false, onClose, onS
       textModel: textModel.trim(),
       visionModel: visionModel.trim(),
       audioModel: audioModel.trim(),
+      protocol,
       createdAt: initial?.createdAt,
     }),
-    [initial, name, apiKey, baseUrl, textModel, visionModel, audioModel, isBuiltIn],
+    [initial, name, apiKey, baseUrl, textModel, visionModel, audioModel, protocol, isBuiltIn],
   )
 
   // form 改动 → 清测试结果(旧值不再有效)
   useEffect(() => {
     setTestResults({ text: null, vision: null, speech: null })
-  }, [apiKey, baseUrl, textModel, visionModel, audioModel])
+  }, [apiKey, baseUrl, textModel, visionModel, audioModel, protocol])
 
   const canSave =
     name.trim().length > 0 && apiKey.trim().length > 0 && baseUrl.trim().length > 0
@@ -107,6 +111,7 @@ export function ProviderEditDialog({ open, initial, saving = false, onClose, onS
       textModel: textModel.trim(),
       visionModel: visionModel.trim(),
       audioModel: audioModel.trim(),
+      protocol,
       createdAt: initial?.createdAt || new Date().toISOString(),
     }
     await onSave(next)
@@ -207,6 +212,23 @@ export function ProviderEditDialog({ open, initial, saving = false, onClose, onS
               placeholder="https://api.example.com/v1"
               className="font-mono text-xs"
             />
+          </Field>
+
+          <Field label={t('ai.providers.field.protocol')}>
+            <Select
+              value={protocol}
+              onChange={(v) => setProtocol(v === 'anthropic' ? 'anthropic' : 'openai')}
+              disabled={saving || isBuiltIn}
+              options={[
+                { value: 'openai', label: t('ai.providers.field.protocol.openai') },
+                { value: 'anthropic', label: t('ai.providers.field.protocol.anthropic') },
+              ]}
+            />
+            {protocol === 'anthropic' ? (
+              <p className="mt-1 text-[10px] text-muted-foreground">
+                {t('ai.providers.field.protocol.hint')}
+              </p>
+            ) : null}
           </Field>
 
           {/* model 行 —— 每行右侧 ProviderTestButton */}

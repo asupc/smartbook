@@ -574,6 +574,11 @@ class ReadTxProjection(Base):
     tx_type: Mapped[str] = mapped_column(String(16))
     amount: Mapped[float] = mapped_column(Float, default=0.0)
     happened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # 记录时间(服务端首次落库时刻,UTC)。客户端不提交,由 upsert_tx 首次
+    # 插入时盖章;后续 update 保留不变。NULL = 0014 之前创建的存量行。
+    created_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     # 外键引用都存 sync_id,rename 时只改 *_name 列,id 不动。
     category_sync_id: Mapped[str | None] = mapped_column(String(255), nullable=True)

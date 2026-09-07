@@ -52,6 +52,7 @@ class TestProviderProvider(BaseModel):
     textModel: str = ""
     visionModel: str = ""
     audioModel: str = ""
+    protocol: str | None = None
 
 
 class TestProviderRequest(BaseModel):
@@ -156,13 +157,20 @@ async def test_provider(
         )
 
     base_url = p.baseUrl.rstrip("/")
+    protocol = p.protocol or "openai"
     started = time.monotonic()
     try:
         if cap == "text":
-            preview = await _test_text(base_url, p.apiKey, model)
+            preview = await _test_text(base_url, p.apiKey, model, protocol=protocol)
         elif cap == "vision":
-            preview = await _test_vision(base_url, p.apiKey, model)
+            preview = await _test_vision(base_url, p.apiKey, model, protocol=protocol)
         else:
+            if protocol == "anthropic":
+                return TestProviderResponse(
+                    success=False,
+                    error_code="AI_TEST_MISSING_FIELDS",
+                    error_message="Anthropic protocol has no speech-to-text API",
+                )
             preview = await _test_speech(base_url, p.apiKey, model)
         latency = int((time.monotonic() - started) * 1000)
         logger.info(
@@ -222,8 +230,36 @@ class _UpstreamHTTPError(Exception):
         self.body = body
 
 
-async def _test_text(base_url: str, api_key: str, model: str) -> str:
-    """text capability:发个 'hi' 收第一段回复。"""
+async def _test_text(base_url: str, api_key: str, model: str, *, protocol: str = "openai") -> str:
+    """text capability:发个 'hi' 收第一段回复。protocol=anthropic 走 /v1/messages。"""
+    if protocol == "anthropic":
+        from ...services.ai.provider_client import _normalize_anthropic_base_url
+
+        url = f"{_normalize_anthropic_base_url(base_url)}/v1/messages"
+        payload = {
+            "model": model,
+            "messages": [{"role": "user", "content": [{"type": "text", "text": "hi"}]}],
+            "max_tokens": 16,
+        }
+        headers = {
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+        }
+        async with httpx.AsyncClient(
+            timeout=15.0,
+            verify=get_settings().ai_http_verify_ssl,
+        ) as client:
+            resp = await client.post(url, headers=headers, json=payload)
+        if resp.status_code >= 400:
+            raise _UpstreamHTTPError(resp.status_code, resp.text)
+        data = resp.json()
+        return "".join(
+            b.get("text") or ""
+            for b in data.get("content") or []
+            if isinstance(b, dict) and b.get("type") == "text"
+        ).strip()
+
     url = f"{base_url}/chat/completions"
     payload = with_disabled_thinking(
         {
@@ -251,8 +287,49 @@ async def _test_text(base_url: str, api_key: str, model: str) -> str:
     return (data.get("choices", [{}])[0].get("message", {}).get("content", "") or "").strip()
 
 
-async def _test_vision(base_url: str, api_key: str, model: str) -> str:
+async def _test_vision(base_url: str, api_key: str, model: str, *, protocol: str = "openai") -> str:
     """vision capability:发 64×64 红色 JPEG + 'describe' prompt。"""
+    if protocol == "anthropic":
+        from ...services.ai.provider_client import _normalize_anthropic_base_url
+
+        url = f"{_normalize_anthropic_base_url(base_url)}/v1/messages"
+        header, _, b64 = TEST_JPEG_DATA_URL.partition(",")
+        mime = header[len("data:") :].split(";")[0] or "image/jpeg"
+        payload = {
+            "model": model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "describe"},
+                        {
+                            "type": "image",
+                            "source": {"type": "base64", "media_type": mime, "data": b64},
+                        },
+                    ],
+                }
+            ],
+            "max_tokens": 16,
+        }
+        headers = {
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+        }
+        async with httpx.AsyncClient(
+            timeout=20.0,
+            verify=get_settings().ai_http_verify_ssl,
+        ) as client:
+            resp = await client.post(url, headers=headers, json=payload)
+        if resp.status_code >= 400:
+            raise _UpstreamHTTPError(resp.status_code, resp.text)
+        data = resp.json()
+        return "".join(
+            b.get("text") or ""
+            for b in data.get("content") or []
+            if isinstance(b, dict) and b.get("type") == "text"
+        ).strip()
+
     url = f"{base_url}/chat/completions"
     payload = with_disabled_thinking(
         {

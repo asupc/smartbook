@@ -289,8 +289,9 @@ def test_stored_provider_test(monkeypatch) -> None:
         assert r2.json()["error_code"] == "AI_TEST_MISSING_FIELDS"
 
         # happy path:patch 探测函数
-        async def fake_text(base_url, api_key, model):
+        async def fake_text(base_url, api_key, model, *, protocol="openai"):
             assert base_url == "https://a" and api_key == "sk-ok" and model == "m"
+            assert protocol == "openai"
             return "pong"
 
         monkeypatch.setattr("src.routers.ai.providers._test_text", fake_text)

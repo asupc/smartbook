@@ -92,9 +92,21 @@ class AIProviderManager {
               AIServiceProviderConfig.fromJson(e as Map<String, dynamic>))
           .toList();
 
-      // 确保智谱GLM始终存在
-      if (!providers.any((p) => p.id == 'zhipu_glm')) {
-        providers.insert(0, AIServiceProviderConfig.zhipuDefault);
+      // 确保内置服务商(智谱/DeepSeek/Kimi/MiniMax/小米 MiMo)都在;
+      // 缺哪个补哪个(老缓存升级 / 服务端还没种目录时的本地兜底)。
+      final missing = AIServiceProviderConfig.builtinDefaults
+          .where((b) => !providers.any((p) => p.id == b.id))
+          .toList();
+      if (missing.isNotEmpty) {
+        // 内置智谱保持列表首位(旧语义),其余内置插到自定义服务商之前。
+        final zhipu = missing.where((m) => m.id == 'zhipu_glm').toList();
+        final others = missing.where((m) => m.id != 'zhipu_glm').toList();
+        final firstCustomIdx =
+            providers.indexWhere((p) => !AIServiceProviderConfig.builtinDefaults.any((b) => b.id == p.id));
+        final insertIdx = firstCustomIdx < 0 ? providers.length : firstCustomIdx;
+        providers
+          ..insertAll(insertIdx, others)
+          ..insertAll(0, zhipu);
         await _saveCache(providers);
       }
 
@@ -191,6 +203,7 @@ class AIProviderManager {
     String textModel = '',
     String visionModel = '',
     String audioModel = '',
+    String protocol = 'openai',
   }) async {
     final newProvider = AIServiceProviderConfig(
       id: _generateId(),
@@ -201,6 +214,7 @@ class AIProviderManager {
       textModel: textModel,
       visionModel: visionModel,
       audioModel: audioModel,
+      protocol: protocol,
       createdAt: DateTime.now(),
     );
     await _requireServerApi().createProvider(newProvider);
@@ -285,9 +299,9 @@ class AIProviderManager {
   /// 从服务端拉服务商列表(掩码) + 能力绑定,写入本地缓存。静默失败:
   /// 云服务未注入 / 网络异常都只打日志,不影响 UI 用旧缓存。
   ///
-  /// 首次拉取时若服务端还没有任何服务商,而本地遗留了直连时代的真 key,
-  /// 会把它们(含能力绑定)一次性推上服务端 —— 旧版本升级到中转架构后
-  /// 密钥不丢。
+  /// 首次拉取时若服务端**没有任何已配 key 的服务商**(内置目录可能已被服务端
+  /// 种下但都空着),而本地遗留了直连时代的真 key,会把它们(含能力绑定)
+  /// 一次性推上服务端 —— 旧版本升级到中转架构后密钥不丢。
   static Future<void> refreshFromServer() async {
     final api = serverApi;
     if (api == null) return;
@@ -295,7 +309,10 @@ class AIProviderManager {
       var (providers, binding) = await api.listProviders();
       final prefs = await SharedPreferences.getInstance();
 
-      if (providers.isEmpty && !(prefs.getBool(_keyLegacyMigrated) ?? false)) {
+      // 掩码视图下 apiKey 非空 = 服务端真存着 key。内置目录(全空 key)
+      // 不算「已配置」,不能因此跳过遗留迁移。
+      final serverHasAnyKey = providers.any((p) => p.apiKey.isNotEmpty);
+      if (!serverHasAnyKey && !(prefs.getBool(_keyLegacyMigrated) ?? false)) {
         await prefs.setBool(_keyLegacyMigrated, true);
         final locals = await getProviders();
         final legacy = locals
@@ -307,8 +324,14 @@ class AIProviderManager {
             try {
               await api.createProvider(p);
             } catch (e) {
-              // 重复 id 等 → 跳过单个,继续迁移其余
-              logger.warning(_tag, '迁移服务商 ${p.name} 失败(跳过): $e');
+              // id 已存在(如服务端已种内置目录)→ 改走 PATCH 把真 key
+              // 合进已有行;再失败才是真的迁移失败,跳过继续。
+              logger.warning(_tag, '迁移服务商 ${p.name} create 失败,尝试更新: $e');
+              try {
+                await api.updateProvider(p);
+              } catch (e2) {
+                logger.warning(_tag, '迁移服务商 ${p.name} 失败(跳过): $e2');
+              }
             }
           }
           try {

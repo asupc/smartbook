@@ -55,6 +55,7 @@ class _AIChatPageState extends ConsumerState<AIChatPage>
   AIConfigValidationResult? _apiValidation; // API配置验证结果
   bool _showScrollToBottom = false; // 是否显示"回到底部"按钮
   bool _isFirstLoad = true; // 是否首次加载
+  bool _userDraggingList = false; // 用户手指正在拖动列表(期间不强制吸底)
 
   @override
   void initState() {
@@ -76,6 +77,9 @@ class _AIChatPageState extends ConsumerState<AIChatPage>
     final position = _scrollController.position;
     final scrollOffset = position.pixels;
     final maxScroll = position.maxScrollExtent;
+
+    // 用户向上翻历史时暂停自动吸底,回到底部附近则恢复跟随
+    _userDraggingList = (maxScroll - scrollOffset) > 50;
 
     // 列表可滚动 且 距离底部超过50像素时显示按钮
     final shouldShow = maxScroll > 0 && (maxScroll - scrollOffset) > 50;
@@ -850,7 +854,7 @@ class _AIChatPageState extends ConsumerState<AIChatPage>
     );
   }
 
-  /// 图片记账:选图 → 用户图片消息 → 识别入库 → AI 卡片消息
+  /// 图片记账:选图(相册可多选) → 每张:用户图片消息 → 识别入库 → AI 卡片消息
   Future<void> _handleImageBilling(ImageSource source) async {
     if (_isLoading) return;
     final l10n = AppLocalizations.of(context);
@@ -864,69 +868,87 @@ class _AIChatPageState extends ConsumerState<AIChatPage>
     }
     if (!mounted) return;
 
-    // 选图(与 ImageBillingHelper 同参数,压缩成不超过 1920、质量 85)
-    final pickedFile = await ImagePicker().pickImage(
-      source: source,
-      maxWidth: 1920,
-      maxHeight: 1920,
-      imageQuality: 85,
-    );
-    if (pickedFile == null || !mounted) return;
-    final imageFile = File(pickedFile.path);
-
-    // 先插入用户图片消息(气泡展示缩略图)
-    await _insertUserMessage(
-      messageType: 'image',
-      content: l10n.aiChatImageLabel,
-      metadata: {'imagePath': imageFile.path},
-    );
+    // 选图(与 ImageBillingHelper 同参数,压缩成不超过 1920、质量 85);
+    // 相册走多选,拍照保持单张。
+    final List<String> pickedPaths;
+    if (source == ImageSource.gallery) {
+      final picked = await ImagePicker().pickMultiImage(
+        maxWidth: 1920,
+        maxHeight: 1920,
+        imageQuality: 85,
+      );
+      pickedPaths = picked.map((f) => f.path).toList();
+    } else {
+      final pickedFile = await ImagePicker().pickImage(
+        source: source,
+        maxWidth: 1920,
+        maxHeight: 1920,
+        imageQuality: 85,
+      );
+      pickedPaths = pickedFile == null ? [] : [pickedFile.path];
+    }
+    if (pickedPaths.isEmpty || !mounted) return;
 
     setState(() => _isLoading = true);
     try {
       final ledgerId = ref.read(currentLedgerIdProvider);
       final autoAddAttachment = ref.read(smartBillingAutoAttachmentProvider);
       final attachmentService = ref.read(attachmentServiceProvider);
-
-      // 委托 AiBookkeeper(与 ImageBillingHelper 同款配置)
       final bookkeeper = ref.read(aiBookkeeperProvider);
-      final result = await bookkeeper.fromImage(
-        image: imageFile,
-        ledgerId: ledgerId,
-        billGuard: PromptBuilder.billGuardForImage,
-        billingTypes: [
-          source == ImageSource.gallery
-              ? TagSeedService.billingTypeImage
-              : TagSeedService.billingTypeCamera,
-          TagSeedService.billingTypeAi,
-        ],
-        l10n: l10n,
-        // 多笔时每笔都挂同一张原图,方便后续从任意一笔溯源
-        onSaved: autoAddAttachment
-            ? (txId, _) => attachmentService.saveAttachment(
-                  transactionId: txId,
-                  sourceFile: imageFile,
-                  index: 0,
-                )
-            : null,
-      );
-      if (!mounted) return;
+      final billingTypes = [
+        source == ImageSource.gallery
+            ? TagSeedService.billingTypeImage
+            : TagSeedService.billingTypeCamera,
+        TagSeedService.billingTypeAi,
+      ];
 
-      if (!result.success) {
-        // failedCount>0:提取到账单但入库失败(真·错误);否则=AI 判定不是账单
-        await _insertAssistantText(
-            result.failedCount > 0 ? l10n.aiOcrCheckLog : l10n.aiOcrNoBill);
-        return;
+      // 逐张处理:每张一条用户图片消息 + 一条识别结果消息,保持聊天流可读。
+      for (final path in pickedPaths) {
+        if (!mounted) return;
+        final imageFile = File(path);
+
+        // 先插入用户图片消息(气泡展示缩略图)
+        await _insertUserMessage(
+          messageType: 'image',
+          content: l10n.aiChatImageLabel,
+          metadata: {'imagePath': imageFile.path},
+        );
+
+        // 委托 AiBookkeeper(与 ImageBillingHelper 同款配置)
+        final result = await bookkeeper.fromImage(
+          image: imageFile,
+          ledgerId: ledgerId,
+          billGuard: PromptBuilder.billGuardForImage,
+          billingTypes: billingTypes,
+          l10n: l10n,
+          // 多笔时每笔都挂同一张原图,方便后续从任意一笔溯源
+          onSaved: autoAddAttachment
+              ? (txId, _) => attachmentService.saveAttachment(
+                    transactionId: txId,
+                    sourceFile: imageFile,
+                    index: 0,
+                  )
+              : null,
+        );
+        if (!mounted) return;
+
+        if (!result.success) {
+          // failedCount>0:提取到账单但入库失败(真·错误);否则=AI 判定不是账单
+          await _insertAssistantText(
+              result.failedCount > 0 ? l10n.aiOcrCheckLog : l10n.aiOcrNoBill);
+          continue;
+        }
+
+        // 刷新标签/附件/统计 + 触发云同步
+        await PostProcessor.run(
+          ref,
+          ledgerId: ledgerId,
+          tags: true,
+          attachments: autoAddAttachment,
+        );
+        if (!mounted) return;
+        await _insertBillCard(result);
       }
-
-      // 刷新标签/附件/统计 + 触发云同步
-      await PostProcessor.run(
-        ref,
-        ledgerId: ledgerId,
-        tags: true,
-        attachments: autoAddAttachment,
-      );
-      if (!mounted) return;
-      await _insertBillCard(result);
     } catch (e, st) {
       logger.error('AIChat', '图片记账失败', e, st);
       if (mounted) showToast(context, l10n.aiOcrFailed(e.toString()));
@@ -1209,15 +1231,28 @@ class _AIChatPageState extends ConsumerState<AIChatPage>
     }
   }
 
+  /// 始终定位到最新消息:
+  /// 1. 先 jumpTo 当前 maxScrollExtent(立即到位,不受动画队列堆积影响);
+  /// 2. 下一帧再校准一次 —— 图片/气泡等异步布局会让 maxScrollExtent 增大,
+  ///    只滚一次会停在半路。校准时若用户已手动上滑则不打扰。
   void _scrollToBottom() {
-    Future.delayed(const Duration(milliseconds: 100), () {
-      if (_scrollController.hasClients && mounted) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
-      }
+    void jump() {
+      if (!_scrollController.hasClients || !mounted) return;
+      _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+    }
+
+    jump();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      jump();
+      // 嵌套图片二次加载(缩略图解码完成后再撑高)兜底:再隔一帧补一次。
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients &&
+            mounted &&
+            !_userDraggingList) {
+          _scrollController
+              .jumpTo(_scrollController.position.maxScrollExtent);
+        }
+      });
     });
   }
 

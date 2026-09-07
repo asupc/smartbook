@@ -348,6 +348,9 @@ class _AIProviderEditPageState extends ConsumerState<AIProviderEditPage> {
   late final TextEditingController _visionModelController;
   late final TextEditingController _audioModelController;
 
+  /// 接口协议:openai(OpenAI-compatible)/ anthropic(Anthropic /v1/messages)。
+  String _protocol = 'openai';
+
   bool _obscureApiKey = true;
   bool _saving = false;
 
@@ -379,6 +382,7 @@ class _AIProviderEditPageState extends ConsumerState<AIProviderEditPage> {
     _textModelController = TextEditingController(text: p?.textModel ?? '');
     _visionModelController = TextEditingController(text: p?.visionModel ?? '');
     _audioModelController = TextEditingController(text: p?.audioModel ?? '');
+    _protocol = p?.protocol ?? 'openai';
   }
 
   @override
@@ -480,6 +484,37 @@ class _AIProviderEditPageState extends ConsumerState<AIProviderEditPage> {
                               borderSide: BorderSide(color: primaryColor, width: 2),
                             ),
                           ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // 接口协议(内置 DeepSeek/Kimi 等固定 openai,不可改)
+                        DropdownButtonFormField<String>(
+                          // Flutter 3.27 无 initialValue/enabled 参数:
+                          // value + onChanged=null 即禁用态。
+                          value: _protocol,
+                          decoration: InputDecoration(
+                            labelText: l10n.aiProviderProtocol,
+                            border: const OutlineInputBorder(),
+                            isDense: true,
+                            focusedBorder: OutlineInputBorder(
+                              borderSide: BorderSide(color: primaryColor, width: 2),
+                            ),
+                          ),
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'openai',
+                              child: Text('OpenAI 兼容(/chat/completions)'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'anthropic',
+                              child: Text('Anthropic(/v1/messages)'),
+                            ),
+                          ],
+                          onChanged: _isBuiltIn
+                              ? null
+                              : (v) {
+                                  if (v != null) setState(() => _protocol = v);
+                                },
                         ),
                         const SizedBox(height: 16),
 
@@ -669,6 +704,7 @@ class _AIProviderEditPageState extends ConsumerState<AIProviderEditPage> {
       textModel: _textModelController.text,
       visionModel: _visionModelController.text,
       audioModel: _audioModelController.text,
+      protocol: _protocol,
       createdAt: widget.provider?.createdAt ?? DateTime.now(),
     );
   }
@@ -806,6 +842,7 @@ class _AIProviderEditPageState extends ConsumerState<AIProviderEditPage> {
           textModel: _textModelController.text.trim(),
           visionModel: _visionModelController.text.trim(),
           audioModel: _audioModelController.text.trim(),
+          protocol: _isBuiltIn ? null : _protocol,
         );
         await AIProviderManager.updateProvider(updated);
       } else {
@@ -817,6 +854,7 @@ class _AIProviderEditPageState extends ConsumerState<AIProviderEditPage> {
           textModel: _textModelController.text.trim(),
           visionModel: _visionModelController.text.trim(),
           audioModel: _audioModelController.text.trim(),
+          protocol: _protocol,
         );
       }
 

@@ -26,6 +26,11 @@ class AIServiceProviderConfig {
   /// 语音模型
   final String audioModel;
 
+  /// 接口协议:'openai'(OpenAI-compatible /chat/completions,缺省)或
+  /// 'anthropic'(Anthropic /v1/messages)。中转架构下协议适配在服务端,
+  /// 本字段只随配置透传给 /ai/providers。
+  final String protocol;
+
   /// 创建时间
   final DateTime createdAt;
 
@@ -38,8 +43,46 @@ class AIServiceProviderConfig {
     this.textModel = '',
     this.visionModel = '',
     this.audioModel = '',
+    this.protocol = 'openai',
     required this.createdAt,
   });
+
+  /// 内置服务商默认表(与服务端 builtin_providers.py 目录对齐,id 一致才能
+  /// 被能力绑定引用)。云服务配置后服务端为权威,这里只做本地缓存 bootstrap。
+  static final List<AIServiceProviderConfig> builtinDefaults = [
+    AIServiceProviderConfig.zhipuDefault,
+    AIServiceProviderConfig(
+      id: 'deepseek_builtin',
+      name: 'DeepSeek',
+      baseUrl: 'https://api.deepseek.com/v1',
+      textModel: 'deepseek-v4-flash',
+      visionModel: 'deepseek-v4-flash-vision-exp',
+      createdAt: DateTime(2024, 1, 1),
+    ),
+    AIServiceProviderConfig(
+      id: 'kimi_builtin',
+      name: 'Kimi',
+      baseUrl: 'https://api.moonshot.cn/v1',
+      textModel: 'kimi-k2.6',
+      visionModel: 'kimi-k2.6',
+      createdAt: DateTime(2024, 1, 1),
+    ),
+    AIServiceProviderConfig(
+      id: 'minimax_builtin',
+      name: 'MiniMax',
+      baseUrl: 'https://api.minimaxi.com/v1',
+      textModel: 'MiniMax-M2',
+      visionModel: 'MiniMax-M2',
+      createdAt: DateTime(2024, 1, 1),
+    ),
+    AIServiceProviderConfig(
+      id: 'xiaomi_mimo_builtin',
+      name: '小米 MiMo',
+      baseUrl: 'https://api.xiaomimimo.com/v1',
+      textModel: 'MiMo',
+      createdAt: DateTime(2024, 1, 1),
+    ),
+  ];
 
   /// 智谱GLM 默认配置
   static AIServiceProviderConfig get zhipuDefault => AIServiceProviderConfig(
@@ -75,6 +118,7 @@ class AIServiceProviderConfig {
     String? textModel,
     String? visionModel,
     String? audioModel,
+    String? protocol,
     DateTime? createdAt,
   }) {
     return AIServiceProviderConfig(
@@ -86,6 +130,7 @@ class AIServiceProviderConfig {
       textModel: textModel ?? this.textModel,
       visionModel: visionModel ?? this.visionModel,
       audioModel: audioModel ?? this.audioModel,
+      protocol: protocol ?? this.protocol,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -101,6 +146,7 @@ class AIServiceProviderConfig {
       textModel: json['textModel'] as String? ?? '',
       visionModel: json['visionModel'] as String? ?? '',
       audioModel: json['audioModel'] as String? ?? '',
+      protocol: json['protocol'] as String? ?? 'openai',
       createdAt: json['createdAt'] != null
           ? DateTime.parse(json['createdAt'] as String)
           : DateTime.now(),
@@ -118,6 +164,7 @@ class AIServiceProviderConfig {
       'textModel': textModel,
       'visionModel': visionModel,
       'audioModel': audioModel,
+      'protocol': protocol,
       'createdAt': createdAt.toIso8601String(),
     };
   }

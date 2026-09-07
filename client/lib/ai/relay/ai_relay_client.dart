@@ -274,6 +274,7 @@ class AiRelayClient {
           'textModel': provider.textModel,
           'visionModel': provider.visionModel,
           'audioModel': provider.audioModel,
+          'protocol': provider.protocol,
         }),
       ),
     );
