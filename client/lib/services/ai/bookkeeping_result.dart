@@ -109,3 +109,19 @@ class BookkeepingResult {
   /// 失败结果工厂
   static const BookkeepingResult empty = BookkeepingResult();
 }
+
+/// 一次多图批量记账中,单张图的处理结果。
+///
+/// 与传入的图片一一对应。`result` 非空 = 识别+落库正常结束(内部可能没识别
+/// 到账单,即 `savedCount == 0`,属正常「不是账单」);`error` 非空 = 该张识别
+/// 失败(上游/网络/超时),可对该张单独重试。
+class AiBatchImageResult {
+  final BookkeepingResult? result;
+  final String? error;
+
+  const AiBatchImageResult({this.result}) : error = null;
+
+  const AiBatchImageResult.failed({required this.error}) : result = null;
+
+  bool get isFailed => error != null;
+}

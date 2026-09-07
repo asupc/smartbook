@@ -26,6 +26,10 @@ class AIServiceProviderConfig {
   /// 语音模型
   final String audioModel;
 
+  /// 一次多图批量识别(/relay/vision-batch)时,该服务商最多并行处理的图片数。
+  /// 只对 vision 相关调用生效;各服务商能安全并行的请求量不同。
+  final int visionConcurrency;
+
   /// 接口协议:'openai'(OpenAI-compatible /chat/completions,缺省)或
   /// 'anthropic'(Anthropic /v1/messages)。中转架构下协议适配在服务端,
   /// 本字段只随配置透传给 /ai/providers。
@@ -43,6 +47,7 @@ class AIServiceProviderConfig {
     this.textModel = '',
     this.visionModel = '',
     this.audioModel = '',
+    this.visionConcurrency = 3,
     this.protocol = 'openai',
     required this.createdAt,
   });
@@ -57,6 +62,7 @@ class AIServiceProviderConfig {
       baseUrl: 'https://api.deepseek.com/v1',
       textModel: 'deepseek-v4-flash',
       visionModel: 'deepseek-v4-flash-vision-exp',
+      visionConcurrency: 3,
       createdAt: DateTime(2024, 1, 1),
     ),
     AIServiceProviderConfig(
@@ -65,6 +71,7 @@ class AIServiceProviderConfig {
       baseUrl: 'https://api.moonshot.cn/v1',
       textModel: 'kimi-k2.6',
       visionModel: 'kimi-k2.6',
+      visionConcurrency: 3,
       createdAt: DateTime(2024, 1, 1),
     ),
     AIServiceProviderConfig(
@@ -73,6 +80,7 @@ class AIServiceProviderConfig {
       baseUrl: 'https://api.minimaxi.com/v1',
       textModel: 'MiniMax-M2',
       visionModel: 'MiniMax-M2',
+      visionConcurrency: 3,
       createdAt: DateTime(2024, 1, 1),
     ),
     AIServiceProviderConfig(
@@ -80,6 +88,7 @@ class AIServiceProviderConfig {
       name: '小米 MiMo',
       baseUrl: 'https://api.xiaomimimo.com/v1',
       textModel: 'MiMo',
+      visionConcurrency: 3,
       createdAt: DateTime(2024, 1, 1),
     ),
   ];
@@ -93,6 +102,7 @@ class AIServiceProviderConfig {
         textModel: 'glm-4-flash',
         visionModel: 'glm-4v-flash',
         audioModel: 'glm-4-voice',
+        visionConcurrency: 3,
         createdAt: DateTime(2024, 1, 1),
       );
 
@@ -118,6 +128,7 @@ class AIServiceProviderConfig {
     String? textModel,
     String? visionModel,
     String? audioModel,
+    int? visionConcurrency,
     String? protocol,
     DateTime? createdAt,
   }) {
@@ -130,6 +141,7 @@ class AIServiceProviderConfig {
       textModel: textModel ?? this.textModel,
       visionModel: visionModel ?? this.visionModel,
       audioModel: audioModel ?? this.audioModel,
+      visionConcurrency: visionConcurrency ?? this.visionConcurrency,
       protocol: protocol ?? this.protocol,
       createdAt: createdAt ?? this.createdAt,
     );
@@ -146,6 +158,7 @@ class AIServiceProviderConfig {
       textModel: json['textModel'] as String? ?? '',
       visionModel: json['visionModel'] as String? ?? '',
       audioModel: json['audioModel'] as String? ?? '',
+      visionConcurrency: (json['visionConcurrency'] as num?)?.toInt() ?? 3,
       protocol: json['protocol'] as String? ?? 'openai',
       createdAt: json['createdAt'] != null
           ? DateTime.parse(json['createdAt'] as String)
@@ -164,6 +177,7 @@ class AIServiceProviderConfig {
       'textModel': textModel,
       'visionModel': visionModel,
       'audioModel': audioModel,
+      'visionConcurrency': visionConcurrency,
       'protocol': protocol,
       'createdAt': createdAt.toIso8601String(),
     };

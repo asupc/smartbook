@@ -204,6 +204,7 @@ class AIProviderManager {
     String visionModel = '',
     String audioModel = '',
     String protocol = 'openai',
+    int visionConcurrency = 3,
   }) async {
     final newProvider = AIServiceProviderConfig(
       id: _generateId(),
@@ -215,6 +216,7 @@ class AIProviderManager {
       visionModel: visionModel,
       audioModel: audioModel,
       protocol: protocol,
+      visionConcurrency: visionConcurrency,
       createdAt: DateTime.now(),
     );
     await _requireServerApi().createProvider(newProvider);

@@ -5686,6 +5686,9 @@ class AppLocalizationsKo extends AppLocalizations {
   String get aiChatImageLabel => '사진';
 
   @override
+  String get aiChatRetry => '다시 인식';
+
+  @override
   String get aiChatVoiceLabel => '음성';
 
   @override
@@ -5929,6 +5932,12 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get aiVisionModelTitle => '비전 모델';
+
+  @override
+  String get aiVisionConcurrency => '비전 동시 처리 수';
+
+  @override
+  String get aiVisionConcurrencyHelper => '일괄 인식 시 동시 처리할 최대 이미지 수(1-32)';
 
   @override
   String get aiModelFast => '빠름';

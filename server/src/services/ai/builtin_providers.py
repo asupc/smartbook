@@ -27,6 +27,10 @@ KNOWN_PROTOCOLS = {PROTOCOL_OPENAI, PROTOCOL_ANTHROPIC}
 # - MiniMax:国内站 https://api.minimaxi.com/v1(国际站 api.minimax.io),
 #   无 /audio/transcriptions,语音留空。
 # - 小米 MiMo:开放平台 OpenAI 兼容入口;仅文本。
+#
+# `visionConcurrency`:一次多图批量识别(/relay/vision-batch)时,服务端同一
+# 时刻最多并行发给该模型的图片数(有上限并发队列,超出排队)。只对 vision 相关
+# 调用生效;各家能安全并行请求的量不同,由此字段按服务商控制。
 BUILTIN_PROVIDER_TEMPLATES: list[dict[str, Any]] = [
     {
         "id": "zhipu_glm",
@@ -36,6 +40,7 @@ BUILTIN_PROVIDER_TEMPLATES: list[dict[str, Any]] = [
         "textModel": "glm-4-flash",
         "visionModel": "glm-4v-flash",
         "audioModel": "glm-4-voice",
+        "visionConcurrency": 3,
     },
     {
         "id": "deepseek_builtin",
@@ -45,6 +50,7 @@ BUILTIN_PROVIDER_TEMPLATES: list[dict[str, Any]] = [
         "textModel": "deepseek-v4-flash",
         "visionModel": "deepseek-v4-flash-vision-exp",
         "audioModel": "",
+        "visionConcurrency": 3,
     },
     {
         "id": "kimi_builtin",
@@ -54,6 +60,7 @@ BUILTIN_PROVIDER_TEMPLATES: list[dict[str, Any]] = [
         "textModel": "kimi-k2.6",
         "visionModel": "kimi-k2.6",
         "audioModel": "",
+        "visionConcurrency": 3,
     },
     {
         "id": "minimax_builtin",
@@ -63,6 +70,7 @@ BUILTIN_PROVIDER_TEMPLATES: list[dict[str, Any]] = [
         "textModel": "MiniMax-M2",
         "visionModel": "MiniMax-M2",
         "audioModel": "",
+        "visionConcurrency": 3,
     },
     {
         "id": "xiaomi_mimo_builtin",
@@ -72,8 +80,12 @@ BUILTIN_PROVIDER_TEMPLATES: list[dict[str, Any]] = [
         "textModel": "MiMo",
         "visionModel": "",
         "audioModel": "",
+        "visionConcurrency": 3,
     },
 ]
+
+# 未单独配置 visionConcurrency 的存量服务商 / 自定义 provider 用该默认值。
+DEFAULT_VISION_CONCURRENCY = 3
 
 BUILTIN_PROVIDER_IDS = {t["id"] for t in BUILTIN_PROVIDER_TEMPLATES}
 

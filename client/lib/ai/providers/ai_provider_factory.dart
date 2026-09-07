@@ -147,6 +147,32 @@ class AIProviderFactory {
     }
   }
 
+  /// 一次多图批量识别(「AI 助手选多张图」)。服务端按配置并发数并行识别,
+  /// 逐张返回结果。单张失败(该项 error 非空)不影响其它张。
+  static Future<List<AiVisionBatchItem>> visionBatch(
+    List<File> images,
+    String prompt, {
+    String? logTag,
+    bool disableThinking = false,
+    String? ledgerId,
+    String? logInput,
+  }) async {
+    final tag = logTag ?? 'AIFactory';
+    final client = _requireRelay(tag);
+    logger.debug(tag, '一次多图批量识别中转');
+    try {
+      return await client.visionBatch(
+        images: images,
+        prompt: prompt,
+        disableThinking: disableThinking,
+        ledgerId: ledgerId,
+        logInput: logInput,
+      );
+    } on AiRelayException catch (e) {
+      throw AIException(e.message, transient: e.transient, code: e.errorCode);
+    }
+  }
+
   /// 语音转文字
   static Future<String> speechToText(
     File audio, {

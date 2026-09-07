@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { Button, Input, Modal, Select } from 'antd'
+import { Button, Input, InputNumber, Modal, Select } from 'antd'
 import { Loader2 } from 'lucide-react'
 
 import {
@@ -48,6 +48,8 @@ export function ProviderEditDialog({ open, initial, saving = false, onClose, onS
   const [audioModel, setAudioModel] = useState('')
   // 接口协议:openai(OpenAI-compatible,缺省)| anthropic(/v1/messages)
   const [protocol, setProtocol] = useState<'openai' | 'anthropic'>('openai')
+  // 一次多图批量识别时该服务商最多并行处理的图片数(有上限并发队列,1-32)
+  const [visionConcurrency, setVisionConcurrency] = useState<number>(3)
   // 测试结果按 capability 缓存,form 改动后清空(测的是旧值,不再有效)
   const [testResults, setTestResults] = useState<Record<TestProviderCapability, TestProviderResult | null>>({
     text: null,
@@ -66,6 +68,7 @@ export function ProviderEditDialog({ open, initial, saving = false, onClose, onS
     setVisionModel(initial?.visionModel ?? '')
     setAudioModel(initial?.audioModel ?? '')
     setProtocol(initial?.protocol ?? 'openai')
+    setVisionConcurrency(initial?.visionConcurrency ?? 3)
     setTestResults({ text: null, vision: null, speech: null })
     setRunAllStatus('idle')
   }, [open, initial])
@@ -82,15 +85,16 @@ export function ProviderEditDialog({ open, initial, saving = false, onClose, onS
       visionModel: visionModel.trim(),
       audioModel: audioModel.trim(),
       protocol,
+      visionConcurrency,
       createdAt: initial?.createdAt,
     }),
-    [initial, name, apiKey, baseUrl, textModel, visionModel, audioModel, protocol, isBuiltIn],
+    [initial, name, apiKey, baseUrl, textModel, visionModel, audioModel, protocol, visionConcurrency, isBuiltIn],
   )
 
   // form 改动 → 清测试结果(旧值不再有效)
   useEffect(() => {
     setTestResults({ text: null, vision: null, speech: null })
-  }, [apiKey, baseUrl, textModel, visionModel, audioModel, protocol])
+  }, [apiKey, baseUrl, textModel, visionModel, audioModel, protocol, visionConcurrency])
 
   const canSave =
     name.trim().length > 0 && apiKey.trim().length > 0 && baseUrl.trim().length > 0
@@ -112,6 +116,7 @@ export function ProviderEditDialog({ open, initial, saving = false, onClose, onS
       visionModel: visionModel.trim(),
       audioModel: audioModel.trim(),
       protocol,
+      visionConcurrency,
       createdAt: initial?.createdAt || new Date().toISOString(),
     }
     await onSave(next)
@@ -254,6 +259,21 @@ export function ProviderEditDialog({ open, initial, saving = false, onClose, onS
             externalStatus={resolveStatus(testResults.vision, runAllStatus === 'running' && !!visionModel.trim() && testResults.vision === null)}
             onResult={(cap, r) => setTestResults((prev) => ({ ...prev, [cap]: r }))}
           />
+
+          <Field label={t('ai.providers.field.visionConcurrency')}>
+            <InputNumber
+              value={visionConcurrency}
+              onChange={(v) => setVisionConcurrency(v ?? 3)}
+              disabled={saving}
+              min={1}
+              max={32}
+              style={{ width: '100%' }}
+            />
+            <p className="mt-1 text-[10px] text-muted-foreground">
+              {t('ai.providers.field.visionConcurrencyHint')}
+            </p>
+          </Field>
+
           <ModelFieldWithTest
             label={t('ai.providers.field.audioModel')}
             value={audioModel}

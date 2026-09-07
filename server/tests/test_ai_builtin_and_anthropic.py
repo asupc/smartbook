@@ -122,6 +122,10 @@ def test_list_providers_seeds_builtin_catalog(monkeypatch) -> None:
         # 没填 key 的内置行 hasApiKey=False
         assert listed["deepseek_builtin"]["hasApiKey"] is False
 
+        # 内置默认 visionConcurrency 给了
+        assert listed["deepseek_builtin"]["visionConcurrency"] == 3
+        assert listed["zhipu_glm"]["visionConcurrency"] == 3
+
         # 已落库
         cfg = _stored_config(Session, "builtin-seed@example.com")
         assert BUILTIN_IDS <= {p["id"] for p in cfg["providers"]}
@@ -208,6 +212,65 @@ def test_protocol_crud_roundtrip(monkeypatch) -> None:
             json={"protocol": "ollama"},
         )
         assert r5.status_code == 400
+    finally:
+        app.dependency_overrides.clear()
+
+
+# ──────────────────────────────────────────────────────────────────────
+# visionConcurrency 字段 CRUD
+# ──────────────────────────────────────────────────────────────────────
+
+
+def test_vision_concurrency_crud_roundtrip(monkeypatch) -> None:
+    Session = _make_session_factory()
+    try:
+        client = TestClient(app)
+        token = _register_and_login(client, "vc-crud@example.com")
+
+        # POST 带 visionConcurrency
+        r = client.post(
+            "/api/v1/ai/providers",
+            headers=_auth(token),
+            json={
+                "id": "vc",
+                "name": "Vision 并发",
+                "apiKey": "sk-vc-1",
+                "baseUrl": "https://example.com/v1",
+                "visionModel": "glm-4v-flash",
+                "visionConcurrency": 5,
+            },
+        )
+        assert r.status_code == 201, r.text
+        assert r.json()["visionConcurrency"] == 5
+        assert _stored_config(Session, "vc-crud@example.com")["providers"][0]["visionConcurrency"] == 5
+
+        # 缺省 → 3
+        r2 = client.post(
+            "/api/v1/ai/providers",
+            headers=_auth(token),
+            json={"id": "vc2", "name": "V2", "apiKey": "k", "baseUrl": "https://e", "visionModel": "m"},
+        )
+        assert r2.status_code == 201
+        assert r2.json()["visionConcurrency"] == 3
+
+        # 非法值(0 / 负 / 超上限)→ 422(Pydantic ge/le 校验,非业务 400)
+        for bad in (0, -1, 33):
+            r3 = client.post(
+                "/api/v1/ai/providers",
+                headers=_auth(token),
+                json={"id": f"vbad{bad}", "name": "B", "apiKey": "k", "baseUrl": "https://e", "visionConcurrency": bad},
+            )
+            assert r3.status_code == 422, bad
+
+        # PATCH 更新并发
+        r4 = client.patch(
+            "/api/v1/ai/providers/vc",
+            headers=_auth(token),
+            json={"visionConcurrency": 8},
+        )
+        assert r4.status_code == 200
+        assert r4.json()["visionConcurrency"] == 8
+        assert _stored_config(Session, "vc-crud@example.com")["providers"][0]["visionConcurrency"] == 8
     finally:
         app.dependency_overrides.clear()
 

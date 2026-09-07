@@ -22,6 +22,7 @@ import '../../services/data/tag_seed_service.dart';
 import '../../ai/core/prompt_builder.dart';
 import '../../ai/providers/ai_provider_config.dart';
 import '../../ai/providers/ai_provider_manager.dart';
+import '../../ai/providers/ai_provider_factory.dart';
 import '../../providers.dart';
 import '../../providers/ai_chat_providers.dart';
 import '../../ai/core/bill_info.dart';
@@ -388,6 +389,11 @@ class _AIChatPageState extends ConsumerState<AIChatPage>
       return _buildImageBubble(message);
     }
 
+    // 识别失败的可重试气泡(点按重新识别该张图)
+    if (message.messageType == 'retry_image') {
+      return _buildRetryImageBubble(message);
+    }
+
     // 用户语音记账消息
     if (message.messageType == 'voice') {
       return _buildVoiceBubble(message);
@@ -617,6 +623,144 @@ class _AIChatPageState extends ConsumerState<AIChatPage>
         size: 32.0.scaled(context, ref),
       ),
     );
+  }
+
+  /// 批量识别中单张失败的可重试气泡:点按重新识别该张原图。
+  Widget _buildRetryImageBubble(Message message) {
+    String? imagePath;
+    try {
+      if (message.metadata != null) {
+        final meta = jsonDecode(message.metadata!) as Map<String, dynamic>;
+        imagePath = meta['imagePath'] as String?;
+      }
+    } catch (_) {
+      // metadata 解析失败按无图处理
+    }
+    final l10n = AppLocalizations.of(context);
+    final primary = ref.watch(primaryColorProvider);
+    return Padding(
+      padding: EdgeInsets.only(bottom: 8.0.scaled(context, ref)),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.start,
+        children: [
+          _buildAIAvatar(),
+          SizedBox(width: 8.0.scaled(context, ref)),
+          Flexible(
+            child: InkWell(
+              onTap: imagePath != null
+                  ? () => _retrySingleImage(
+                        imagePath!,
+                        message.id,
+                      )
+                  : null,
+              child: Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: 12.0.scaled(context, ref),
+                  vertical: 8.0.scaled(context, ref),
+                ),
+                decoration: BoxDecoration(
+                  color: BeeTokens.surface(context),
+                  borderRadius: BorderRadius.circular(12.0.scaled(context, ref)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.refresh, size: 18.0.scaled(context, ref), color: primary),
+                    SizedBox(width: 6.0.scaled(context, ref)),
+                    Text(
+                      l10n.aiChatRetry,
+                      style: TextStyle(
+                          color: primary,
+                          fontSize: 14.0.scaled(context, ref)),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 重试单张识别:移除旧的重试气泡,重新走单图识别流程(失败则再插重试气泡)。
+  Future<void> _retrySingleImage(String imagePath, int messageId) async {
+    if (_isLoading) return;
+    setState(() => _isLoading = true);
+    final repo = ref.read(repositoryProvider);
+    await repo.deleteMessage(messageId);
+    await _runSingleImageRecognition(File(imagePath));
+    if (mounted) setState(() => _isLoading = false);
+  }
+
+  /// 单张图片识别流程(相册单张 / 拍照 / 重试共用)。识别失败 → 插入可重试气泡。
+  Future<void> _runSingleImageRecognition(File imageFile) async {
+    final l10n = AppLocalizations.of(context);
+    final ledgerId = ref.read(currentLedgerIdProvider);
+    final autoAddAttachment = ref.read(smartBillingAutoAttachmentProvider);
+    final attachmentService = ref.read(attachmentServiceProvider);
+    final bookkeeper = ref.read(aiBookkeeperProvider);
+    final billingTypes = [TagSeedService.billingTypeImage, TagSeedService.billingTypeAi];
+
+    try {
+      final result = await bookkeeper.fromImage(
+        image: imageFile,
+        ledgerId: ledgerId,
+        billGuard: PromptBuilder.billGuardForImage,
+        billingTypes: billingTypes,
+        l10n: l10n,
+        onSaved: autoAddAttachment
+            ? (txId, _) => attachmentService.saveAttachment(
+                  transactionId: txId,
+                  sourceFile: imageFile,
+                  index: 0,
+                )
+            : null,
+      );
+      if (!mounted) return;
+      if (result.success) {
+        await PostProcessor.run(
+          ref,
+          ledgerId: ledgerId,
+          tags: true,
+          attachments: autoAddAttachment,
+        );
+        if (!mounted) return;
+        await _insertBillCard(result);
+      } else {
+        await _insertAssistantText(
+            result.failedCount > 0 ? l10n.aiOcrCheckLog : l10n.aiOcrNoBill);
+      }
+    } on AIException {
+      // 识别失败(上游/网络/超时)→ 记录原始输入给用户看到,再给重试。
+      if (mounted) {
+        await _insertAssistantText(l10n.aiOcrCheckLog);
+        await _insertRetryBubble(imageFile);
+      }
+    } catch (e, st) {
+      logger.error('AIChat', '单张图片识别异常', e, st);
+      if (mounted) {
+        await _insertAssistantText(l10n.aiOcrCheckLog);
+        await _insertRetryBubble(imageFile);
+      }
+    }
+  }
+
+  /// 插入一个「识别失败,点按重试」气泡(记录原图路径)。
+  Future<void> _insertRetryBubble(File imageFile) async {
+    final repo = ref.read(repositoryProvider);
+    await repo.createMessage(
+      MessagesCompanion.insert(
+        conversationId: _conversationId!,
+        role: 'assistant',
+        content: 'retry',
+        messageType: 'retry_image',
+        metadata: Value(jsonEncode({'imagePath': imageFile.path})),
+        createdAt: Value(DateTime.now()),
+      ),
+    );
+    if (mounted) _scrollToBottom();
   }
 
   /// 用户语音记账消息气泡:麦克风图标 + 识别文本
@@ -902,52 +1046,43 @@ class _AIChatPageState extends ConsumerState<AIChatPage>
         TagSeedService.billingTypeAi,
       ];
 
-      // 逐张处理:每张一条用户图片消息 + 一条识别结果消息,保持聊天流可读。
-      for (final path in pickedPaths) {
+      // 先把用户选中的图片气泡按序插入,保持聊天流可读。
+      final imageFiles = pickedPaths.map((p) => File(p)).toList();
+      for (final imageFile in imageFiles) {
         if (!mounted) return;
-        final imageFile = File(path);
-
-        // 先插入用户图片消息(气泡展示缩略图)
         await _insertUserMessage(
           messageType: 'image',
           content: l10n.aiChatImageLabel,
           metadata: {'imagePath': imageFile.path},
         );
+      }
 
-        // 委托 AiBookkeeper(与 ImageBillingHelper 同款配置)
-        final result = await bookkeeper.fromImage(
-          image: imageFile,
-          ledgerId: ledgerId,
-          billGuard: PromptBuilder.billGuardForImage,
-          billingTypes: billingTypes,
-          l10n: l10n,
-          // 多笔时每笔都挂同一张原图,方便后续从任意一笔溯源
-          onSaved: autoAddAttachment
-              ? (txId, _) => attachmentService.saveAttachment(
-                    transactionId: txId,
-                    sourceFile: imageFile,
-                    index: 0,
-                  )
-              : null,
-        );
-        if (!mounted) return;
-
-        if (!result.success) {
-          // failedCount>0:提取到账单但入库失败(真·错误);否则=AI 判定不是账单
-          await _insertAssistantText(
-              result.failedCount > 0 ? l10n.aiOcrCheckLog : l10n.aiOcrNoBill);
-          continue;
+      if (source == ImageSource.gallery && imageFiles.length > 1) {
+        // 一次多张:一次性发给服务端批量识别(服务端按并发数并行,单张失败
+        // 记为该张 error,不中断其它张)。
+        await _handleImageBatch(imageFiles, ledgerId, billingTypes, l10n);
+      } else {
+        // 拍照(或单张)仍走单图,保持既有行为。
+        for (final imageFile in imageFiles) {
+          if (!mounted) return;
+          final result = await bookkeeper.fromImage(
+            image: imageFile,
+            ledgerId: ledgerId,
+            billGuard: PromptBuilder.billGuardForImage,
+            billingTypes: billingTypes,
+            l10n: l10n,
+            onSaved: autoAddAttachment
+                ? (txId, _) => attachmentService.saveAttachment(
+                      transactionId: txId,
+                      sourceFile: imageFile,
+                      index: 0,
+                    )
+                : null,
+          );
+          if (!mounted) return;
+          await _handleSingleImageResult(result, ledgerId, autoAddAttachment,
+              l10n);
         }
-
-        // 刷新标签/附件/统计 + 触发云同步
-        await PostProcessor.run(
-          ref,
-          ledgerId: ledgerId,
-          tags: true,
-          attachments: autoAddAttachment,
-        );
-        if (!mounted) return;
-        await _insertBillCard(result);
       }
     } catch (e, st) {
       logger.error('AIChat', '图片记账失败', e, st);
@@ -955,6 +1090,57 @@ class _AIChatPageState extends ConsumerState<AIChatPage>
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  /// 一次多张:批量识别 → 逐张落库,失败那张给「重试」。
+  Future<void> _handleImageBatch(
+    List<File> imageFiles,
+    int ledgerId,
+    List<String> billingTypes,
+    AppLocalizations l10n,
+  ) async {
+    final bookkeeper = ref.read(aiBookkeeperProvider);
+    final autoAddAttachment = ref.read(smartBillingAutoAttachmentProvider);
+    final results = await bookkeeper.fromImages(
+      imageFiles,
+      ledgerId: ledgerId,
+      billingTypes: billingTypes,
+      l10n: l10n,
+    );
+    for (var i = 0; i < results.length; i++) {
+      if (!mounted) return;
+      final item = results[i];
+      final imageFile = imageFiles[i];
+      if (item.isFailed) {
+        await _insertAssistantText(l10n.aiOcrCheckLog);
+        await _insertRetryBubble(imageFile);
+        continue;
+      }
+      await _handleSingleImageResult(
+          item.result!, ledgerId, autoAddAttachment, l10n);
+    }
+  }
+
+  /// 处理单张图的结果(成功/无账单),提取到账单时刷新并插卡片。
+  Future<void> _handleSingleImageResult(
+    BookkeepingResult result,
+    int ledgerId,
+    bool autoAddAttachment,
+    AppLocalizations l10n,
+  ) async {
+    if (!result.success) {
+      await _insertAssistantText(
+          result.failedCount > 0 ? l10n.aiOcrCheckLog : l10n.aiOcrNoBill);
+      return;
+    }
+    await PostProcessor.run(
+      ref,
+      ledgerId: ledgerId,
+      tags: true,
+      attachments: autoAddAttachment,
+    );
+    if (!mounted) return;
+    await _insertBillCard(result);
   }
 
   /// 语音记账:复用 VoiceBillingHelper(权限/配置检查 + 录音对话框),

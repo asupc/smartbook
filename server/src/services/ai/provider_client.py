@@ -187,6 +187,8 @@ class ChatProviderConfig:
     name: str | None = None
     is_built_in: bool = False  # 内置智谱(音频走 input_audio 消息,非 /audio/transcriptions)
     protocol: str = "openai"   # "openai"(OpenAI-compatible) | "anthropic"(/v1/messages)
+    # 一次多图批量识别(/relay/vision-batch)时,该服务商最多并行处理多少张图。
+    vision_concurrency: int = 3
 
 
 class ChatProviderError(RuntimeError):
@@ -345,6 +347,8 @@ def _resolve_provider_by_kind(
         is_built_in=bool(matched.get("isBuiltIn")),
         # 存量配置没有 protocol 字段 → openai(行为与升级前一致)
         protocol=matched.get("protocol") or "openai",
+        # 存量 / 未配置的 provider 无 visionConcurrency → 默认 3
+        vision_concurrency=int(matched.get("visionConcurrency") or 3),
     )
 
 

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -351,6 +352,9 @@ class _AIProviderEditPageState extends ConsumerState<AIProviderEditPage> {
   /// 接口协议:openai(OpenAI-compatible)/ anthropic(Anthropic /v1/messages)。
   String _protocol = 'openai';
 
+  /// 一次多图批量识别时该服务商最多并行处理的图片数(有上限并发队列)。
+  int _visionConcurrency = 3;
+
   bool _obscureApiKey = true;
   bool _saving = false;
 
@@ -383,6 +387,7 @@ class _AIProviderEditPageState extends ConsumerState<AIProviderEditPage> {
     _visionModelController = TextEditingController(text: p?.visionModel ?? '');
     _audioModelController = TextEditingController(text: p?.audioModel ?? '');
     _protocol = p?.protocol ?? 'openai';
+    _visionConcurrency = p?.visionConcurrency ?? 3;
   }
 
   @override
@@ -675,6 +680,30 @@ class _AIProviderEditPageState extends ConsumerState<AIProviderEditPage> {
                           testError: _speechTestError,
                           onTest: _testSpeechCapability,
                         ),
+                        const SizedBox(height: 16),
+
+                        // 一次多图批量识别的并发数(仅视觉调用生效)
+                        TextFormField(
+                          initialValue: '$_visionConcurrency',
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                          ],
+                          decoration: InputDecoration(
+                            labelText: l10n.aiVisionConcurrency,
+                            helperText: l10n.aiVisionConcurrencyHelper,
+                            border: const OutlineInputBorder(),
+                            isDense: true,
+                            focusedBorder: OutlineInputBorder(
+                              borderSide: BorderSide(color: primaryColor, width: 2),
+                            ),
+                          ),
+                          onChanged: (v) {
+                            final n = int.tryParse(v.trim()) ?? 3;
+                            setState(() => _visionConcurrency =
+                                n.clamp(1, 32));
+                          },
+                        ),
 
                         // 一键测试按钮
                         const SizedBox(height: 16),
@@ -704,6 +733,7 @@ class _AIProviderEditPageState extends ConsumerState<AIProviderEditPage> {
       textModel: _textModelController.text,
       visionModel: _visionModelController.text,
       audioModel: _audioModelController.text,
+      visionConcurrency: _visionConcurrency,
       protocol: _protocol,
       createdAt: widget.provider?.createdAt ?? DateTime.now(),
     );
@@ -843,6 +873,7 @@ class _AIProviderEditPageState extends ConsumerState<AIProviderEditPage> {
           visionModel: _visionModelController.text.trim(),
           audioModel: _audioModelController.text.trim(),
           protocol: _isBuiltIn ? null : _protocol,
+          visionConcurrency: _visionConcurrency,
         );
         await AIProviderManager.updateProvider(updated);
       } else {
@@ -855,6 +886,7 @@ class _AIProviderEditPageState extends ConsumerState<AIProviderEditPage> {
           visionModel: _visionModelController.text.trim(),
           audioModel: _audioModelController.text.trim(),
           protocol: _protocol,
+          visionConcurrency: _visionConcurrency,
         );
       }
 

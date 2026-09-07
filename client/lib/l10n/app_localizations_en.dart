@@ -5686,6 +5686,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiChatImageLabel => 'Image';
 
   @override
+  String get aiChatRetry => 'Retry recognition';
+
+  @override
   String get aiChatVoiceLabel => 'Voice';
 
   @override
@@ -5929,6 +5932,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiVisionModelTitle => 'Vision Model';
+
+  @override
+  String get aiVisionConcurrency => 'Vision concurrency';
+
+  @override
+  String get aiVisionConcurrencyHelper => 'Max images processed in parallel for batch recognition (1-32)';
 
   @override
   String get aiModelFast => 'Faster';

@@ -43,6 +43,26 @@ abstract class AiExtractionEngine {
     String billGuard = '',
   });
 
+  /// 一次多张图片提取账单信息(「AI 助手选多张图」)。服务端按并发数批量
+  /// 识别,逐张返回。返回 list 与传入顺序一致。每项含 [ImageExtractOutcome.bills]
+  /// 与该张是否 [ImageExtractOutcome.error](识别失败,可重试)。
+  ///
+  /// 默认实现逐张调 [extractFromImage](供测试 mock 复用);生产用服务端
+  /// 批量端点([DefaultAiExtractionEngine.extractFromImages])。
+  Future<List<ImageExtractOutcome>> extractFromImages(
+    List<File> images,
+    AiExtractionContext context, {
+    String billGuard = '',
+  }) async {
+    final outcomes = <ImageExtractOutcome>[];
+    for (final image in images) {
+      outcomes.add(ImageExtractOutcome(
+        bills: await extractFromImage(image, context, billGuard: billGuard),
+      ));
+    }
+    return outcomes;
+  }
+
   /// 从音频提取账单信息(语音转文字 → 文本提取)。
   Future<AudioExtractionResult> extractFromAudio(
     File audio,
@@ -62,6 +82,15 @@ class AudioExtractionResult {
     this.bills = const [],
     this.recognizedText,
   });
+}
+
+/// 单张图批量识别结果。`error` 非空 = 该张识别失败(可重试,常为上游/网络
+/// 问题);空 = 正常,`bills` 可能为 0(该张不是账单)。
+class ImageExtractOutcome {
+  final List<BillInfo> bills;
+  final String? error;
+
+  const ImageExtractOutcome({this.bills = const [], this.error});
 }
 
 /// 一次文本提取的结果语义(M1-2)。
@@ -251,6 +280,41 @@ class DefaultAiExtractionEngine implements AiExtractionEngine {
       logger.error(_tag, '图片账单提取异常', e, st);
       rethrow;
     }
+  }
+
+  @override
+  Future<List<ImageExtractOutcome>> extractFromImages(
+    List<File> images,
+    AiExtractionContext context, {
+    String billGuard = '',
+  }) async {
+    final prompt = _promptBuilder.build(
+      context: context,
+      inputSource: '分析支付账单截图，从中',
+      billGuard: billGuard,
+    );
+    logger.debug(_tag, '批量图片 prompt 长度: ${prompt.length}, 张数: ${images.length}');
+
+    final results = await AIProviderFactory.visionBatch(
+      images,
+      prompt,
+      disableThinking: true,
+      logTag: _tag,
+      ledgerId: context.ledgerId?.toString(),
+      logInput: 'batch ${images.length} images',
+    );
+
+    // 服务端已按 image_index 保序;逐张解析,失败那张标 error。
+    final outcomes = <ImageExtractOutcome>[];
+    for (final item in results) {
+      if (item.error != null) {
+        logger.warning(_tag, '批量图片第 ${item.imageIndex} 张识别失败: ${item.error}');
+        outcomes.add(ImageExtractOutcome(error: item.error));
+      } else {
+        outcomes.add(ImageExtractOutcome(bills: _parser.parse(item.content)));
+      }
+    }
+    return outcomes;
   }
 
   @override

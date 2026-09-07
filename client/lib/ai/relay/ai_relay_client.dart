@@ -33,6 +33,33 @@ class AiRelayChatResult {
   });
 }
 
+/// /ai/relay/vision-batch 的单张结果。
+///
+/// [imageIndex] 对应批量请求里该图的序号(与传入顺序一致)。
+/// [error] 非空 = 该图识别失败(独占的失败,可对该图重试);content 为空串。
+class AiVisionBatchItem {
+  final int imageIndex;
+  final String content;
+  final bool duplicate;
+  final String? error;
+
+  const AiVisionBatchItem({
+    required this.imageIndex,
+    required this.content,
+    this.duplicate = false,
+    this.error,
+  });
+
+  factory AiVisionBatchItem.fromJson(Map<String, dynamic> json) {
+    return AiVisionBatchItem(
+      imageIndex: (json['image_index'] as num?)?.toInt() ?? 0,
+      content: (json['content'] as String?) ?? '',
+      duplicate: json['duplicate'] == true,
+      error: json['error'] as String?,
+    );
+  }
+}
+
 /// 中转调用失败(网络 / 服务端错误)。工厂层会转成 [format] 后抛 AIException。
 class AiRelayException implements Exception {
   final String message;
@@ -100,6 +127,11 @@ class AiRelayClient {
 
   /// 截图/选图识别。
   static const Duration visionDeadline = Duration(seconds: 65);
+
+  /// 一次多图批量识别的单请求 deadline。图片数越多越慢,按张数线性放大;
+  /// 避免大批次被单个固定 deadline 截断。
+  static Duration visionBatchDeadline(int imageCount) =>
+      Duration(seconds: 65 * (1 + (imageCount ~/ 3)));
 
   /// 语音转写。
   static const Duration speechDeadline = Duration(seconds: 65);
@@ -191,6 +223,46 @@ class AiRelayClient {
     }
     _traceProviderCall(sw, payloadBytes: payloadBytes, data: data);
     return (data['content'] as String?) ?? '';
+  }
+
+  /// 一次多图批量识别(截图/选图记账,一次发多张)。
+  ///
+  /// 服务端按该用户 vision provider 的 `visionConcurrency`(有上限并发队列)
+  /// 至多并行调用大模型,逐张返回结果数组。每张结果含 `imageIndex`(与传入
+  /// 顺序一致)、`content`(识别文本)、以及失败时的 `error`。单张失败不
+  /// 影响其它张,整张结果里 `error != null` 即失败,客户端可对其重试。
+  Future<List<AiVisionBatchItem>> visionBatch({
+    required List<File> images,
+    required String prompt,
+    bool disableThinking = true,
+    String? ledgerId,
+    String? logInput,
+  }) async {
+    final sw = Stopwatch()..start();
+    final Map<String, dynamic> data;
+    try {
+      data = await _postMultipartMulti(
+        'ai/relay/vision-batch',
+        fileField: 'images',
+        files: images,
+        fields: {
+          'prompt': prompt,
+          'disable_thinking': disableThinking ? 'true' : 'false',
+          if (ledgerId != null && ledgerId.isNotEmpty) 'ledger_id': ledgerId,
+          if (logInput != null && logInput.isNotEmpty) 'log_input': logInput,
+        },
+        deadline: visionBatchDeadline(images.length),
+      );
+    } on AiRelayException catch (e) {
+      _traceProviderCall(sw,
+          payloadBytes: null, outcome: e.errorCode ?? 'error');
+      rethrow;
+    }
+    _traceProviderCall(sw, payloadBytes: null, data: data);
+    final results = data['results'] as List? ?? const [];
+    return [
+      for (final r in results) AiVisionBatchItem.fromJson(r as Map<String, dynamic>),
+    ];
   }
 
   /// M0-1:自动记账链上记一条 `provider_call`(主动路径 trace 为 null,不记)。
@@ -506,6 +578,36 @@ class AiRelayClient {
         file.path,
         filename: file.path.split(Platform.pathSeparator).last,
       ));
+      return http.Response.fromStream(await _client.send(req));
+    }, deadline: deadline);
+    return _decode(resp);
+  }
+
+  /// 多文件 multipart:向同一字段重复添加多个文件(/ai/relay/vision-batch
+  /// 的 `images`)。任一文件不存在 → file_missing。
+  Future<Map<String, dynamic>> _postMultipartMulti(
+    String path, {
+    required String fileField,
+    required List<File> files,
+    required Map<String, String> fields,
+    Duration deadline = configDeadline,
+  }) async {
+    for (final f in files) {
+      if (!await f.exists()) {
+        throw AiRelayException('文件不存在: ${f.path}', errorCode: 'file_missing');
+      }
+    }
+    final resp = await _send((token) async {
+      final req = http.MultipartRequest('POST', _uri(path));
+      if (token.isNotEmpty) req.headers['Authorization'] = 'Bearer $token';
+      req.fields.addAll(fields);
+      for (final f in files) {
+        req.files.add(await http.MultipartFile.fromPath(
+          fileField,
+          f.path,
+          filename: f.path.split(Platform.pathSeparator).last,
+        ));
+      }
       return http.Response.fromStream(await _client.send(req));
     }, deadline: deadline);
     return _decode(resp);

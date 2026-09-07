@@ -28,4 +28,9 @@
     <string name="widget_budget_description">預算進度即時掌握</string>
     <string name="widget_recent_description">快速查看最近幾筆帳單</string>
     <string name="widget_dashboard_description">收支、趨勢與最近交易一屏看盡</string>
+
+    <!-- 無障礙服務名稱 / 描述(繁體中文)。系統「無障礙」設定列表用;簡中見 values/、
+         英文見 values-en/。未覆蓋的字串按 Android 機制回退到 values/ 預設值。 -->
+    <string name="accessibility_service_label">Smart 智記</string>
+    <string name="accessibility_service_description">監聽帳單/訂單詳情頁文字,自動識別並記帳。僅在用戶主動使用相關功能時讀取目前螢幕文字,不儲存、不上傳;關閉服務即停止一切讀取。</string>
 </resources>

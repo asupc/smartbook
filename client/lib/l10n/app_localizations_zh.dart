@@ -5686,6 +5686,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiChatImageLabel => '图片';
 
   @override
+  String get aiChatRetry => '重新识别';
+
+  @override
   String get aiChatVoiceLabel => '语音';
 
   @override
@@ -5929,6 +5932,12 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get aiVisionModelTitle => '视觉模型';
+
+  @override
+  String get aiVisionConcurrency => '视觉并发数';
+
+  @override
+  String get aiVisionConcurrencyHelper => '批量识别时最多并行处理的图片数(1-32)';
 
   @override
   String get aiModelFast => '快速';
@@ -13723,6 +13732,9 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
   String get aiChatImageLabel => '圖片';
 
   @override
+  String get aiChatRetry => '重新識別';
+
+  @override
   String get aiChatVoiceLabel => '語音';
 
   @override
@@ -13966,6 +13978,12 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
 
   @override
   String get aiVisionModelTitle => '視覺模型';
+
+  @override
+  String get aiVisionConcurrency => '視覺並發數';
+
+  @override
+  String get aiVisionConcurrencyHelper => '批量辨識時最多並行處理的圖片數(1-32)';
 
   @override
   String get aiModelFast => '快速';

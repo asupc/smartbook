@@ -28,6 +28,7 @@ from sqlalchemy.pool import StaticPool
 from src.database import Base, get_db
 from src.main import app
 from src.models import AIAnalysisLog, UserProfile
+from src.services.ai import ChatProviderError
 from src.services.ai import analysis_log as analysis_log_module
 
 
@@ -91,6 +92,7 @@ def _seed_ai_config(
     text_model: str = "glm-4-flash",
     vision_model: str | None = "glm-4v-flash",
     audio_model: str | None = "glm-4-voice",
+    vision_concurrency: int = 3,
 ) -> None:
     cfg = {
         "providers": [{
@@ -100,6 +102,7 @@ def _seed_ai_config(
             "textModel": text_model,
             "visionModel": vision_model or "",
             "audioModel": audio_model or "",
+            "visionConcurrency": vision_concurrency,
         }],
         "binding": {
             "textProviderId": "p1",
@@ -384,6 +387,142 @@ def test_relay_vision_no_provider(monkeypatch, tmp_path) -> None:
             headers={"Authorization": f"Bearer {token}"},
             data={"prompt": "p"},
             files={"image": ("s.jpg", b"\xff\xd8abc", "image/jpeg")},
+        )
+        assert r.status_code == 400
+        assert r.json()["error_code"] == "AI_NO_VISION_PROVIDER"
+    finally:
+        app.dependency_overrides.clear()
+
+
+# ──────────────────────────────────────────────────────────────────────
+# /relay/vision-batch
+# ──────────────────────────────────────────────────────────────────────
+
+
+def test_relay_vision_batch_happy_path(monkeypatch, tmp_path) -> None:
+    Session = _make_client(monkeypatch, tmp_path)
+    try:
+        client = TestClient(app)
+        token = _register_and_login(client, "relay-vb@example.com")
+        _seed_ai_config(_get_user_id(Session, "relay-vb@example.com"), Session)
+
+        seen: dict = {}
+
+        async def fake_call(*, config, messages, temperature, disable_thinking, timeout=None):
+            count = seen.setdefault("count", 0)
+            seen[f"m{count}"] = messages
+            seen["count"] = count + 1
+            return type("R", (), {"content": f'{{"tx_drafts":[{{"amount":{count}}}]}}', "usage": None})()
+
+        monkeypatch.setattr("src.routers.ai.relay.call_chat_text", fake_call)
+
+        imgs = [
+            ("a.jpg", b"\xff\xd8" + b"a" * 10, "image/jpeg"),
+            ("b.png", b"\x89PNG\r\n\x1a\n" + b"b" * 10, "image/png"),
+        ]
+        r = client.post(
+            "/api/v1/ai/relay/vision-batch",
+            headers={"Authorization": f"Bearer {token}"},
+            data={"prompt": "分析账单截图", "ledger_id": "7", "log_input": "batch"},
+            files=[("images", ("a.jpg", imgs[0][1], imgs[0][2])),
+                   ("images", ("b.png", imgs[1][1], imgs[1][2]))],
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["model"] == "glm-4v-flash"
+        assert len(body["results"]) == 2
+        # 每张图独立一次 LLM 调用,各自 content 数组含 1 个 image_url
+        assert seen["count"] == 2
+        for i in range(2):
+            content = seen[f"m{i}"][0]["content"]
+            assert content[0]["type"] == "text"
+            assert content[1]["type"] == "image_url"
+            assert content[1]["image_url"]["url"].startswith("data:image/")
+            assert body["results"][i]["image_index"] == i
+            assert body["results"][i]["error"] is None
+            assert body["results"][i]["content"].startswith('{"tx_drafts"')
+
+        # 每张图落一行日志,原图分别落盘
+        assert _count_logs(Session) == 2
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_relay_vision_batch_partial_failure(monkeypatch, tmp_path) -> None:
+    Session = _make_client(monkeypatch, tmp_path)
+    try:
+        client = TestClient(app)
+        token = _register_and_login(client, "relay-vbp@example.com")
+        _seed_ai_config(_get_user_id(Session, "relay-vbp@example.com"), Session)
+
+        async def fake_call(*, config, messages, temperature, disable_thinking, timeout=None):
+            # 第 1 张(messages 里第二张图是 index1)让上游失败
+            content = messages[0]["content"]
+            if len(content) > 1 and content[1]["image_url"]["url"].startswith("data:image/jpeg"):
+                raise ChatProviderError("upstream 500")
+            return type("R", (), {"content": '{"tx_drafts":[{"amount":1}]}', "usage": None})()
+
+        monkeypatch.setattr("src.routers.ai.relay.call_chat_text", fake_call)
+
+        r = client.post(
+            "/api/v1/ai/relay/vision-batch",
+            headers={"Authorization": f"Bearer {token}"},
+            data={"prompt": "p"},
+            files=[("images", ("a.jpg", b"\xff\xd8" + b"a" * 10, "image/jpeg")),
+                   ("images", ("b.png", b"\x89PNG\r\n\x1a\n" + b"b" * 10, "image/png"))],
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert len(body["results"]) == 2
+        assert body["results"][0]["error"] == "upstream 500"
+        assert body["results"][1]["error"] is None
+        # 失败那张也落日志(status=error)
+        assert _count_logs(Session) == 2
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_relay_vision_batch_validates_mime_and_size(monkeypatch, tmp_path) -> None:
+    Session = _make_client(monkeypatch, tmp_path)
+    try:
+        client = TestClient(app)
+        token = _register_and_login(client, "relay-vbv@example.com")
+        _seed_ai_config(_get_user_id(Session, "relay-vbv@example.com"), Session)
+        headers = {"Authorization": f"Bearer {token}"}
+        data = {"prompt": "p"}
+
+        # 任意一张 mime 非法 → 400,且不调用 provider
+        r = client.post(
+            "/api/v1/ai/relay/vision-batch", headers=headers, data=data,
+            files=[("images", ("a.jpg", b"\xff\xd8a", "image/jpeg")),
+                   ("images", ("b.txt", b"hello", "text/plain"))],
+        )
+        assert r.status_code == 400
+        assert r.json()["error_code"] == "AI_IMAGE_TYPE_INVALID"
+
+        # 任意一张超 5MB → 413
+        big = b"\xff\xd8" + b"0" * (5 * 1024 * 1024)
+        r = client.post(
+            "/api/v1/ai/relay/vision-batch", headers=headers, data=data,
+            files=[("images", ("a.jpg", b"\xff\xd8a", "image/jpeg")),
+                   ("images", ("big.jpg", big, "image/jpeg"))],
+        )
+        assert r.status_code == 413
+        assert r.json()["error_code"] == "AI_IMAGE_TOO_LARGE"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_relay_vision_batch_no_provider(monkeypatch, tmp_path) -> None:
+    Session = _make_client(monkeypatch, tmp_path)
+    try:
+        client = TestClient(app)
+        token = _register_and_login(client, "relay-vbn@example.com")
+        r = client.post(
+            "/api/v1/ai/relay/vision-batch",
+            headers={"Authorization": f"Bearer {token}"},
+            data={"prompt": "p"},
+            files=[("images", ("a.jpg", b"\xff\xd8abc", "image/jpeg"))],
         )
         assert r.status_code == 400
         assert r.json()["error_code"] == "AI_NO_VISION_PROVIDER"

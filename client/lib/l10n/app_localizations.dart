@@ -10844,6 +10844,12 @@ abstract class AppLocalizations {
   /// **'Image'**
   String get aiChatImageLabel;
 
+  /// No description provided for @aiChatRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry recognition'**
+  String get aiChatRetry;
+
   /// No description provided for @aiChatVoiceLabel.
   ///
   /// In en, this message translates to:
@@ -11329,6 +11335,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Vision Model'**
   String get aiVisionModelTitle;
+
+  /// No description provided for @aiVisionConcurrency.
+  ///
+  /// In en, this message translates to:
+  /// **'Vision concurrency'**
+  String get aiVisionConcurrency;
+
+  /// No description provided for @aiVisionConcurrencyHelper.
+  ///
+  /// In en, this message translates to:
+  /// **'Max images processed in parallel for batch recognition (1-32)'**
+  String get aiVisionConcurrencyHelper;
 
   /// No description provided for @aiModelFast.
   ///

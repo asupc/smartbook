@@ -28,6 +28,7 @@ prompt 拼装与输出 JSON 解析都在 App 端,server 只负责鉴权、选 pr
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import logging
 import time
@@ -135,6 +136,61 @@ def _rate_limited(user_id: str) -> None:
 
 def _resolve_profile(db: Session, user_id: str) -> UserProfile | None:
     return db.scalar(select(UserProfile).where(UserProfile.user_id == user_id))
+
+
+def _resolve_image_mime(
+    content_type: str | None, filename: str | None,
+) -> str:
+    """校验图片 mime;非法返回 ""。content-type 缺失时按文件后缀兜底。"""
+    mime = (content_type or "").lower()
+    if mime not in _ALLOWED_IMAGE_MIMES:
+        mime = _SUFFIX_MIME.get(Path(filename or "").suffix.lower(), "")
+    return mime
+
+
+async def _check_image_upload(image: UploadFile) -> tuple[str, bytes]:
+    """对单个 UploadFile 做 mime + 大小校验,返回 (mime, bytes)。
+
+    非法 mime → 400 AI_IMAGE_TYPE_INVALID;超过 5MB → 413 AI_IMAGE_TOO_LARGE。
+    """
+    mime = _resolve_image_mime(image.content_type, image.filename)
+    if mime not in _ALLOWED_IMAGE_MIMES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error_code": "AI_IMAGE_TYPE_INVALID",
+                "message": f"unsupported image type: {image.content_type!r}; "
+                f"allowed: {sorted(_ALLOWED_IMAGE_MIMES)}",
+            },
+        )
+    image_bytes = await image.read()
+    if len(image_bytes) > _MAX_IMAGE_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail={
+                "error_code": "AI_IMAGE_TOO_LARGE",
+                "message": f"image size {len(image_bytes)} exceeds 5MB",
+            },
+        )
+    return mime, image_bytes
+
+
+def _build_vision_messages(prompt: str, mime: str, image_bytes: bytes) -> list[dict[str, object]]:
+    """单图 → OpenAI 多模态 content 数组(文本 + 1 个 image_url base64 data URL)。"""
+    return [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:{mime};base64,{base64.b64encode(image_bytes).decode()}",
+                    },
+                },
+            ],
+        }
+    ]
 
 
 # ──────────────── /relay/chat ────────────────
@@ -309,27 +365,7 @@ async def relay_vision(
     content array 代发;日志带原图落盘(Web「AI 调用记录」图片预览同现状)。"""
     _rate_limited(current_user.id)
 
-    mime = (image.content_type or "").lower()
-    if mime not in _ALLOWED_IMAGE_MIMES:
-        mime = _SUFFIX_MIME.get(Path(image.filename or "").suffix.lower(), "")
-    if mime not in _ALLOWED_IMAGE_MIMES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "error_code": "AI_IMAGE_TYPE_INVALID",
-                "message": f"unsupported image type: {image.content_type!r}; "
-                f"allowed: {sorted(_ALLOWED_IMAGE_MIMES)}",
-            },
-        )
-    image_bytes = await image.read()
-    if len(image_bytes) > _MAX_IMAGE_BYTES:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail={
-                "error_code": "AI_IMAGE_TOO_LARGE",
-                "message": f"image size {len(image_bytes)} exceeds 5MB",
-            },
-        )
+    mime, image_bytes = await _check_image_upload(image)
 
     profile = _resolve_profile(db, current_user.id)
     try:
@@ -341,20 +377,7 @@ async def relay_vision(
         )
 
     input_text = log_input or f"image(mime={mime}, size={len(image_bytes)} bytes)"
-    messages: list[dict[str, object]] = [
-        {
-            "role": "user",
-            "content": [
-                {"type": "text", "text": prompt},
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:{mime};base64,{base64.b64encode(image_bytes).decode()}",
-                    },
-                },
-            ],
-        }
-    ]
+    messages = _build_vision_messages(prompt, mime, image_bytes)
 
     t0 = time.perf_counter()
     log_status = "ok"
@@ -410,6 +433,114 @@ async def relay_vision(
             total_tokens=token_count(usage, "total_tokens"),
             client_ip=request.client.host if request.client else None,
         )
+
+
+# ──────────────── /relay/vision-batch ────────────────
+
+
+@router.post("/relay/vision-batch")
+async def relay_vision_batch(
+    request: Request,
+    images: list[UploadFile] = File(...),
+    prompt: str = Form(..., max_length=100_000),
+    disable_thinking: bool = Form(default=True),
+    ledger_id: str | None = Form(default=None, max_length=128),
+    log_input: str | None = Form(default=None, max_length=50_000),
+    _scopes: set[str] = Depends(_RELAY_SCOPE_DEP),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    """一次多图识别的中转(App「AI 助手选多张图」)。
+
+    与 /relay/vision 不同:一次收 N 张图,按该用户 vision provider 的
+    `visionConcurrency`(有上限并发队列)至多 K 张并行调用大模型,其余排队;
+    每张图仍是一次独立的 LLM 调用(每张只见自己的图 + 同一 prompt,不跨图
+    合并),逐张落一条 ai_analysis_logs(原图落盘)。返回逐张结果数组,按
+    `image_index` 保序;单张上游失败只记该张 `error`,整批仍 200(整批级的
+    config / 大小 / mime 问题才 4xx)。
+    """
+    _rate_limited(current_user.id)
+
+    # 发起前整批校验:任何一张非法即整批失败,不调用 provider。
+    prepared: list[tuple[str, bytes]] = []
+    for image in images:
+        mime, image_bytes = await _check_image_upload(image)
+        prepared.append((mime, image_bytes))
+
+    profile = _resolve_profile(db, current_user.id)
+    try:
+        cfg = resolve_vision_provider(current_user, profile)
+    except NoVisionProviderError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error_code": "AI_NO_VISION_PROVIDER", "message": str(exc)},
+        )
+
+    sem = asyncio.Semaphore(cfg.vision_concurrency)
+    results: list[dict[str, object]] = [{} for _ in prepared]
+
+    async def recognize(index: int, mime: str, image_bytes: bytes) -> None:
+        async with sem:
+            input_text = log_input or f"image[{index}](mime={mime}, size={len(image_bytes)} bytes)"
+            messages = _build_vision_messages(prompt, mime, image_bytes)
+            duration_ms = 0
+            usage: dict | None = None
+            content: str | None = None
+            error_message: str | None = None
+            t0 = time.perf_counter()
+            try:
+                result = await call_chat_text(
+                    config=cfg,
+                    messages=messages,
+                    temperature=0.3,
+                    disable_thinking=disable_thinking,
+                    timeout=_UPSTREAM_TIMEOUT_VISION,
+                )
+                usage = result.usage
+                content = result.content
+                harvested = harvest_identifiers(result.content)
+                if harvested:
+                    register_identifiers(db, current_user, harvested, source="parse_tx_image")
+            except ChatProviderError as exc:
+                error_message = str(exc)[:500]
+            finally:
+                duration_ms = int((time.perf_counter() - t0) * 1000)
+                write_ai_analysis_log_with_image(
+                    user_id=current_user.id,
+                    entry_type="parse_tx_image",
+                    status="ok" if error_message is None else "error",
+                    image_bytes=image_bytes,
+                    image_mime=mime,
+                    provider_id=cfg.provider_id,
+                    model=cfg.model,
+                    ledger_id=ledger_id,
+                    input_text=input_text,
+                    output_text=content,
+                    error_message=error_message,
+                    duration_ms=duration_ms,
+                    prompt_tokens=token_count(usage, "prompt_tokens"),
+                    completion_tokens=token_count(usage, "completion_tokens"),
+                    total_tokens=token_count(usage, "total_tokens"),
+                    client_ip=request.client.host if request.client else None,
+                )
+            results[index] = {
+                "image_index": index,
+                "content": content or "",
+                "usage": usage,
+                "duplicate": False,
+                "error": error_message,
+            }
+
+    await asyncio.gather(
+        *(recognize(i, mime, b) for i, (mime, b) in enumerate(prepared)),
+        return_exceptions=False,
+    )
+
+    return {
+        "provider_id": cfg.provider_id,
+        "model": cfg.model,
+        "results": results,
+    }
 
 
 # ──────────────── /relay/stt ────────────────

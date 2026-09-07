@@ -54,6 +54,14 @@ class _FakeEngine implements AiExtractionEngine {
       bills;
 
   @override
+  Future<List<ImageExtractOutcome>> extractFromImages(
+    List<File> images,
+    AiExtractionContext context, {
+    String billGuard = '',
+  }) async =>
+      [for (final _ in images) ImageExtractOutcome(bills: bills)];
+
+  @override
   Future<AudioExtractionResult> extractFromAudio(
     File audio,
     AiExtractionContext ctx,

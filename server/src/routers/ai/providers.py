@@ -71,6 +71,8 @@ class ProviderUpsertIn(BaseModel):
     visionModel: str = Field(default="", max_length=128)
     audioModel: str = Field(default="", max_length=128)
     protocol: str | None = Field(default=None, max_length=32)
+    # 一次多图批量识别(/relay/vision-batch)时,该服务商最多并行处理的图片数。
+    visionConcurrency: int | None = Field(default=None, ge=1, le=32)
     createdAt: str | None = Field(default=None, max_length=40)
 
 
@@ -82,6 +84,7 @@ class ProviderPatchIn(BaseModel):
     visionModel: str | None = Field(default=None, max_length=128)
     audioModel: str | None = Field(default=None, max_length=128)
     protocol: str | None = Field(default=None, max_length=32)
+    visionConcurrency: int | None = Field(default=None, ge=1, le=32)
 
 
 class BindingIn(BaseModel):
@@ -106,6 +109,7 @@ class ProviderOut(BaseModel):
     visionModel: str
     audioModel: str
     protocol: str = PROTOCOL_OPENAI
+    visionConcurrency: int = 3
     createdAt: str | None = None
 
 
@@ -136,6 +140,7 @@ def _to_out(p: dict[str, Any]) -> ProviderOut:
         visionModel=p.get("visionModel") or "",
         audioModel=p.get("audioModel") or "",
         protocol=protocol if protocol in KNOWN_PROTOCOLS else PROTOCOL_OPENAI,
+        visionConcurrency=int(p.get("visionConcurrency") or 3),
         createdAt=p.get("createdAt"),
     )
 
@@ -245,6 +250,7 @@ async def create_provider(
         "visionModel": payload.visionModel,
         "audioModel": payload.audioModel,
         "protocol": _validate_protocol(payload.protocol),
+        "visionConcurrency": payload.visionConcurrency or 3,
     }
     if payload.createdAt:
         provider["createdAt"] = payload.createdAt
@@ -287,6 +293,8 @@ async def update_provider(
         provider["audioModel"] = payload.audioModel
     if payload.protocol is not None:
         provider["protocol"] = _validate_protocol(payload.protocol)
+    if payload.visionConcurrency is not None:
+        provider["visionConcurrency"] = payload.visionConcurrency
     if payload.apiKey is not None and not is_unset_key(payload.apiKey):
         provider["apiKey"] = payload.apiKey
 

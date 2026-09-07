@@ -174,6 +174,53 @@ class AiBookkeeper {
     );
   }
 
+  /// 一次多张图片记账(「AI 助手选多张图」)。服务端按并发数批量识别,
+  /// 逐张返回结果;本方法把可识别的图逐张落库。返回与 [images] 一一对应,
+  /// 每项是该张的 [BookkeepingResult];该项为 `ImageExtractOutcome` 语义由调用
+  /// 方通过 [AiBatchImageResult] 判断 —— 见下方返回类型。
+  ///
+  /// 单张识别失败不中断其它张;调用方据此决定是否对该张重试。
+  Future<List<AiBatchImageResult>> fromImages(
+    List<File> images, {
+    required int ledgerId,
+    required List<String> billingTypes,
+    String billGuard = '',
+    AppLocalizations? l10n,
+    Future<void> Function(int txId, int index)? onSaved,
+    AutoBookFlow? autoBookFlow,
+    String source = 'auto',
+    String? evidenceText,
+  }) async {
+    final context = await AiExtractionContext.forLedger(
+      repository: _repo,
+      ledgerId: ledgerId,
+    );
+    final perImage = await _engine.extractFromImages(
+      images,
+      context,
+      billGuard: billGuard,
+    );
+    final results = <AiBatchImageResult>[];
+    for (final outcome in perImage) {
+      if (outcome.error != null) {
+        results.add(AiBatchImageResult.failed(error: outcome.error!));
+        continue;
+      }
+      final r = await _persistAll(
+        bills: outcome.bills,
+        ledgerId: ledgerId,
+        billingTypes: billingTypes,
+        l10n: l10n,
+        onSaved: onSaved,
+        autoBookFlow: autoBookFlow,
+        source: source,
+        evidenceText: evidenceText,
+      );
+      results.add(AiBatchImageResult(result: r));
+    }
+    return results;
+  }
+
   /// 语音记账。第二项返回值是 STT 识别出的原始文本(便于 UI 在记账失败时
   /// 展示「未识别账单信息: {text}」)。
   Future<({BookkeepingResult result, String? recognizedText})> fromAudio({

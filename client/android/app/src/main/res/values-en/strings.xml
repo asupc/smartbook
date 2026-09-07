@@ -29,4 +29,9 @@
     <string name="widget_budget_description">Track budget progress at a glance</string>
     <string name="widget_recent_description">A quick look at your latest transactions</string>
     <string name="widget_dashboard_description">Income, trend, and recent activity in one view</string>
+
+    <!-- Accessibility service label / description (English). Android system
+         Accessibility list; falls back to values/ for any missing locale. -->
+    <string name="accessibility_service_label">Smart 智记</string>
+    <string name="accessibility_service_description">Reads text on bill or order detail pages to auto-record transactions. Only reads the current screen when you actively use the feature; it is never stored or uploaded. Stops altogether when this service is off.</string>
 </resources>
