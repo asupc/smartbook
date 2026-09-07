@@ -23,8 +23,11 @@ import type { WorkspaceAccount } from '@smartbook/api-client'
 
 type AccountRecord = {
   key: string
+  /** 分组父行:有 group(无 account),children 为账户子行。 */
   group?: AssetGroup
+  /** 账户子行:有 account(无 group),groupLabel 为该行所属类型 label(类型列用)。 */
   account?: WorkspaceAccount
+  groupLabel?: string
   children?: AccountRecord[]
 }
 
@@ -37,6 +40,21 @@ const isValuation = (row: WorkspaceAccount) =>
   VALUATION_TYPES_SET.has(row.account_type || 'other')
 const creditLimit = (row: WorkspaceAccount) =>
   typeof row.credit_limit === 'number' ? row.credit_limit : null
+const isBankOrCard = (row: WorkspaceAccount) =>
+  row.account_type === 'bank_card' || row.account_type === 'credit_card'
+
+/** 账户名下的辅助信息:银行卡/信用卡显示开户行 + 卡号后四位,其它类型显示备注。
+ *  都没有则不显示副行。 */
+function accountSubText(row: WorkspaceAccount): string | null {
+  const parts: string[] = []
+  if (isBankOrCard(row)) {
+    if (row.bank_name) parts.push(row.bank_name)
+    if (row.card_last_four) parts.push(`•••• ${row.card_last_four}`)
+  } else if (row.note) {
+    parts.push(row.note)
+  }
+  return parts.length > 0 ? parts.join(' · ') : null
+}
 
 export function AccountsTable({
   listGroups,
@@ -54,8 +72,8 @@ export function AccountsTable({
         group,
         children: group.rows.map((row) => ({
           key: row.id,
-          group,
           account: row as WorkspaceAccount,
+          groupLabel: group.label,
         })),
       })),
     [listGroups],
@@ -66,8 +84,8 @@ export function AccountsTable({
       {
         title: t('accounts.tableCol.account'),
         render: (_v, record) => {
-          if (record.group) {
-            const g = record.group
+          if (!record.account) {
+            const g = record.group!
             return (
               <span className="inline-flex items-center gap-2">
                 <TypeIcon type={g.type} size={18} />
@@ -83,11 +101,17 @@ export function AccountsTable({
               </span>
             )
           }
-          const row = record.account!
+          const row = record.account
+          const sub = accountSubText(row)
           return (
-            <span className="inline-flex items-center gap-2">
+            <span className="inline-flex min-w-0 items-center gap-2">
               <TypeIcon type={row.account_type || 'other'} size={18} />
-              <span className="truncate">{row.name}</span>
+              <span className="flex min-w-0 flex-col">
+                <span className="truncate">{row.name}</span>
+                {sub ? (
+                  <span className="truncate text-[11px] text-muted-foreground">{sub}</span>
+                ) : null}
+              </span>
             </span>
           )
         },
@@ -96,28 +120,28 @@ export function AccountsTable({
         title: t('accounts.tableCol.type'),
         width: 120,
         render: (_v, record) =>
-          record.group ? null : (
+          record.account ? (
             <span className="rounded bg-muted/60 px-1.5 py-0.5 text-[11px] text-muted-foreground">
-              {record.group!.label}
+              {record.groupLabel}
             </span>
-          ),
+          ) : null,
       },
       {
         title: t('accounts.tableCol.currency'),
         width: 90,
         render: (_v, record) =>
-          record.group ? null : (
+          record.account ? (
             <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium uppercase text-primary">
-              {(record.account!.currency || 'CNY').toUpperCase()}
+              {(record.account.currency || 'CNY').toUpperCase()}
             </span>
-          ),
+          ) : null,
       },
       {
         title: t('accounts.tableCol.balance'),
         align: 'right',
         render: (_v, record) => {
-          if (record.group) {
-            const g = record.group
+          if (!record.account) {
+            const g = record.group!
             return (
               <span className="inline-flex flex-col items-end gap-0.5">
                 {g.subtotals.map((st) => (
@@ -134,7 +158,7 @@ export function AccountsTable({
               </span>
             )
           }
-          const row = record.account!
+          const row = record.account
           const bal = displayBalance(row)
           return (
             <Amount
@@ -151,35 +175,35 @@ export function AccountsTable({
         title: t('accounts.tableCol.monthIncome'),
         align: 'right',
         render: (_v, record) =>
-          record.group ? null : (
+          record.account ? (
             <Amount
-              value={record.account!.income_total ?? 0}
-              currency={record.account!.currency}
+              value={record.account.income_total ?? 0}
+              currency={record.account.currency}
               showCurrency
               compact={false}
               tone="positive"
             />
-          ),
+          ) : null,
       },
       {
         title: t('accounts.tableCol.monthExpense'),
         align: 'right',
         render: (_v, record) =>
-          record.group ? null : (
+          record.account ? (
             <Amount
-              value={record.account!.expense_total ?? 0}
-              currency={record.account!.currency}
+              value={record.account.expense_total ?? 0}
+              currency={record.account.currency}
               showCurrency
               compact={false}
               tone="negative"
             />
-          ),
+          ) : null,
       },
       {
         title: t('accounts.tableCol.creditLimit'),
         render: (_v, record) => {
-          if (record.group) return null
-          const row = record.account!
+          if (!record.account) return null
+          const row = record.account
           if (isValuation(row)) {
             return (
               <span className="text-muted-foreground">{t('accounts.bankcard.currentValue')}</span>
@@ -208,8 +232,8 @@ export function AccountsTable({
         title: t('accounts.tableCol.actions'),
         width: 140,
         render: (_v, record) => {
-          if (record.group) return null
-          const row = record.account!
+          if (!record.account) return null
+          const row = record.account
           return (
             <span className="inline-flex items-center gap-1">
               <Button
