@@ -184,8 +184,10 @@ class ScreenTextMonitorService {
             // 成功入账始终通知;「AI 未配置」引导按指纹只提示一次
             showNotification: true,
             notifyAiUnconfigured: !alreadyWarned,
-            // Coordinator 已接管事件级幂等。
-            skipDedup: true,
+            // 内容指纹去重(持久化,跨会话):Coordinator 按 eventKey 幂等,而
+            // eventKey 含捕获时间戳每次进入都变,兜不住同内容重复入账。这里
+            // 不再跳过 screenTextFingerprint 去重,与原生端指纹拦队形成双保险。
+            skipDedup: false,
             eventKey: eventKey,
           ),
           // M1-3:与短信/通知共用一份走向映射。

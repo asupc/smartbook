@@ -349,14 +349,20 @@ open class ScreenTextWatcher : AccessibilityService() {
         text: String,
         ts: Long,
     ): Boolean {
+        // 内容指纹优先判重:同一账单详情页文本完全一致,指纹稳定;事件键含
+        // 捕获时间戳,每次进入详情页都会变化,不能作为去重依据(2026-09-07
+        // 修复:重复进入被当成新事件,导致文本反复送 AI 记账)。已处理与队列
+        // 里都按 fingerprint 判重,eventKey 仅作队列项标识。
         val processed = loadFingerprints(prefs)
-        if (processed.contains(PROCESSED_EVENT_PREFIX + eventKey)) return false
+        if (processed.contains(fingerprint) ||
+            processed.contains(PROCESSED_EVENT_PREFIX + eventKey)
+        ) return false
         val arr = JSONArray(prefs.getString(KEY_QUEUE, null) ?: "[]")
         for (i in 0 until arr.length()) {
             val obj = arr.optJSONObject(i) ?: continue
-            if (obj.optString("eventKey") == eventKey ||
-                (obj.optString("eventKey").isEmpty() &&
-                    obj.optString("fingerprint") == fingerprint)
+            val queuedFp = obj.optString("fingerprint")
+            if (queuedFp == fingerprint || queuedFp.isEmpty() &&
+                obj.optString("eventKey") == eventKey
             ) {
                 return false
             }
@@ -413,11 +419,11 @@ open class ScreenTextWatcher : AccessibilityService() {
             val fp = obj.optString("fingerprint")
             val key = obj.optString("eventKey")
             if (wanted.contains(fp) || (key.isNotEmpty() && wanted.contains(key))) {
-                if (key.isNotEmpty()) {
-                    acked.add(PROCESSED_EVENT_PREFIX + key)
-                } else if (fp.isNotEmpty()) {
-                    acked.add(fp)
-                }
+                // 已处理记录同时写指纹与事件键:指纹作为去重主依据(同内容不再
+                // 记),事件键保留作兜底(2026-09-07)。之前只写 event:eventKey,
+                // 而 eventKey 含时间戳每次变化,漏记了指纹导致重复入账。
+                if (fp.isNotEmpty()) acked.add(fp)
+                if (key.isNotEmpty()) acked.add(PROCESSED_EVENT_PREFIX + key)
             } else {
                 remaining.put(obj)
             }

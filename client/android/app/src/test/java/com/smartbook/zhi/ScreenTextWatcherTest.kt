@@ -169,4 +169,26 @@ class ScreenTextWatcherTest {
         assertFalse(first == watcher.eventKey("com.eg.android.AlipayGphone", fp, 1_757_000_001_000L))
         assertEquals(16, first.length)
     }
+
+    @Test
+    fun `同内容不同捕获时间指纹稳定事件键变化`() {
+        // 2026-09-07 修复:同一账单详情页文本在两次进入时完全一致,指纹必须
+        // 相同;事件键含时间戳必然不同。判重必须以指纹为准,否则重复进详情页
+        // 会被当成新事件反复送 AI 记账。
+        val text = "账单详情\n交易成功\n实付金额:¥45.00\n商户:星巴克咖啡(万通中心店)"
+        val fpA = watcher.fingerprint("com.eg.android.AlipayGphone", text)
+        val fpB = watcher.fingerprint("com.eg.android.AlipayGphone", text)
+        assertEquals(fpA, fpB)
+        val keyA = watcher.eventKey("com.eg.android.AlipayGphone", fpA, 1_757_000_000_000L)
+        val keyB = watcher.eventKey("com.eg.android.AlipayGphone", fpB, 1_757_000_001_000L)
+        assertFalse(keyA == keyB)
+    }
+
+    @Test
+    fun `不同内容指纹不同避免误判`() {
+        // 不同账单文本(金额/商户不同)指纹不同,按指纹判重不会误杀新账单。
+        val a = watcher.fingerprint("com.eg.android.AlipayGphone", "账单详情 实付45.00元 美团外卖")
+        val b = watcher.fingerprint("com.eg.android.AlipayGphone", "账单详情 实付30.00元 星巴克")
+        assertFalse(a == b)
+    }
 }
