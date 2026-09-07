@@ -313,6 +313,7 @@ def list_transactions(
                 tx_type=row.tx_type,
                 amount=row.amount,
                 happened_at=_to_utc(row.happened_at),
+                created_at=_to_utc(row.created_at) if row.created_at else None,
                 note=row.note,
                 category_name=row.category_name,
                 category_kind=row.category_kind,

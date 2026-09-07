@@ -29,6 +29,7 @@ from .models import (
     UserCategoryProjection,
     UserExchangeRateProjection,
     UserTagProjection,
+    utcnow,
 )
 
 logger = logging.getLogger(__name__)
@@ -230,6 +231,16 @@ def upsert_tx(
     )
     payload_creator = _as_str(payload.get("createdByUserId"))
 
+    # 记录时间(0024):首次插入盖章为服务端当前时刻;已有行保留旧值(update
+    # 不刷新)。客户端不提交,也不读 payload —— snapshot/pull 下发键为
+    # createdAt。存量迁移行(0024 之前)保持 NULL。
+    existing_created_at = db.scalar(
+        select(ReadTxProjection.created_at).where(
+            ReadTxProjection.ledger_id == ledger_id,
+            ReadTxProjection.sync_id == sync_id,
+        )
+    )
+
     values = {
         "ledger_id": ledger_id,
         "sync_id": sync_id,
@@ -239,6 +250,7 @@ def upsert_tx(
         "happened_at": _parse_happened_at(
             payload.get("happenedAt") or payload.get("happened_at")
         ),
+        "created_at": existing_created_at or utcnow(),
         "note": _as_str(payload.get("note")),
         "category_sync_id": _as_str(payload.get("categoryId")),
         "category_name": _as_str(payload.get("categoryName")),

@@ -52,6 +52,7 @@ def build(db: Session, ledger: Ledger) -> dict[str, Any]:
         ReadTxProjection.tx_type,
         ReadTxProjection.amount,
         ReadTxProjection.happened_at,
+        ReadTxProjection.created_at,
         ReadTxProjection.note,
         ReadTxProjection.category_sync_id,
         ReadTxProjection.category_name,
@@ -76,7 +77,7 @@ def build(db: Session, ledger: Ledger) -> dict[str, Any]:
         ReadTxProjection.tx_index.desc(),
     )
     for row in db.execute(tx_stmt).all():
-        (sync_id, tx_type, amount, happened_at, note,
+        (sync_id, tx_type, amount, happened_at, created_at, note,
          cat_sid, cat_name, cat_kind,
          acc_sid, acc_name,
          from_sid, from_name,
@@ -90,6 +91,9 @@ def build(db: Session, ledger: Ledger) -> dict[str, Any]:
             "amount": amount,
             "happenedAt": _to_iso_utc(happened_at),
         }
+        # 记录时间(0024):存量迁移行可能为 NULL,不产生 key(客户端保持 absent)。
+        if created_at is not None:
+            item["createdAt"] = _to_iso_utc(created_at)
         if note is not None:
             item["note"] = note
         if cat_sid:

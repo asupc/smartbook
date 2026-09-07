@@ -83,6 +83,7 @@ def scan_duplicate_transactions(db: Session) -> list[DuplicateGroup]:
                 sync_id=m.sync_id,
                 amount=m.amount or 0.0,
                 happened_at=m.happened_at,
+                created_at=m.created_at,
                 tx_type=m.tx_type,
                 note=m.note,
                 account_name=m.account_name,
