@@ -377,10 +377,10 @@ export function TransactionsPanel({
     })
   }
 
-  // 表列数:7 列(时间/类型/分类/账户/标签/金额/操作)+ 选择模式首列。
+  // 表列数:8 列(时间/记录时间/类型/分类/账户/标签/金额/操作)+ 选择模式首列。
   // showCreatorColumn/showLedgerColumn 不再映射为独立列(创建人 chip 内嵌于
   // 分类列),保留参数仅为 API 兼容。
-  const colCount = 7 + (selectionMode ? 1 : 0)
+  const colCount = 8 + (selectionMode ? 1 : 0)
 
   // 交易表行内 tag chip 配色字典(与 TransactionRow 同来源:buildTagColorMap)。
   const tagColorMap = useMemo(() => buildTagColorMap(tags as Array<{ name?: string; color?: string }>), [tags])
@@ -396,6 +396,7 @@ export function TransactionsPanel({
               <TableRow>
                 {selectionMode ? <TableHead className="bc-table-head w-[40px]"><input type="checkbox" aria-label="select" className="h-4 w-4 cursor-pointer accent-primary" /></TableHead> : null}
                 <TableHead className="bc-table-head">{t('transactions.table.time')}</TableHead>
+                <TableHead className="bc-table-head">{t('transactions.table.createdAt')}</TableHead>
                 <TableHead className="bc-table-head">{t('transactions.table.type')}</TableHead>
                 <TableHead className="bc-table-head">{t('transactions.table.category')}</TableHead>
                 <TableHead className="bc-table-head">{t('transactions.table.account')}</TableHead>
@@ -932,6 +933,9 @@ function TransactionRowCell({
       ) : null}
       <TableCell className="whitespace-nowrap font-mono tabular-nums text-xs text-muted-foreground">
         {formatTableDateTime(row.happened_at)}
+      </TableCell>
+      <TableCell className="whitespace-nowrap font-mono tabular-nums text-xs text-muted-foreground">
+        {row.created_at ? formatTableDateTime(row.created_at) : '-'}
       </TableCell>
       <TableCell className="whitespace-nowrap">
         <Badge variant={row.tx_type === 'transfer' ? 'secondary' : row.tx_type === 'income' ? 'outline' : 'default'}>

@@ -64,6 +64,8 @@ export type AIProvider = {
   textModel?: string
   visionModel?: string
   audioModel?: string
+  /** 接口协议:'openai'(OpenAI-compatible,缺省)| 'anthropic'(/v1/messages)。 */
+  protocol?: 'openai' | 'anthropic'
   createdAt?: string // ISO 8601
 }
 
@@ -173,6 +175,8 @@ export type ReadTransaction = {
   tx_type: 'expense' | 'income' | 'transfer'
   amount: number
   happened_at: string
+  /** 记录时间(服务端首次落库时刻);0024 之前的存量行为 null。 */
+  created_at?: string | null
   note: string | null
   category_name: string | null
   category_kind: string | null
@@ -500,6 +504,8 @@ export type DuplicateRecord = {
   sync_id: string
   amount: number
   happened_at: string
+  /** 记录时间(服务端首次落库时刻);存量行为 null。 */
+  created_at?: string | null
   tx_type: string
   note?: string | null
   account_name?: string | null

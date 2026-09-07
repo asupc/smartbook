@@ -241,6 +241,11 @@ export function AdminDuplicateTransactionsPage() {
                         {r.tx_type} · {r.account_name || '-'} · {r.category_name || '-'}
                         {r.tags_csv ? ` · ${r.tags_csv}` : ''}
                       </p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {r.created_at
+                          ? t('admin.duplicates.recordedAt', { time: formatTime(r.created_at) })
+                          : t('admin.duplicates.noRecordedAt')}
+                      </p>
                     </div>
                     <span className="text-sm font-medium">
                       {formatAmount(r.amount)}

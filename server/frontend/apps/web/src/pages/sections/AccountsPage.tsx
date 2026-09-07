@@ -9,6 +9,7 @@ import {
   fetchExchangeRates,
   fetchNetWorthHistory,
   fetchWorkspaceAccounts,
+  fetchWorkspaceAnalytics,
   fetchWorkspaceTags,
   fetchWorkspaceTransactions,
   updateAccount,
@@ -17,6 +18,7 @@ import {
   type NetWorthHistory,
   type ReadAccount,
   type WorkspaceAccount,
+  type WorkspaceAnalytics,
   type WorkspaceTag,
   type WorkspaceTransaction,
 } from '@smartbook/api-client'
@@ -24,7 +26,6 @@ import { Button, Card, Modal } from 'antd'
 import { useT, useToast } from '@smartbook/ui'
 import {
   AccountsPanel,
-  Amount,
   AssetsCompositionMini,
   ConfirmDialog,
   CurrencyAssetCard,
@@ -33,6 +34,7 @@ import {
   computeTypeGroups,
   effectiveRateToBase,
   mergeGroupsToBase,
+  periodLabel,
   resolveCurrencyFields,
   splitByCurrency,
   type AccountForm,
@@ -40,8 +42,9 @@ import {
   type CurrencyBucket,
 } from '@smartbook/web-features'
 
+import { AssetKpiRow } from '../../components/dashboard/AssetKpiRow'
+import { AccountsTable } from '../../components/dashboard/AccountsTable'
 import { NetWorthTrend } from '../../components/dashboard/NetWorthTrend'
-import { ASSET_VIEW_KEY, type AssetView } from '../../lib/assetViewPrefs'
 import { routePath } from '../../state/router'
 import { dispatchOpenDetailAccount } from '../../lib/txDialogEvents'
 import { useAuth } from '../../context/AuthContext'
@@ -52,16 +55,6 @@ import { localizeError } from '../../i18n/errors'
 import { useLedgerWrite } from '../../app/useLedgerWrite'
 
 const ACCOUNT_DETAIL_PAGE_SIZE = 20
-
-// 资产汇总卡内「构成 / 走势」tab 的设备级持久化(key/类型见 assetViewPrefs)。
-// 默认 'composition'(资产页更看重当下构成,走势放第二个 tab)。
-function readTrendOrComposition(): AssetView {
-  try {
-    return localStorage.getItem(ASSET_VIEW_KEY) === 'trend' ? 'trend' : 'composition'
-  } catch {
-    return 'composition'
-  }
-}
 
 /**
  * 账户 / 资产页 —— 账户列表 + CRUD(无 delete,web 只支持创建/编辑)
@@ -78,7 +71,7 @@ export function AccountsPage() {
   const toast = useToast()
   const navigate = useNavigate()
   const { token, profileMe } = useAuth()
-  const { ledgers, activeLedgerId } = useLedgers()
+  const { ledgers, activeLedgerId, currentLedger } = useLedgers()
   const { retryOnConflict, isWriteConflict } = useLedgerWrite()
 
   const base = profileMe?.primary_currency || ''
@@ -96,18 +89,6 @@ export function AccountsPage() {
 
   // 分币种明细 dialog(折算汇总卡的「详情」入口;单币种时该卡不出详情按钮)。
   const [detailOpen, setDetailOpen] = useState(false)
-
-  // 资产汇总卡内「构成 / 走势」tab(见 ASSET_VIEW_KEY)。设备级持久化。
-  const [trendOrComposition, setTrendOrComposition] = useState<AssetView>(
-    () => readTrendOrComposition(),
-  )
-  useEffect(() => {
-    try {
-      localStorage.setItem(ASSET_VIEW_KEY, trendOrComposition)
-    } catch {
-      // private mode / 超配额忽略
-    }
-  }, [trendOrComposition])
 
   // 多币种折算(只读卡)。主币种存在且账户币种 ≥2 种时,并行拉汇率 + 手动 override,
   // 任一失败置 null 不阻塞账户列表。单币种 / 无主币种则不渲染卡(零变化)。
@@ -129,6 +110,18 @@ export function AccountsPage() {
     null,
   )
 
+  // KPI 收支数据(本月 / 本年)。analytics 是账本维度,故缓存键按 activeLedgerId
+  // 分桶,切账本不串号;失败置 null 不阻塞账户列表(同 rates/overrides 容错)。
+  const kpiBucket = activeLedgerId || '__none__'
+  const [monthSummary, setMonthSummary] = usePageCache<WorkspaceAnalytics['summary'] | null>(
+    `accounts:${kpiBucket}:monthSummary`,
+    null,
+  )
+  const [yearSummary, setYearSummary] = usePageCache<WorkspaceAnalytics['summary'] | null>(
+    `accounts:${kpiBucket}:yearSummary`,
+    null,
+  )
+
   // detail 弹窗已迁到 GlobalEntityDialogs(AppShell 顶层),本页只负责
   // dispatch openDetailAccount 事件,弹窗在全局渲染。
 
@@ -143,17 +136,38 @@ export function AccountsPage() {
 
   const refresh = useCallback(async () => {
     try {
-      const tzOffsetMinutes = -new Date().getTimezoneOffset()
-      const [accountRows, tagRows, history] = await Promise.all([
+      const now = new Date()
+      const tzOffsetMinutes = -now.getTimezoneOffset()
+      // 本月口径与 OverviewPage 一致:由账本自定义起始日 month_start_day 算出当前周期。
+      const msd = Math.max(1, Math.min(28, currentLedger?.month_start_day ?? 1))
+      const currentPeriod = periodLabel(now, msd)
+      const [accountRows, tagRows, history, monthA, yearA] = await Promise.all([
         fetchWorkspaceAccounts(token, { limit: 500 }),
         fetchWorkspaceTags(token, { limit: 500 }),
         // 净值趋势是全局资产(账户为 user-global、跨所有账本),绝不按当前账本过滤 ——
         // 否则切到无交易的账本时趋势会空,而净资产卡(全局账户余额)仍有数据,口径不一致。
         fetchNetWorthHistory(token, { tzOffsetMinutes }).catch(() => null),
+        // KPI 收支:summary 同时含 income_total/expense_total,metric 只影响 category_ranks,
+        // 故 month/year 各拉一次即可(任一失败置 null,不阻塞账户列表)。
+        fetchWorkspaceAnalytics(token, {
+          scope: 'month',
+          metric: 'expense',
+          period: currentPeriod,
+          ledgerId: activeLedgerId || undefined,
+          tzOffsetMinutes,
+        }).catch(() => null),
+        fetchWorkspaceAnalytics(token, {
+          scope: 'year',
+          metric: 'expense',
+          ledgerId: activeLedgerId || undefined,
+          tzOffsetMinutes,
+        }).catch(() => null),
       ])
       setRows(accountRows)
       setTags(tagRows)
       setNetWorthHistory(history)
+      setMonthSummary(monthA?.summary ?? null)
+      setYearSummary(yearA?.summary ?? null)
 
       // 只有"主币种存在 + 账户涉及 ≥2 种币种"才需要折算卡。其余情况清空缓存,
       // 让卡不渲染。汇率请求任一失败置 null,不影响账户列表正常展示。
@@ -176,7 +190,7 @@ export function AccountsPage() {
     } catch (err) {
       notifyError(err)
     }
-  }, [token, base, activeLedgerId, notifyError])
+  }, [token, base, activeLedgerId, currentLedger, notifyError])
 
   useEffect(() => {
     void refresh()
@@ -466,10 +480,10 @@ export function AccountsPage() {
 
   return (
     <>
-      {/* 资产汇总卡(统一折算视图)—— 四态:
+      {/* 资产汇总(统一折算视图)—— 四态:
           - converted===null(无账户):不出卡,账户空态由 AccountsPanel 内部引导。
           - converted.needsBase(多币种未设主币种):出「设置主币种」引导卡,按钮跳设置页。
-          - 否则:折算汇总卡(净资产 + 资产/负债 + 构成/走势 tab)。多币种带 ≈ + 汇率脚注;
+          - 否则:KPI 总览(8 项)+ 构成/走势双图并排 + 汇率脚注卡。多币种带 ≈ + 汇率脚注;
             单币种(rateDate 为空)不显 ≈ / 脚注 / 详情按钮(只有一种币种,无需明细)。
           分币种「每币种一张卡」整块已下线,统一并入本卡的折算口径。 */}
       {converted === null ? null : converted.needsBase ? (
@@ -493,108 +507,43 @@ export function AccountsPage() {
           </div>
         </Card>
       ) : (
-        <Card size="small" className="mb-4">
-          <div className="space-y-3">
-            <div className="min-w-0 space-y-1">
-              <p className="text-xs text-muted-foreground">
-                {converted.rateDate
-                  ? t('accounts.converted.netWorth', { currency: converted.base })
-                  : t('accounts.netWorth')}
-              </p>
-              <div className="flex items-baseline gap-1">
-                {converted.rateDate ? (
-                  <span className="font-mono text-sm text-muted-foreground">≈</span>
-                ) : null}
-                <Amount
-                  value={converted.netWorth}
-                  currency={converted.base}
-                  showCurrency
-                  size="2xl"
-                  bold
-                  tone={converted.netWorth >= 0 ? 'positive' : 'negative'}
-                />
-              </div>
-            </div>
+        <div className="mb-4 space-y-4">
+          {/* KPI 总览(方案 A:4 列 × 2 行,资产 4 项 + 收支 4 项)。
+              资产 4 项走 converted 折算口径(缺失汇率币种已剔除),收支 4 项走
+              analytics summary;这里绝不另起汇率/聚合逻辑。 */}
+          <AssetKpiRow
+            netWorth={converted.netWorth}
+            assetTotal={converted.assetTotal}
+            liabilityTotal={converted.liabilityTotal}
+            accountCount={rows.length}
+            currencyCount={new Set(rows.map((r) => (r.currency || 'CNY').toUpperCase())).size}
+            hiddenCount={rows.filter((r) => r.hidden).length}
+            monthIncome={monthSummary?.income_total ?? 0}
+            monthExpense={monthSummary?.expense_total ?? 0}
+            yearIncome={yearSummary?.income_total ?? 0}
+            yearExpense={yearSummary?.expense_total ?? 0}
+            base={converted.base}
+            approx={Boolean(converted.rateDate)}
+          />
 
-            {/* 资产 / 负债两个小项(与净资产同口径:缺失汇率币种已剔除)。
-                多币种带 ≈,单币种不带。 */}
-            <div className="grid gap-2 sm:grid-cols-2">
-              <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-3 py-2">
-                <div className="text-[10px] uppercase tracking-wider text-emerald-600/80 dark:text-emerald-400/80">
-                  {t('accounts.assets')}
-                </div>
-                <div className="mt-0.5 flex items-baseline gap-1">
-                  {converted.rateDate ? (
-                    <span className="font-mono text-xs text-muted-foreground">≈</span>
-                  ) : null}
-                  <Amount
-                    value={converted.assetTotal}
-                    currency={converted.base}
-                    size="lg"
-                    bold
-                    showCurrency
-                    tone="positive"
-                  />
-                </div>
-              </div>
-              <div className="rounded-xl border border-rose-500/30 bg-rose-500/5 px-3 py-2">
-                <div className="text-[10px] uppercase tracking-wider text-rose-600/80 dark:text-rose-400/80">
-                  {t('accounts.liabilities')}
-                </div>
-                <div className="mt-0.5 flex items-baseline gap-1">
-                  {converted.rateDate ? (
-                    <span className="font-mono text-xs text-muted-foreground">≈</span>
-                  ) : null}
-                  <Amount
-                    value={Math.abs(converted.liabilityTotal)}
-                    currency={converted.base}
-                    size="lg"
-                    bold
-                    showCurrency
-                    tone="negative"
-                  />
-                </div>
-              </div>
-            </div>
+          {/* 双图并排:资产构成 + 净资产趋势(去掉「构成/走势」tab,两者同屏)。
+              构成复用 converted 折算口径(mergedGroups 已折到主币种),多币种 approx=true;
+              走势用自带 Card 的 full 版(内部净资产/总资产/总负债三条线切换)。 */}
+          <div className="grid gap-4 lg:grid-cols-[5fr_6fr]">
+            <AssetsCompositionMini
+              groups={converted.mergedGroups}
+              currency={converted.base}
+              showCurrency
+              approx={Boolean(converted.rateDate)}
+            />
+            <NetWorthTrend data={netWorthHistory} />
+          </div>
 
-            {/* 「构成 / 走势」tab —— 构成=各币种分组折算到主币种后按类型聚合
-                (currency=base)的 donut(单币种即本币原值);走势=嵌入式净值走势图。
-                选择设备级持久化(见 ASSET_VIEW_KEY)。无构成数据时构成 tab 退化为空。
-                单币种 approx=false(不显 ≈),多币种 approx=true。 */}
-            <div>
-              <div className="mb-2 flex justify-end gap-1">
-                {(['composition', 'trend'] as AssetView[]).map((v) => (
-                  <button
-                    key={v}
-                    type="button"
-                    onClick={() => setTrendOrComposition(v)}
-                    className={`rounded-full px-2 py-0.5 text-[11px] ${
-                      trendOrComposition === v
-                        ? 'bg-primary/15 text-primary'
-                        : 'text-muted-foreground'
-                    }`}
-                  >
-                    {t(`accounts.trendOrComposition.${v}`)}
-                  </button>
-                ))}
-              </div>
-              {trendOrComposition === 'trend' ? (
-                <NetWorthTrend data={netWorthHistory} embedded />
-              ) : converted.mergedGroups.length > 0 ? (
-                <AssetsCompositionMini
-                  groups={converted.mergedGroups}
-                  currency={converted.base}
-                  showCurrency
-                  embedded
-                  approx={Boolean(converted.rateDate)}
-                />
-              ) : null}
-            </div>
-
-            {/* 脚注 + 详情:仅多币种折算态出现(单币种 rateDate 为空,
-                既无汇率脚注也无分币种明细可看)。 */}
-            {converted.rateDate ? (
-              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 pt-1">
+          {/* 脚注 + 详情:仅多币种折算态出现(单币种 rateDate 为空,
+              既无汇率脚注也无分币种明细可看)。 */}
+          {converted.rateDate ? (
+            <Card size="small">
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
                   <span className="text-[11px] text-muted-foreground">
                     {t('accounts.converted.footnote', { date: converted.rateDate })}
@@ -611,9 +560,9 @@ export function AccountsPage() {
                   {t('accounts.converted.detail')}
                 </Button>
               </div>
-            ) : null}
-          </div>
-        </Card>
+            </Card>
+          ) : null}
+        </div>
       )}
       <AccountsPanel
         form={form}
@@ -670,6 +619,7 @@ export function AccountsPage() {
           }
           setPendingDelete(ws)
         }}
+        renderList={(args) => <AccountsTable {...args} />}
       />
       {/* AccountDetailDialog 已迁到 GlobalEntityDialogs */}
       {/* 删除确认 — 有 tx 时显示 warning 文案 + count(对齐 mobile);无 tx

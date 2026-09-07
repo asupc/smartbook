@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>服务端资产页 · 大屏布局方案预览 v1.0</title>
+<style>
+  /* ── 配色/字体变量(模拟 antd 5 token) ────────────────────────────── */
+  :root{
+    --bg:#f5f6f8; --card:#ffffff; --border:#f0f0f0; --border-strong:#d9d9d9;
+    --primary:#1677ff; --primary-soft:#e6f4ff;
+    --text:#1f1f1f; --text-2:#52565c; --muted:#8c8c8c; --muted-bg:#fafafa;
+    --green:#52c41a; --green-soft:#f6ffed; --green-border:#b7eb8f;
+    --red:#f5222d; --red-soft:#fff2f0; --red-border:#ffccc7;
+    --amber:#faad14; --amber-soft:#fffbe6; --amber-border:#ffe58f;
+    --radius:10px; --shadow:0 1px 2px rgba(0,0,0,.04), 0 2px 8px rgba(0,0,0,.05);
+    --mono:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,
+          "PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);
+    -webkit-font-smoothing:antialiased;font-size:14px;min-width:1180px}
+  a{color:var(--primary);text-decoration:none}
+  code{font-family:var(--mono);background:var(--muted-bg);padding:1px 5px;border-radius:4px;
+    font-size:12px;border:1px solid var(--border)}
+
+  /* ── 顶部说明条 + 导航 ───────────────────────────────────────────── */
+  .topbar{position:sticky;top:0;z-index:50;background:rgba(255,255,255,.92);
+    backdrop-filter:blur(8px);border-bottom:1px solid var(--border)}
+  .topbar-inner{max-width:1680px;margin:0 auto;padding:10px 20px;
+    display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  .topbar h1{font-size:16px;font-weight:700;margin:0;white-space:nowrap}
+  .topbar .tag{background:var(--primary-soft);color:var(--primary);border-radius:4px;
+    padding:2px 8px;font-size:12px;font-weight:600;white-space:nowrap}
+  .nav{display:flex;gap:4px;flex-wrap:wrap}
+  .nav a{font-size:13px;color:var(--text-2);padding:6px 12px;border-radius:6px;font-weight:600}
+  .nav a:hover{background:var(--primary-soft);color:var(--primary)}
+  .hint{font-size:12px;color:var(--muted);white-space:nowrap}
+
+  .screen{max-width:1680px;margin:0 auto;padding:20px}
+  .section{margin-bottom:28px}
+  .section-head{display:flex;align-items:baseline;gap:12px;margin:8px 0 14px;
+    padding-bottom:8px;border-bottom:2px solid var(--border-strong)}
+  .section-head h2{font-size:18px;margin:0;font-weight:800}
+  .section-head .idx{background:var(--text);color:#fff;border-radius:6px;padding:2px 9px;
+    font-size:13px;font-weight:700}
+  .section-head .desc{color:var(--muted);font-size:13px}
+  .section-head .pros{margin-left:auto;font-size:12px;color:var(--green);font-weight:600}
+
+  /* ── 通用卡片 ─────────────────────────────────────────────────── */
+  .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+    box-shadow:var(--shadow)}
+  .card-pad{padding:16px}
+  .card-title{font-size:14px;font-weight:700;margin:0 0 12px}
+  .card-title small{font-weight:500;color:var(--muted);margin-left:6px;font-size:12px}
+
+  /* ── KPI 行 ──────────────────────────────────────────────────── */
+  .kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:8px}
+  .kpi .value{white-space:nowrap;font-variant-numeric:tabular-nums}
+  .kpi-group-label{display:flex;align-items:center;gap:10px;color:var(--muted);
+    font-size:11px;font-weight:700;letter-spacing:2px;margin:6px 0 10px;text-transform:uppercase}
+  .kpi-group-label::before,.kpi-group-label::after{content:"";flex:1;height:1px;background:var(--border)}
+  .kpi-group-label span{white-space:nowrap}
+  .kpi{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+    box-shadow:var(--shadow);padding:14px 16px;position:relative;overflow:hidden}
+  .kpi .label{font-size:12px;color:var(--muted);margin-bottom:6px;display:flex;
+    align-items:center;gap:6px}
+  .kpi .value{font-family:var(--mono);font-size:26px;font-weight:800;letter-spacing:-.5px}
+  .kpi .value small{font-size:14px;font-weight:600;margin-left:4px;color:var(--text-2)}
+  .kpi .sub{font-size:12px;color:var(--muted);margin-top:6px}
+  .kpi.pos .value{color:var(--green)}
+  .kpi.neg .value{color:var(--red)}
+  .kpi .spark{position:absolute;right:0;bottom:0;width:100%;height:30px;opacity:.35}
+
+  /* ── 图表区栅格 ───────────────────────────────────────────────── */
+  .charts-2col{display:grid;grid-template-columns:5fr 6fr;gap:14px;margin-bottom:14px}
+  .charts-2col.even{grid-template-columns:1fr 1fr}
+  .charts-side{display:grid;grid-template-columns:1fr;gap:14px}
+
+  /* ── Donut(conic-gradient) ──────────────────────────────────── */
+  .donut-wrap{display:grid;grid-template-columns:230px 1fr;gap:18px;align-items:center}
+  .donut{position:relative;width:200px;height:200px;margin:0 auto}
+  .donut .ring{width:100%;height:100%;border-radius:50%;
+    background:conic-gradient(from -90deg,#10b981 0 34%,#3b82f6 34% 62%,#06b6d4 62% 78%,
+      #8b5cf6 78% 92%,#f59e0b 92% 100%)}
+  .donut .hole{position:absolute;inset:24%;background:var(--card);border-radius:50%;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+  .donut .hole b{font-family:var(--mono);font-size:16px}
+  .donut .hole span{font-size:10px;color:var(--muted);letter-spacing:.5px}
+  .donut .hole .lia{font-size:10px;color:var(--red);margin-top:2px}
+  .legend{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+  .legend li{display:flex;align-items:center;gap:8px;font-size:13px}
+  .legend .dot{width:10px;height:10px;border-radius:3px;flex:none}
+  .legend .name{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .legend .pct{font-family:var(--mono);color:var(--muted);font-size:12px;width:46px;text-align:right}
+  .legend .amt{font-family:var(--mono);font-weight:700;width:88px;text-align:right;font-size:12px}
+
+  /* ── 走势图(SVG 面积) ────────────────────────────────────────── */
+  .trend-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+  .toggle{display:flex;gap:4px}
+  .toggle button{border:1px solid var(--border);background:var(--muted-bg);color:var(--text-2);
+    border-radius:14px;padding:3px 11px;font-size:12px;cursor:pointer;font-weight:600}
+  .toggle button.on{background:var(--primary-soft);border-color:var(--primary);color:var(--primary)}
+  .chart{width:100%;height:230px}
+
+  /* ── 表格(antd 风格) ────────────────────────────────────────── */
+  table.grid{width:100%;border-collapse:collapse;background:var(--card);
+    border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;
+    box-shadow:var(--shadow)}
+  table.grid thead th{background:var(--muted-bg);text-align:left;padding:10px 14px;
+    font-size:12px;color:var(--text-2);font-weight:700;white-space:nowrap;
+    border-bottom:1px solid var(--border-strong)}
+  table.grid thead th.sortable{cursor:pointer;user-select:none}
+  table.grid thead th.sortable:hover{color:var(--primary)}
+  table.grid thead th .arrow{color:var(--primary);margin-left:4px}
+  table.grid tbody td{padding:10px 14px;border-bottom:1px solid var(--border);font-size:13px;
+    white-space:nowrap;vertical-align:middle}
+  table.grid tbody tr:hover{background:var(--primary-soft)}
+  table.grid tbody tr.clickable{cursor:pointer}
+  table.grid .num{font-family:var(--mono);text-align:right}
+  table.grid .neg{color:var(--red)}
+  table.grid .pos{color:var(--green)}
+  .type-icon{display:inline-flex;width:26px;height:26px;border-radius:6px;align-items:center;
+    justify-content:center;color:#fff;font-size:13px;margin-right:8px;vertical-align:middle}
+  .badge{display:inline-block;border-radius:4px;padding:1px 6px;font-size:11px;font-weight:600}
+  .badge.currency{background:var(--primary-soft);color:var(--primary)}
+  .badge.liab{background:var(--red-soft);color:var(--red);border:1px solid var(--red-border)}
+  .badge.asset{background:var(--green-soft);color:var(--green);border:1px solid var(--green-border)}
+  .row-tools button{border:1px solid var(--border-strong);background:var(--card);
+    border-radius:5px;padding:2px 9px;font-size:12px;cursor:pointer}
+  .row-tools button:hover{border-color:var(--primary);color:var(--primary)}
+  .row-tools button.danger:hover{border-color:var(--red);color:var(--red)}
+
+  /* ── 银行彩卡网格 ────────────────────────────────────────────── */
+  .card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));
+    gap:12px;margin-top:10px}
+  .group{margin-bottom:14px}
+  .group-head{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--card);
+    border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);cursor:pointer}
+  .group-head .g-icon{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;
+    justify-content:center;color:#fff;font-size:17px;flex:none}
+  .group-head .g-name{font-weight:700;font-size:14px}
+  .group-head .g-count{background:var(--muted-bg);border-radius:10px;padding:1px 8px;
+    font-size:11px;color:var(--muted);font-weight:600}
+  .group-head .g-liab{margin-left:2px}
+  .group-head .g-sub{margin-left:auto;font-family:var(--mono);font-weight:700;font-size:14px}
+  .group-head .g-sub .cur{color:var(--muted);font-size:11px;margin-right:4px;font-weight:500}
+  .group-head .chev{color:var(--muted);transform:rotate(90deg)}
+  .bankcard{position:relative;border-radius:12px;aspect-ratio:16/9;color:#fff;overflow:hidden;
+    display:flex;flex-direction:column;padding:12px;cursor:pointer;
+    transition:transform .15s,box-shadow .15s}
+  .bankcard:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(0,0,0,.18)}
+  .bankcard .deco{position:absolute;border-radius:50%;background:rgba(255,255,255,.15);pointer-events:none}
+  .bankcard .bc-top{display:flex;align-items:center;gap:6px;position:relative;z-index:1}
+  .bankcard .bc-icon{width:22px;height:22px;border-radius:6px;background:rgba(255,255,255,.9);
+    display:flex;align-items:center;justify-content:center;font-size:12px;flex:none}
+  .bankcard .bc-name{font-size:13px;font-weight:700;flex:1;white-space:nowrap;overflow:hidden;
+    text-overflow:ellipsis}
+  .bankcard .bc-cur{background:rgba(255,255,255,.25);border-radius:3px;padding:0 5px;
+    font-size:9px;font-weight:700}
+  .bankcard .bc-stats{margin-top:auto;background:rgba(0,0,0,.18);border-radius:8px;padding:6px 9px;
+    display:grid;grid-template-columns:repeat(3,1fr);gap:6px;position:relative;z-index:1}
+  .bankcard .st b{font-size:12px;font-weight:700;font-family:var(--mono)}
+  .bankcard .st span{display:block;font-size:9px;color:rgba(255,255,255,.75);margin-bottom:1px}
+  .bankcard .bc-edit{position:absolute;right:8px;top:40px;z-index:2;display:flex;gap:4px;opacity:0;
+    transition:opacity .15s}
+  .bankcard:hover .bc-edit{opacity:1}
+  .bankcard .bc-edit button{background:rgba(0,0,0,.35);border:none;color:#fff;border-radius:4px;
+    padding:1px 7px;font-size:10px;cursor:pointer}
+  .bankcard .bc-edit button:hover{background:var(--primary)}
+
+  /* ── 方案 C: 左列表 + 右 sticky 面板 ───────────────────────────── */
+  .console{display:grid;grid-template-columns:1fr 360px;gap:14px;align-items:start}
+  .console .right{position:sticky;top:70px;display:flex;flex-direction:column;gap:14px}
+  .row-list{display:flex;flex-direction:column;gap:10px}
+  .row-item{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px;
+    padding:10px 14px;background:var(--card);border:1px solid var(--border);
+    border-radius:var(--radius);box-shadow:var(--shadow);cursor:pointer}
+  .row-item:hover{background:var(--primary-soft)}
+  .row-item .ri-type{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;
+    justify-content:center;color:#fff;font-size:14px}
+  .row-item .ri-name{font-weight:600;font-size:13px}
+  .row-item .ri-sub{font-size:11px;color:var(--muted);margin-left:6px}
+  .row-item .ri-amt{font-family:var(--mono);font-weight:700;font-size:14px;text-align:right}
+  .row-item .ri-amt .cur{color:var(--muted);font-size:11px;font-weight:500}
+
+  /* ── 方案 D: 全宽表格 + 抽屉 ───────────────────────────────────── */
+  .split-table{display:grid;grid-template-columns:1fr;gap:0;border-radius:var(--radius);overflow:hidden}
+  .drawer{position:fixed;right:0;top:0;height:100%;width:400px;background:var(--card);
+    border-left:1px solid var(--border);box-shadow:-8px 0 24px rgba(0,0,0,.12);z-index:60;
+    transform:translateX(105%);transition:transform .25s ease;display:flex;flex-direction:column}
+  .drawer.open{transform:translateX(0)}
+  .drawer-head{padding:16px 18px;border-bottom:1px solid var(--border);
+    display:flex;align-items:center;gap:10px}
+  .drawer-head h3{margin:0;font-size:15px;font-weight:700}
+  .drawer-head .close{margin-left:auto;border:none;background:var(--muted-bg);border-radius:6px;
+    width:28px;height:28px;cursor:pointer;font-size:16px;color:var(--text-2)}
+  .drawer-body{padding:18px;overflow:auto}
+  .drawer .mini-row{display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border)}
+  .drawer .mini-row b{font-family:var(--mono)}
+  .mini-chart{margin:16px 0}
+  .mini-chart h4{font-size:12px;color:var(--text-2);margin:0 0 8px;font-weight:600}
+  .btn-block{width:100%;margin-top:10px;border:1px solid var(--border-strong);background:var(--card);
+    border-radius:7px;padding:8px;font-size:13px;cursor:pointer;font-weight:600}
+  .btn-block.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+  .btn-block:hover{opacity:.9}
+
+  .pros{background:var(--green-soft);border:1px solid var(--green-border);border-radius:8px;
+    padding:10px 14px;font-size:12.5px;color:#1f5c13;margin-top:14px;line-height:1.7}
+  .pros b{color:#0a3f5c}
+  .divider-label{display:flex;align-items:center;gap:10px;color:var(--muted);
+    font-size:11px;font-weight:700;letter-spacing:2px;margin:2px 0 12px;text-transform:uppercase}
+  .divider-label::before,.divider-label::after{content:"";flex:1;height:1px;background:var(--border)}
+  .foot{text-align:center;color:var(--muted);font-size:12px;padding:20px 0 40px}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════ 顶部导航 ═══════════════ -->
+<div class="topbar">
+  <div class="topbar-inner">
+    <h1>服务端资产页 · 大屏布局方案</h1>
+    <span class="tag">可预览 · 假数据 · 全内联无依赖</span>
+    <nav class="nav">
+      <a href="#plan-a">方案A · KPI+双图+表格</a>
+      <a href="#plan-b">方案B · 彩卡宽屏化</a>
+      <a href="#plan-c">方案C · 控制台左右分栏</a>
+      <a href="#plan-d">方案D · 表格+抽屉</a>
+    </nav>
+    <span class="hint">建议 ≥1280px 宽窗口查看</span>
+  </div>
+</div>
+
+<div class="screen">
+
+<!-- ═══════════════ 方案 A ═══════════════ -->
+<section class="section" id="plan-a">
+  <div class="section-head">
+    <span class="idx">A</span>
+    <h2>KPI 顶栏 + 左图右图 + 底部密集账户表格</h2>
+    <span class="desc">8 项 KPI(资产总览 + 本月/本年收支) + 构成/走势双图并排 + 可排序表格</span>
+    <span class="pros">信息密度最高 ⭐ 推荐</span>
+  </div>
+
+  <!-- KPI 行 —— 资产总览(4) + 收支统计(4),共 8 项。
+       固定 4 列,天然分成两行,每张卡足够宽、金额不断行。 -->
+  <div class="divider-label" id="kpi-a"><span>资产总览</span></div>
+  <div class="kpi-row">
+    <div class="kpi pos">
+      <div class="label">净资产</div>
+      <div class="value">¥1,234,567<small>.89</small></div>
+      <div class="sub">▼ 32.4万 · 较上月 +2.7%</div>
+    </div>
+    <div class="kpi pos">
+      <div class="label">总资产</div>
+      <div class="value">¥1,890,000<small>.00</small></div>
+      <div class="sub">▲ 较上月 +1.8%</div>
+    </div>
+    <div class="kpi neg">
+      <div class="label">总负债</div>
+      <div class="value">¥655,432<small>.11</small></div>
+      <div class="sub">▼ 本月还款 +3.2万</div>
+    </div>
+    <div class="kpi">
+      <div class="label">账户规模</div>
+      <div class="value">12<small>账户</small></div>
+      <div class="sub">2 币种 (CNY/USD) · 2 已隐藏</div>
+    </div>
+  </div>
+
+  <div class="divider-label" id="kpi-b"><span>收支统计</span></div>
+  <div class="kpi-row">
+    <div class="kpi pos">
+      <div class="label">本月收入</div>
+      <div class="value">¥12,000<small>.00</small></div>
+      <div class="sub">▲ 较上月 +8.6%</div>
+    </div>
+    <div class="kpi neg">
+      <div class="label">本月支出</div>
+      <div class="value">¥8,300<small>.00</small></div>
+      <div class="sub">▲ 较上月 +12.4% · 超支 4%</div>
+    </div>
+    <div class="kpi pos">
+      <div class="label">本年收入</div>
+      <div class="value">¥186,000<small>.00</small></div>
+      <div class="sub">▲ 去年 +9.8%</div>
+    </div>
+    <div class="kpi neg">
+      <div class="label">本年支出</div>
+      <div class="value">¥142,000<small>.00</small></div>
+      <div class="sub">▲ 去年 +6.3%</div>
+    </div>
+  </div>
+
+  <!-- 左图右图 -->
+  <div class="charts-2col even">
+    <div class="card card-pad">
+      <h3 class="card-title">资产构成<small>按账户类型 · 不含负债</small></h3>
+      <div class="donut-wrap">
+        <div class="donut">
+          <div class="ring"></div>
+          <div class="hole">
+            <span>总资产</span>
+            <b>¥189.0万</b>
+            <span class="lia">负债 ¥65.5万</span>
+          </div>
+        </div>
+        <ul class="legend">
+          <li><span class="dot" style="background:#10b981"></span><span class="name">现金</span><span class="pct">40%</span><span class="amt">¥75.6万</span></li>
+          <li><span class="dot" style="background:#3b82f6"></span><span class="name">银行卡片</span><span class="pct">35%</span><span class="amt">¥66.2万</span></li>
+          <li><span class="dot" style="background:#06b6d4"></span><span class="name">支付宝</span><span class="pct">15%</span><span class="amt">¥28.4万</span></li>
+          <li><span class="dot" style="background:#8b5cf6"></span><span class="name">房产</span><span class="pct">10%</span><span class="amt">¥18.9万</span></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="card card-pad">
+      <div class="trend-head">
+        <h3 class="card-title" style="margin:0">净资产趋势<small>近 12 期</small></h3>
+        <div class="toggle">
+          <button class="on">净资产</button>
+          <button>总资产</button>
+          <button>总负债</button>
+        </div>
+      </div>
+      <svg class="chart" viewBox="0 0 640 230" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="ga" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#1677ff" stop-opacity="0.18"/>
+            <stop offset="100%" stop-color="#1677ff" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <g stroke="#f0f0f0" stroke-width="1">
+          <line x1="0" y1="40" x2="640" y2="40"/><line x1="0" y1="90" x2="640" y2="90"/>
+          <line x1="0" y1="140" x2="640" y2="140"/><line x1="0" y1="190" x2="640" y2="190"/>
+        </g>
+        <path d="M0,150 L60,140 L120,146 L180,120 L240,128 L300,100 L360,108 L420,80 L480,90 L540,60 L600,70 L640,52 L640,230 L0,230 Z" fill="url(#ga)"/>
+        <path d="M0,150 L60,140 L120,146 L180,120 L240,128 L300,100 L360,108 L420,80 L480,90 L540,60 L600,70 L640,52" fill="none" stroke="#1677ff" stroke-width="2.5"/>
+      </svg>
+    </div>
+  </div>
+
+  <!-- 表格 -->
+  <table class="grid">
+    <thead>
+      <tr>
+        <th>账户</th>
+        <th>类型</th>
+        <th class="sortable">币种</th>
+        <th class="sortable num">余额 <span class="arrow">▼</span></th>
+        <th class="sortable num">本月收入</th>
+        <th class="sortable num">本月支出</th>
+        <th class="sortable num">信用额度</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="clickable">
+        <td><span class="type-icon" style="background:#3b82f6">银</span>招商银行·储蓄卡</td>
+        <td><span class="badge asset">银行</span></td>
+        <td><span class="badge currency">CNY</span></td>
+        <td class="num pos">¥152,400.00</td>
+        <td class="num pos">¥12,000.00</td>
+        <td class="num neg">¥3,200.00</td>
+        <td class="num muted">—</td>
+        <td class="row-tools"><button>编辑</button></td>
+      </tr>
+      <tr class="clickable">
+        <td><span class="type-icon" style="background:#ef4444">信</span>招商银行·信用卡</td>
+        <td><span class="badge liab">负债</span></td>
+        <td><span class="badge currency">CNY</span></td>
+        <td class="num neg">¥-8,120.00</td>
+        <td class="num pos">¥0.00</td>
+        <td class="num neg">¥8,120.00</td>
+        <td class="num muted">已用 8,120 / 5万</td>
+        <td class="row-tools"><button>编辑</button></td>
+      </tr>
+      <tr class="clickable">
+        <td><span class="type-icon" style="background:#06b6d4">支</span>支付宝</td>
+        <td><span class="badge asset">第三方</span></td>
+        <td><span class="badge currency">CNY</span></td>
+        <td class="num pos">¥48,000.00</td>
+        <td class="num pos">¥9,600.00</td>
+        <td class="num neg">¥12,400.00</td>
+        <td class="num muted">—</td>
+        <td class="row-tools"><button>编辑</button></td>
+      </tr>
+      <tr class="clickable">
+        <td><span class="type-icon" style="background:#22c55e">微</span>微信钱包</td>
+        <td><span class="badge asset">第三方</span></td>
+        <td><span class="badge currency">CNY</span></td>
+        <td class="num pos">¥32,000.00</td>
+        <td class="num pos">¥2,300.00</td>
+        <td class="num neg">¥6,800.00</td>
+        <td class="num muted">—</td>
+        <td class="row-tools"><button>编辑</button></td>
+      </tr>
+      <tr class="clickable">
+        <td><span class="type-icon" style="background:#10b981">现</span>现金</td>
+        <td><span class="badge asset">现金</span></td>
+        <td><span class="badge currency">CNY</span></td>
+        <td class="num pos">¥2,300.00</td>
+        <td class="num pos">¥500.00</td>
+        <td class="num neg">¥1,000.00</td>
+        <td class="num muted">—</td>
+        <td class="row-tools"><button>编辑</button></td>
+      </tr>
+      <tr class="clickable" style="opacity:.6">
+        <td><span class="type-icon" style="background:#8b5cf6">房</span>自住房产</td>
+        <td><span class="badge asset">估值</span></td>
+        <td><span class="badge currency">CNY</span></td>
+        <td class="num pos">¥900,000.00</td>
+        <td class="num pos">¥0.00</td>
+        <td class="num neg">¥0.00</td>
+        <td class="num muted">当前估值</td>
+        <td class="row-tools"><button>编辑</button></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="pros"><b>优势：</b>一屏信息量最大；表格可排序/搜索/列自定义，数据对比最舒服；估值账户显示「当前估值」、信用卡显示「已用/额度」，类型分支逻辑复用 <code>BankCardTile</code>。<b>代价：</b>需新写表格组件(antd Table)，丢弃现有银行彩卡的品牌感。</div>
+</section>
+
+<!-- ═══════════════ 方案 B ═══════════════ -->
+<section class="section" id="plan-b">
+  <div class="section-head">
+    <span class="idx">B</span>
+    <h2>仪表盘多栏 · 彩卡宽屏化(最小改动)</h2>
+    <span class="desc">保留分组彩卡风格，去掉 tab、双图并排、卡片压扁加列数</span>
+    <span class="pros">改动最小 ⭐ 保留视觉</span>
+  </div>
+
+  <div class="charts-2col even">
+    <div class="card card-pad">
+      <h3 class="card-title">资产构成</h3>
+      <div class="donut-wrap">
+        <div class="donut">
+          <div class="ring"></div>
+          <div class="hole"><span>总资产</span><b>¥189.0万</b><span class="lia">负债 ¥65.5万</span></div>
+        </div>
+        <ul class="legend">
+          <li><span class="dot" style="background:#10b981"></span><span class="name">现金</span><span class="pct">40%</span><span class="amt">¥75.6万</span></li>
+          <li><span class="dot" style="background:#3b82f6"></span><span class="name">银行卡片</span><span class="pct">35%</span><span class="amt">¥66.2万</span></li>
+          <li><span class="dot" style="background:#06b6d4"></span><span class="name">支付宝</span><span class="pct">15%</span><span class="amt">¥28.4万</span></li>
+          <li><span class="dot" style="background:#8b5cf6"></span><span class="name">房产</span><span class="pct">10%</span><span class="amt">¥18.9万</span></li>
+        </ul>
+      </div>
+    </div>
+    <div class="card card-pad">
+      <div class="trend-head">
+        <h3 class="card-title" style="margin:0">净资产趋势</h3>
+        <div class="toggle"><button class="on">净资产</button><button>总资产</button><button>总负债</button></div>
+      </div>
+      <svg class="chart" viewBox="0 0 640 230" preserveAspectRatio="none">
+        <defs><linearGradient id="gb" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#1677ff" stop-opacity="0.18"/>
+          <stop offset="100%" stop-color="#1677ff" stop-opacity="0"/>
+        </linearGradient></defs>
+        <g stroke="#f0f0f0" stroke-width="1">
+          <line x1="0" y1="40" x2="640" y2="40"/><line x1="0" y1="90" x2="640" y2="90"/>
+          <line x1="0" y1="140" x2="640" y2="140"/><line x1="0" y1="190" x2="640" y2="190"/>
+        </g>
+        <path d="M0,150 L60,140 L120,146 L180,120 L240,128 L300,100 L360,108 L420,80 L480,90 L540,60 L600,70 L640,52 L640,230 L0,230 Z" fill="url(#gb)"/>
+        <path d="M0,150 L60,140 L120,146 L180,120 L240,128 L300,100 L360,108 L420,80 L480,90 L540,60 L600,70 L640,52" fill="none" stroke="#1677ff" stroke-width="2.5"/>
+      </svg>
+    </div>
+  </div>
+
+  <!-- 分组 + 扁彩卡 -->
+  <div class="group">
+    <div class="group-head">
+      <span class="g-icon" style="background:#3b82f6">银</span>
+      <span class="g-name">银行卡片</span><span class="g-count">3</span><span class="badge asset g-liab">资产</span>
+      <span class="chev">›</span>
+    </div>
+    <div class="card-grid">
+      <div class="bankcard" style="background:linear-gradient(135deg,#3b82f6,#3b82f6 40%,#1d4ed8)">
+        <div class="deco" style="width:80px;height:80px;right:-20px;top:-24px"></div>
+        <div class="bc-top"><span class="bc-icon">银</span><span class="bc-name">招商银行·储蓄卡</span><span class="bc-cur">CNY</span></div>
+        <div class="bc-stats"><div class="st"><span>余额</span><b>¥152,400</b></div><div class="st"><span>本月收入</span><b>¥12,000</b></div><div class="st"><span>本月支出</span><b>¥3,200</b></div></div>
+        <div class="bc-edit"><button>编辑</button></div>
+      </div>
+      <div class="bankcard" style="background:linear-gradient(135deg,#ef4444,#ef4444 40%,#b91c1c)">
+        <div class="deco" style="width:72px;height:72px;right:-16px;top:-22px"></div>
+        <div class="bc-top"><span class="bc-icon">信</span><span class="bc-name">招商信用卡</span><span class="bc-cur">CNY</span></div>
+        <div class="bc-stats"><div class="st"><span>已用</span><b>¥8,120</b></div><div class="st"><span>额度</span><b>¥50,000</b></div><div class="st"><span>可用</span><b>¥41,880</b></div></div>
+        <div class="bc-edit"><button>编辑</button></div>
+      </div>
+      <div class="bankcard" style="background:linear-gradient(135deg,#06b6d4,#06b6d4 40%,#0e7490)">
+        <div class="deco" style="width:80px;height:80px;right:-20px;top:-24px"></div>
+        <div class="bc-top"><span class="bc-icon">支</span><span class="bc-name">支付宝</span><span class="bc-cur">CNY</span></div>
+        <div class="bc-stats"><div class="st"><span>余额</span><b>¥48,000</b></div><div class="st"><span>本月收入</span><b>¥9,600</b></div><div class="st"><span>本月支出</span><b>¥12,400</b></div></div>
+        <div class="bc-edit"><button>编辑</button></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="group">
+    <div class="group-head">
+      <span class="g-icon" style="background:#10b981">现</span>
+      <span class="g-name">现金</span><span class="g-count">2</span><span class="badge asset g-liab">资产</span>
+      <span class="chev">›</span>
+    </div>
+    <div class="card-grid">
+      <div class="bankcard" style="background:linear-gradient(135deg,#10b981,#10b981 40%,#059669)">
+        <div class="deco" style="width:80px;height:80px;right:-20px;top:-24px"></div>
+        <div class="bc-top"><span class="bc-icon">现</span><span class="bc-name">现金</span><span class="bc-cur">CNY</span></div>
+        <div class="bc-stats"><div class="st"><span>余额</span><b>¥2,300</b></div><div class="st"><span>收入</span><b>¥500</b></div><div class="st"><span>支出</span><b>¥1,000</b></div></div>
+        <div class="bc-edit"><button>编辑</button></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pros"><b>优势：</b>改动量小(只调 <code>2xl:grid-cols-6</code> + 卡比例 16/11→16/9 + 去 tab)，UI/品牌风格不变。分组小计保留「对账」语义。<b>代价：</b>仍是卡片网格，数据对比/排序不如表格。</div>
+</section>
+
+<!-- ═══════════════ 方案 C ═══════════════ -->
+<section class="section" id="plan-c">
+  <div class="section-head">
+    <span class="idx">C</span>
+    <h2>左右分栏「控制台」· 左账户列表 + 右 sticky 分析面板</h2>
+    <span class="desc">滚动账户时净资产/构成/走势常驻可见</span>
+    <span class="pros">叙事性强 · 适合盯盘</span>
+  </div>
+
+  <div class="console">
+    <!-- 左：账户列表 -->
+    <div class="row-list">
+      <div class="divider-label">银行卡片</div>
+      <div class="row-item"><span class="ri-type" style="background:#3b82f6">银</span><div><span class="ri-name">招商银行·储蓄卡</span><span class="ri-sub">CNY · 本月 +8,800</span></div><div class="ri-amt">¥152,400.00</div></div>
+      <div class="row-item"><span class="ri-type" style="background:#ef4444">信</span><div><span class="ri-name">招商信用卡</span><span class="ri-sub">CNY · 负债</span></div><div class="ri-amt neg">¥-8,120.00</div></div>
+
+      <div class="divider-label">第三方支付</div>
+      <div class="row-item"><span class="ri-type" style="background:#06b6d4">支</span><div><span class="ri-name">支付宝</span><span class="ri-sub">CNY · 本月 -2,800</span></div><div class="ri-amt">¥48,000.00</div></div>
+      <div class="row-item"><span class="ri-type" style="background:#22c55e">微</span><div><span class="ri-name">微信钱包</span><span class="ri-sub">CNY · 本月 -4,500</span></div><div class="ri-amt">¥32,000.00</div></div>
+
+      <div class="divider-label">现金</div>
+      <div class="row-item"><span class="ri-type" style="background:#10b981">现</span><div><span class="ri-name">现金</span><span class="ri-sub">CNY · 本月 -3,100</span></div><div class="ri-amt">¥2,300.00</div></div>
+
+      <div class="divider-label">估值账户</div>
+      <div class="row-item"><span class="ri-type" style="background:#8b5cf6">房</span><div><span class="ri-name">自住房产</span><span class="ri-sub">CNY · 估值</span></div><div class="ri-amt">¥900,000.00</div></div>
+      <div class="row-item"><span class="ri-type" style="background:#f59e0b">车</span><div><span class="ri-name">家用车</span><span class="ri-sub">CNY · 估值</span></div><div class="ri-amt">¥120,000.00</div></div>
+      <div class="row-item"><span class="ri-type" style="background:#ec4899">基</span><div><span class="ri-name">指数基金</span><span class="ri-sub">CNY · 估值</span></div><div class="ri-amt">¥65,000.00</div></div>
+    </div>
+
+    <!-- 右：sticky 面板 -->
+    <div class="right">
+      <div class="card" style="background:linear-gradient(135deg,#e6f4ff,#f0f7ff)">
+        <div class="card-pad">
+          <div class="label" style="font-size:12px;color:#8fc7ff;letter-spacing:1px;font-weight:700">净资产</div>
+          <div style="font-family:var(--mono);font-size:34px;font-weight:800;color:#1f6fe0">¥1,234,567<span style="font-size:16px">.89</span></div>
+          <div style="font-size:12px;color:#6b8ec4;margin-top:8px">▲ 较上月 +2.7% · 负债 ¥65.5万</div>
+        </div>
+      </div>
+      <div class="card card-pad">
+        <h3 class="card-title">资产构成</h3>
+        <div class="donut-wrap" style="grid-template-columns:150px 1fr;gap:12px">
+          <div class="donut" style="width:130px;height:130px">
+            <div class="ring"></div>
+            <div class="hole" style="inset:22%"><b style="font-size:12px">¥189万</b><span>总资产</span></div>
+          </div>
+          <ul class="legend" style="gap:6px">
+            <li><span class="dot" style="background:#10b981"></span><span class="name">现金</span><span class="pct">40%</span></li>
+            <li><span class="dot" style="background:#3b82f6"></span><span class="name">银行</span><span class="pct">35%</span></li>
+            <li><span class="dot" style="background:#06b6d4"></span><span class="name">支付宝</span><span class="pct">15%</span></li>
+            <li><span class="dot" style="background:#8b5cf6"></span><span class="name">房产</span><span class="pct">10%</span></li>
+          </ul>
+        </div>
+      </div>
+      <div class="card card-pad">
+        <h3 class="card-title">净资产趋势</h3>
+        <svg class="chart" style="height:130px" viewBox="0 0 320 130" preserveAspectRatio="none">
+          <defs><linearGradient id="gc" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#1677ff" stop-opacity="0.18"/>
+            <stop offset="100%" stop-color="#1677ff" stop-opacity="0"/>
+          </linearGradient></defs>
+          <g stroke="#f0f0f0" stroke-width="1"><line x1="0" y1="30" x2="320" y2="30"/><line x1="0" y1="70" x2="320" y2="70"/><line x1="0" y1="110" x2="320" y2="110"/></g>
+          <path d="M0,95 L40,88 L80,92 L120,75 L160,82 L200,60 L240,68 L280,42 L320,50 L320,130 L0,130 Z" fill="url(#gc)"/>
+          <path d="M0,95 L40,88 L80,92 L120,75 L160,82 L200,60 L240,68 L280,42 L320,50" fill="none" stroke="#1677ff" stroke-width="2"/>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <div class="pros"><b>优势：</b>右侧 <code>sticky</code> 面板常驻，滚动账户时关键数字始终可见；左区可以更密。<b>代价：</b>360px 固定面板压缩账户区；&lt;xl 需回退为上下堆叠。</div>
+</section>
+
+<!-- ═══════════════ 方案 D ═══════════════ -->
+<section class="section" id="plan-d">
+  <div class="section-head">
+    <span class="idx">D</span>
+    <h2>全宽表格 + 右侧抽屉(中后台最密)</h2>
+    <span class="desc">主区一张全宽可排序表格；点行右侧抽屉出账户详情 + 迷你图，替代整页 Modal</span>
+    <span class="pros">数据最密 · 改造量最大</span>
+  </div>
+
+  <table class="grid" id="plan-d-table">
+    <thead>
+      <tr>
+        <th>账户</th><th>类型</th><th>币种</th>
+        <th class="sortable num">余额 <span class="arrow">▼</span></th>
+        <th class="sortable num">本月收入</th><th class="sortable num">本月支出</th>
+        <th class="sortable num">信用额度</th><th style="width:40px"></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="clickable" onclick="openDrawer('招商银行·储蓄卡','银行')">
+        <td><span class="type-icon" style="background:#3b82f6">银</span>招商银行·储蓄卡</td>
+        <td><span class="badge asset">银行</span></td><td><span class="badge currency">CNY</span></td>
+        <td class="num pos">¥152,400.00</td><td class="num pos">¥12,000.00</td><td class="num neg">¥3,200.00</td>
+        <td class="num muted">—</td><td>›</td>
+      </tr>
+      <tr class="clickable" onclick="openDrawer('招商信用卡','信用卡')">
+        <td><span class="type-icon" style="background:#ef4444">信</span>招商信用卡</td>
+        <td><span class="badge liab">负债</span></td><td><span class="badge currency">CNY</span></td>
+        <td class="num neg">¥-8,120.00</td><td class="num pos">¥0.00</td><td class="num neg">¥8,120.00</td>
+        <td class="num muted">已用 8,120 / 5万</td><td>›</td>
+      </tr>
+      <tr class="clickable" onclick="openDrawer('支付宝','第三方')">
+        <td><span class="type-icon" style="background:#06b6d4">支</span>支付宝</td>
+        <td><span class="badge asset">第三方</span></td><td><span class="badge currency">CNY</span></td>
+        <td class="num pos">¥48,000.00</td><td class="num pos">¥9,600.00</td><td class="num neg">¥12,400.00</td>
+        <td class="num muted">—</td><td>›</td>
+      </tr>
+      <tr class="clickable" onclick="openDrawer('微信钱包','第三方')">
+        <td><span class="type-icon" style="background:#22c55e">微</span>微信钱包</td>
+        <td><span class="badge asset">第三方</span></td><td><span class="badge currency">CNY</span></td>
+        <td class="num pos">¥32,000.00</td><td class="num pos">¥2,300.00</td><td class="num neg">¥6,800.00</td>
+        <td class="num muted">—</td><td>›</td>
+      </tr>
+      <tr class="clickable" onclick="openDrawer('自住房产','估值')">
+        <td><span class="type-icon" style="background:#8b5cf6">房</span>自住房产</td>
+        <td><span class="badge asset">估值</span></td><td><span class="badge currency">CNY</span></td>
+        <td class="num pos">¥900,000.00</td><td class="num pos">¥0.00</td><td class="num neg">¥0.00</td>
+        <td class="num muted">当前估值</td><td>›</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="pros"><b>优势：</b>数据密度最高；详情从「整页 Modal」改成「不离列表的右侧抽屉」，来回切换不丢上下文。<b>代价：</b>需新写表格 + 抽屉 + 详情视图，几乎全丢彩卡品牌感。</div>
+</section>
+
+</div>
+
+<!-- 抽屉(方案D 演示) -->
+<div class="drawer" id="drawer">
+  <div class="drawer-head">
+    <span class="type-icon" id="drawer-icon" style="background:#3b82f6">银</span>
+    <h3 id="drawer-title">账户详情</h3>
+    <button class="close" onclick="closeDrawer()">×</button>
+  </div>
+  <div class="drawer-body">
+    <div class="mini-row"><span>类型</span><b id="drawer-type">银行</b></div>
+    <div class="mini-row"><span>币种</span><b>CNY</b></div>
+    <div class="mini-row"><span>当前余额</span><b id="drawer-balance">¥152,400.00</b></div>
+    <div class="mini-row"><span>信用额度</span><b>¥50,000</b></div>
+    <div class="mini-row"><span>已用</span><b style="color:var(--red)">¥8,120</b></div>
+
+    <div class="mini-chart">
+      <h4>本账户近 6 月 · 收支净值</h4>
+      <svg viewBox="0 0 340 120" style="width:100%;height:110px" preserveAspectRatio="none">
+        <defs><linearGradient id="gd" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#1677ff" stop-opacity="0.16"/>
+          <stop offset="100%" stop-color="#1677ff" stop-opacity="0"/>
+        </linearGradient></defs>
+        <g stroke="#f0f0f0" stroke-width="1"><line x1="0" y1="30" x2="340" y2="30"/><line x1="0" y1="65" x2="340" y2="65"/><line x1="0" y1="100" x2="340" y2="100"/></g>
+        <path d="M0,70 L56,80 L113,55 L170,70 L226,45 L283,60 L340,40 L340,120 L0,120 Z" fill="url(#gd)"/>
+        <path d="M0,70 L56,80 L113,55 L170,70 L226,45 L283,60 L340,40" fill="none" stroke="#1677ff" stroke-width="2"/>
+      </svg>
+    </div>
+
+    <button class="btn-block">编辑账户</button>
+    <button class="btn-block primary">调整余额</button>
+  </div>
+</div>
+
+<script>
+  const drawer=document.getElementById('drawer');
+  function openDrawer(name,type){
+    document.getElementById('drawer-title').textContent=name;
+    document.getElementById('drawer-type').textContent=type;
+    drawer.classList.add('open');
+  }
+  function closeDrawer(){drawer.classList.remove('open');}
+</script>
+
+<div class="foot">智记 SmartBook · 资产页大屏布局预览 · 仅用于方案演示，非真实数据 · 共 4 个方案 (A/B/C/D)</div>
+</body>
+</html>

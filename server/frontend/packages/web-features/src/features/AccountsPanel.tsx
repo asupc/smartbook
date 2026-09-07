@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 
 import {
   Button,
@@ -36,6 +36,19 @@ import {
 } from '../lib/assetAggregation'
 
 
+/**
+ * 上层(如 apps/web 的资产页)以表格等只读视图接管「账户列表」渲染时,AccountsPanel
+ * 把分组后的 listGroups + 操作回调原样传下去;默认(不传 renderList)维持彩卡网格,
+ * 其它调用方(TransactionsPanel 等)零影响。onEdit 已包含「填表单 + 打开编辑弹窗」。
+ */
+export type AccountListRenderArgs = {
+  listGroups: AssetGroup[]
+  canManage: boolean
+  onEdit: (row: ReadAccount) => void
+  onDelete?: (row: ReadAccount) => void
+  onClickAccount?: (row: ReadAccount) => void
+}
+
 type MobileStyleAssetsProps = {
   /** 按币种切分后的汇总(每币种各自 summary + 构成饼图)。单币种时只有 1 条。 */
   byCurrency: CurrencyBucket[]
@@ -57,6 +70,8 @@ type MobileStyleAssetsProps = {
   /** 账户隐藏(issue #240):底部「已隐藏」分区里,每张隐藏卡的快捷「恢复」
    *  按钮回调(不经编辑弹窗,直接 PATCH hidden=false)。不传则不渲染该按钮。 */
   onRestore?: (row: ReadAccount) => void
+  /** 见 {@link AccountListRenderArgs}:上层接管账户列表渲染(方案 A 表格)。 */
+  renderList?: (args: AccountListRenderArgs) => ReactNode
 }
 
 /**
@@ -75,7 +90,8 @@ function MobileStyleAssets({
   onClickAccount,
   onCreate,
   hideCurrencyCards = false,
-  onRestore
+  onRestore,
+  renderList
 }: MobileStyleAssetsProps) {
   const t = useT()
   // 多币种 → 每币种一张卡;单币种 → 维持原 hero + 饼图。底部列表小计是否带币种
@@ -121,7 +137,11 @@ function MobileStyleAssets({
         </div>
       ) : null}
 
-      {/* 下面是分组 + 真实卡片风格的子项列表 */}
+      {/* 下面是分组 + 真实卡片风格的子项列表。上层可经 renderList 接管为表格等
+          只读视图(方案 A);默认(不传)维持彩卡网格,其它调用方零影响。 */}
+      {renderList ? (
+        renderList({ listGroups, canManage, onEdit, onDelete, onClickAccount })
+      ) : (
       <div className="space-y-4">
         {listGroups.map((group) => {
           const isCollapsed = collapsed.has(group.type)
@@ -210,6 +230,7 @@ function MobileStyleAssets({
           )
         })}
       </div>
+      )}
 
       {/* 账户隐藏(issue #240):所有在用分组之后,「已隐藏」折叠分区(默认折叠)。
           净资产/资产构成(上面的 hero + 饼图)已按 D1 用全量 rows 计算,不受此分区影响。 */}
@@ -540,7 +561,7 @@ export function AssetsCompositionMini({
  *      - 其它可交易账户：余额 / 收入 / 支出 三列。
  *    没有 stats（老接口 / 空账户）时回退到只展示初始余额。
  */
-const VALUATION_TYPES_SET = new Set([
+export const VALUATION_TYPES_SET = new Set([
   'real_estate',
   'vehicle',
   'investment',
@@ -847,7 +868,7 @@ const TYPE_ICON_URL: Record<string, string> = {
   loan: '/icons/account/loan.svg'
 }
 
-function TypeIcon({ type, size = 28 }: { type: string; size?: number }) {
+export function TypeIcon({ type, size = 28 }: { type: string; size?: number }) {
   const src = TYPE_ICON_URL[type] || TYPE_ICON_URL.other
   return (
     <img
@@ -1028,6 +1049,8 @@ type AccountsPanelProps = {
   onAdjustBalance?: (account: AdjustableAccount, targetBalance: number) => Promise<boolean>
   /** 当前账本不可写时禁用调整按钮 */
   adjustBalanceDisabled?: boolean
+  /** 见 {@link AccountListRenderArgs}:上层接管账户列表渲染(方案 A 表格)。 */
+  renderList?: (args: AccountListRenderArgs) => ReactNode
 }
 
 export function AccountsPanel({
@@ -1044,7 +1067,8 @@ export function AccountsPanel({
   hideCurrencyCards = false,
   onRestore,
   onAdjustBalance,
-  adjustBalanceDisabled = false
+  adjustBalanceDisabled = false,
+  renderList
 }: AccountsPanelProps) {
   const t = useT()
   const toast = useToast()
@@ -1173,6 +1197,7 @@ export function AccountsPanel({
           onCreate={handleOpenCreate}
           hideCurrencyCards={hideCurrencyCards}
           onRestore={onRestore}
+          renderList={renderList}
         />
       )}
 
