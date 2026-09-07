@@ -4784,6 +4784,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get pendingConfirmationExisting => '已有交易';
 
   @override
+  String get pendingConfirmationRecordedAt => '记录时间';
+
+  @override
   String get pendingConfirmationMatchedMissing => '这条已有交易已不存在或已删除';
 
   @override
@@ -6608,6 +6611,12 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get aiProviderName => '服务商名称';
+
+  @override
+  String get aiProviderProtocol => '接口协议';
+
+  @override
+  String get aiProviderProtocolHint => 'Anthropic 协议不支持语音转文字';
 
   @override
   String get aiProviderNameHint => '如：硅基流动、DeepSeek';
@@ -12812,6 +12821,9 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
   String get pendingConfirmationExisting => '已有交易';
 
   @override
+  String get pendingConfirmationRecordedAt => '記錄時間';
+
+  @override
   String get pendingConfirmationMatchedMissing => '這條已有交易已不存在或已刪除';
 
   @override
@@ -14636,6 +14648,12 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
 
   @override
   String get aiProviderName => '服務商名稱';
+
+  @override
+  String get aiProviderProtocol => '介面協定';
+
+  @override
+  String get aiProviderProtocolHint => 'Anthropic 協定不支援語音轉文字';
 
   @override
   String get aiProviderNameHint => '如：矽基流動、DeepSeek';

@@ -4784,6 +4784,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get pendingConfirmationExisting => 'Existing transaction';
 
   @override
+  String get pendingConfirmationRecordedAt => 'Recorded at';
+
+  @override
   String get pendingConfirmationMatchedMissing => 'This transaction no longer exists or was deleted';
 
   @override
@@ -6608,6 +6611,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiProviderName => 'Provider Name';
+
+  @override
+  String get aiProviderProtocol => 'API Protocol';
+
+  @override
+  String get aiProviderProtocolHint => 'Anthropic protocol has no speech-to-text support';
 
   @override
   String get aiProviderNameHint => 'e.g., SiliconFlow, DeepSeek';

@@ -9152,6 +9152,12 @@ abstract class AppLocalizations {
   /// **'Existing transaction'**
   String get pendingConfirmationExisting;
 
+  /// No description provided for @pendingConfirmationRecordedAt.
+  ///
+  /// In en, this message translates to:
+  /// **'Recorded at'**
+  String get pendingConfirmationRecordedAt;
+
   /// No description provided for @pendingConfirmationMatchedMissing.
   ///
   /// In en, this message translates to:
@@ -12619,6 +12625,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Provider Name'**
   String get aiProviderName;
+
+  /// No description provided for @aiProviderProtocol.
+  ///
+  /// In en, this message translates to:
+  /// **'API Protocol'**
+  String get aiProviderProtocol;
+
+  /// No description provided for @aiProviderProtocolHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Anthropic protocol has no speech-to-text support'**
+  String get aiProviderProtocolHint;
 
   /// No description provided for @aiProviderNameHint.
   ///

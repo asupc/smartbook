@@ -4784,6 +4784,9 @@ class AppLocalizationsKo extends AppLocalizations {
   String get pendingConfirmationExisting => '기존 거래';
 
   @override
+  String get pendingConfirmationRecordedAt => '기록 시각';
+
+  @override
   String get pendingConfirmationMatchedMissing => '이 거래는 더 이상 존재하지 않거나 삭제되었습니다';
 
   @override
@@ -6608,6 +6611,12 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get aiProviderName => '제공업체 이름';
+
+  @override
+  String get aiProviderProtocol => 'API 프로토콜';
+
+  @override
+  String get aiProviderProtocolHint => 'Anthropic 프로토콜은 음성 인식을 지원하지 않습니다';
 
   @override
   String get aiProviderNameHint => '예: SiliconFlow, DeepSeek';
