@@ -11,7 +11,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  test('v33 to v39 adds raw evidence columns idempotently', () async {
+  test('v33 to v40 adds raw evidence columns idempotently', () async {
     final executor = NativeDatabase.memory(setup: (database) {
       database.execute('''
         CREATE TABLE auto_book_events (
@@ -20,6 +20,8 @@ void main() {
           source TEXT NOT NULL,
           raw_title TEXT
         );
+        -- v40 迁移会 ALTER transactions,预建空表满足存在性。
+        CREATE TABLE transactions (id INTEGER NOT NULL PRIMARY KEY);
       ''');
       // raw_title simulates a partially committed v34 migration. The
       // _addColumnIfMissing guard must skip it and continue with all others.
@@ -33,7 +35,7 @@ void main() {
         await db.customSelect('PRAGMA table_info(auto_book_events)').get();
     final names = columns.map((row) => row.read<String>('name')).toSet();
 
-    expect(version.read<int>('user_version'), 39);
+    expect(version.read<int>('user_version'), 40);
     expect(
       names,
       containsAll(const [
@@ -64,7 +66,7 @@ void main() {
     expect(uploadState.read<String>('dflt_value'), "'not_requested'");
   });
 
-  test('v35 to v39 backfills independent expiry windows', () async {
+  test('v35 to v40 backfills independent expiry windows', () async {
     final executor = NativeDatabase.memory(setup: (database) {
       database.execute('''
         CREATE TABLE auto_book_events (
@@ -75,6 +77,7 @@ void main() {
           raw_evidence_server_enabled INTEGER NOT NULL DEFAULT 0,
           raw_evidence_retention_until INTEGER
         );
+        CREATE TABLE transactions (id INTEGER NOT NULL PRIMARY KEY);
         INSERT INTO auto_book_events (
           event_key,
           source,

@@ -61,7 +61,7 @@ void main() {
     addTearDown(() => dir.delete(recursive: true));
     final file = File('${dir.path}/upgrade.sqlite');
 
-    // 1. 先用当前 schema 建库(拿到 v39 的全部表),再把索引全删掉、版本退回
+    // 1. 先用当前 schema 建库(拿到 v40 的全部表),再把索引全删掉、版本退回
     //    38,模拟「表结构是新的、索引没建过」的历史库。
     final seed = BeeDatabase.forTesting(NativeDatabase(file));
     for (final name in await indexNames(seed)) {
@@ -76,12 +76,12 @@ void main() {
     );
     await seed.close();
 
-    // 2. 重新打开 → onUpgrade(38 → 39) 末尾无条件跑 _ensureIndexes()。
+    // 2. 重新打开 → onUpgrade(38 → 40,含 v39 索引统一与 v40 记录时间列) 末尾无条件跑 _ensureIndexes()。
     final db = BeeDatabase.forTesting(NativeDatabase(file));
     addTearDown(db.close);
     final version = await db.customSelect('PRAGMA user_version').getSingle();
 
-    expect(version.read<int>('user_version'), 39);
+    expect(version.read<int>('user_version'), 40);
     expect(await indexNames(db), containsAll(expected));
   });
 

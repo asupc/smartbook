@@ -117,6 +117,10 @@ class Transactions extends Table {
   IntColumn get accountId => integer().nullable()();
   IntColumn get toAccountId => integer().nullable()();
   DateTimeColumn get happenedAt => dateTime().withDefault(currentDateAndTime)();
+  // v40 记录时间:server 首次落库时刻(pull payload.createdAt),本地新建为
+  // 写入时刻。存量行为 NULL,重复对比/详情里显示 "-"。本地不参与同步 push
+  // (EntitySerializer 不序列化),以 server 为准。
+  DateTimeColumn get recordedAt => dateTime().nullable()();
   TextColumn get note => text().nullable()();
   IntColumn get recurringId => integer().nullable()(); // 关联到重复交易模板
   TextColumn get syncId => text().nullable()(); // 跨设备同步唯一标识 (UUID)
@@ -546,7 +550,7 @@ class BeeDatabase extends _$BeeDatabase {
   BeeDatabase.forTesting(QueryExecutor executor) : super(executor);
 
   @override
-  int get schemaVersion => 39; // v39: 统一索引(_ensureIndexes,新装/升级同一套)
+  int get schemaVersion => 40; // v40: 交易记录时间 recorded_at(server 盖章)
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -1356,6 +1360,12 @@ class BeeDatabase extends _$BeeDatabase {
             // 手动/联网恢复后重试;终态清除。
             await _addColumnIfMissing('auto_book_events', 'draft_payload_json',
                 'ALTER TABLE auto_book_events ADD COLUMN draft_payload_json TEXT;');
+          }
+          if (from < 40) {
+            // v40 交易记录时间(server 首次落库盖章,pull 时下发)。不回填:
+            // NULL = 老数据,UI 显示 "-"。
+            await _addColumnIfMissing('transactions', 'recorded_at',
+                'ALTER TABLE transactions ADD COLUMN recorded_at INTEGER;');
           }
           // v39(M3-1):索引统一到 _ensureIndexes(),无条件跑一遍。
           await _ensureIndexes();
