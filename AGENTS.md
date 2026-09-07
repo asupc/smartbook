@@ -13,6 +13,10 @@ Firefly III was the old choice, now **deprecated**. Rationale: `docs/backend-sel
 
 **Git:** the workspace root is a git repo (history re-initialized; **neither `client/` nor `server/` has a `.git` of its own** — everything is tracked via the root repo). Commit only after confirming with the user.
 
+## Communication
+
+- **与用户沟通一律使用中文**（简体中文，除非用户明确指定其它语言）。
+
 ## Layout
 
 ```text
