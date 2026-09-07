@@ -29,10 +29,11 @@
 
 ## 与上游的功能差异（实测验证）
 
-> **实测方式（2026-09-04）**
+> **实测方式（2026-09-04 首测，2026-09-07 复核更新）**
 >
 > - **服务端**：将上游仓库（`TNT-Likely/BeeCount-Cloud` `main`）与本项目 `server/` 分别本地起服（FastAPI + SQLite），抓取 `/openapi.json` 逐端点 diff；上游官方线上实例当日已全量切换为本项目镜像，故上游侧以本地运行源码为准。
-> - **客户端**：本项目以真机（vivo Android，v1.0.20）实测；上游侧核对克隆仓库（`TNT-Likely/BeeCount` `main`）代码行为（上游官方发行渠道为 iOS App Store / Google Play，未本地运行）。
+> - **客户端**：本项目以真机（vivo Android；首测 v1.0.20，现核对至 v1.0.34+1）实测；上游侧核对克隆仓库（`TNT-Likely/BeeCount` `main`）代码行为（上游官方发行渠道为 iOS App Store / Google Play，未本地运行）。
+> - 2026-09-04 之后新增的差异，按提交记录与现行代码逐项核对补充（未重跑 openapi diff）。
 > - 本节的差异均经上述方式核实；与 `docs/development-plan.md`、旧文档不一致之处，**以本节为准**（如「大额/异常提醒」已下线、「支付宝 CSV 导入」上游已有）。
 
 ### 客户端（基于 BeeCount）
@@ -44,17 +45,20 @@
 | 支付通知监听 | **无 `NotificationListenerService`**：「通知」实为每日提醒闹钟（`NotificationReceiver` + `zonedSchedule` 每天重复）；真自动记账靠截图/无障碍 + iOS 快捷指令文本 | 有：`NotificationWatcher` 捕获支付通知（包名白名单 + 垃圾过滤 + 指纹去重 + 队列）→ AI → 入账 | 新增 |
 | 截图自动记账 | 有：Android 无障碍监听（`ScreenshotObserver`）+ OCR 双引擎 + AI | 相同 + 两段写入修复（500ms 防抖跳掉 rename 事件）、「记账成功自动删截图」开关 | 增强 |
 | 详情页自动记账（无障碍读屏） | **无** | 有：`ScreenTextWatcher` 监听支付宝/抖音/京东/微信账单详情页自动入账；vivo 无障碍适配与引导 | 新增 |
-| 待确认/候选队列 | **无**：AI 解析完直接入账 | 有：「自动入账校验」开关开启后，低置信（<0.9）+ 疑似重复（同类型金额 ±5% 且 10 分钟内、或同备注同金额）进待确认队列，可确认/编辑后入账/拒绝，开关可回退直入账 | 新增 |
+| 待确认/候选队列 | **无**：AI 解析完直接入账 | 有：「自动入账校验」开关开启后，低置信（<0.9）+ 疑似重复（金额 ±5% 且 10 分钟内、不限收支类型；或同备注同金额）进待确认队列，可确认/编辑后入账/拒绝，开关可回退直入账 | 新增 |
+| 自动记账可靠性/可观测性 | **无**：四路入口各自触发，解析失败仅日志 | 有：四路统一协调器 + 持久化事件存储（崩溃/重启后恢复未完成事件）、AI 运行时状态机（失败分 retryable/permanent，瞬态自动重试）与全链路 trace；设置页「最近识别记录」环形队列展示各过滤闸命中与 AI 段决策（不含页面文本），排查真机漏记 | 新增 |
 | 大额/异常消费提醒 | 仅有**手动** AI 快捷指令「异常支出提醒」；无自动阈值检测 | **已下线**：自动大额/异常提醒引擎主动移除（仅剩 `AnomalyDetector` 数学模块与 l10n 元数据残留，不再触发） | 上游无 → 本项目不复刻 |
 | 手动模拟测试 | 仅「记账提醒」页的「发送测试通知」（作用于每日提醒闹钟） | 有：「手动模拟测试」入口，可注入模拟短信/通知/屏幕文本，直接走完整 AI → 入账链路 | 新增 |
 | 来源渠道 → 账户映射 | **无** | 有：短信/通知来源解析出渠道名（注入 AI 先验）+ 渠道 → 账户映射设置（AI 账户名 > 映射 > 默认账户） | 新增 |
 | 统计与报表 | 分类统计/排行、月/年/自定义月份、**环比**（海报「环比上月」）、年度报告 | 保留上述 + 新增 **同比**、账户分布、商户 Top、自定义区间统计、JSON 结构化导出 | 增强 |
 | 导入/导出 | 支付宝/微信账单 CSV 导入（`AlipayBillParser`/`WeChatBillParser`）、交易 CSV 导出、YAML 配置导出 | 相同（复用上游解析器） | 一致 |
 | AI prompt | 解析层兼容 `confidence`（默认 0.8），但 prompt 模板不要求、无低置信处理 | prompt 模板要求 `confidence` 输出，低置信分流进待确认 | 增强 |
-| AI 调用记录 | **无**（客户端只把数据发给用户自配的 AI 服务商） | 有：AI 调用记录上报服务端（含输入图片上行），服务端永久保留、可手动删除 | 新增 |
+| AI 调用链路 | 客户端直连用户自配 AI 服务商（OpenAI 兼容），API Key 与配置仅存本地 | **经服务端中转**：`/ai/relay/{chat,vision,stt}`（对话/视觉/语音），协议适配（openai/anthropic）在服务端；服务商配置以服务端为权威，App 内置服务商目录（智谱 GLM / DeepSeek / Kimi / MiniMax / 小米 MiMo 预设）并支持 Anthropic 协议 | 重构（隐私优先） |
+| AI 调用记录 | **无** | 有：AI 调用记录上报服务端（含输入图片上行），服务端永久保留、可手动删除；**原始记账证据留存**（上行服务端 + 保留期策略，App「远程证据管理」可查看/删除） | 新增 |
 | 云同步方案 | **5 种**：BeeCount Cloud / iCloud / WebDAV / S3 / Supabase（三个 Tab：离线/备份同步/云端协同） | 仅 离线 + SmartBook Cloud 两个 Tab（底层库与兼容层保留） | 移除 4 种 BYOC 方案 |
+| 云端覆盖重建 | **无** | 有：「以服务端为准」覆盖重建（云端同步页）——清空本地交易/预算后以服务端快照覆盖账户/分类/标签（seed 收编/多余删除/子分类脱挂），用于本地数据混乱后的一致性修复 | 新增 |
 | 推广位 | 有：蜜蜂家当 BeeAssets、给项目 Star、打赏（仅 iOS StoreKit） | 全部移除 | 移除 |
-| 隐私 | 无「原文统计/一键清除」 | 数据管理页「隐私面板」：原文统计（截图/附件占用、待确认候选数）、一键清除原文（保留交易） | 新增 |
+| 隐私 | 无「原文统计/一键清除」 | 数据管理页「隐私面板」：原文统计（截图/附件占用、待确认候选数）、一键清除原文（保留交易）、原始记账证据统计与远程证据管理（查看/删除已上行服务端的证据） | 新增 |
 | 运维健康 | 无检测面板 | 有：自动记账健康检测（权限/开关/AI 配置/电池优化聚合）+ vivo 保活引导 | 新增 |
 | 其余能力 | AI 对话/语音记账/OCR、多账本/预算/周期记账、桌面小组件（6 类 × 12 规格）、主题装扮、暗黑模式、简中/繁中/英/韩 | 全部保留 | 一致 |
 
@@ -63,14 +67,18 @@
 | 功能 | 上游 Cloud（实测） | 本项目 SmartBook Cloud（实测） | 差异性质 |
 |---|---|---|---|
 | Web UI 技术栈 | shadcn 风格（Radix + Tailwind + cva + lucide + cmdk + recharts） | 全站 antd 重构（登录/交易/账户/分类/分析/备份/设置/PAT 等页面 + Toast/ConfirmDialog） | 重构 |
+| 资产页（Web） | 基础账户列表 | 仪表盘化：`AssetKpiRow` KPI 行 + `AccountsTable` 账户表格（分组展示，银行卡/信用卡副行显示开户行 + 卡号后四位，其它显示备注） | 增强 |
 | PWA | 安装横幅（`PwaInstallBanner` + `beforeinstallprompt` 拦截）+ 更新横幅 + Service Worker + Share Target 入站 | **移除安装横幅**与 Share Target；保留 SW「新版本可用」更新横幅 | 部分移除 |
 | 2FA / TOTP | 有：`/auth/2fa` 六端点 + 登录挑战 + `TwoFactorChallengeView` + 迁移 `0005_2fa_totp` | **无**（openapi diff 六端点全部消失） | 移除 |
 | 「问 AI」文档 RAG | 有：`/ai/ask` + `/ai/docs-index/status` + `/admin/rag/{status,refresh}` + `EMBEDDING_*` 配置 + 6h 启动刷新 + Web 命令面板「问 AI」入口 | `/ai/ask` 与 `docs_index.py` 索引服务保留；**RAG 维护端点与 Web 入口移除** | 部分移除 |
-| AI 调用记录 | **无** | 有：`/ai/logs` 全套 8 端点（上报/列表/详情/图片上行/批删/单删/图片读取）+ Web「AI 调用记录」页；日志永久保留、手动删除；另新增 `POST /ai/logs/image` 图片上行 | 新增 |
+| AI 中转 | **无**：客户端直连 AI 服务商 | 有：`/ai/relay/{chat,vision,stt}` 三端点（对话/视觉/语音），服务端协议适配（OpenAI 兼容 + Anthropic）、内置服务商目录（`builtin_providers`）、`/ai/providers` 配置以服务端为权威 | 新增 |
+| AI 调用记录 | **无** | 有：`/ai/logs` 全套 8 端点（上报/列表/详情/图片上行/批删/单删/图片读取）+ Web「AI 调用记录」页；日志永久保留、手动删除；另新增 `POST /ai/logs/image` 图片上行 + `/evidence/raw` 原始记账证据 5 端点（上行/列表/详情/删除/清理）与保留期策略 | 新增 |
 | 管理端 | 用户/设备（`OpsDevicesPanel`）/服务端日志/备份/数据清理/overview | 上述全部保留 + 新增 AI 分析日志（`/admin/ai-analysis-logs` ×2）+ **疑似重复交易管理**（`/admin/duplicate-transactions` ×2 + 页面） | 增强 |
+| 存储路径 | Dockerfile 硬编码各存储子目录 env（备份/附件等） | 统一由 `DATA_DIR` 派生全部子目录（附件/AI 截图/备份/rclone/restore/staging），Docker 单挂载 `/data` 即全量持久化，需挪动时才显式覆盖 | 增强 |
 | 备份体系 | rclone 多远端 fan-out（R2/S3/WebDAV/B2）+ AES-256 加密 + 计划/保留期（18 端点） | 相同 | 一致 |
 | 共享账本 | 邀请码/成员双角色/`/member-stats`/MCP（streamable HTTP + 30 天调用日志）/导入 token 流程 | 相同（openapi 逐项一致） | 一致 |
-| 同步层 | 历史 bug：增量 pull 三值逻辑、merge 漏字段（曾多次难复现） | 已修复 + 全局同步测试 + merge 契约测试（`test_mobile_push_<entity>_partial_update_keeps_existing_fields` 风格） | 修复 |
+| 分类删除 | 删除指定分类，服务端无家族级联/守卫校验 | 父分类删除：本分类 + 全部子分类均无关联交易才允许，子分类随父级联移除；家族里仍有交易则整单拒绝（要求先迁移数据）；App push 与 Web 端一致，服务端兜底校验防旧客户端/API 绕过 | 增强 |
+| 同步层 | 历史 bug：增量 pull 三值逻辑、merge 漏字段（曾多次难复现）；纯增量 pull | 已修复 + 全局同步测试 + merge 契约测试（`test_mobile_push_<entity>_partial_update_keeps_existing_fields` 风格）；增量 pull 实时化；交易新增 `created_at` 列 | 修复 + 增强 |
 | 品牌 | `APP_NAME = "BeeCount Cloud"`、官方镜像 `sunxiao0721/beecount-cloud` | 自建镜像 `smartbook-server`（`deploy/build_docker.sh`）、docker 服务 `smartbook-cloud`/`smartbook-db`、env `SMARTBOOK_*` | 更名 |
 
 ### 工作区 / 部署（本项目新增部分）
