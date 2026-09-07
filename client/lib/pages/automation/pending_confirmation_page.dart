@@ -1347,7 +1347,7 @@ class _PendingConfirmationPageState
                         ),
                         const SizedBox(height: 3),
                         Text(
-                          '${_amountText(details.transaction.amount, details.transaction.currencyCode)}  ·  ${_dateTimeText(details.transaction.happenedAt)}${_matchedCategoryText(details) == null ? '' : '  ·  ${_matchedCategoryText(details)}'}',
+                          '${_amountText(details.transaction.amount, details.transaction.currencyCode)}  ·  ${_dateTimeText(details.transaction.happenedAt)}${_matchedCategoryText(details) == null ? '' : '  ·  ${_matchedCategoryText(details)}'}${details.transaction.recordedAt == null ? '' : '  ·  ${l10n.pendingConfirmationRecordedAt} ${_dateTimeText(details.transaction.recordedAt!)}'}',
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.bodySmall?.copyWith(
@@ -1479,6 +1479,7 @@ class _PendingConfirmationPageState
     required String time,
     required String category,
     required String account,
+    String? recordedAt,
   }) {
     final theme = Theme.of(context);
     return Container(
@@ -1504,6 +1505,9 @@ class _PendingConfirmationPageState
           _buildComparisonField(context, l10n.billCardTime, time),
           _buildComparisonField(context, l10n.billCardCategory, category),
           _buildComparisonField(context, l10n.billCardAccount, account),
+          if (recordedAt != null)
+            _buildComparisonField(
+                context, l10n.pendingConfirmationRecordedAt, recordedAt),
         ],
       ),
     );
@@ -1558,6 +1562,9 @@ class _PendingConfirmationPageState
                   time: _dateTimeText(transaction.happenedAt),
                   category: details.category?.name ?? '',
                   account: _matchedAccountText(details),
+                  recordedAt: transaction.recordedAt == null
+                      ? null
+                      : _dateTimeText(transaction.recordedAt!),
                 ),
                 if (candidate.matchScore != null) ...[
                   const SizedBox(height: 10),

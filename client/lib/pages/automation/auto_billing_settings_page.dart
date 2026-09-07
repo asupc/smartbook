@@ -7,14 +7,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../widgets/ui/primary_header.dart';
 import '../../widgets/ui/toast.dart';
 import '../../providers.dart';
-import '../../services/billing/pending_candidate.dart';
 import '../../services/automation/dedup_exempt_store.dart';
 import '../../services/platform/screenshot_monitor_service.dart';
 import '../../services/platform/sms_monitor_service.dart';
 import '../../services/platform/notify_monitor_service.dart';
 import '../../services/platform/screen_text_monitor_service.dart';
 import 'channel_account_mapping_page.dart';
-import 'pending_confirmation_page.dart';
 import '../../l10n/app_localizations.dart';
 import '../../utils/notification_factory.dart';
 import '../../utils/notification_android.dart';
@@ -59,7 +57,6 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
   List<Map<String, String>> _screenDecisions = const [];
   bool _autoBookCheckEnabled = true;
   bool _shadowModeEnabled = false;
-  int _pendingCount = 0;
   bool _isBatteryOptimizationIgnored = false;
   bool _isLoading = true;
   bool _isInitialized = false;
@@ -107,10 +104,6 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
     final autoBookCheck = prefs.getBool('auto_book_enabled') ?? true;
     final shadowMode =
         await ref.read(autoBillingServiceProvider).isShadowModeEnabled();
-    // 徽标与待确认页同一口径(P1-3):loadForReview 合并 event store 与 legacy
-    final pendingCount = (await PendingCandidateStore()
-            .loadForReview(ref.read(autoBookCoordinatorProvider).store))
-        .length;
 
     // 检查电池优化状态
     bool batteryOptimizationIgnored = false;
@@ -133,7 +126,6 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
       _screenDecisions = screenDecisions;
       _autoBookCheckEnabled = autoBookCheck;
       _shadowModeEnabled = shadowMode;
-      _pendingCount = pendingCount;
       _isBatteryOptimizationIgnored = batteryOptimizationIgnored;
       _isLoading = false;
     });
@@ -476,18 +468,6 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                // 功能说明卡片
-                _buildInfoCard(
-                  context,
-                  primaryColor,
-                  l10n,
-                  icon: Icons.info_outline,
-                  title: l10n.featureDescription,
-                  content: l10n.featureDescriptionContent,
-                ),
-
-                const SizedBox(height: 16),
-
                 // 开关卡片
                 _buildSwitchCard(
                   context,
@@ -616,11 +596,6 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
 
                 const SizedBox(height: 16),
 
-                // 待确认队列入口
-                _buildPendingCard(context, primaryColor, l10n),
-
-                const SizedBox(height: 16),
-
                 // 手动模拟测试:验证 AI 记账链路(不依赖真实短信/通知)
                 _buildMockCard(context, primaryColor, l10n),
 
@@ -639,6 +614,18 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
 
                 // 电池优化设置引导卡片
                 _buildBatteryOptimizationCard(context, primaryColor, l10n),
+
+                const SizedBox(height: 16),
+
+                // 功能说明卡片(置后:功能开关优先展示,说明性内容放最后)
+                _buildInfoCard(
+                  context,
+                  primaryColor,
+                  l10n,
+                  icon: Icons.info_outline,
+                  title: l10n.featureDescription,
+                  content: l10n.featureDescriptionContent,
+                ),
               ],
             ),
           ),
@@ -959,42 +946,6 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
           },
           child: Text(l10n.autoStartGo),
         ),
-      ),
-    );
-  }
-
-  /// 待确认队列入口(有候选时 trailing 显示橙色数字徽标)。
-  Widget _buildPendingCard(
-      BuildContext context, Color primaryColor, AppLocalizations l10n) {
-    final theme = Theme.of(context);
-    return Card(
-      child: ListTile(
-        leading: Icon(Icons.fact_check_outlined, color: primaryColor),
-        title: Text(l10n.pendingConfirmationTitle),
-        subtitle: Text(l10n.pendingConfirmationDesc),
-        trailing: _pendingCount > 0
-            ? Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.orange.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  _pendingCount > 99 ? '99+' : '$_pendingCount',
-                  style: const TextStyle(
-                      color: Colors.orange, fontWeight: FontWeight.w600),
-                ),
-              )
-            : Icon(Icons.chevron_right,
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
-                size: 20),
-        onTap: () async {
-          await Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const PendingConfirmationPage()),
-          );
-          // 返回后刷新计数徽标
-          if (mounted) _loadMonitorStatus();
-        },
       ),
     );
   }

@@ -123,6 +123,10 @@ class ImportTransaction {
   /// 文件内稳定行 hash；无 externalId 时用于重复导入识别。
   final String? sourceRowHash;
 
+  /// v40 记录时间(server 首次落库盖章;fullPull 快照带 createdAt)。CSV 等
+  /// 本地导入为 null。
+  final DateTime? recordedAt;
+
   const ImportTransaction({
     required this.type,
     required this.amount,
@@ -130,6 +134,7 @@ class ImportTransaction {
     this.categoryName,
     this.categoryKind,
     required this.happenedAt,
+    this.recordedAt,
     this.note,
     this.accountName,
     this.fromAccountName,
@@ -1093,6 +1098,7 @@ class DataImportService {
         syncId: d.Value(tx.syncId),
         currencyCode: d.Value(txCurrency),
         nativeAmount: d.Value(txNative),
+        recordedAt: d.Value(tx.recordedAt),
       );
 
       final indexInBatch = batchTx.length;

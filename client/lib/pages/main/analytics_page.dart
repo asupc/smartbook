@@ -1376,6 +1376,7 @@ class _PeriodCompareRowState extends ConsumerState<_PeriodCompareRow> {
     final ledgerId = ref.read(currentLedgerIdProvider);
     if (ledgerId == 0) return null;
     final isExpense = widget.type == 'expense';
+    final l10n = AppLocalizations.of(context);
 
     double? rate(double prev) =>
         prev <= 0 ? null : (widget.currentTotal - prev) / prev;
@@ -1393,8 +1394,8 @@ class _PeriodCompareRowState extends ConsumerState<_PeriodCompareRow> {
       final (yoyIncome, yoyExpense) = await repo.monthlyTotals(
           ledgerId: ledgerId,
           month: DateTime(widget.selMonth.year - 1, widget.selMonth.month, 1));
-      lastLabel = 'lastMonth';
-      yoyLabel = 'sameMonthLastYear';
+      lastLabel = l10n.analyticsCompareLastMonth;
+      yoyLabel = l10n.analyticsCompareSameMonthLastYear;
       prevTotal = isExpense ? prevExpense : prevIncome;
       yoyTotal = isExpense ? yoyExpense : yoyIncome;
     } else {
@@ -1402,8 +1403,8 @@ class _PeriodCompareRowState extends ConsumerState<_PeriodCompareRow> {
           ledgerId: ledgerId, year: widget.selMonth.year - 1);
       final (yoyIncome, yoyExpense) = await repo.yearlyTotals(
           ledgerId: ledgerId, year: widget.selMonth.year - 2);
-      lastLabel = 'lastYear';
-      yoyLabel = 'prevPrevYear';
+      lastLabel = l10n.analyticsCompareLastYear;
+      yoyLabel = l10n.analyticsComparePrevPrevYear;
       prevTotal = isExpense ? prevExpense : prevIncome;
       yoyTotal = isExpense ? yoyExpense : yoyIncome;
     }
@@ -1418,19 +1419,6 @@ class _PeriodCompareRowState extends ConsumerState<_PeriodCompareRow> {
       chips.add(_CompareChip(yoyRate, yoyLabel, isExpense ? yoyRate > 0 : yoyRate < 0));
     }
     return chips.isEmpty ? null : chips;
-  }
-
-  String _label(AppLocalizations l10n, String key) {
-    switch (key) {
-      case 'lastMonth':
-        return l10n.analyticsCompareLastMonth;
-      case 'sameMonthLastYear':
-        return l10n.analyticsCompareSameMonthLastYear;
-      case 'lastYear':
-        return l10n.analyticsCompareLastYear;
-      default:
-        return l10n.analyticsComparePrevPrevYear;
-    }
   }
 
   @override
