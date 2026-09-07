@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../ai/providers/ai_provider_manager.dart';
 import '../../data/db.dart';
 import '../../data/repositories/base_repository.dart';
 import '../../services/custom_icon_service.dart';

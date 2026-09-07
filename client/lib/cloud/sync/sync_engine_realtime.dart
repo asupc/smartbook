@@ -19,10 +19,25 @@ extension SyncEngineRealtime on SyncEngine {
             '收到实时事件: type=${event.type}, ledgerId=${event.ledgerId}');
         _schedulePull(event.ledgerId);
       } else if (event.type == 'profile_change') {
-        // A 设备改主题色 / 收支配色 / 外观 / 头像 → server 广播。这里拉一下
-        // /profile/me,把 theme_primary_color / income_is_red / appearance
-        // 写回本地 SharedPreferences,让 B 无感同步。
+        // A 设备改主题色 / 收支配色 / 外观 / 头像 / AI 服务商配置 → server 广播。
+        // ai_providers_changed = true 表示 providers/binding 在 /ai/providers
+        // 侧变了:refreshFromServer 重拉掩码列表写本地缓存,并 emit 事件让
+        // sync_providers bump UI refresh providers(修复「App 加了服务商,
+        // 另一台设备要重启才可见」)。其余字段沿用 syncMyProfile 拉
+        // /profile/me 回写本地。
+        final raw = event.rawData;
         logger.info('SyncEngine', '收到实时事件: profile_change');
+        if (raw['ai_providers_changed'] == true) {
+          unawaited(_refreshAiProvidersAfterRemoteChange());
+          // providers 刷新之外,普通 profile 字段也可能同时变了,照常拉一次
+          unawaited(syncMyProfile().then((changed) {
+            if (changed) {
+              final ledgerId = event.ledgerId ?? '';
+              _emit(PullCompleted(ledgerId: ledgerId));
+            }
+          }));
+          return;
+        }
         unawaited(syncMyProfile().then((changed) {
           if (changed) {
             final ledgerId = event.ledgerId ?? '';
@@ -139,6 +154,19 @@ extension SyncEngineRealtime on SyncEngine {
   /// 外部触发（例如 connectivity_plus 监听到网络恢复）。内部防抖、单飞。
   void triggerAutoSync({required String reason}) {
     _scheduleAutoSync(reason: reason);
+  }
+
+  /// WS profile_change(ai_providers_changed)后重拉 /ai/providers 掩码列表
+  /// 写本地缓存,并 emit AiProvidersRemoteChanged 让 UI 层 bump refresh
+  /// providers。失败只打日志 —— 下次冷启动 syncMyProfile 链路会再拉。
+  Future<void> _refreshAiProvidersAfterRemoteChange() async {
+    try {
+      await AIProviderManager.refreshFromServer();
+      _emit(const AiProvidersRemoteChanged());
+      logger.info('SyncEngine', '远端 AI 服务商变更已重拉并通知 UI');
+    } catch (e, st) {
+      logger.warning('SyncEngine', '远端 AI 服务商变更重拉失败: $e', st);
+    }
   }
 
   /// 处理 server 推过来的 `member_change` 事件:成员加入 / 角色变更 / 被移除。

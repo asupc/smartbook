@@ -228,9 +228,10 @@ class _SmartBookCloudSyncPageState extends ConsumerState<SmartBookCloudSyncPage>
                         SectionCard(
                           child: _buildAccountSection(context, user),
                         ),
+                        const SizedBox(height: 8),
                         // Section 2: 同步状态(深度检测结果)
                         SectionCard(
-                          child: _buildHealthSection(context),
+                          child: _buildHealthSection(context, l10n),
                         ),
                         const SizedBox(height: 8),
                         // Section 3: 同步说明(折叠) — 解释增量/全量、断点续传、排查
@@ -410,9 +411,7 @@ class _SmartBookCloudSyncPageState extends ConsumerState<SmartBookCloudSyncPage>
     );
   }
 
-  Widget _buildHealthSection(BuildContext context) {
-    // SectionCard 已经给了 p12 内边距,这里内部只做垂直间距,不再加横向 padding。
-    final l10n = AppLocalizations.of(context);
+  Widget _buildHealthSection(BuildContext context, AppLocalizations l10n) {
     final report = _latestReport;
     final title = Row(
       children: [

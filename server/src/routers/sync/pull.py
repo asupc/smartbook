@@ -172,10 +172,12 @@ def _enrich_tx_payloads_with_user_ids(
     db, rows: list
 ) -> list:
     """对返给客户端的 SyncChange 行中,entity_type='transaction' 且 payload
-    缺 createdByUserId / updatedByUserId 的,从 read_tx_projection 批量补上。
+    缺 createdByUserId / updatedByUserId / createdAt 的,从 read_tx_projection
+    批量补上。
 
-    push.py 已在写时注入这俩字段;此 helper 是兜底,覆盖 push 修复前留下的
-    历史 SyncChange.payload_json 缺失的情况。
+    push.py 已在写时注入前俩字段;createdAt(0024 记录时间)由服务端盖章,
+    客户端从不提交,payload 里天然没有 —— 都从 projection 回填,覆盖
+    push 修复前 / 0024 之前留下的历史 SyncChange.payload_json 缺失的情况。
 
     防御性 copy:不修改原 ORM 对象的 payload_json 引用(避免 MutableDict
     切换或意外 db.commit 把 enrichment 写回 DB)。返回 (change, ext_id,
@@ -191,7 +193,11 @@ def _enrich_tx_payloads_with_user_ids(
         payload = change.payload_json
         if not isinstance(payload, dict):
             continue
-        if payload.get("createdByUserId") and payload.get("updatedByUserId"):
+        if (
+            payload.get("createdByUserId")
+            and payload.get("updatedByUserId")
+            and payload.get("createdAt")
+        ):
             continue
         if change.ledger_id is None:
             continue
@@ -211,13 +217,14 @@ def _enrich_tx_payloads_with_user_ids(
             ReadTxProjection.sync_id,
             ReadTxProjection.created_by_user_id,
             ReadTxProjection.last_edited_by_user_id,
+            ReadTxProjection.created_at,
         ).where(
             ReadTxProjection.sync_id.in_(sync_ids),
             ReadTxProjection.ledger_id.in_(ledger_ids),
         )
     ).all()
     proj_by_key = {
-        (lid, sid): (cb, eb) for lid, sid, cb, eb in rows_proj
+        (lid, sid): (cb, eb, cat) for lid, sid, cb, eb, cat in rows_proj
     }
 
     # 3. 防御 copy:命中 enrichment 才克隆该行 payload,其它行保留原引用
@@ -226,13 +233,15 @@ def _enrich_tx_payloads_with_user_ids(
         entry = proj_by_key.get((ledger_id, sync_id))
         if entry is None:
             continue
-        cb, eb = entry
+        cb, eb, cat = entry
         change, ext_id = enriched_rows[idx]
         payload_copy = dict(change.payload_json)
         if cb and not payload_copy.get("createdByUserId"):
             payload_copy["createdByUserId"] = cb
         if eb and not payload_copy.get("updatedByUserId"):
             payload_copy["updatedByUserId"] = eb
+        if cat is not None and not payload_copy.get("createdAt"):
+            payload_copy["createdAt"] = cat.isoformat()
         # 用 wrapper 暴露 payload_override,序列化阶段从这里取
         enriched_rows[idx] = (_ChangeWithOverride(change, payload_copy), ext_id)
     return enriched_rows

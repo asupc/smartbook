@@ -213,6 +213,14 @@ extension SyncEngineApplyExt on SyncEngine {
     final payloadNative =
         hasNativeKey ? (payload['nativeAmount'] as num?)?.toDouble() : null;
 
+    // v40 记录时间(createdAt):server 首次落库盖章,pull 下发(增量经
+    // server pull 端 enrichment 补齐,老 change 无键 → null)。update 同样
+    // 覆盖 —— 该字段只由 server 写,不随客户端编辑变化。
+    final recordedAtStr = payload['createdAt'] as String?;
+    final recordedAt = recordedAtStr != null
+        ? DateTime.tryParse(recordedAtStr)?.toLocal()
+        : null;
+
     if (existingId != null) {
       // 更新 — createdByUserId 走"本地为 null 就回填,否则保持"的策略。
       final shouldBackfillCreator =
@@ -258,6 +266,7 @@ extension SyncEngineApplyExt on SyncEngine {
             ? d.Value(payloadCurrency)
             : const d.Value.absent(), // 缺键保留本地币种
         nativeAmount: nativeValue,
+        recordedAt: d.Value(recordedAt),
       ));
       // 更新标签和附件(existing 路径)
       await _syncTransactionTags(existingId, syncId, payload);
@@ -288,6 +297,7 @@ extension SyncEngineApplyExt on SyncEngine {
               // 留 NULL(检测端 LEFT JOIN 账户币种兜底)。
               currencyCode: d.Value(payloadCurrency),
               nativeAmount: d.Value(hasNativeKey ? payloadNative : amount),
+              recordedAt: d.Value(recordedAt),
             ),
           );
       // 写回 cache,后续同 syncId 的 update change 能命中

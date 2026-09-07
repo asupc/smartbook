@@ -296,6 +296,14 @@ final syncServiceProvider = Provider<SyncService>((ref) {
           }
         case SharedResourceChanged():
           ref.read(sharedResourceRefreshProvider.notifier).state++;
+        case AiProvidersRemoteChanged():
+          // 他端改了 AI 服务商(WS profile_change.ai_providers_changed)且
+          // refreshFromServer 已写入本地缓存:只 bump AI 配置相关 UI。
+          ref.read(aiCapabilityBindingRefreshProvider.notifier).state++;
+          ref
+              .read(aiProviderListForCapabilityRefreshProvider.notifier)
+              .state++;
+          ref.read(aiProviderListRefreshProvider.notifier).state++;
         case AvatarChanged():
           ref.read(avatarRefreshProvider.notifier).state++;
         case ProfileFieldApplied(:final field, :final value):

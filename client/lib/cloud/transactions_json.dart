@@ -379,12 +379,16 @@ ImportData parseJsonToImportData(String jsonStr) {
       }
 
       final type = it['type'] as String;
+      final recordedAtStr = it['createdAt'] as String?;
       transactions.add(ImportTransaction(
         type: type,
         amount: (it['amount'] as num).toDouble(),
         categoryName: it['categoryName'] as String?,
         categoryKind: it['categoryKind'] as String?,
         happenedAt: DateTime.parse(it['happenedAt'] as String).toLocal(),
+        recordedAt: recordedAtStr != null
+            ? DateTime.tryParse(recordedAtStr)?.toLocal()
+            : null,
         note: it['note'] as String?,
         // 账户信息：转账用 fromAccountName/toAccountName，其他用 accountName
         accountName: type != 'transfer' ? it['accountName'] as String? : null,

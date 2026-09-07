@@ -450,6 +450,8 @@ class LocalTransactionRepository implements TransactionRepository {
           excludeFromBudget: d.Value(excludeFromBudget),
           currencyCode: d.Value(currencyCode),
           nativeAmount: d.Value(nativeAmount),
+          // v40 记录时间:本地新建 = 本机写入时刻;server 盖章后 pull 会覆盖。
+          recordedAt: d.Value(DateTime.now().toUtc()),
         ));
   }
 

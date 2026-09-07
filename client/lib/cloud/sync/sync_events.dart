@@ -47,6 +47,14 @@ class SharedResourceChanged extends SyncEvent {
   final String ledgerId;
 }
 
+/// 远端 AI 服务商配置(providers/binding)变更已重拉到本地缓存。比
+/// PullCompleted 精确 — 只在 WS profile_change(ai_providers_changed) 且
+/// refreshFromServer 成功后 fire,UI 收到后 bump 服务商列表 / 能力绑定的
+/// refresh providers 即可,不需要动交易数据。
+class AiProvidersRemoteChanged extends SyncEvent {
+  const AiProvidersRemoteChanged();
+}
+
 /// 头像**实际下载完成**(remoteVersion > localVersion + 文件写盘成功)。
 /// 避免每次 pull 都刷头像 widget 产生闪一下的体感。
 class AvatarChanged extends SyncEvent {

@@ -31,8 +31,8 @@ void main() {
     await db.close();
   });
 
-  test('schemaVersion = 39(确保原始证据策略字段已纳入 schema)', () {
-    expect(db.schemaVersion, 39);
+  test('schemaVersion >= 40(确保原始证据策略字段与 v40 记录时间列已纳入 schema)', () {
+    expect(db.schemaVersion, greaterThanOrEqualTo(40));
   });
 
   test('sync_pull_errors 表存在,所有列就位', () async {
