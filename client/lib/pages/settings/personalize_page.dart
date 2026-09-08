@@ -25,6 +25,7 @@ class _PersonalizePageState extends ConsumerState<PersonalizePage> {
     final l10n = AppLocalizations.of(context);
 
     final options = <_ThemeOption>[
+      const _ThemeOption('智记蓝 (默认)', Color(0xFF2563EB)),
       _ThemeOption(l10n.personalizeThemeHoney, const Color(0xFFF8C91C)),
       _ThemeOption(l10n.personalizeThemeOrange, const Color(0xFFFF7043)),
       _ThemeOption(l10n.personalizeThemeGreen, const Color(0xFF26A69A)),
@@ -158,7 +159,7 @@ class _PersonalizePageState extends ConsumerState<PersonalizePage> {
 class _ThemeOption {
   final String name;
   final Color color;
-  _ThemeOption(this.name, this.color);
+  const _ThemeOption(this.name, this.color);
 }
 
 /// 皮肤绑定配色时的提示条:说清楚为什么改不了 + 给一条出路。

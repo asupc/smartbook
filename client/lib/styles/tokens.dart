@@ -30,34 +30,34 @@ class BeeTokens {
   // ========== 背景色 Token (Surface) ==========
 
   /// 页面背景色（Scaffold 背景）
-  /// - 亮色模式：#FAFAFA (灰50)
-  /// - 暗黑模式：#000000 (纯黑)
+  /// - 亮色模式：#F8FAFC (晨雾冷白灰 Slate 50)
+  /// - 暗黑模式：#090D16 (深空曜石灰)
   static Color scaffoldBackground(BuildContext context) =>
-      isDark(context) ? Colors.black : Colors.grey.shade50;
+      isDark(context) ? const Color(0xFF090D16) : const Color(0xFFF8FAFC);
 
   /// 卡片背景色（贴在页面上的卡片）
   /// - 亮色模式：#FFFFFF (白色)
-  /// - 暗黑模式：#1C1C1E (深灰，与纯黑背景形成对比)
+  /// - 暗黑模式：#111726 (曜石深灰，与底色形成空间层次)
   static Color surface(BuildContext context) =>
-      isDark(context) ? const Color(0xFF1C1C1E) : Colors.white;
+      isDark(context) ? const Color(0xFF111726) : Colors.white;
 
   /// 次级背景色（嵌套卡片、输入框背景）
-  /// - 亮色模式：#F5F5F5 (灰100)
-  /// - 暗黑模式：#2C2C2E (更深的灰)
+  /// - 亮色模式：#F1F5F9 (浅青灰)
+  /// - 暗黑模式：#1E293B (组件深灰)
   static Color surfaceSecondary(BuildContext context) =>
-      isDark(context) ? const Color(0xFF2C2C2E) : Colors.grey.shade100;
+      isDark(context) ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9);
 
   /// 悬浮卡片背景色（Dialog、BottomSheet、Dropdown 等）
   /// - 亮色模式：#FFFFFF (白色)
-  /// - 暗黑模式：#2C2C2E (略亮于普通卡片)
+  /// - 暗黑模式：#1E293B (略亮于普通卡片)
   static Color surfaceElevated(BuildContext context) =>
-      isDark(context) ? const Color(0xFF2C2C2E) : Colors.white;
+      isDark(context) ? const Color(0xFF1E293B) : Colors.white;
 
   /// PrimaryHeader 背景色
   /// - 亮色模式：用户选择的主题色
-  /// - 暗黑模式：#000000 (纯黑)
+  /// - 暗黑模式：#111726 (深灰卡片色)
   static Color surfaceHeader(BuildContext context) =>
-      isDark(context) ? Colors.black : Theme.of(context).colorScheme.primary;
+      isDark(context) ? const Color(0xFF111726) : Theme.of(context).colorScheme.primary;
 
   /// BottomSheet 背景色（金额输入等弹窗）
   /// - 亮色模式：#FFFFFF (白色)
@@ -84,22 +84,22 @@ class BeeTokens {
       isDark(context) ? const Color(0xFF1C1C1E) : Colors.grey.shade300;
 
   /// 输入框背景色
-  /// - 亮色模式：#F3F4F6 (浅灰)
-  /// - 暗黑模式：#2C2C2E (深灰)
+  /// - 亮色模式：#F1F5F9 (浅青灰)
+  /// - 暗黑模式：#1E293B (组件深灰)
   static Color surfaceInput(BuildContext context) =>
-      isDark(context) ? const Color(0xFF2C2C2E) : const Color(0xFFF3F4F6);
+      isDark(context) ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9);
 
   /// 标签/Chip 背景色（未选中状态）
-  /// - 亮色模式：#EEEEEE (灰200)
-  /// - 暗黑模式：#2C2C2E (深灰)
+  /// - 亮色模式：#E2E8F0 (灰200)
+  /// - 暗黑模式：#1E293B (深灰)
   static Color surfaceChip(BuildContext context) =>
-      isDark(context) ? const Color(0xFF2C2C2E) : Colors.grey.shade200;
+      isDark(context) ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0);
 
   /// 胶囊切换器背景色
-  /// - 亮色模式：rgba(0,0,0,0.06) (浅灰透明)
-  /// - 暗黑模式：#2C2C2E (深灰)
+  /// - 亮色模式：rgba(0,0,0,0.05) (浅灰透明)
+  /// - 暗黑模式：#1E293B (深灰)
   static Color surfaceCapsule(BuildContext context) =>
-      isDark(context) ? const Color(0xFF2C2C2E) : Colors.black.withValues(alpha: 0.06);
+      isDark(context) ? const Color(0xFF1E293B) : Colors.black.withValues(alpha: 0.05);
 
   /// 弹出层/浮层内卡片背景色（如二级分类选择）
   /// - 亮色模式：#FFFFFF (白色)
@@ -144,26 +144,26 @@ class BeeTokens {
   // ========== 文字颜色 Token (Text) ==========
 
   /// 主要文字颜色（标题、正文）
-  /// - 亮色模式：#111827 (灰900)
+  /// - 亮色模式：#0F172A (Slate 900)
   /// - 暗黑模式：#FFFFFF (白色)
   static Color textPrimary(BuildContext context) =>
-      isDark(context) ? Colors.white : const Color(0xFF111827);
+      isDark(context) ? Colors.white : const Color(0xFF0F172A);
 
   /// 次要文字颜色（副标题、说明文字）
-  /// - 亮色模式：rgba(0,0,0,0.54) 即 Colors.black54
-  /// - 暗黑模式：rgba(255,255,255,0.7)
+  /// - 亮色模式：#64748B (Slate 500)
+  /// - 暗黑模式：#94A3B8 (Slate 400)
   static Color textSecondary(BuildContext context) =>
       isDark(context)
-          ? Colors.white.withValues(alpha: 0.7)
-          : const Color(0x8A000000);
+          ? const Color(0xFF94A3B8)
+          : const Color(0xFF64748B);
 
   /// 提示文字颜色（placeholder、hint、辅助说明）
-  /// - 亮色模式：#9CA3AF (灰400)
+  /// - 亮色模式：#94A3B8 (Slate 400)
   /// - 暗黑模式：rgba(255,255,255,0.54)
   static Color textTertiary(BuildContext context) =>
       isDark(context)
           ? Colors.white.withValues(alpha: 0.54)
-          : const Color(0xFF9CA3AF);
+          : const Color(0xFF94A3B8);
 
   /// 禁用文字颜色
   /// - 亮色模式：rgba(0,0,0,0.26)
@@ -258,15 +258,16 @@ class BeeTokens {
   // ========== 卡片边框 Token (Card Border) ==========
 
   /// 卡片外边框颜色
-  /// - 亮色模式：transparent（使用阴影）
-  /// - 暗黑模式：transparent（去掉边框）
+  /// - 亮色模式：微妙 slate-900 浅边框 (增强微质感)
+  /// - 暗黑模式：半透明白色细边框
   static Color cardOuterBorderColor(BuildContext context) =>
-      Colors.transparent;
+      isDark(context)
+          ? Colors.white.withValues(alpha: 0.08)
+          : const Color(0x0F0F172A);
 
   /// 卡片外边框宽度
-  /// - 亮色模式：0
-  /// - 暗黑模式：0
-  static double cardOuterBorderWidth(BuildContext context) => 0;
+  /// - 统一为 1px 细微精致外描边
+  static double cardOuterBorderWidth(BuildContext context) => 1;
 
   /// 卡片内部分割线颜色
   /// - 亮色模式：rgba(0,0,0,0.06)
@@ -474,19 +475,19 @@ class BeeTokens {
   // ========== 悬浮 Tab 栏 Token (Floating Tab Bar) ==========
 
   /// 悬浮 Tab 栏背景色
-  /// - 亮色模式：白色 95% 不透明
-  /// - 暗黑模式：深灰 95% 不透明
+  /// - 亮色模式：白色 92% 不透明（毛玻璃通透）
+  /// - 暗黑模式：深空曜石灰 92% 不透明
   static Color tabBarBackground(BuildContext context) =>
       isDark(context)
-          ? const Color(0xFF1C1C1E).withValues(alpha: 0.95)
-          : Colors.white.withValues(alpha: 0.95);
+          ? const Color(0xFF111726).withValues(alpha: 0.92)
+          : Colors.white.withValues(alpha: 0.92);
 
   /// 悬浮 Tab 栏阴影
   static List<BoxShadow> get tabBarShadow => [
         BoxShadow(
           color: Colors.black.withValues(alpha: 0.08),
-          blurRadius: 20,
-          offset: const Offset(0, 4),
+          blurRadius: 24,
+          offset: const Offset(0, 6),
         ),
       ];
 
@@ -550,11 +551,16 @@ class BeeDimens {
 /// 阴影令牌
 class BeeShadows {
   static List<BoxShadow> card = [
-    BoxShadow(
-      color: Colors.black.withValues(alpha: 0.04),
+    const BoxShadow(
+      color: Color(0x080F172A),
       blurRadius: 8,
-      offset: const Offset(0, 2),
-    )
+      offset: Offset(0, 2),
+    ),
+    const BoxShadow(
+      color: Color(0x040F172A),
+      blurRadius: 16,
+      offset: Offset(0, 6),
+    ),
   ];
 }
 
@@ -590,9 +596,11 @@ class BeeTextTokens {
   static TextStyle title(BuildContext ctx) =>
       Theme.of(ctx).textTheme.bodyLarge?.copyWith(
             color: BeeTokens.textPrimary(ctx),
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
           ) ??
       TextStyle(
-          fontSize: 15, color: BeeTokens.textPrimary(ctx), fontWeight: FontWeight.w400);
+          fontSize: 15, color: BeeTokens.textPrimary(ctx), fontWeight: FontWeight.w600);
 
   // 强调标题：用于统计数字等需要比普通列表标题更醒目的场景
   static TextStyle strongTitle(BuildContext ctx) =>

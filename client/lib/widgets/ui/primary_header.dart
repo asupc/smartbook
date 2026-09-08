@@ -61,10 +61,12 @@ class PrimaryHeader extends ConsumerWidget {
     // 'none' → null = 纯主题色 / 纯黑。
     final skin = headerSkinById(ref.watch(headerSkinProvider));
 
-    // ⭐ Header 背景颜色：亮色模式用主题色，暗黑模式用纯黑
-    final headerBg = isDark ? Colors.black : primary;
+    // ⭐ Header 背景颜色：默认与页面背景自然融为一体（清透冷白/深空曜石），有皮肤时叠加皮肤层
+    final headerBg = isDark
+        ? const Color(0xFF090D16)
+        : BeeTokens.scaffoldBackground(context);
 
-    // ⭐ 文字和图标颜色（使用 Token）
+    // ⭐ 文字和图标颜色（使用 Token，高对比清晰易读）
     final textColor = BeeTokens.textPrimary(context);
     final iconColor = BeeTokens.iconPrimary(context);
 

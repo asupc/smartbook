@@ -656,6 +656,18 @@ abstract class AppLocalizations {
   /// **'Tap the AI assistant below, or long-press it to add manually'**
   String get homeNoRecordsSubtext;
 
+  /// No description provided for @homeNewRecordsCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} new records'**
+  String homeNewRecordsCount(int count);
+
+  /// No description provided for @homeViewNewRecords.
+  ///
+  /// In en, this message translates to:
+  /// **'View'**
+  String get homeViewNewRecords;
+
   /// No description provided for @homeLastMonthReportSubtitle.
   ///
   /// In en, this message translates to:
@@ -8810,6 +8822,30 @@ abstract class AppLocalizations {
   /// **'Mock data goes through the same AI pipeline as real messages'**
   String get autoBillingMockNotice;
 
+  /// No description provided for @autoRecognitionRecordsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto recognition records'**
+  String get autoRecognitionRecordsTitle;
+
+  /// No description provided for @autoRecognitionRecordsDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Recognition decisions & outcomes from auto bookkeeping'**
+  String get autoRecognitionRecordsDesc;
+
+  /// No description provided for @autoRecognitionRecordsEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No records yet. Open a bill/order detail page, then come back and tap refresh:\n· New record appears → the decision code shows which gate blocked it (or that it was booked)\n· No record at all → accessibility monitoring is not active; check the system accessibility switch'**
+  String get autoRecognitionRecordsEmpty;
+
+  /// No description provided for @commonRefresh.
+  ///
+  /// In en, this message translates to:
+  /// **'Refresh'**
+  String get commonRefresh;
+
   /// No description provided for @pendingConfirmationTitle.
   ///
   /// In en, this message translates to:
@@ -9653,8 +9689,14 @@ abstract class AppLocalizations {
   /// No description provided for @smartBillingGuideHint.
   ///
   /// In en, this message translates to:
-  /// **'Long press the + button at the bottom center of the home page to quickly access these features'**
+  /// **'Long press the AI Assistant button at the bottom center, or use it within AI Chat'**
   String get smartBillingGuideHint;
+
+  /// No description provided for @smartBillingTryNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Try Now'**
+  String get smartBillingTryNow;
 
   /// No description provided for @smartBillingImageBilling.
   ///
@@ -9665,13 +9707,13 @@ abstract class AppLocalizations {
   /// No description provided for @smartBillingImageBillingDesc.
   ///
   /// In en, this message translates to:
-  /// **'Select payment screenshots from gallery for recognition'**
+  /// **'Select payment screenshot from gallery (long press AI button or use in AI Chat)'**
   String get smartBillingImageBillingDesc;
 
   /// No description provided for @smartBillingImageBillingGuide.
   ///
   /// In en, this message translates to:
-  /// **'Long press the + button at the bottom center of the home page and select \'Gallery\' to use image billing. Requires AI service configured under \"Me → AI Settings\"; the vision model will extract amount, merchant, time, etc. from the screenshot.'**
+  /// **'Long press the \'AI Assistant\' button at the bottom center to select \'Gallery\', or tap \'+\' in the AI Chat page. The AI vision model will automatically extract amount, merchant, and time.\n\nTip: You can also long press the app icon on your home screen or share screenshots to SmartBook.'**
   String get smartBillingImageBillingGuide;
 
   /// No description provided for @smartBillingVisionAIRequired.
@@ -9689,13 +9731,13 @@ abstract class AppLocalizations {
   /// No description provided for @smartBillingCameraBillingDesc.
   ///
   /// In en, this message translates to:
-  /// **'Capture payment screenshots for recognition'**
+  /// **'Take a photo of receipt or bill (long press AI button or use in AI Chat)'**
   String get smartBillingCameraBillingDesc;
 
   /// No description provided for @smartBillingCameraBillingGuide.
   ///
   /// In en, this message translates to:
-  /// **'Long press the + button at the bottom center of the home page and select \'Camera\' to use camera billing. Requires AI service configured under \"Me → AI Settings\"; the vision model will extract amount, merchant, time, etc. from the photo.'**
+  /// **'Long press the \'AI Assistant\' button at the bottom center to select \'Camera\', or tap \'+\' in the AI Chat page. The AI vision model will extract amount, merchant, and time.'**
   String get smartBillingCameraBillingGuide;
 
   /// No description provided for @smartBillingVoiceBilling.
@@ -9707,13 +9749,13 @@ abstract class AppLocalizations {
   /// No description provided for @smartBillingVoiceBillingDesc.
   ///
   /// In en, this message translates to:
-  /// **'Quick billing through voice input'**
+  /// **'Voice input for daily expenses (long press AI button or use in AI Chat)'**
   String get smartBillingVoiceBillingDesc;
 
   /// No description provided for @smartBillingVoiceBillingGuide.
   ///
   /// In en, this message translates to:
-  /// **'Long press the + button at the bottom center of the home page and select \'Voice\' to use voice billing. Voice billing requires AI to convert speech to text and extract bill information.'**
+  /// **'Long press the \'AI Assistant\' button at the bottom center to select \'Voice\', or hold the microphone in AI Chat. AI will transcribe speech and extract billing details.'**
   String get smartBillingVoiceBillingGuide;
 
   /// No description provided for @smartBillingAIRequired.

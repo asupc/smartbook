@@ -152,6 +152,15 @@
     }
   },
   "homeNoRecordsSubtext": "Tap the AI assistant below, or long-press it to add manually",
+  "homeNewRecordsCount": "{count} new records",
+  "@homeNewRecordsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "homeViewNewRecords": "View",
   "homeLastMonthReportSubtitle": "View and share last month's report",
   "homeLastMonthReportView": "View",
   "homeAnnualReportReminder": "Your {year} Annual Report is ready",
@@ -1926,6 +1935,10 @@
   "autoBillingMockSubmitted": "Submitted - result will show in system notification",
   "autoBillingMockCustom": "Custom content",
   "autoBillingMockNotice": "Mock data goes through the same AI pipeline as real messages",
+  "autoRecognitionRecordsTitle": "Auto recognition records",
+  "autoRecognitionRecordsDesc": "Recognition decisions & outcomes from auto bookkeeping",
+  "autoRecognitionRecordsEmpty": "No records yet. Open a bill/order detail page, then come back and tap refresh:\n· New record appears → the decision code shows which gate blocked it (or that it was booked)\n· No record at all → accessibility monitoring is not active; check the system accessibility switch",
+  "commonRefresh": "Refresh",
   "pendingConfirmationTitle": "Pending confirmation",
   "pendingConfirmationDesc": "Review candidates from auto billing (low-confidence / large / duplicate)",
   "pendingConfirmationEmpty": "No pending entries",
@@ -2228,17 +2241,18 @@
   "smartBillingDesc": "AI Assistant, smart recognition, auto billing",
   "smartBillingPageTitle": "Smart Billing",
   "smartBillingPageSubtitle": "AI and automation billing features",
-  "smartBillingGuideHint": "Long press the + button at the bottom center of the home page to quickly access these features",
+  "smartBillingGuideHint": "Long press the AI Assistant button at the bottom center, or use it within AI Chat",
+  "smartBillingTryNow": "Try Now",
   "smartBillingImageBilling": "Image Billing",
-  "smartBillingImageBillingDesc": "Select payment screenshots from gallery for recognition",
-  "smartBillingImageBillingGuide": "Long press the + button at the bottom center of the home page and select 'Gallery' to use image billing. Requires AI service configured under \"Me → AI Settings\"; the vision model will extract amount, merchant, time, etc. from the screenshot.",
+  "smartBillingImageBillingDesc": "Select payment screenshot from gallery (long press AI button or use in AI Chat)",
+  "smartBillingImageBillingGuide": "Long press the 'AI Assistant' button at the bottom center to select 'Gallery', or tap '+' in the AI Chat page. The AI vision model will automatically extract amount, merchant, and time.\n\nTip: You can also long press the app icon on your home screen or share screenshots to SmartBook.",
   "smartBillingVisionAIRequired": "Image recognition requires an AI vision service. Set it up in \"Me → AI Settings\" first.",
   "smartBillingCameraBilling": "Camera Billing",
-  "smartBillingCameraBillingDesc": "Capture payment screenshots for recognition",
-  "smartBillingCameraBillingGuide": "Long press the + button at the bottom center of the home page and select 'Camera' to use camera billing. Requires AI service configured under \"Me → AI Settings\"; the vision model will extract amount, merchant, time, etc. from the photo.",
+  "smartBillingCameraBillingDesc": "Take a photo of receipt or bill (long press AI button or use in AI Chat)",
+  "smartBillingCameraBillingGuide": "Long press the 'AI Assistant' button at the bottom center to select 'Camera', or tap '+' in the AI Chat page. The AI vision model will extract amount, merchant, and time.",
   "smartBillingVoiceBilling": "Voice Billing",
-  "smartBillingVoiceBillingDesc": "Quick billing through voice input",
-  "smartBillingVoiceBillingGuide": "Long press the + button at the bottom center of the home page and select 'Voice' to use voice billing. Voice billing requires AI to convert speech to text and extract bill information.",
+  "smartBillingVoiceBillingDesc": "Voice input for daily expenses (long press AI button or use in AI Chat)",
+  "smartBillingVoiceBillingGuide": "Long press the 'AI Assistant' button at the bottom center to select 'Voice', or hold the microphone in AI Chat. AI will transcribe speech and extract billing details.",
   "smartBillingAIRequired": "Voice billing requires an AI speech service. Set it up in \"Me → AI Settings\" first.",
   "smartBillingAutoTags": "Auto-associate Tags",
   "smartBillingAutoTagsDesc": "Automatically associate frequently used tags based on category",

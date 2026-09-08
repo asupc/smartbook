@@ -302,6 +302,14 @@ class AppLocalizationsKo extends AppLocalizations {
   String get homeNoRecordsSubtext => '아래 AI 어시스턴트를 눌러 기록하거나, 길게 눌러 직접 추가하세요';
 
   @override
+  String homeNewRecordsCount(int count) {
+    return '새 기록 $count건';
+  }
+
+  @override
+  String get homeViewNewRecords => '보기';
+
+  @override
   String get homeLastMonthReportSubtitle => '지난달 리포트를 보고 공유하세요';
 
   @override
@@ -4601,6 +4609,18 @@ class AppLocalizationsKo extends AppLocalizations {
   String get autoBillingMockNotice => '모의 데이터는 실제 메시지와 동일한 AI 처리 흐름을 거칩니다';
 
   @override
+  String get autoRecognitionRecordsTitle => '자동 인식 기록';
+
+  @override
+  String get autoRecognitionRecordsDesc => '자동 가계부의 인식 판정 및 입력 결과';
+
+  @override
+  String get autoRecognitionRecordsEmpty => '기록이 없습니다. 계좌/주문 상세 페이지를 열고 이 페이지에서 새로고침을 눌러주세요:\n· 새 기록이 보이면 → 판정 코드로 어느 단계에서 차단됐는지(또는 정상 입력됐는지) 확인\n· 기록이 전혀 없으면 → 접근성 감지가 동작하지 않는 것일 수 있으니 시스템 접근성 스위치를 확인하세요';
+
+  @override
+  String get commonRefresh => '새로고침';
+
+  @override
   String get pendingConfirmationTitle => '확인 대기';
 
   @override
@@ -5061,16 +5081,19 @@ class AppLocalizationsKo extends AppLocalizations {
   String get smartBillingPageSubtitle => 'AI 및 자동화 기록 기능';
 
   @override
-  String get smartBillingGuideHint => '홈 화면 하단 중앙의 + 버튼을 길게 눌러 이 기능들을 빠르게 사용할 수 있습니다';
+  String get smartBillingGuideHint => '하단 중앙의 AI 어시스턴트 버튼을 길게 눌러 메뉴를 열거나 AI 채팅 내에서 사용할 수 있습니다';
+
+  @override
+  String get smartBillingTryNow => '지금 사용해보기';
 
   @override
   String get smartBillingImageBilling => '이미지로 기록';
 
   @override
-  String get smartBillingImageBillingDesc => '갤러리에서 결제 스크린샷을 선택해 인식합니다';
+  String get smartBillingImageBillingDesc => '갤러리에서 결제 스크린샷을 선택해 인식 (AI 버튼 길게 누르기 또는 채팅에서 사용)';
 
   @override
-  String get smartBillingImageBillingGuide => '홈 화면 하단 중앙의 + 버튼을 길게 누르고 \'갤러리\'를 선택하면 이미지로 기록할 수 있습니다. \"내 정보 → AI 설정\"에서 AI 서비스를 설정해야 하며, 비전 모델이 스크린샷에서 금액, 가맹점, 시간 등을 추출합니다.';
+  String get smartBillingImageBillingGuide => '홈 화면 하단 중앙의 \'AI 어시스턴트\' 버튼을 길게 누르고 \'갤러리\'를 선택하거나, AI 채팅 페이지에서 \'+\'를 눌러 \'갤러리\'를 선택하세요. AI 비전 모델이 스크린샷에서 금액, 가맹점, 시간 등을 자동 인식합니다.\n\n팁: 홈 화면의 앱 아이콘을 길게 누르거나 갤러리에서 스크린샷을 스마트북으로 바로 공유할 수도 있습니다.';
 
   @override
   String get smartBillingVisionAIRequired => '이미지 인식에는 AI 비전 서비스가 필요합니다. 먼저 \"내 정보 → AI 설정\"에서 설정해 주세요.';
@@ -5079,19 +5102,19 @@ class AppLocalizationsKo extends AppLocalizations {
   String get smartBillingCameraBilling => '카메라로 기록';
 
   @override
-  String get smartBillingCameraBillingDesc => '결제 화면을 촬영해 인식합니다';
+  String get smartBillingCameraBillingDesc => '영수증이나 결제 화면을 촬영해 인식 (AI 버튼 길게 누르기 또는 채팅에서 사용)';
 
   @override
-  String get smartBillingCameraBillingGuide => '홈 화면 하단 중앙의 + 버튼을 길게 누르고 \'카메라\'를 선택하면 카메라로 기록할 수 있습니다. \"내 정보 → AI 설정\"에서 AI 서비스를 설정해야 하며, 비전 모델이 사진에서 금액, 가맹점, 시간 등을 추출합니다.';
+  String get smartBillingCameraBillingGuide => '홈 화면 하단 중앙의 \'AI 어시스턴트\' 버튼을 길게 누르고 \'카메라\'를 선택하거나, AI 채팅 페이지에서 \'+\'를 눌러 \'카메라\'를 선택하세요. AI 비전 모델이 영수증에서 금액, 가맹점, 시간 등을 자동 인식합니다.';
 
   @override
   String get smartBillingVoiceBilling => '음성으로 기록';
 
   @override
-  String get smartBillingVoiceBillingDesc => '음성 입력으로 빠르게 기록합니다';
+  String get smartBillingVoiceBillingDesc => '음성으로 일상 지출 입력 (AI 버튼 길게 누르기 또는 채팅에서 사용)';
 
   @override
-  String get smartBillingVoiceBillingGuide => '홈 화면 하단 중앙의 + 버튼을 길게 누르고 \'음성\'을 선택하면 음성으로 기록할 수 있습니다. 음성 기록에는 음성을 텍스트로 변환하고 영수증 정보를 추출하는 AI가 필요합니다.';
+  String get smartBillingVoiceBillingGuide => '홈 화면 하단 중앙의 \'AI 어시스턴트\' 버튼을 길게 누르고 \'음성\'을 선택하거나, AI 채팅 페이지에서 마이크를 길게 누르고 말씀하세요. AI가 음성을 텍스트로 변환하고 가계부 정보를 추출합니다.';
 
   @override
   String get smartBillingAIRequired => '음성 기록에는 AI 음성 서비스가 필요합니다. 먼저 \"내 정보 → AI 설정\"에서 설정해 주세요.';

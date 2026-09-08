@@ -4,17 +4,17 @@ import 'styles/tokens.dart';
 
 class BeeTheme {
   // Brand colors - Light Mode
-  // 常量名 honeyGold 沿用旧名（品牌兼容），值已改为新品牌主色：logo 深蓝。
-  static const Color honeyGold = Color(0xFF1D2C50); // 主色（亮色模式）
-  static const Color hiveBrown = Color(0xFF8D6E63); // 辅助色
-  static const Color energyOrange = Color(0xFFEF6C00); // 点缀色
-  static const Color paperIvory = Color(0xFFFFF8E1); // 背景
-  static const Color textDark = Color(0xFF333333); // 文字
+  // 新品牌主色：现代科技钴蓝 (Modern Cobalt Blue)，点缀琥珀金。
+  static const Color honeyGold = Color(0xFF2563EB); // 主色（亮色模式 - 现代科技钴蓝）
+  static const Color hiveBrown = Color(0xFF64748B); // 辅助色（Slate 500）
+  static const Color energyOrange = Color(0xFFF59E0B); // 点缀色（暖琥珀金 Amber 500）
+  static const Color paperIvory = Color(0xFFF8FAFC); // 背景（清透冷白灰 Slate 50）
+  static const Color textDark = Color(0xFF0F172A); // 文字（深青深黑 Slate 900）
 
-  // Brand colors - Dark Mode ⭐ 改为与亮色模式相同（不减弱）
-  static const Color honeyGoldDark = honeyGold; // 主色（暗黑模式 - 使用亮色）
-  static const Color hiveBrownDark = hiveBrown; // 辅助色（暗黑模式 - 使用亮色）
-  static const Color energyOrangeDark = energyOrange; // 点缀色（暗黑模式 - 使用亮色）
+  // Brand colors - Dark Mode
+  static const Color honeyGoldDark = Color(0xFF3B82F6); // 主色（暗黑模式 - 亮蓝）
+  static const Color hiveBrownDark = Color(0xFF94A3B8); // 辅助色（Slate 400）
+  static const Color energyOrangeDark = Color(0xFFFBBF24); // 点缀色（Amber 400）
 
   static ThemeData lightTheme({TargetPlatform? platform}) {
     final base = ThemeData.light();
@@ -33,7 +33,7 @@ class BeeTheme {
       primaryColor: honeyGold,
       scaffoldBackgroundColor: paperIvory,
       appBarTheme: const AppBarTheme(
-        backgroundColor: Colors.white,
+        backgroundColor: paperIvory,
         foregroundColor: textDark,
         elevation: 0.0,
         centerTitle: true,
@@ -42,12 +42,23 @@ class BeeTheme {
         backgroundColor: honeyGold,
         foregroundColor: Colors.white,
       ),
-      bottomNavigationBarTheme: BottomNavigationBarThemeData(
-        selectedItemColor: energyOrange,
+      bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+        selectedItemColor: honeyGold,
         unselectedItemColor: Colors.grey,
         showUnselectedLabels: true,
         backgroundColor: Colors.transparent, // 悬浮胶囊样式，外层透明
         elevation: 0,
+      ),
+      cardTheme: CardTheme(
+        color: Colors.white,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(
+            color: Color(0xFFE2E8F0),
+            width: 0.8,
+          ),
+        ),
       ),
       textTheme: adjustedTextTheme,
     );
@@ -69,43 +80,43 @@ class BeeTheme {
         primaryContainer: honeyGoldDark,     // ⭐ Switch thumb 等组件使用
         onPrimaryContainer: Colors.white,    // ⭐ primaryContainer 上的前景色
         secondary: energyOrangeDark,         // ⭐ 辅助色
-        surface: Colors.black,               // ⭐ 改为纯黑
+        surface: const Color(0xFF111726),    // ⭐ 深空卡片背景
         onSurface: Colors.white,
       ),
       primaryColor: honeyGoldDark,     // ⭐ 主题色
-      scaffoldBackgroundColor: Colors.black, // ⭐ 纯黑背景（OLED 友好）
+      scaffoldBackgroundColor: const Color(0xFF090D16), // ⭐ 深空曜石灰（沉浸护眼且具有层级深度）
       appBarTheme: const AppBarTheme(
-        backgroundColor: Colors.black,  // ⭐ 改为纯黑
+        backgroundColor: Color(0xFF090D16),  // ⭐ 与背景一致
         foregroundColor: Colors.white,
         elevation: 0.0,
         centerTitle: true,
         iconTheme: IconThemeData(color: Colors.white),
       ),
       floatingActionButtonTheme: const FloatingActionButtonThemeData(
-        backgroundColor: honeyGoldDark,  // ⭐ 深金色（现已为品牌深蓝）
-        foregroundColor: Colors.white,   // 白色文字（深蓝底对比度更好）
+        backgroundColor: honeyGoldDark,
+        foregroundColor: Colors.white,
       ),
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
-        selectedItemColor: honeyGoldDark, // ⭐ 深金色
+        selectedItemColor: honeyGoldDark,
         unselectedItemColor: Colors.grey,
         showUnselectedLabels: true,
         backgroundColor: Colors.transparent, // 悬浮胶囊样式，外层透明
         elevation: 0,
       ),
       cardTheme: CardTheme(
-        color: Colors.black,             // ⭐ 改为纯黑卡片
+        color: const Color(0xFF111726),      // ⭐ 曜石灰卡片
         elevation: 0,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(16),
           side: BorderSide(
-            color: Colors.white.withValues(alpha: 0.1), // ⭐ 白色边框
-            width: 1,
+            color: Colors.white.withValues(alpha: 0.08), // ⭐ 柔和白色微边框
+            width: 0.8,
           ),
         ),
       ),
       dividerTheme: DividerThemeData(
-        color: Colors.white.withValues(alpha: 0.12), // ⭐ 白色分割线
-        thickness: 1,
+        color: Colors.white.withValues(alpha: 0.08), // ⭐ 柔和微分割线
+        thickness: 0.8,
       ),
       iconTheme: const IconThemeData(
         color: Colors.white,

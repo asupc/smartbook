@@ -302,6 +302,14 @@ class AppLocalizationsZh extends AppLocalizations {
   String get homeNoRecordsSubtext => '点击下方「AI 助手」记账，长按可手动记一笔';
 
   @override
+  String homeNewRecordsCount(int count) {
+    return '有 $count 条新记录';
+  }
+
+  @override
+  String get homeViewNewRecords => '查看';
+
+  @override
   String get homeLastMonthReportSubtitle => '查看上月消费报告并分享';
 
   @override
@@ -4601,6 +4609,18 @@ class AppLocalizationsZh extends AppLocalizations {
   String get autoBillingMockNotice => '模拟数据与真实消息走同一套 AI 解析流程';
 
   @override
+  String get autoRecognitionRecordsTitle => '自动识别记录';
+
+  @override
+  String get autoRecognitionRecordsDesc => '自动记账的识别决策与入账结果';
+
+  @override
+  String get autoRecognitionRecordsEmpty => '暂无记录。去打开一笔账单/订单详情页，再回到此页点刷新：\n· 出现新记录 → 决策码说明被哪道闸拦截（或已正常入账）\n· 始终无记录 → 无障碍监听未生效，请检查系统无障碍开关';
+
+  @override
+  String get commonRefresh => '刷新';
+
+  @override
   String get pendingConfirmationTitle => '待确认记账';
 
   @override
@@ -5061,16 +5081,19 @@ class AppLocalizationsZh extends AppLocalizations {
   String get smartBillingPageSubtitle => 'AI和自动化记账功能';
 
   @override
-  String get smartBillingGuideHint => '长按首页底部中间的 + 按钮，即可快速使用这些功能';
+  String get smartBillingGuideHint => '长按底部中间的 AI 助手按钮呼出扇形菜单，或在 AI 助手对话页中使用';
+
+  @override
+  String get smartBillingTryNow => '立即体验';
 
   @override
   String get smartBillingImageBilling => '图片记账';
 
   @override
-  String get smartBillingImageBillingDesc => '从相册选择支付截图进行识别';
+  String get smartBillingImageBillingDesc => '从相册选择支付截图识别（长按 AI 助手或在对话中使用）';
 
   @override
-  String get smartBillingImageBillingGuide => '在首页长按底部中间的 + 按钮,选择「相册」即可使用图片记账功能。需先在「我的 → AI 设置」配置 AI 服务,AI 视觉模型会自动识别金额、商家、时间等账单信息。';
+  String get smartBillingImageBillingGuide => '可在首页底部长按「AI 助手」按钮滑动选择「相册」，或进入「AI 助手」对话页点击输入框左侧「+」选择「相册」。AI 视觉模型会自动识别截图中的金额、商家、时间等信息。\n\n提示：也可在手机桌面长按应用图标，或在相册中将截图直接分享给智记。';
 
   @override
   String get smartBillingVisionAIRequired => '图片识别必须配置 AI 视觉服务，请先在「我的 → AI 设置」中配置';
@@ -5079,19 +5102,19 @@ class AppLocalizationsZh extends AppLocalizations {
   String get smartBillingCameraBilling => '拍照记账';
 
   @override
-  String get smartBillingCameraBillingDesc => '拍摄支付截图进行识别';
+  String get smartBillingCameraBillingDesc => '拍摄纸质小票或账单识别（长按 AI 助手或在对话中使用）';
 
   @override
-  String get smartBillingCameraBillingGuide => '在首页长按底部中间的 + 按钮,选择「拍照」即可使用拍照记账功能。需先在「我的 → AI 设置」配置 AI 服务,AI 视觉模型会自动识别金额、商家、时间等账单信息。';
+  String get smartBillingCameraBillingGuide => '可在首页底部长按「AI 助手」按钮滑动选择「拍照」，或进入「AI 助手」对话页点击输入框左侧「+」选择「拍照」。AI 视觉模型会自动识别小票中的金额、商家、时间等信息。';
 
   @override
   String get smartBillingVoiceBilling => '语音记账';
 
   @override
-  String get smartBillingVoiceBillingDesc => '通过语音输入快速记账';
+  String get smartBillingVoiceBillingDesc => '语音口述日常收支记账（长按 AI 助手或在对话中使用）';
 
   @override
-  String get smartBillingVoiceBillingGuide => '在首页长按底部中间的 + 按钮，选择「语音」即可使用语音记账功能。语音记账需要通过AI将语音转为文字并提取账单信息。';
+  String get smartBillingVoiceBillingGuide => '可在首页底部长按「AI 助手」按钮滑动选择「语音」，或进入「AI 助手」对话页按住麦克风说话。AI 会自动转写语音并智能提取账单信息入账。';
 
   @override
   String get smartBillingAIRequired => '语音记账必须配置 AI 语音识别服务，请先在「我的 → AI 设置」中配置';
@@ -8346,6 +8369,14 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
 
   @override
   String get homeNoRecordsSubtext => '點擊下方「AI 助手」記帳，長按可手動記一筆';
+
+  @override
+  String homeNewRecordsCount(int count) {
+    return '有 $count 條新記錄';
+  }
+
+  @override
+  String get homeViewNewRecords => '查看';
 
   @override
   String get homeLastMonthReportSubtitle => '查看上月消費報告並分享';
@@ -12647,6 +12678,18 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
   String get autoBillingMockNotice => '模擬資料與真實訊息走同一套 AI 解析流程';
 
   @override
+  String get autoRecognitionRecordsTitle => '自動識別記錄';
+
+  @override
+  String get autoRecognitionRecordsDesc => '自動記帳的識別決策與入賬結果';
+
+  @override
+  String get autoRecognitionRecordsEmpty => '暫無記錄。去打開一筆帳單/訂單詳情頁，再回到此頁點重新整理：\n· 出現新記錄 → 決策碼說明被哪道閘攔截（或已正常入帳）\n· 始終無記錄 → 無障礙監聽未生效，請檢查系統無障礙開關';
+
+  @override
+  String get commonRefresh => '重新整理';
+
+  @override
   String get pendingConfirmationTitle => '待確認記帳';
 
   @override
@@ -13107,16 +13150,19 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
   String get smartBillingPageSubtitle => 'AI和自動化記帳功能';
 
   @override
-  String get smartBillingGuideHint => '長按首頁底部中間的 + 按鈕，即可快速使用這些功能';
+  String get smartBillingGuideHint => '長按底部中間的 AI 助手按鈕呼出扇形選單，或在 AI 助手對話頁中使用';
+
+  @override
+  String get smartBillingTryNow => '立即體驗';
 
   @override
   String get smartBillingImageBilling => '圖片記帳';
 
   @override
-  String get smartBillingImageBillingDesc => '從相簿選擇支付截圖進行識別';
+  String get smartBillingImageBillingDesc => '從相簿選擇支付截圖識別（長按 AI 助手或在對話中使用）';
 
   @override
-  String get smartBillingImageBillingGuide => '在首頁長按底部中間的 + 按鈕,選擇「相簿」即可使用圖片記帳功能。需先在「我的 → AI 設定」配置 AI 服務,AI 視覺模型會自動識別金額、商家、時間等帳單資訊。';
+  String get smartBillingImageBillingGuide => '可在首頁底部長按「AI 助手」按鈕滑動選擇「相簿」，或進入「AI 助手」對話頁點選輸入框左側「+」選擇「相簿」。AI 視覺模型會自動識別截圖中的金額、商家、時間等資訊。\n\n提示：也可在手機桌面長按應用程式圖示，或在相簿中將截圖直接分享給智記。';
 
   @override
   String get smartBillingVisionAIRequired => '圖片辨識必須配置 AI 視覺服務，請先在「我的 → AI 設定」中配置';
@@ -13125,19 +13171,19 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
   String get smartBillingCameraBilling => '拍照記帳';
 
   @override
-  String get smartBillingCameraBillingDesc => '拍攝支付截圖進行識別';
+  String get smartBillingCameraBillingDesc => '拍攝紙本收據或帳單識別（長按 AI 助手或在對話中使用）';
 
   @override
-  String get smartBillingCameraBillingGuide => '在首頁長按底部中間的 + 按鈕,選擇「拍照」即可使用拍照記帳功能。需先在「我的 → AI 設定」配置 AI 服務,AI 視覺模型會自動識別金額、商家、時間等帳單資訊。';
+  String get smartBillingCameraBillingGuide => '可在首頁底部長按「AI 助手」按鈕滑動選擇「拍照」，或進入「AI 助手」對話頁點選輸入框左側「+」選擇「拍照」。AI 視覺模型會自動識別收據中的金額、商家、時間等資訊。';
 
   @override
   String get smartBillingVoiceBilling => '語音記帳';
 
   @override
-  String get smartBillingVoiceBillingDesc => '透過語音輸入快速記帳';
+  String get smartBillingVoiceBillingDesc => '語音口述日常收支記帳（長按 AI 助手或在對話中使用）';
 
   @override
-  String get smartBillingVoiceBillingGuide => '在首頁長按底部中間的 + 按鈕，選擇「語音」即可使用語音記帳功能。語音記帳需要透過AI將語音轉為文字並提取帳單資訊。';
+  String get smartBillingVoiceBillingGuide => '可在首頁底部長按「AI 助手」按鈕滑動選擇「語音」，或進入「AI 助手」對話頁按住麥克風說話。AI 會自動轉寫語音並智慧提取帳單資訊入帳。';
 
   @override
   String get smartBillingAIRequired => '語音記帳必須配置 AI 語音辨識服務，請先在「我的 → AI 設定」中配置';

@@ -979,6 +979,12 @@ class _BeeBottomBar extends StatelessWidget {
           decoration: BoxDecoration(
             color: bgColor,
             borderRadius: BorderRadius.circular(28),
+            border: Border.all(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.08)
+                  : Colors.black.withValues(alpha: 0.04),
+              width: 0.8,
+            ),
             boxShadow: BeeTokens.tabBarShadow,
           ),
           child: ClipRRect(
@@ -1080,26 +1086,34 @@ class _BeeBottomBar extends StatelessWidget {
         onLongPressMoveUpdate: onCenterLongPressMoveUpdate,
         onLongPressEnd: onCenterLongPressEnd,
         child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.auto_awesome_outlined,
-                  color: inactiveColor, size: 22),
-              const SizedBox(height: 1),
-              Text(
-                l10n.tabAiAssistant,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                softWrap: false,
-                textScaler: TextScaler.noScaling,
-                style: TextStyle(
-                  fontSize: 10,
-                  color: inactiveColor,
-                  fontWeight: FontWeight.w400,
-                ),
+          child: Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                colors: [
+                  primaryColor,
+                  Color.lerp(primaryColor, const Color(0xFF1E40AF), 0.3) ?? primaryColor,
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
-            ],
+              boxShadow: [
+                BoxShadow(
+                  color: primaryColor.withValues(alpha: 0.38),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: const Center(
+              child: Icon(
+                Icons.auto_awesome,
+                color: Colors.white,
+                size: 21,
+              ),
+            ),
           ),
         ),
       ),

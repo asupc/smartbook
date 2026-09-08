@@ -302,6 +302,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get homeNoRecordsSubtext => 'Tap the AI assistant below, or long-press it to add manually';
 
   @override
+  String homeNewRecordsCount(int count) {
+    return '$count new records';
+  }
+
+  @override
+  String get homeViewNewRecords => 'View';
+
+  @override
   String get homeLastMonthReportSubtitle => 'View and share last month\'s report';
 
   @override
@@ -4601,6 +4609,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get autoBillingMockNotice => 'Mock data goes through the same AI pipeline as real messages';
 
   @override
+  String get autoRecognitionRecordsTitle => 'Auto recognition records';
+
+  @override
+  String get autoRecognitionRecordsDesc => 'Recognition decisions & outcomes from auto bookkeeping';
+
+  @override
+  String get autoRecognitionRecordsEmpty => 'No records yet. Open a bill/order detail page, then come back and tap refresh:\n· New record appears → the decision code shows which gate blocked it (or that it was booked)\n· No record at all → accessibility monitoring is not active; check the system accessibility switch';
+
+  @override
+  String get commonRefresh => 'Refresh';
+
+  @override
   String get pendingConfirmationTitle => 'Pending confirmation';
 
   @override
@@ -5061,16 +5081,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get smartBillingPageSubtitle => 'AI and automation billing features';
 
   @override
-  String get smartBillingGuideHint => 'Long press the + button at the bottom center of the home page to quickly access these features';
+  String get smartBillingGuideHint => 'Long press the AI Assistant button at the bottom center, or use it within AI Chat';
+
+  @override
+  String get smartBillingTryNow => 'Try Now';
 
   @override
   String get smartBillingImageBilling => 'Image Billing';
 
   @override
-  String get smartBillingImageBillingDesc => 'Select payment screenshots from gallery for recognition';
+  String get smartBillingImageBillingDesc => 'Select payment screenshot from gallery (long press AI button or use in AI Chat)';
 
   @override
-  String get smartBillingImageBillingGuide => 'Long press the + button at the bottom center of the home page and select \'Gallery\' to use image billing. Requires AI service configured under \"Me → AI Settings\"; the vision model will extract amount, merchant, time, etc. from the screenshot.';
+  String get smartBillingImageBillingGuide => 'Long press the \'AI Assistant\' button at the bottom center to select \'Gallery\', or tap \'+\' in the AI Chat page. The AI vision model will automatically extract amount, merchant, and time.\n\nTip: You can also long press the app icon on your home screen or share screenshots to SmartBook.';
 
   @override
   String get smartBillingVisionAIRequired => 'Image recognition requires an AI vision service. Set it up in \"Me → AI Settings\" first.';
@@ -5079,19 +5102,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get smartBillingCameraBilling => 'Camera Billing';
 
   @override
-  String get smartBillingCameraBillingDesc => 'Capture payment screenshots for recognition';
+  String get smartBillingCameraBillingDesc => 'Take a photo of receipt or bill (long press AI button or use in AI Chat)';
 
   @override
-  String get smartBillingCameraBillingGuide => 'Long press the + button at the bottom center of the home page and select \'Camera\' to use camera billing. Requires AI service configured under \"Me → AI Settings\"; the vision model will extract amount, merchant, time, etc. from the photo.';
+  String get smartBillingCameraBillingGuide => 'Long press the \'AI Assistant\' button at the bottom center to select \'Camera\', or tap \'+\' in the AI Chat page. The AI vision model will extract amount, merchant, and time.';
 
   @override
   String get smartBillingVoiceBilling => 'Voice Billing';
 
   @override
-  String get smartBillingVoiceBillingDesc => 'Quick billing through voice input';
+  String get smartBillingVoiceBillingDesc => 'Voice input for daily expenses (long press AI button or use in AI Chat)';
 
   @override
-  String get smartBillingVoiceBillingGuide => 'Long press the + button at the bottom center of the home page and select \'Voice\' to use voice billing. Voice billing requires AI to convert speech to text and extract bill information.';
+  String get smartBillingVoiceBillingGuide => 'Long press the \'AI Assistant\' button at the bottom center to select \'Voice\', or hold the microphone in AI Chat. AI will transcribe speech and extract billing details.';
 
   @override
   String get smartBillingAIRequired => 'Voice billing requires an AI speech service. Set it up in \"Me → AI Settings\" first.';
