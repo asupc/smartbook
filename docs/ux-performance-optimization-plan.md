@@ -5,6 +5,7 @@
 > 适用范围：`client/` Android/Flutter 客户端、`server/` AI Relay 与同步相关服务  
 > 当前基线提交：`f7494b8`（`[自动记账] 完成 UX 优化专项(P0-P2 全部落地)`）  
 > 计划性质：增量优化，不推翻现有本地优先、事件幂等、候选确认和同步架构
+> 未实施项详细拆解：`docs/performance-followup-implementation-plan.md`（2026-09-08）
 
 ---
 
@@ -18,7 +19,7 @@
 4. **可靠性**：任何优化都不得引入丢账、重复记账、跨账本串账或同步契约破坏；
 5. **可度量性**：建立可重复的基准、阶段耗时和发布门禁，避免仅凭体感优化。
 
-本文重点针对 vivo / OriginOS Android 自动记账主链路，同时覆盖手动记账、首页明细和 SmartBook Cloud AI Relay。Web 管理端不作为本轮首要范围，除非服务端改动需要对应展示或配置入口。
+本文重点针对 vivo / OriginOS Android 自动记账主链路，同时覆盖手动记账、首页明细和 SmartBook Cloud AI Relay。Web 管理端不作为本轮首要范围，除非服务端改动需要对应展示或配置入口；新增 M6-6“重复交易清理原始记账信息对比”作为独立 Web/服务端调整项，详细方案见 `docs/performance-followup-implementation-plan.md`。
 
 ---
 
@@ -1072,6 +1073,12 @@ happenedAt < lastTime
 - `accountFeatureEnabledProvider` 等列表级状态在 delegate 外 watch 一次；
 - 预加载 ID → item 使用 Map，避免逐行 `where().firstOrNull`。
 
+> 2026-09-08 第一阶段已落地：`TransactionList` 按 transactions List 引用缓存
+> `_flatItems` / 日期索引；无关 rebuild 不再重新执行全量分组排序；预加载详情改为
+> `Map<int, TransactionDisplayItem>` O(1) 查询；`didUpdateWidget` 增加 identity 快路，
+> 避免重复分配全量交易 ID。回归测试：
+> `test/widgets/transaction_list_cache_test.dart`。首页分页（M5-4）仍未实施。
+
 ### M5 验收
 
 - 无附件手动提交 P95 ≤ 250ms；
@@ -1144,6 +1151,13 @@ WHERE t.ledger_id = ?
 
 测试需要覆盖不同 provider、参数自适应摘除和 timeout。
 
+> 2026-09-08 已落地：AI chat / vision / STT / embedding / SSE 共用进程级
+> `httpx.AsyncClient`，上限 32 连接、16 keep-alive、30s keep-alive expiry；
+> timeout 仍按每次能力调用显式传入，动态 provider origin 与 SSL 校验配置保持。
+> FastAPI startup 预热、shutdown 关闭，同时补齐原有 MCP internal client 的 shutdown
+> 释放。单测覆盖跨 provider 复用、参数摘除、独立 timeout 与关闭；本机纯 client
+> 构造微基准：新建/关闭约 7.41ms/次，共享池 getter 约 0.0015ms/次（不含网络）。
+
 ## M6-5 AI 日志异步化
 
 推荐可靠 outbox：
@@ -1155,6 +1169,11 @@ WHERE t.ledger_id = ?
 5. 不影响主响应。
 
 较小改动方案：先使用线程池执行同步写盘，降低 event loop 阻塞。完整 outbox 作为第二步。
+
+> 2026-09-08 第一阶段已落地：`ask`、Web 图片解析与 App Relay 的文本/图片/
+> 批量图片/STT 日志统一经 `asyncio.to_thread` 执行，SQLite commit 与图片写盘不再
+> 阻塞 FastAPI event loop；仍 await 写入完成，保留原有“响应前日志已可靠落地”语义。
+> 持久化 outbox/spool、失败重试和彻底移出响应尾延迟仍为第二阶段。
 
 ### 同步改动硬约束
 
@@ -1535,13 +1554,19 @@ read_p95_ms: 10.840
 | M5-2 | 手动提交分层 | 待开始 |  |  |  |  |
 | M5-3 | 状态反馈 | 待开始 |  |  |  |  |
 | M5-4 | 首页分页 | 待开始 |  |  |  |  |
-| M5-5 | 列表派生缓存 | 待开始 |  |  |  |  |
+| M5-5 | 列表派生缓存 | 部分完成 | 未提交 | 每次 build O(N) 分组 + 预加载逐行查找 | 同 List 引用 O(1) 复用 | 第一阶段完成；首页分页仍待 M5-4 |
 | M6-1 | 同步触发统一 | 待开始 |  |  |  |  |
 | M6-2 | 附件 JOIN 查询 | 待开始 |  |  |  |  |
 | M6-3 | 云端账本状态缓存 | 待开始 |  |  |  |  |
-| M6-4 | Server HTTP 连接池 | 待开始 |  |  |  |  |
-| M6-5 | AI 日志异步化 | 待开始 |  |  |  |  |
+| M6-4 | Server HTTP 连接池 | 已完成 | 未提交 | 每次调用新建 AsyncClient（本机约 7.41ms/次，不含握手） | 进程池 getter 约 0.0015ms/次 | 32/16 连接限制；动态 origin/timeout/SSL 回归测试 |
+| M6-5 | AI 日志异步化 | 部分完成 | 未提交 | 同步 DB/图片 I/O 阻塞 event loop | I/O 在线程池执行 | 仍 await；可靠 outbox/spool 待第二阶段 |
+| M6-6 | Web 重复交易原始证据对比 | 待开始 |  | DuplicateRecord 无 evidence link；raw evidence 无 transaction 关联；截图未进入 raw evidence 通道 | 计划新增 link/assets、admin compare API、对比抽屉与审计 | 详细实施方案见 `docs/performance-followup-implementation-plan.md` 第 8 章 |
 
 > 「基线 / 优化后」两列需真机实测填写(冷启动首帧、事件端到端 P95、判重查询
 > 耗时等)。第一批改动目前只在单元测试层验证:`flutter test`(客户端)与
 > `pytest tests/`(服务端)全绿,尚未做真机测量,因此两列留空。
+
+> 2026-09-08 性能扫描修复验证：服务端 `python -m pytest tests/` 为
+> **523 passed**；客户端 `flutter test` 为 **778 passed / 1 skipped**；
+> TransactionList 实现与回归测试的定向 `flutter analyze` 无问题。仍未做 Android 真机 /
+> 生产 PostgreSQL 网络基准，连接池微基准仅衡量本机 client 构造开销。
