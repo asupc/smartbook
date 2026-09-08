@@ -22,10 +22,18 @@ import java.security.MessageDigest
  * 支付通知的 App 以及历史账单回看)。系统无障碍服务读取前台页面文本树,
  * 检测到金额+交易特征后持久化入队,Flutter 侧经 AI 记账。流程与
  * NotificationWatcher 完全同构:
- *   1. 白名单包名(支付宝/抖音/京东/微信/招商银行) + 事件防抖(页面稳定后抓一次);
- *   2. 垃圾特征剔除 + 聊天页拒识 + 金额/强交易特征粗筛(宁缺勿滥);
+ *   1. 白名单包名(支付宝/抖音/京东/微信/招商银行) + 事件防抖(支付结果页
+ *      类名命中快速通道时防抖缩短,见 FAST_PATH_PAGES);
+ *   2. 聊天页类名拒识 → fastQuery 式锚点预筛(不展开整树) → 垃圾特征剔除 +
+ *      强/弱锚点分级与金额粗筛(宁缺勿滥);
  *   3. 指纹去重 + 持久化队列与短信/通知队列相互独立;
  *   4. Flutter 进程存活时经桥接广播即时取走,否则下次启动 drain。
+ *
+ * 页面识别思路(2026-09 参考 GKD 广告跳过订阅的支付类规则规律并适配,非照搬):
+ * GKD 对支付规则一律「activityIds 锁页面 + 文本锚点组合确认」,本服务借鉴为
+ * 三点 —— 已知结果页类名走快速通道(缩短防抖抢抓取)、交易特征词分强/弱两级
+ * (弱词需 ≥2 个同时命中)、整树采集前先做廉价锚点探测。类名表只收录短时
+ * 停留的支付结果页,历史账单回看(H5 容器页等)仍由内容启发式覆盖。
  *
  * 隐私:抓取文本**不入日志**(只打长度摘要)、不落盘,队列项处理完即删;
  * 与短信/通知一致,文本仅在 AI 已配置时发送到用户配置的 AI 服务商做记账。
@@ -105,9 +113,10 @@ open class ScreenTextWatcher : AccessibilityService() {
     private fun scheduleGrab() {
         if (grabScheduled) return
         grabScheduled = true
+        val idleMs = grabIdleMs()
         handler.postDelayed({
             grabScheduled = false
-            if (System.currentTimeMillis() - lastEventAt < GRAB_IDLE_MS &&
+            if (System.currentTimeMillis() - lastEventAt < idleMs &&
                 retryCount < MAX_GRAB_RETRIES
             ) {
                 retryCount++
@@ -116,13 +125,61 @@ open class ScreenTextWatcher : AccessibilityService() {
             }
             retryCount = 0
             grabAndProcess()
-        }, GRAB_IDLE_MS)
+        }, idleMs)
+    }
+
+    /**
+     * 防抖时长按页面身份动态取值:支付结果页(快速通道)停留常只有几秒且
+     * 可能自动跳转,800ms 全额防抖容易抢不到内容,缩到 300ms。参考 GKD 对
+     * 支付完成页规则的紧时效处理(activityIds 先锁页再立即动作)适配而来,
+     * 只调防抖,不引入强制抓取。
+     */
+    private fun grabIdleMs(): Long {
+        return if (isFastPathPage(lastEventPkg, lastPageClass)) FAST_GRAB_IDLE_MS else GRAB_IDLE_MS
     }
 
     private fun grabAndProcess() {
         try {
             val pkg = lastEventPkg
             if (pkg.isEmpty()) return
+            val fastPath = isFastPathPage(pkg, lastPageClass)
+
+            // 聊天页拒识只依赖类名,提到最前:聊天页连锚点探测与整树采集都
+            // 不做(此前在采集之后才判,白白读了整树文本)。
+            if (isChatPage(pkg, lastPageClass)) {
+                log("页面类名命中聊天页黑名单,丢弃: $pkg/$lastPageClass")
+                recordDecision(this, pkg, "chat_page", "cls=$lastPageClass")
+                return
+            }
+
+            val root = rootInActiveWindow
+            if (root == null) {
+                recordDecision(this, pkg, "no_anchor", "rootInActiveWindow=null(窗口未就绪)")
+                return
+            }
+
+            // 窗口归属校验:防抖结束的瞬间窗口可能已切换(快速通道 300ms 更
+            // 明显),根节点包名与事件包名对不上说明读到的不是来源 App 的页面,
+            // 丢弃本次抓取,等后续事件重新触发。contains 双向是覆盖微信
+            // 「com.tencent.mm:appbrand0」这类子进程包名。
+            val rootPkg = root.packageName?.toString() ?: ""
+            if (rootPkg.isNotEmpty() && !pkg.contains(rootPkg) && !rootPkg.contains(pkg)) {
+                log("窗口归属不符,丢弃: 事件=$pkg 根=$rootPkg")
+                recordDecision(this, pkg, "pkg_mismatch", "root包名=$rootPkg cls=$lastPageClass")
+                return
+            }
+
+            // fastQuery 式锚点预筛(GKD fastQuery 规律适配):先用框架原生的
+            // 文本查找探测强锚点,全部落空就不展开整树 —— 白名单 App 的绝大
+            // 多数页面(聊天流/商品流/信息流)没有强锚点,整树采集的逐节点
+            // binder 往返与字符串拼接都省下,页面文本也不进入本进程(隐私同
+            // 向)。探测词表 ⊆ 强锚点表,只会提前放弃、不会漏掉本应入队的页
+            // 面:弱锚点 ≥2 的页面仍会走完整采集与判定。
+            if (!hasAnchorNode(root)) {
+                log("锚点预筛未命中,跳过整树采集: $pkg/$lastPageClass")
+                recordDecision(this, pkg, "no_anchor", "预筛未命中锚点(cls=$lastPageClass)")
+                return
+            }
 
             val text = collectWindowText()
             val logLen = text.length
@@ -138,18 +195,13 @@ open class ScreenTextWatcher : AccessibilityService() {
                 return
             }
             val marketingHit = MARKETING_KEYWORDS.firstOrNull { text.contains(it) }
-            if (marketingHit != null && !hasTradeHint(text)) {
+            if (marketingHit != null && !hasBookableHint(text)) {
                 log("页面内容命中营销特征且无交易特征,丢弃: $pkg len=$logLen")
                 recordDecision(this, pkg, "marketing_no_hint", "命中营销词=$marketingHit")
                 return
             }
-            if (isChatPage(pkg, lastPageClass)) {
-                log("页面类名命中聊天页黑名单,丢弃: $pkg/$lastPageClass len=$logLen")
-                recordDecision(this, pkg, "chat_page", "cls=$lastPageClass")
-                return
-            }
             val amountCount = AMOUNT_PATTERN.findAll(text).count()
-            if (!hasAmount(text) || !hasTradeHint(text)) {
+            if (!hasAmount(text) || !hasBookableHint(text)) {
                 val why = if (!hasAmount(text)) "无金额" else "无交易特征"
                 log("无金额或无交易特征,丢弃: $pkg len=$logLen")
                 recordDecision(this, pkg, "no_amount_or_hint", "$why amounts=$amountCount")
@@ -178,10 +230,12 @@ open class ScreenTextWatcher : AccessibilityService() {
                 recordDecision(this, pkg, "duplicate", "同页面已在队列/已处理")
                 return
             }
-            log("已入队详情页文本: $pkg len=$logLen")
+            log("已入队详情页文本: $pkg len=$logLen fast=$fastPath")
             recordDecision(
                 this, pkg, "enqueued",
-                "len=$logLen amounts=$amountCount hint=${TRADE_KEYWORDS.firstOrNull { text.contains(it) }}"
+                "len=$logLen amounts=$amountCount fast=$fastPath hint=" +
+                    (STRONG_TRADE_KEYWORDS.firstOrNull { text.contains(it) }
+                        ?: WEAK_TRADE_KEYWORDS.filter { text.contains(it) }.joinToString("+"))
             )
 
             try {
@@ -244,6 +298,26 @@ open class ScreenTextWatcher : AccessibilityService() {
         }
     }
 
+    /**
+     * 锚点预筛(GKD fastQuery 规律适配):在整树采集前用框架原生的文本查找
+     * 探测强锚点是否存在。findAccessibilityNodeInfosByText 对节点的
+     * text/contentDescription 做不区分大小写的包含匹配,与 collectWindowText
+     * 的「text+desc 拼接」口径一致;每次调用是单次进程间往返,树遍历由宿主
+     * App 侧完成,比逐节点 getChild 的多轮往返便宜。任一强锚点命中即值得
+     * 整树采集;全部落空则大概率不是账单页。API<33 的返回节点按惯例回收。
+     */
+    private fun hasAnchorNode(root: AccessibilityNodeInfo): Boolean {
+        fun hit(word: String): Boolean {
+            val found = root.findAccessibilityNodeInfosByText(word) ?: return false
+            val exists = found.isNotEmpty()
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                found.forEach { it.recycle() }
+            }
+            return exists
+        }
+        return STRONG_TRADE_KEYWORDS.any { hit(it) }
+    }
+
     // ------------------------------------------------------------
     // 过滤规则(与 SmsReceiver/NotificationWatcher 同策略,可单测)
     // ------------------------------------------------------------
@@ -261,7 +335,7 @@ open class ScreenTextWatcher : AccessibilityService() {
      * 挡 —— 就算漏过,后面还有列表页/不可入账状态两道闸和 AI 最终判定兜底。
      */
     fun isMarketingPage(text: String): Boolean {
-        return MARKETING_KEYWORDS.any { text.contains(it) } && !hasTradeHint(text)
+        return MARKETING_KEYWORDS.any { text.contains(it) } && !hasBookableHint(text)
     }
 
     /** 页面文本中是否出现金额(¥/￥ 前缀或 x元/x块 写法)。 */
@@ -299,11 +373,25 @@ open class ScreenTextWatcher : AccessibilityService() {
 
     /**
      * 页面文本是否有账单/订单**详情页**特征(粗筛,精确判定交给 AI)。
-     * 只收「详情页标题/状态/字段名」级强特征短语 —— 聊天口语里的单词
-     * (「我支付了」「退款了吗」「转账给你」)不会命中;宁漏勿误。
+     * 强/弱锚点分级(2026-09 参考 GKD 支付规则的「状态词+按钮词组合确认」
+     * 适配):强锚点(页面标题/交易状态)单独命中即可;弱锚点(字段名/
+     * 按钮文案)聊天与商品页擦边风险高,需 ≥2 个不同词同时命中 —— 原
+     * 「任意单词命中即可」会让「订单号+金额」的订单确认/售后页通过粗筛。
      */
-    fun hasTradeHint(text: String): Boolean {
-        return TRADE_KEYWORDS.any { text.contains(it) }
+    fun hasBookableHint(text: String): Boolean {
+        if (STRONG_TRADE_KEYWORDS.any { text.contains(it) }) return true
+        return WEAK_TRADE_KEYWORDS.count { text.contains(it) } >= 2
+    }
+
+    /**
+     * 支付结果页快速通道(仅影响防抖时长,不做放行)。匹配用 contains 子串,
+     * 与 TRUSTED_PACKAGES 同风格;包名同样用 contains,覆盖微信小程序跑在
+     * com.tencent.mm:appbrand0 这类子进程的场景。
+     */
+    fun isFastPathPage(pkg: String, pageClass: String): Boolean {
+        return FAST_PATH_PAGES.any { (target, pages) ->
+            pkg.contains(target) && pages.any { pageClass.contains(it) }
+        }
     }
 
     /** 同一页面内容在不同捕获时刻可区分的原始事件键。 */
@@ -518,6 +606,8 @@ open class ScreenTextWatcher : AccessibilityService() {
 
         /** 事件防抖:页面静默多久后抓取 (ms) */
         private const val GRAB_IDLE_MS = 800L
+        /** 快速通道页面(支付结果页)的防抖:短停留/可能自动跳转,抢抓取 */
+        private const val FAST_GRAB_IDLE_MS = 300L
         /** 连续重排最大次数(防滚动类事件无限后延) */
         private const val MAX_GRAB_RETRIES = 2
 
@@ -545,20 +635,52 @@ open class ScreenTextWatcher : AccessibilityService() {
             "直降", "特价", "折扣"
         )
 
-        /** 详情页特征词:标题/状态/字段名级短语(聊天口语不会碰巧出现)。
-            原「支付/消费/转账/付款」等单词过宽 —— 聊天里聊到钱就命中,
-            导致聊天页整页文本被送 AI,2026-09 收紧。 */
-        private val TRADE_KEYWORDS = listOf(
+        /**
+         * 支付结果页快速通道类名表(2026-09,参考 GKD 订阅支付类规则的
+         * activityIds 适配;类名是 GKD 订阅在真机长期验证过的映射):
+         *  - MspContainerActivity:支付宝收银台/支付结果页
+         *  - NResPageActivity:支付宝碰一碰/NFC 支付结果页
+         *  - WxaLiteAppLiteUI / WxaLiteAppTransparentLiteUI:微信小程序支付结果
+         *  - RemittanceDetailUI:微信收款详情(「已收款」页)
+         * 微信 UIPageFragmentActivity 承载页面过多,支付宝账单详情是 H5 容器页,
+         * 都不适合按类名放行 —— 历史账单回看仍由内容启发式覆盖。此表只决定
+         * 防抖时长,是否入队仍走完整过滤链。
+         */
+        private val FAST_PATH_PAGES = mapOf(
+            "com.eg.android.AlipayGphone" to listOf(
+                "MspContainerActivity", "NResPageActivity"
+            ),
+            "com.tencent.mm" to listOf(
+                "WxaLiteAppLiteUI", "WxaLiteAppTransparentLiteUI", "RemittanceDetailUI"
+            )
+        )
+
+        /**
+         * 强锚点:页面标题/交易状态级短语,单独命中(配合金额闸)即可放行。
+         * 聊天口语里的单词(「我支付了」「退款了吗」「转账给你」)不会命中。
+         */
+        private val STRONG_TRADE_KEYWORDS = listOf(
             // 页面标题
             "订单详情", "账单详情", "交易详情", "支付详情", "退款详情",
-            "订单结算", "支付结果",
-            // 交易状态
+            "订单结算", "支付结果", "微信支付凭证", "红包详情",
+            // 支出状态
             "支付成功", "付款成功", "交易成功", "已支付", "已付款",
             "退款成功", "支付完成",
-            // 字段名/编号(详情页独有,聊天几乎不会整词出现)
+            // 收入状态(2026-09 补全:原词表只有支出视角,收款/转账存入
+            // 零钱的详情页此前进不了粗筛)
+            "已收款", "收款成功", "已收钱", "已存入零钱"
+        )
+
+        /**
+         * 弱锚点:字段名/按钮级短语,需 ≥2 个不同词同时命中才放行 —— 单个
+         * 字段词+金额的订单确认/售后页不再通过粗筛。「返回商家」为微信支付
+         * 结果页完成按钮的 contentDescription(GKD 微信支付规则同款锚点)。
+         */
+        private val WEAK_TRADE_KEYWORDS = listOf(
             "订单编号", "订单号", "交易单号", "转账单号", "商户单号",
             "商家订单", "交易流水", "实付款", "实付金额", "付款金额",
-            "支付金额", "订单金额", "交易金额", "合计金额", "退款金额"
+            "支付金额", "订单金额", "交易金额", "合计金额", "退款金额",
+            "返回商家"
         )
 
         private val NON_BOOKABLE_KEYWORDS = listOf(
