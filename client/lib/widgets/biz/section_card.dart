@@ -23,7 +23,7 @@ class SectionCard extends StatelessWidget {
       margin: margin, // 使用传入的 margin
       decoration: BoxDecoration(
         color: BeeTokens.surface(context), // ⭐ 使用 Token
-        borderRadius: BorderRadius.circular(BeeDimens.radius12),
+        borderRadius: BorderRadius.circular(BeeDimens.radius16),
         border: borderWidth > 0
             ? Border.all(
                 color: borderColor, // ⭐ 使用卡片边框 Token

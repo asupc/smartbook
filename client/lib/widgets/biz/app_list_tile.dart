@@ -15,6 +15,8 @@ class AppListTile extends StatelessWidget {
   /// 不渲染。放在这里而不是让调用方自己包 [FeatureDot],是因为默认图标那个
   /// 36×36 圆形容器的样式在这个文件里 —— 让每个调用点去复刻一遍必然走样。
   final String? dotAnchor;
+  final Color? leadingColor;
+  final Color? leadingBgColor;
 
   const AppListTile(
       {super.key,
@@ -25,7 +27,9 @@ class AppListTile extends StatelessWidget {
       this.onTap,
       this.enabled = true,
       this.trailing,
-      this.dotAnchor});
+      this.dotAnchor,
+      this.leadingColor,
+      this.leadingBgColor});
 
   Widget _withDot(Widget icon) =>
       dotAnchor == null ? icon : FeatureDot(anchor: dotAnchor!, child: icon);
@@ -36,6 +40,11 @@ class AppListTile extends StatelessWidget {
         .copyWith(color: BeeTokens.textPrimary(context)); // ⭐ 使用 Token
     final subStyle = BeeTextTokens.label(context)
         .copyWith(color: BeeTokens.textSecondary(context)); // ⭐ 使用 Token
+    final effectiveBgColor = leadingBgColor ??
+        Theme.of(context).colorScheme.primary.withValues(alpha: 0.10);
+    final effectiveIconColor =
+        leadingColor ?? Theme.of(context).colorScheme.primary;
+
     final tile = Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
@@ -43,18 +52,16 @@ class AppListTile extends StatelessWidget {
           _withDot(
             leadingWidget ??
                 Container(
-                  width: 36,
-                  height: 36,
+                  width: 38,
+                  height: 38,
                   decoration: BoxDecoration(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .primary
-                        .withValues(alpha: 0.12),
-                    shape: BoxShape.circle,
+                    color: effectiveBgColor,
+                    borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(
                     leading,
-                    color: Theme.of(context).colorScheme.primary,
+                    size: 20,
+                    color: effectiveIconColor,
                   ),
                 ),
           ),

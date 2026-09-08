@@ -11,3 +11,4 @@ export 'ledger_card.dart';
 export 'category_selector_dialog.dart';
 export 'tag_chip.dart';
 export 'attachment_picker.dart';
+export 'recognition_app_icon.dart';

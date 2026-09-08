@@ -233,11 +233,20 @@ class TransactionListItem extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryColor = ref.watch(primaryColorProvider);
+    final palette = getCategoryColorPalette(
+      category: category,
+      categoryName: categoryName,
+      isDark: isDark,
+      primaryColor: primaryColor,
+    );
+
     Widget child = InkWell(
       onTap: isSelectionMode ? onSelectionChanged : onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(
-            horizontal: 12, vertical: BeeDimens.listRowVertical),
+            horizontal: 16, vertical: 10),
         child: Row(
           children: [
             // 选择模式下显示复选框，否则显示分类图标
@@ -248,22 +257,24 @@ class TransactionListItem extends ConsumerWidget {
                 activeColor: Theme.of(context).colorScheme.primary,
               )
             else
-              // 分类图标，支持点击跳转
+              // 现代 Squircle (平滑方圆) 分类图标，支持点击跳转
               GestureDetector(
                 onTap: onCategoryTap,
                 child: Container(
-                  width: 32,
-                  height: 32,
+                  width: 40,
+                  height: 40,
                   decoration: BoxDecoration(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .primary
-                        .withValues(alpha: 0.12),
-                    shape: BoxShape.circle,
+                    color: palette.background,
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  child: CategoryIconWidget(
-                    category: category,
-                    size: 18,
+                  child: Center(
+                    child: CategoryIconWidget(
+                      category: category,
+                      categoryName: categoryName,
+                      size: 20,
+                      color: palette.foreground,
+                      showBackground: false,
+                    ),
                   ),
                 ),
               ),
@@ -290,13 +301,18 @@ class TransactionListItem extends ConsumerWidget {
                             return Text.rich(
                               TextSpan(
                                 text: composed.primary,
-                                style: BeeTextTokens.title(context),
+                                style: BeeTextTokens.title(context).copyWith(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                ),
                                 children: [
                                   if (composed.parenNote != null)
                                     TextSpan(
                                       text: '  (${composed.parenNote})',
-                                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      style: TextStyle(
+                                        fontSize: 12.5,
                                         color: BeeTokens.textSecondary(context),
+                                        fontWeight: FontWeight.w400,
                                       ),
                                     ),
                                 ],
@@ -330,7 +346,7 @@ class TransactionListItem extends ConsumerWidget {
                     // 第三行：时间 · 账户 · 附件
                     if (_hasSecondaryInfo(ref))
                       Padding(
-                        padding: const EdgeInsets.only(top: 2),
+                        padding: const EdgeInsets.only(top: 3),
                         child: _buildSecondaryInfo(context, ref),
                       ),
                   ],
@@ -354,7 +370,10 @@ class TransactionListItem extends ConsumerWidget {
                     showCurrency: _isForeign(ref),
                     currencyCode: currencyCode,
                     decimals: 2,
-                    style: BeeTextTokens.title(context).copyWith(
+                    style: TextStyle(
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                      fontSize: 16.5,
+                      fontWeight: FontWeight.w700,
                       color: isAdjustment
                           ? (amount >= 0
                               ? BeeTokens.incomeColor(context, ref)
@@ -362,8 +381,8 @@ class TransactionListItem extends ConsumerWidget {
                           : isTransfer
                               ? BeeTokens.textPrimary(context)
                               : isExpense
-                                  ? BeeTokens.expenseColor(context, ref)
-                                  : BeeTokens.incomeColor(context, ref),
+                                  ? (isDark ? Colors.white : const Color(0xFF0F172A))
+                                  : (isDark ? const Color(0xFF34D399) : const Color(0xFF059669)),
                     )),
                 // 标签行 + ≈折算小字(反馈15:折算放标签右边,同一行;无标签时
                 // 折算独占该行)。隐藏金额开关开启时折算同样遮蔽。
@@ -411,32 +430,19 @@ class TransactionListItem extends ConsumerWidget {
       ),
     );
 
-    // 如果提供了删除回调，则包装在Dismissible中支持侧滑删除
+    // 如果提供了删除回调，则包装在IosSwipeActionCell中支持类iOS平滑侧滑删除
     if (onDelete != null) {
-      return Dismissible(
+      return IosSwipeActionCell(
         key: ValueKey('transaction_$title${amount.toString()}'),
-        direction: DismissDirection.endToStart,
-        background: Container(
-          alignment: Alignment.centerRight,
-          padding: const EdgeInsets.only(right: 20),
-          color: Colors.red,
-          child: const Icon(
-            Icons.delete,
-            color: Colors.white,
-            size: 24,
-          ),
-        ),
-        confirmDismiss: (direction) async {
-          // 显示确认对话框
+        confirmDelete: () async {
           return await AppDialog.confirm<bool>(
             context,
             title: '确认删除',
             message: '确定要删除这笔交易吗？此操作无法撤销。',
+            isDestructive: true,
           ) ?? false;
         },
-        onDismissed: (direction) {
-          onDelete!();
-        },
+        onDelete: onDelete,
         child: child,
       );
     }

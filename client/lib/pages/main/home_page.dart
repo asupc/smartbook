@@ -12,7 +12,6 @@ import '../../data/db.dart';
 import '../../widgets/ui/ui.dart';
 import '../../widgets/biz/biz.dart';
 import '../../widgets/biz/smartbook_icon.dart';
-import '../../styles/tokens.dart';
 import '../transaction/search_page.dart';
 import '../../l10n/app_localizations.dart';
 import '../../services/system/logger_service.dart';
@@ -22,10 +21,8 @@ import '../../services/export/share_poster_service.dart';
 import '../report/annual_report_page.dart';
 import '../calendar/calendar_page.dart';
 import '../../widgets/biz/ledger_picker_sheet.dart';
-import '../../widgets/biz/home_budget_summary.dart';
 import 'ledgers_page_new.dart';
 import '../../providers/shared_ledger_providers.dart';
-import '../../providers/automation_providers.dart';
 import '../automation/pending_confirmation_page.dart';
 
 // 优化版首页 - 使用FlutterListView实现精准定位和丝滑跳转
@@ -304,6 +301,83 @@ class _HomePageState extends ConsumerState<HomePage> {
     }
   }
 
+  /// M5-4 窗口化分页路径：从 [homeTransactionWindowProvider] 读取窗口状态，
+  /// 传给 [TransactionList] 并接好双向 loader / 新记录横幅。
+  Widget _buildWindowedTransactionList(
+    BuildContext context,
+    int ledgerId,
+    bool hide,
+  ) {
+    final cachedFullData = ref.watch(cachedTransactionsProvider);
+    // 首次进入窗口需初始化（账本切换由 provider 内部 ref.listen 处理）。
+    final win = ref.watch(homeTransactionWindowProvider);
+    if (!win.loadingInitial && win.items.isEmpty) {
+      // 确保初始加载已触发（首次 build 时 provider 尚未初始化）。
+      Future.microtask(() {
+        ref.read(homeTransactionWindowProvider.notifier).initializeLatest();
+      });
+    }
+
+    // 窗口 items 就是 TransactionWithRefs,与 TransactionList.transactions 同型。
+    final items = win.items.map((r) => (
+          t: r.t,
+          category: r.category,
+          account: r.account,
+          toAccount: r.toAccount,
+        )).toList();
+
+    final list = TransactionList(
+      key: _transactionListKey,
+      transactions: items,
+      transactionsWithDetails: cachedFullData,
+      hideAmounts: hide,
+      enableVisibilityTracking: true,
+      onDateVisibilityChanged: _onHeaderVisibilityChanged,
+      controller: _listController,
+      hasOlder: win.hasOlder,
+      hasNewer: win.hasNewer,
+      loadingOlder: win.loadingOlder,
+      loadingNewer: win.loadingNewer,
+      onLoadOlder: () =>
+          ref.read(homeTransactionWindowProvider.notifier).loadOlder(),
+      onLoadNewer: () =>
+          ref.read(homeTransactionWindowProvider.notifier).loadNewer(),
+      unseenNewCount: win.isLatestMode ? null : win.unseenNewCount,
+      onReturnToLatest: () =>
+          ref.read(homeTransactionWindowProvider.notifier).returnToLatest(),
+      emptyWidget: AppEmpty(
+        text: AppLocalizations.of(context).homeNoRecords,
+        subtext: AppLocalizations.of(context).homeNoRecordsSubtext,
+      ),
+    );
+
+    // 初始加载中且无内容时,先用 Splash 缓存占位。
+    if (win.loadingInitial && items.isEmpty && cachedFullData != null) {
+      return TransactionList(
+        key: _transactionListKey,
+        transactions: cachedFullData
+            .map((item) => (
+                  t: item.t,
+                  category: item.category,
+                  account: item.account,
+                  toAccount: item.toAccount,
+                ))
+            .toList(),
+        transactionsWithDetails: cachedFullData,
+        hideAmounts: hide,
+        enableVisibilityTracking: true,
+        onDateVisibilityChanged: _onHeaderVisibilityChanged,
+        controller: _listController,
+        emptyWidget: AppEmpty(
+          text: AppLocalizations.of(context).homeNoRecords,
+          subtext: AppLocalizations.of(context).homeNoRecordsSubtext,
+        ),
+      );
+    }
+
+    return list;
+  }
+
   // FlutterListView不需要手动计算偏移量，直接使用jumpToIndex即可！
 
   // 日期选择处理
@@ -339,20 +413,24 @@ class _HomePageState extends ConsumerState<HomePage> {
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 4, 12, 8),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        color: isDark ? const Color(0xFF111726) : Colors.white,
+        border: Border.all(
+          color: isDark ? Colors.white.withValues(alpha: 0.08) : const Color(0xFFE2E8F0),
+          width: 0.8,
+        ),
         boxShadow: isDark
             ? null
             : [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.04),
-                  blurRadius: 8,
+                  blurRadius: 10,
                   offset: const Offset(0, 2),
                 ),
               ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         child: Stack(
           children: [
             // 左侧装饰条
@@ -460,20 +538,24 @@ class _HomePageState extends ConsumerState<HomePage> {
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 4, 12, 8),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-        boxShadow: isDark
-            ? null
-            : [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.04),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
+        borderRadius: BorderRadius.circular(16),
+        color: isDark ? const Color(0xFF111726) : Colors.white,
+        border: Border.all(
+          color: isDark
+              ? accent.withValues(alpha: 0.25)
+              : accent.withValues(alpha: 0.2),
+          width: 0.8,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: accent.withValues(alpha: isDark ? 0.08 : 0.06),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         child: Stack(
           children: [
             Positioned(
@@ -553,20 +635,24 @@ class _HomePageState extends ConsumerState<HomePage> {
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 4, 12, 8),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        color: isDark ? const Color(0xFF111726) : Colors.white,
+        border: Border.all(
+          color: isDark ? Colors.white.withValues(alpha: 0.08) : const Color(0xFFE2E8F0),
+          width: 0.8,
+        ),
         boxShadow: isDark
             ? null
             : [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.04),
-                  blurRadius: 8,
+                  blurRadius: 10,
                   offset: const Offset(0, 2),
                 ),
               ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         child: Stack(
           children: [
             // 左侧装饰条
@@ -659,20 +745,24 @@ class _HomePageState extends ConsumerState<HomePage> {
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 4, 12, 8),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        color: isDark ? const Color(0xFF111726) : Colors.white,
+        border: Border.all(
+          color: isDark ? Colors.white.withValues(alpha: 0.08) : const Color(0xFFE2E8F0),
+          width: 0.8,
+        ),
         boxShadow: isDark
             ? null
             : [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.04),
-                  blurRadius: 8,
+                  blurRadius: 10,
                   offset: const Offset(0, 2),
                 ),
               ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         child: Stack(
           children: [
             // 左侧装饰条
@@ -807,7 +897,6 @@ class _HomePageState extends ConsumerState<HomePage> {
         children: [
           Consumer(builder: (context, ref, _) {
             ref.watch(headerStyleProvider);
-            final hide = ref.watch(hideAmountsProvider);
             return PrimaryHeader(
               title: '',
               showTitleSection: false,
@@ -883,17 +972,21 @@ class _HomePageState extends ConsumerState<HomePage> {
                                             padding:
                                                 const EdgeInsets.symmetric(
                                                     horizontal: 10,
-                                                    vertical: 6),
+                                                    vertical: 5),
                                             decoration: BoxDecoration(
                                               color: Theme.of(context)
                                                           .brightness ==
                                                       Brightness.dark
-                                                  ? Colors.white
-                                                      .withValues(alpha: 0.1)
-                                                  : Colors.black
-                                                      .withValues(alpha: 0.05),
+                                                  ? const Color(0xFF1E293B)
+                                                  : Colors.white,
                                               borderRadius:
-                                                  BorderRadius.circular(14),
+                                                  BorderRadius.circular(16),
+                                              border: Border.all(
+                                                color: Theme.of(context).brightness == Brightness.dark
+                                                    ? Colors.white.withValues(alpha: 0.1)
+                                                    : const Color(0xFFE2E8F0),
+                                                width: 0.8,
+                                              ),
                                             ),
                                             child: Row(
                                               mainAxisSize: MainAxisSize.min,
@@ -923,7 +1016,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                                                         TextOverflow.ellipsis,
                                                     softWrap: false,
                                                     style: TextStyle(
-                                                      fontSize: 14,
+                                                      fontSize: 13,
                                                       fontWeight:
                                                           FontWeight.w500,
                                                       color: Theme.of(context)
@@ -944,7 +1037,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                                                         .textTheme
                                                         .bodyMedium
                                                         ?.color
-                                                        ?.withOpacity(0.7),
+                                                        ?.withValues(alpha: 0.7),
                                                   ),
                                                   const SizedBox(width: 1),
                                                   Text(
@@ -955,7 +1048,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                                                           .textTheme
                                                           .bodyMedium
                                                           ?.color
-                                                          ?.withOpacity(0.7),
+                                                          ?.withValues(alpha: 0.7),
                                                     ),
                                                   ),
                                                 ],
@@ -969,7 +1062,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                                                         .textTheme
                                                         .bodyMedium
                                                         ?.color
-                                                        ?.withOpacity(0.5),
+                                                        ?.withValues(alpha: 0.5),
                                                   ),
                                                 ],
                                               ],
@@ -986,137 +1079,74 @@ class _HomePageState extends ConsumerState<HomePage> {
                             ],
                           ),
                         ),
-                        // 右侧操作按钮
-                        IconButton(
-                          tooltip: AppLocalizations.of(context).calendarTitle,
-                          padding: const EdgeInsets.all(6),
-                          style: IconButton.styleFrom(
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            minimumSize: Size.zero,
+                        // 右侧操作按钮：圆角微底色按钮
+                        Container(
+                          width: 34,
+                          height: 34,
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).brightness == Brightness.dark
+                                ? const Color(0xFF1E293B)
+                                : const Color(0xFFF1F5F9),
+                            shape: BoxShape.circle,
                           ),
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const CalendarPage(),
-                              ),
-                            );
-                          },
-                          icon: Icon(
-                            Icons.calendar_month_outlined,
-                            size: 20,
-                            color: Theme.of(context).iconTheme.color,
+                          child: IconButton(
+                            tooltip: AppLocalizations.of(context).calendarTitle,
+                            padding: EdgeInsets.zero,
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const CalendarPage(),
+                                ),
+                              );
+                            },
+                            icon: Icon(
+                              Icons.calendar_month_outlined,
+                              size: 18,
+                              color: Theme.of(context).iconTheme.color,
+                            ),
                           ),
                         ),
-                        IconButton(
-                          tooltip: AppLocalizations.of(context).homeSearch,
-                          padding: const EdgeInsets.all(6),
-                          style: IconButton.styleFrom(
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            minimumSize: Size.zero,
+                        const SizedBox(width: 8),
+                        Container(
+                          width: 34,
+                          height: 34,
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).brightness == Brightness.dark
+                                ? const Color(0xFF1E293B)
+                                : const Color(0xFFF1F5F9),
+                            shape: BoxShape.circle,
                           ),
-                          onPressed: () {
-                            _transactionListKey.currentState
-                                ?.switchToStreamMode();
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (context) => const SearchPage(),
-                              ),
-                            );
-                          },
-                          icon: Icon(
-                            Icons.search,
-                            size: 20,
-                            color: Theme.of(context).iconTheme.color,
+                          child: IconButton(
+                            tooltip: AppLocalizations.of(context).homeSearch,
+                            padding: EdgeInsets.zero,
+                            onPressed: () {
+                              _transactionListKey.currentState
+                                  ?.switchToStreamMode();
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (context) => const SearchPage(),
+                                ),
+                              );
+                            },
+                            icon: Icon(
+                              Icons.search,
+                              size: 18,
+                              color: Theme.of(context).iconTheme.color,
+                            ),
                           ),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 6),
-                  // 第二行 - 月份显示和统计
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      InkWell(
-                        borderRadius: BorderRadius.circular(8),
-                        onTap: _isJumping ? null : _handleDateSelection,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                                AppLocalizations.of(context)
-                                    .homeYear(month.year),
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .labelLarge
-                                    ?.copyWith(
-                                        color: Theme.of(context)
-                                            .textTheme
-                                            .bodyMedium
-                                            ?.color
-                                            ?.withOpacity(0.6), // ⭐ 自适应次要文字颜色
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w500)),
-                            const SizedBox(height: 2),
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  AppLocalizations.of(context).homeMonth(
-                                      month.month.toString().padLeft(2, '0')),
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .titleMedium
-                                      ?.copyWith(
-                                          color: Theme.of(context)
-                                              .textTheme
-                                              .bodyLarge
-                                              ?.color, // ⭐ 自适应主文字颜色
-                                          fontSize: 20,
-                                          fontWeight: FontWeight.w500),
-                                ),
-                                const SizedBox(width: 4),
-                                // 月份旁边的向下三角形（日期选择）
-                                _isJumping
-                                    ? SizedBox(
-                                        width: 12,
-                                        height: 12,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 1.5,
-                                          color: Theme.of(context)
-                                              .textTheme
-                                              .bodyLarge
-                                              ?.color, // ⭐ 自适应颜色
-                                        ),
-                                      )
-                                    : Icon(
-                                        Icons.keyboard_arrow_down,
-                                        size: 16,
-                                        color: Theme.of(context)
-                                            .textTheme
-                                            .bodyMedium
-                                            ?.color
-                                            ?.withOpacity(0.6), // ⭐ 自适应次要颜色
-                                      ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 12),
-                        width: 1,
-                        height: 36,
-                        color: Theme.of(context).dividerTheme.color ??
-                            Theme.of(context).dividerColor, // ⭐ 自适应分割线颜色
-                      ),
-                      const Expanded(child: _HeaderCenterSummary()),
-                    ],
+                  // 现代科技感月度收支概览卡片（Hero Card）
+                  _HomeOverviewHeroCard(
+                    month: month,
+                    isJumping: _isJumping,
+                    onSelectDate: _handleDateSelection,
                   ),
                 ],
               ),
-              bottom: const HomeBudgetSummary(),
             );
           }),
           const SizedBox(height: 0),
@@ -1152,53 +1182,55 @@ class _HomePageState extends ConsumerState<HomePage> {
             return const SizedBox.shrink();
           }),
           Expanded(
-            child: StreamBuilder<List<({Transaction t, Category? category, Account? account, Account? toAccount})>>(
-              key: ValueKey('transactions_$_streamBuilderKey'), // 使用递增key强制重建
-              stream: () {
-                // ledgerId 变了或第一次进来才重建 stream;无关 setState(预算
-                // 提示卡片、月度提醒等)的 home rebuild 复用同一 stream 引用,
-                // StreamBuilder 不会重新订阅,不会闪到 fallback 数据。
-                if (_txStream == null || _txStreamLedgerId != ledgerId) {
-                  _txStream = repo.transactionsWithCategoryAll(ledgerId: ledgerId);
-                  _txStreamLedgerId = ledgerId;
-                }
-                return _txStream;
-              }(),
-              builder: (context, snapshot) {
-                // Stream 数据到来前，使用预加载数据；到来后使用 Stream 数据
-                final streamData = snapshot.data;
-                final hasStreamData =
-                    streamData != null && streamData.isNotEmpty;
+            child: ref.watch(homeWindowPaginationEnabledProvider)
+                ? _buildWindowedTransactionList(context, ledgerId, hide)
+                : StreamBuilder<List<({Transaction t, Category? category, Account? account, Account? toAccount})>>(
+                    key: ValueKey('transactions_$_streamBuilderKey'), // 使用递增key强制重建
+                    stream: () {
+                      // ledgerId 变了或第一次进来才重建 stream;无关 setState(预算
+                      // 提示卡片、月度提醒等)的 home rebuild 复用同一 stream 引用,
+                      // StreamBuilder 不会重新订阅,不会闪到 fallback 数据。
+                      if (_txStream == null || _txStreamLedgerId != ledgerId) {
+                        _txStream = repo.transactionsWithCategoryAll(ledgerId: ledgerId);
+                        _txStreamLedgerId = ledgerId;
+                      }
+                      return _txStream;
+                    }(),
+                    builder: (context, snapshot) {
+                      // Stream 数据到来前，使用预加载数据；到来后使用 Stream 数据
+                      final streamData = snapshot.data;
+                      final hasStreamData =
+                          streamData != null && streamData.isNotEmpty;
 
-                // 如果 Stream 没数据，从预加载数据构建基础列表
-                final transactions = hasStreamData
-                    ? streamData
-                    : (cachedFullData
-                            ?.map((item) => (
-                                  t: item.t,
-                                  category: item.category,
-                                  account: item.account,
-                                  toAccount: item.toAccount,
-                                ))
-                            .toList() ??
-                        []);
+                      // 如果 Stream 没数据，从预加载数据构建基础列表
+                      final transactions = hasStreamData
+                          ? streamData
+                          : (cachedFullData
+                                  ?.map((item) => (
+                                        t: item.t,
+                                        category: item.category,
+                                        account: item.account,
+                                        toAccount: item.toAccount,
+                                      ))
+                                  .toList() ??
+                              []);
 
-                return TransactionList(
-                  key: _transactionListKey,
-                  transactions: transactions,
-                  // 传入预加载数据供详情使用（标签、附件、账户）
-                  transactionsWithDetails: cachedFullData,
-                  hideAmounts: hide,
-                  enableVisibilityTracking: true,
-                  onDateVisibilityChanged: _onHeaderVisibilityChanged,
-                  controller: _listController,
-                  emptyWidget: AppEmpty(
-                    text: AppLocalizations.of(context).homeNoRecords,
-                    subtext: AppLocalizations.of(context).homeNoRecordsSubtext,
+                      return TransactionList(
+                        key: _transactionListKey,
+                        transactions: transactions,
+                        // 传入预加载数据供详情使用（标签、附件、账户）
+                        transactionsWithDetails: cachedFullData,
+                        hideAmounts: hide,
+                        enableVisibilityTracking: true,
+                        onDateVisibilityChanged: _onHeaderVisibilityChanged,
+                        controller: _listController,
+                        emptyWidget: AppEmpty(
+                          text: AppLocalizations.of(context).homeNoRecords,
+                          subtext: AppLocalizations.of(context).homeNoRecordsSubtext,
+                        ),
+                      );
+                    },
                   ),
-                );
-              },
-            ),
           ),
         ],
       ),
@@ -1206,13 +1238,23 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 }
 
-class _HeaderCenterSummary extends ConsumerWidget {
-  const _HeaderCenterSummary();
+class _HomeOverviewHeroCard extends ConsumerWidget {
+  final DateTime month;
+  final bool isJumping;
+  final VoidCallback onSelectDate;
+
+  const _HomeOverviewHeroCard({
+    required this.month,
+    required this.isJumping,
+    required this.onSelectDate,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryColor = ref.watch(primaryColorProvider);
+    final hide = ref.watch(hideAmountsProvider);
     final ledgerId = ref.watch(currentLedgerIdProvider);
-    final month = ref.watch(selectedMonthProvider);
     final params = (ledgerId: ledgerId, month: month);
 
     ref.watch(monthlyTotalsProvider(params));
@@ -1220,46 +1262,283 @@ class _HeaderCenterSummary extends ConsumerWidget {
     final (income, expense) = cachedTotals ?? (0.0, 0.0);
     final balance = income - expense;
 
-    final amountStyle = Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: Theme.of(context).textTheme.bodyLarge?.color,
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-            ) ??
-        TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.w600,
-          color: Theme.of(context).textTheme.bodyLarge?.color,
-        );
+    // 预算信息
+    final budgetEnabled = ref.watch(homeBudgetCardEnabledProvider);
+    final overviewAsync = ref.watch(budgetOverviewProvider);
+    final budgetUsage = budgetEnabled ? overviewAsync.valueOrNull?.totalBudget : null;
 
-    Widget item(String title, double value) => Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+    final l10n = AppLocalizations.of(context);
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(4, 8, 4, 4),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: isDark
+              ? [const Color(0xFF1E293B), const Color(0xFF0F172A)]
+              : [
+                  primaryColor,
+                  Color.lerp(primaryColor, const Color(0xFF1E3A8A), 0.3) ?? primaryColor,
+                ],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: (isDark ? Colors.black : primaryColor).withValues(alpha: isDark ? 0.4 : 0.22),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
+        border: Border.all(
+          color: Colors.white.withValues(alpha: isDark ? 0.1 : 0.18),
+          width: 0.8,
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(title,
-                textAlign: TextAlign.left, style: BeeTextTokens.label(context)),
+            // 卡片顶部：月份选择胶囊 + 金额遮蔽眼眸按钮
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                InkWell(
+                  borderRadius: BorderRadius.circular(14),
+                  onTap: isJumping ? null : onSelectDate,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.16),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '${month.year}年 ${month.month.toString().padLeft(2, '0')}月',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        if (isJumping)
+                          const SizedBox(
+                            width: 12,
+                            height: 12,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 1.5,
+                              color: Colors.white,
+                            ),
+                          )
+                        else
+                          const Icon(
+                            Icons.keyboard_arrow_down,
+                            size: 16,
+                            color: Colors.white70,
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                // 隐藏/显示金额切换
+                GestureDetector(
+                  onTap: () {
+                    ref.read(hideAmountsProvider.notifier).state = !hide;
+                  },
+                  behavior: HitTestBehavior.opaque,
+                  child: Container(
+                    padding: const EdgeInsets.all(5),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.16),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      hide ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                      size: 16,
+                      color: Colors.white.withValues(alpha: 0.9),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // 主体金额：本月总支出
+            Text(
+              l10n.homeExpense,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.75),
+                fontSize: 12.5,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
             const SizedBox(height: 2),
             FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerLeft,
               child: AmountText(
-                value: value,
+                value: expense,
+                hide: hide,
                 signed: false,
                 decimals: 2,
-                style: amountStyle,
+                showCurrency: true,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 26,
+                  fontWeight: FontWeight.w700,
+                  fontFeatures: [FontFeature.tabularFigures()],
+                  letterSpacing: -0.5,
+                ),
               ),
             ),
+            const SizedBox(height: 12),
+            // 底部细项：本月收入 + 本月结余
+            Container(
+              padding: const EdgeInsets.only(top: 10),
+              decoration: BoxDecoration(
+                border: Border(
+                  top: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.12),
+                    width: 0.8,
+                  ),
+                ),
+              ),
+              child: Row(
+                children: [
+                  // 收入
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          l10n.homeIncome,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.7),
+                            fontSize: 11.5,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: AmountText(
+                            value: income,
+                            hide: hide,
+                            signed: false,
+                            decimals: 2,
+                            showCurrency: true,
+                            style: const TextStyle(
+                              color: Color(0xFF6EE7B7),
+                              fontSize: 14.5,
+                              fontWeight: FontWeight.w600,
+                              fontFeatures: [FontFeature.tabularFigures()],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  // 结余
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          l10n.homeBalance,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.7),
+                            fontSize: 11.5,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: AmountText(
+                            value: balance,
+                            hide: hide,
+                            signed: false,
+                            decimals: 2,
+                            showCurrency: true,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14.5,
+                              fontWeight: FontWeight.w600,
+                              fontFeatures: [FontFeature.tabularFigures()],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // 预算条（开启预算时展示）
+            if (budgetUsage != null) ...[
+              const SizedBox(height: 10),
+              GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const BudgetPage()),
+                  );
+                },
+                behavior: HitTestBehavior.opaque,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          '${l10n.budgetUsed} ${(budgetUsage.rate * 100).toInt()}%',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.75),
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        Text(
+                          '${l10n.budgetRemaining} ¥${(budgetUsage.remaining.clamp(0, double.infinity)).toStringAsFixed(0)}',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.75),
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: Container(
+                        height: 5,
+                        color: Colors.white.withValues(alpha: 0.2),
+                        child: FractionallySizedBox(
+                          alignment: Alignment.centerLeft,
+                          widthFactor: budgetUsage.rate.clamp(0.0, 1.0),
+                          child: Container(
+                            color: budgetUsage.rate >= 1.0
+                                ? const Color(0xFFEF4444)
+                                : (budgetUsage.rate >= 0.8
+                                    ? const Color(0xFFF59E0B)
+                                    : const Color(0xFF34D399)),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
-        );
-    return Row(
-      children: [
-        Expanded(child: item(AppLocalizations.of(context).homeIncome, income)),
-        const SizedBox(width: 4),
-        Expanded(
-            child: item(AppLocalizations.of(context).homeExpense, expense)),
-        const SizedBox(width: 4),
-        Expanded(
-            child: item(AppLocalizations.of(context).homeBalance, balance)),
-      ],
+        ),
+      ),
     );
   }
 }

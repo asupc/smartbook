@@ -28,7 +28,13 @@ class TransactionList extends ConsumerStatefulWidget {
   final List<TransactionDisplayItem>? transactionsWithDetails;
 
   /// 交易数据（仅含分类，需二次加载标签和附件）
-  final List<({Transaction t, Category? category, Account? account, Account? toAccount})>? transactions;
+  final List<
+      ({
+        Transaction t,
+        Category? category,
+        Account? account,
+        Account? toAccount
+      })>? transactions;
 
   /// 是否隐藏金额
   final bool hideAmounts;
@@ -45,6 +51,20 @@ class TransactionList extends ConsumerStatefulWidget {
   /// 列表控制器（可选，用于精准跳转）
   final FlutterListViewController? controller;
 
+  /// M5-4 窗口化分页：是否还有更旧/更新可加载。
+  final bool hasOlder;
+  final bool hasNewer;
+  final bool loadingOlder;
+  final bool loadingNewer;
+
+  /// M5-4 滚动预取回调：向旧/向新翻页时触发。
+  final VoidCallback? onLoadOlder;
+  final VoidCallback? onLoadNewer;
+
+  /// M5-4 历史锚定模式下「有 N 条新记录」提示的计数与回最新回调。
+  final int? unseenNewCount;
+  final VoidCallback? onReturnToLatest;
+
   const TransactionList({
     super.key,
     this.transactionsWithDetails,
@@ -54,6 +74,14 @@ class TransactionList extends ConsumerStatefulWidget {
     this.onDateVisibilityChanged,
     this.emptyWidget,
     this.controller,
+    this.hasOlder = false,
+    this.hasNewer = false,
+    this.loadingOlder = false,
+    this.loadingNewer = false,
+    this.onLoadOlder,
+    this.onLoadNewer,
+    this.unseenNewCount,
+    this.onReturnToLatest,
   }) : assert(transactionsWithDetails != null || transactions != null,
             'Either transactionsWithDetails or transactions must be provided');
 
@@ -65,6 +93,11 @@ class TransactionListState extends ConsumerState<TransactionList> {
   late FlutterListViewController _controller;
   List<dynamic> _flatItems = []; // 扁平化的项目列表
   final Map<String, int> _dateIndexMap = {}; // 日期到列表索引的映射
+  Object? _flatItemsSource; // 最近一次派生 _flatItems 的 transactions 列表引用
+  int _flatItemsBuildCount = 0;
+
+  @visibleForTesting
+  int get debugFlatItemsBuildCount => _flatItemsBuildCount;
 
   // 缓存标签数据（仅用于非预加载模式）
   Map<int, List<Tag>> _cachedTagsMap = {};
@@ -85,17 +118,25 @@ class TransactionListState extends ConsumerState<TransactionList> {
 
   /// 获取统一格式的交易列表（用于内部处理）
   /// 始终使用 transactions 作为列表数据源，预加载数据只用于详情（标签、附件、账户）
-  List<({Transaction t, Category? category, Account? account, Account? toAccount})> get _transactionsList {
+  List<
+      ({
+        Transaction t,
+        Category? category,
+        Account? account,
+        Account? toAccount
+      })> get _transactionsList {
     return widget.transactions ?? [];
   }
 
-  /// 预加载数据的 ID 集合（用于快速判断某条交易是否有预加载详情）
-  Set<int>? _preloadedIds;
-  Set<int> get _preloadedIdSet {
-    if (_preloadedIds == null && widget.transactionsWithDetails != null) {
-      _preloadedIds = widget.transactionsWithDetails!.map((t) => t.t.id).toSet();
+  /// 预加载详情按交易 ID 建索引，列表 tile 查询从 O(N) 降为 O(1)。
+  Map<int, TransactionDisplayItem>? _preloadedItemsById;
+  Map<int, TransactionDisplayItem> get _preloadedItemMap {
+    if (_preloadedItemsById == null && widget.transactionsWithDetails != null) {
+      _preloadedItemsById = {
+        for (final item in widget.transactionsWithDetails!) item.t.id: item,
+      };
     }
-    return _preloadedIds ?? {};
+    return _preloadedItemsById ?? const {};
   }
 
   @override
@@ -113,14 +154,17 @@ class TransactionListState extends ConsumerState<TransactionList> {
 
     // 检测预加载数据是否变化（如账本切换），重置状态
     if (widget.transactionsWithDetails != oldWidget.transactionsWithDetails) {
-      _preloadedIds = null; // 重置预加载 ID 缓存
+      _preloadedItemsById = null; // 重置预加载详情索引
       if (widget.transactionsWithDetails != null) {
         _usePreloadedData = true; // 重置为预加载模式
       }
     }
 
-    // 检查 transactions 数据变化，重新加载标签和附件
-    if (widget.transactions != null) {
+    // 检查 transactions 数据变化，重新加载标签和附件。父组件因主题/金额隐藏
+    // 等无关状态 rebuild 时会继续传同一个 snapshot List；先做 identity 快路，
+    // 避免每次都为全部历史交易重新分配 ID 列表。
+    if (widget.transactions != null &&
+        !identical(widget.transactions, oldWidget.transactions)) {
       final newIds = widget.transactions!.map((t) => t.t.id).toList();
       if (!_listEquals(newIds, _cachedTransactionIds)) {
         _loadTags();
@@ -168,7 +212,8 @@ class TransactionListState extends ConsumerState<TransactionList> {
     }
 
     final repo = ref.read(repositoryProvider);
-    final countsMap = await repo.getAttachmentCountsForTransactions(transactionIds);
+    final countsMap =
+        await repo.getAttachmentCountsForTransactions(transactionIds);
 
     if (mounted) {
       setState(() {
@@ -179,15 +224,13 @@ class TransactionListState extends ConsumerState<TransactionList> {
 
   /// 检查某条交易是否有预加载详情
   bool _hasPreloadedDetails(int transactionId) {
-    return _usePreloadedData && _preloadedIdSet.contains(transactionId);
+    return _usePreloadedData && _preloadedItemMap.containsKey(transactionId);
   }
 
   /// 获取预加载的交易详情
   TransactionDisplayItem? _getPreloadedItem(int transactionId) {
     if (!_hasPreloadedDetails(transactionId)) return null;
-    return widget.transactionsWithDetails!
-        .where((item) => item.t.id == transactionId)
-        .firstOrNull;
+    return _preloadedItemMap[transactionId];
   }
 
   /// 获取交易的标签列表（优先使用预加载数据）
@@ -289,10 +332,21 @@ class TransactionListState extends ConsumerState<TransactionList> {
   /// 构建扁平化的项目列表
   void _buildFlatItems() {
     final transactions = _transactionsList;
+    if (identical(_flatItemsSource, transactions)) return;
+    _flatItemsSource = transactions;
+    _flatItemsBuildCount++;
 
-    // 按天分组
+    // 按天分组。只有 Drift stream 发出新 List 时才重新派生；标签、附件、
+    // hideAmounts、主题等 setState/rebuild 直接复用缓存，避免反复 O(N) 分组排序。
     final dateFmt = DateFormat('yyyy-MM-dd');
-    final groups = <String, List<({Transaction t, Category? category, Account? account, Account? toAccount})>>{};
+    final groups = <String,
+        List<
+            ({
+              Transaction t,
+              Category? category,
+              Account? account,
+              Account? toAccount
+            })>>{};
     for (final item in transactions) {
       final dt = item.t.happenedAt.toLocal();
       final key = dateFmt.format(DateTime(dt.year, dt.month, dt.day));
@@ -300,10 +354,17 @@ class TransactionListState extends ConsumerState<TransactionList> {
     }
     final sortedKeys = groups.keys.toList()..sort((a, b) => b.compareTo(a));
 
+    // M5-4 窗口化:顶部 loader(历史模式 loadNewer)与底部 loader(loadOlder)。
+    final showTopLoader = widget.hasNewer || (widget.onLoadNewer != null);
+    final showBottomLoader = widget.hasOlder || (widget.onLoadOlder != null);
+
     // 构建扁平的项目列表和日期索引映射
     _flatItems = <dynamic>[];
     _dateIndexMap.clear();
 
+    if (showTopLoader) {
+      _flatItems.add(('loader', 'top', null));
+    }
     for (final key in sortedKeys) {
       final list = groups[key]!;
       // 记录日期头部在扁平化列表中的索引
@@ -317,8 +378,11 @@ class TransactionListState extends ConsumerState<TransactionList> {
     }
 
     // 底部留白，避免被悬浮 Tab 栏遮挡
-    if (_flatItems.isNotEmpty) {
+    if (_flatItems.isNotEmpty && !showBottomLoader) {
       _flatItems.add(('bottomSpacer', null, null));
+    }
+    if (showBottomLoader) {
+      _flatItems.add(('loader', 'bottom', null));
     }
   }
 
@@ -348,238 +412,392 @@ class TransactionListState extends ConsumerState<TransactionList> {
     // 无数据时展示空状态
     if (_flatItems.isEmpty) {
       return widget.emptyWidget ??
-        AppEmpty(
-          text: AppLocalizations.of(context).commonEmpty,
-          subtext: AppLocalizations.of(context).homeNoRecords,
-        );
+          AppEmpty(
+            text: AppLocalizations.of(context).commonEmpty,
+            subtext: AppLocalizations.of(context).homeNoRecords,
+          );
     }
 
     // 使用FlutterListView渲染列表
-    return FlutterListView(
-      controller: _controller,
-      physics: const BouncingScrollPhysics(),
-      delegate: FlutterListViewDelegate(
-        (BuildContext context, int index) {
-          final item = _flatItems[index];
-          final type = item.$1 as String;
+    final listView = NotificationListener<ScrollNotification>(
+      onNotification: _handleScrollNotification,
+      child: FlutterListView(
+        controller: _controller,
+        physics: const BouncingScrollPhysics(),
+        delegate: FlutterListViewDelegate(
+          (BuildContext context, int index) {
+            final item = _flatItems[index];
+            final type = item.$1 as String;
 
-          if (type == 'bottomSpacer') {
-            // 悬浮 Tab 栏高度(56) + 浮动间距(12) + 安全区 + 额外间距
-            final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
-            return SizedBox(height: 56 + 12 + bottomPadding + 16);
-          }
-
-          if (type == 'header') {
-            // 渲染日期头部
-            final dateKey = item.$2 as String;
-            final list = item.$3 as List<({Transaction t, Category? category, Account? account, Account? toAccount})>;
-            double dayIncome = 0, dayExpense = 0;
-            for (final it in list) {
-              // 转账不计入收支统计
-              if (it.t.type == 'income') {
-                dayIncome += it.t.nativeAmount ?? it.t.amount;
-              }
-              if (it.t.type == 'expense') {
-                dayExpense += it.t.nativeAmount ?? it.t.amount;
-              }
+            if (type == 'bottomSpacer') {
+              // 悬浮 Tab 栏高度(56) + 浮动间距(12) + 安全区 + 额外间距
+              final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
+              return SizedBox(height: 56 + 12 + bottomPadding + 16);
             }
-            final isFirst = index == 0;
 
-            Widget header = Column(
-              children: [
-                if (!isFirst)
-                  Divider(
-                    height: BeeTokens.listDayDividerHeight(context),
-                    color: BeeTokens.listDayDividerColor(context),
-                  ),
-                DaySectionHeader(
-                  dateText: dateKey,
-                  income: dayIncome,
-                  expense: dayExpense,
-                  hide: widget.hideAmounts,
-                ),
-              ],
-            );
-
-            // 如果启用可见性跟踪，则包装VisibilityDetector
-            if (widget.enableVisibilityTracking && widget.onDateVisibilityChanged != null) {
-              header = VisibilityDetector(
-                key: Key('header-$dateKey'),
-                onVisibilityChanged: (VisibilityInfo info) {
-                  // 当可见比例大于50%时认为可见
-                  widget.onDateVisibilityChanged!(dateKey, info.visibleFraction > 0.5);
-                },
-                child: header,
+            if (type == 'loader') {
+              final which = item.$2 as String;
+              final loading =
+                  which == 'top' ? widget.loadingNewer : widget.loadingOlder;
+              final onLoad =
+                  which == 'top' ? widget.onLoadNewer : widget.onLoadOlder;
+              final hasMore =
+                  which == 'top' ? widget.hasNewer : widget.hasOlder;
+              // 顶部仅历史锚定模式可能出现;底部分页场景常驻。
+              return _LoadMoreItem(
+                loading: loading,
+                hasMore: hasMore,
+                onLoad: onLoad,
+                // 顶部 loader 高度小,底部留白交给 header 与 spacer
+                topPadding: which == 'bottom' ? 8 : 4,
               );
             }
 
-            return header;
-          } else {
-            // 渲染交易项
-            final it = item.$2 as ({Transaction t, Category? category, Account? account, Account? toAccount});
-            final allItemsInDay = item.$3 as List<({Transaction t, Category? category, Account? account, Account? toAccount})>;
-            final isTransfer = it.t.type == 'transfer';
-            final isExpense = it.t.type == 'expense';
-            final isAdjustment = it.t.type == 'adjustment';
-
-            // 获取分类显示名称
-            final categoryName = isAdjustment
-                ? AppLocalizations.of(context).adjustmentTransaction
-                : CategoryUtils.getDisplayName(it.category?.name, context);
-
-            final subtitle = it.t.note ?? '';
-
-            // 检查是否是当天最后一项
-            final isLastInGroup = allItemsInDay.last.t.id == it.t.id;
-
-            // 账户名 — D 方案:account / toAccount 已经由 watchTransactionsWith*
-            // 的 LEFT JOIN(+ SharedLedger* hydration)直接挂在 tx 记录上,
-            // 跟 category 同款。UI 只读 it.account?.name,Drift 自动响应主表
-            // accounts 行变化 + 镜像表 sharedLedgerAccounts 变化,无需任何
-            // 命令式 cache / setState / provider fallback。
-            final accountFeatureEnabled =
-                ref.watch(accountFeatureEnabledProvider).valueOrNull ?? true;
-            String? accountName;
-            String? toAccountName;
-            if (accountFeatureEnabled) {
-              accountName = it.account?.name;
-              if (isTransfer) toAccountName = it.toAccount?.name;
-            }
-
-            return Dismissible(
-              key: Key('tx-${it.t.id}-$index'), // 添加索引避免key冲突
-              direction: DismissDirection.endToStart,
-              background: Container(
-                alignment: Alignment.centerRight,
-                padding: const EdgeInsets.only(right: 16),
-                color: Colors.red,
-                child: const Icon(Icons.delete, color: Colors.white),
-              ),
-              confirmDismiss: (direction) async {
-                return await AppDialog.confirm<bool>(
-                      context,
-                      title: AppLocalizations.of(context).deleteConfirmTitle,
-                      message: AppLocalizations.of(context).deleteConfirmMessage,
-                    ) ??
-                    false;
-              },
-              onDismissed: (direction) async {
-                final repo = ref.read(repositoryProvider);
-                await repo.deleteTransaction(it.t.id);
-
-                if (!context.mounted) return;
-                final curLedger = ref.read(currentLedgerIdProvider);
-                ref.invalidate(countsForLedgerProvider(curLedger));
-                ref.read(statsRefreshProvider.notifier).state++;
-                ref.read(budgetRefreshProvider.notifier).state++;
-                PostProcessor.sync(ref, ledgerId: curLedger);
-
-                if (context.mounted) {
-                  showToast(context, AppLocalizations.of(context).ledgersDeleted);
+            if (type == 'header') {
+              // 渲染日期头部
+              final dateKey = item.$2 as String;
+              final list = item.$3 as List<
+                  ({
+                    Transaction t,
+                    Category? category,
+                    Account? account,
+                    Account? toAccount
+                  })>;
+              double dayIncome = 0, dayExpense = 0;
+              for (final it in list) {
+                // 转账不计入收支统计
+                if (it.t.type == 'income') {
+                  dayIncome += it.t.nativeAmount ?? it.t.amount;
                 }
-              },
-              child: Column(
+                if (it.t.type == 'expense') {
+                  dayExpense += it.t.nativeAmount ?? it.t.amount;
+                }
+              }
+              final isFirst = index == 0;
+
+              Widget header = Column(
                 children: [
-                  Builder(
-                    builder: (context) {
-                      // 获取该交易的标签（优先使用预加载数据）
-                      final transactionTags = _getTagsForTransaction(it.t.id);
-                      final tagsList = transactionTags
-                          .map((t) => (id: t.id, name: t.name, color: t.color))
-                          .toList();
-
-                      // 转账账户信息
-                      final transferAccountInfo = (accountName != null && toAccountName != null)
-                          ? '$accountName → $toAccountName'
-                          : null;
-
-                      // 获取附件数量（优先使用预加载数据）
-                      final attachmentCount = _getAttachmentCountForTransaction(it.t.id);
-
-                      return TransactionListItem(
-                        icon: isAdjustment
-                          ? Icons.tune
-                          : getCategoryIconData(category: it.category, categoryName: categoryName),
-                        category: isAdjustment ? null : it.category,
-                        title: isTransfer
-                          ? (subtitle.isNotEmpty ? subtitle : AppLocalizations.of(context).transferTitle)
-                          : isAdjustment
-                            ? categoryName
-                            : subtitle,
-                        categoryName: (isTransfer || isAdjustment)
-                          ? null
-                          : categoryName,
-                        amount: it.t.amount,
-                        currencyCode: it.t.currencyCode,
-                        nativeAmount: it.t.nativeAmount,
-                        isExpense: isExpense,
-                        isTransfer: isTransfer,
-                        isAdjustment: isAdjustment,
-                        hide: widget.hideAmounts,
-                        happenedAt: it.t.happenedAt,
-                        accountName: isTransfer
-                          ? transferAccountInfo  // 转账始终在第三行显示账户信息
-                          : accountName,
-                        tags: tagsList.isNotEmpty ? tagsList : null,
-                        attachmentCount: attachmentCount,
-                        excludeFromStats: it.t.excludeFromStats,
-                        excludeFromBudget: it.t.excludeFromBudget,
-                        onAttachmentTap: attachmentCount > 0
-                            ? () async {
-                                switchToStreamMode(); // 用户交互，切换到 Stream 模式
-                                await Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (_) => AttachmentPreviewPage.fromTransaction(
-                                      transactionId: it.t.id,
-                                    ),
-                                  ),
-                                );
-                              }
-                            : null,
-                        onTagTap: (tagId, tagName) async {
-                          switchToStreamMode(); // 用户交互，切换到 Stream 模式
-                          await Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => TagDetailPage(
-                                tagId: tagId,
-                                tagName: tagName,
-                              ),
-                            ),
-                          );
-                        },
-                        onTap: () async {
-                          switchToStreamMode(); // 用户交互，切换到 Stream 模式
-                          await TransactionEditUtils.editTransaction(
-                            context,
-                            ref,
-                            it.t,
-                            it.category,
-                          );
-                        },
-                        onCategoryTap: !isTransfer && it.category?.id != null
-                            ? () async {
-                                switchToStreamMode(); // 用户交互，切换到 Stream 模式
-                                await Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (_) => CategoryDetailPage(
-                                      categoryId: it.category!.id,
-                                      categoryName: categoryName,
-                                    ),
-                                  ),
-                                );
-                              }
-                            : null,
-                      );
-                    },
+                  if (!isFirst)
+                    Divider(
+                      height: BeeTokens.listDayDividerHeight(context),
+                      color: BeeTokens.listDayDividerColor(context),
+                    ),
+                  DaySectionHeader(
+                    dateText: dateKey,
+                    income: dayIncome,
+                    expense: dayExpense,
+                    hide: widget.hideAmounts,
                   ),
-                  if (!isLastInGroup)
-                    BeeDivider.short(indent: 56 + 16, endIndent: 16),
                 ],
+              );
+
+              // 如果启用可见性跟踪，则包装VisibilityDetector
+              if (widget.enableVisibilityTracking &&
+                  widget.onDateVisibilityChanged != null) {
+                header = VisibilityDetector(
+                  key: Key('header-$dateKey'),
+                  onVisibilityChanged: (VisibilityInfo info) {
+                    // 当可见比例大于50%时认为可见
+                    widget.onDateVisibilityChanged!(
+                        dateKey, info.visibleFraction > 0.5);
+                  },
+                  child: header,
+                );
+              }
+
+              return header;
+            } else {
+              // 渲染交易项
+              final it = item.$2 as ({
+                Transaction t,
+                Category? category,
+                Account? account,
+                Account? toAccount
+              });
+              final allItemsInDay = item.$3 as List<
+                  ({
+                    Transaction t,
+                    Category? category,
+                    Account? account,
+                    Account? toAccount
+                  })>;
+              final isTransfer = it.t.type == 'transfer';
+              final isExpense = it.t.type == 'expense';
+              final isAdjustment = it.t.type == 'adjustment';
+
+              // 获取分类显示名称
+              final categoryName = isAdjustment
+                  ? AppLocalizations.of(context).adjustmentTransaction
+                  : CategoryUtils.getDisplayName(it.category?.name, context);
+
+              final subtitle = it.t.note ?? '';
+
+              // 检查是否是当天最后一项
+              final isLastInGroup = allItemsInDay.last.t.id == it.t.id;
+
+              // 账户名 — D 方案:account / toAccount 已经由 watchTransactionsWith*
+              // 的 LEFT JOIN(+ SharedLedger* hydration)直接挂在 tx 记录上,
+              // 跟 category 同款。UI 只读 it.account?.name,Drift 自动响应主表
+              // accounts 行变化 + 镜像表 sharedLedgerAccounts 变化,无需任何
+              // 命令式 cache / setState / provider fallback。
+              final accountFeatureEnabled =
+                  ref.watch(accountFeatureEnabledProvider).valueOrNull ?? true;
+              String? accountName;
+              String? toAccountName;
+              if (accountFeatureEnabled) {
+                accountName = it.account?.name;
+                if (isTransfer) toAccountName = it.toAccount?.name;
+              }
+
+              return IosSwipeActionCell(
+                key: Key('tx-${it.t.id}-$index'), // 添加索引避免key冲突
+                confirmDelete: () async {
+                  return await AppDialog.confirm<bool>(
+                        context,
+                        title: AppLocalizations.of(context).deleteConfirmTitle,
+                        message:
+                            AppLocalizations.of(context).deleteConfirmMessage,
+                        isDestructive: true,
+                      ) ??
+                      false;
+                },
+                onDelete: () async {
+                  final repo = ref.read(repositoryProvider);
+                  await repo.deleteTransaction(it.t.id);
+
+                  if (!context.mounted) return;
+                  final curLedger = ref.read(currentLedgerIdProvider);
+                  ref.invalidate(countsForLedgerProvider(curLedger));
+                  ref.read(statsRefreshProvider.notifier).state++;
+                  ref.read(budgetRefreshProvider.notifier).state++;
+                  PostProcessor.sync(ref, ledgerId: curLedger);
+
+                  if (context.mounted) {
+                    showToast(
+                        context, AppLocalizations.of(context).ledgersDeleted);
+                  }
+                },
+                child: Column(
+                  children: [
+                    Builder(
+                      builder: (context) {
+                        // 获取该交易的标签（优先使用预加载数据）
+                        final transactionTags = _getTagsForTransaction(it.t.id);
+                        final tagsList = transactionTags
+                            .map(
+                                (t) => (id: t.id, name: t.name, color: t.color))
+                            .toList();
+
+                        // 转账账户信息
+                        final transferAccountInfo =
+                            (accountName != null && toAccountName != null)
+                                ? '$accountName → $toAccountName'
+                                : null;
+
+                        // 获取附件数量（优先使用预加载数据）
+                        final attachmentCount =
+                            _getAttachmentCountForTransaction(it.t.id);
+
+                        return TransactionListItem(
+                          icon: isAdjustment
+                              ? Icons.tune
+                              : getCategoryIconData(
+                                  category: it.category,
+                                  categoryName: categoryName),
+                          category: isAdjustment ? null : it.category,
+                          title: isTransfer
+                              ? (subtitle.isNotEmpty
+                                  ? subtitle
+                                  : AppLocalizations.of(context).transferTitle)
+                              : isAdjustment
+                                  ? categoryName
+                                  : subtitle,
+                          categoryName: (isTransfer || isAdjustment)
+                              ? null
+                              : categoryName,
+                          amount: it.t.amount,
+                          currencyCode: it.t.currencyCode,
+                          nativeAmount: it.t.nativeAmount,
+                          isExpense: isExpense,
+                          isTransfer: isTransfer,
+                          isAdjustment: isAdjustment,
+                          hide: widget.hideAmounts,
+                          happenedAt: it.t.happenedAt,
+                          accountName: isTransfer
+                              ? transferAccountInfo // 转账始终在第三行显示账户信息
+                              : accountName,
+                          tags: tagsList.isNotEmpty ? tagsList : null,
+                          attachmentCount: attachmentCount,
+                          excludeFromStats: it.t.excludeFromStats,
+                          excludeFromBudget: it.t.excludeFromBudget,
+                          onAttachmentTap: attachmentCount > 0
+                              ? () async {
+                                  switchToStreamMode(); // 用户交互，切换到 Stream 模式
+                                  await Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          AttachmentPreviewPage.fromTransaction(
+                                        transactionId: it.t.id,
+                                      ),
+                                    ),
+                                  );
+                                }
+                              : null,
+                          onTagTap: (tagId, tagName) async {
+                            switchToStreamMode(); // 用户交互，切换到 Stream 模式
+                            await Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => TagDetailPage(
+                                  tagId: tagId,
+                                  tagName: tagName,
+                                ),
+                              ),
+                            );
+                          },
+                          onTap: () async {
+                            switchToStreamMode(); // 用户交互，切换到 Stream 模式
+                            await TransactionEditUtils.editTransaction(
+                              context,
+                              ref,
+                              it.t,
+                              it.category,
+                            );
+                          },
+                          onCategoryTap: !isTransfer && it.category?.id != null
+                              ? () async {
+                                  switchToStreamMode(); // 用户交互，切换到 Stream 模式
+                                  await Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => CategoryDetailPage(
+                                        categoryId: it.category!.id,
+                                        categoryName: categoryName,
+                                      ),
+                                    ),
+                                  );
+                                }
+                              : null,
+                        );
+                      },
+                    ),
+                    if (!isLastInGroup)
+                      BeeDivider.short(indent: 56 + 16, endIndent: 16),
+                  ],
+                ),
+              );
+            }
+          },
+          childCount: _flatItems.length,
+        ),
+      ),
+    );
+    return _wrapWithNewBanner(listView);
+  }
+
+  /// 历史锚定模式下，「有 N 条新记录」横幅：包裹在列表上方，点击回最新。
+  Widget _wrapWithNewBanner(Widget list) {
+    final count = widget.unseenNewCount;
+    if (count == null || count <= 0) return list;
+    return Column(
+      children: [
+        _NewRecordsBanner(
+          count: count,
+          onTap: widget.onReturnToLatest,
+        ),
+        Expanded(child: list),
+      ],
+    );
+  }
+
+  /// 滚动预取：底部接近末尾预取旧页；历史锚定模式下顶部接近起点预取新页。
+  bool _handleScrollNotification(ScrollNotification notification) {
+    if (notification.metrics.axis != Axis.vertical) return false;
+    final metrics = notification.metrics;
+    // 底部预取：extentAfter < 600px
+    if (metrics.extentAfter < 600 && widget.hasOlder && !widget.loadingOlder) {
+      widget.onLoadOlder?.call();
+    }
+    // 顶部预取：extentBefore < 300px(历史锚定模式下向上翻新)
+    if (metrics.extentBefore < 300 && widget.hasNewer && !widget.loadingNewer) {
+      widget.onLoadNewer?.call();
+    }
+    return false;
+  }
+}
+
+/// M5-4 列表 loader/加载失败占位项（顶部 loadNewer 或底部 loadOlder）。
+class _LoadMoreItem extends StatelessWidget {
+  final bool loading;
+  final bool hasMore;
+  final VoidCallback? onLoad;
+  final double topPadding;
+
+  const _LoadMoreItem({
+    required this.loading,
+    required this.hasMore,
+    required this.onLoad,
+    this.topPadding = 8,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: topPadding),
+      child: Center(
+        child: loading
+            ? const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2.4),
+              )
+            : (hasMore && onLoad != null)
+                ? InkWell(
+                    onTap: onLoad,
+                    child: const SizedBox(
+                      width: 22,
+                      height: 22,
+                    ),
+                  )
+                : const SizedBox(height: 4),
+      ),
+    );
+  }
+}
+
+/// M5-4 历史锚定模式下「有 N 条新记录」提示横幅，点击回最新。
+class _NewRecordsBanner extends StatelessWidget {
+  final int count;
+  final VoidCallback? onTap;
+
+  const _NewRecordsBanner({required this.count, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Material(
+      color: Theme.of(context).colorScheme.primaryContainer,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            children: [
+              const Icon(Icons.arrow_upward, size: 16),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  l10n.homeNewRecordsCount(count),
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
               ),
-            );
-          }
-        },
-        childCount: _flatItems.length,
+              Text(
+                l10n.homeViewNewRecords,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

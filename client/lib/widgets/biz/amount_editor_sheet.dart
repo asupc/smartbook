@@ -17,7 +17,6 @@ import '../../models/note_history.dart';
 import '../../services/attachment_service.dart';
 import '../../providers.dart';
 import '../../utils/ui_scale_extensions.dart';
-import '../../utils/currencies.dart';
 import '../../pages/tag/widgets/tag_selector.dart';
 import 'note_picker_dialog.dart';
 import 'account_selector.dart';
@@ -861,8 +860,10 @@ class _AmountEditorSheetState extends ConsumerState<AmountEditorSheet> {
                     Text(
                       _amountStr,
                       style: text.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.0,
+                        fontSize: 28,
+                        fontWeight: FontWeight.w700,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                        letterSpacing: -0.5,
                         color: BeeTokens.textPrimary(context),
                       ),
                     ),
