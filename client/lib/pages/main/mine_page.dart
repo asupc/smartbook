@@ -3,11 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:smartbook/widgets/biz/smartbook_icon.dart';
 
-import '../data/import_page.dart';
-import '../data/export_page.dart';
-import '../settings/personalize_page.dart';
 import '../../providers.dart';
-import '../../providers/theme_providers.dart';
 import '../../widgets/ui/ui.dart';
 import '../../widgets/biz/biz.dart';
 import '../../styles/tokens.dart';
@@ -19,14 +15,8 @@ import '../../services/ui/avatar_service.dart';
 import '../../providers/avatar_providers.dart';
 import '../../providers/sync_providers.dart' as sp;
 import '../../l10n/app_localizations.dart';
-import '../category/category_manage_page.dart';
-import '../category/category_migration_page.dart';
-import '../transaction/recurring_transaction_page.dart';
-import '../settings/reminder_settings_page.dart';
-import '../settings/language_settings_page.dart';
-import '../settings/widget_management_page.dart';
 import '../automation/auto_billing_settings_page.dart';
-import '../ai/ai_settings_page.dart';
+import '../automation/auto_recognition_records_page.dart';
 import '../cloud/cloud_sync_page.dart';
 import '../cloud/smartbook_cloud_sync_page.dart';
 import '../../utils/notification_factory.dart';
@@ -36,17 +26,13 @@ import '../settings/appearance_settings_page.dart';
 import '../settings/smart_billing_page.dart';
 import '../settings/automation_page.dart';
 import '../report/annual_report_page.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:in_app_review/in_app_review.dart';
-import '../../services/system/update_service.dart';
 import '../../ai/providers/ai_provider_config.dart' show AICapabilityType;
 import '../../ai/providers/ai_provider_manager.dart' show AIProviderManager;
 import '../../services/platform/screenshot_monitor_service.dart';
 import '../../services/platform/sms_monitor_service.dart';
 import '../../services/platform/notify_monitor_service.dart';
-import '../../providers/automation_providers.dart';
 import '../../pages/automation/pending_confirmation_page.dart';
 import '../../utils/ui_scale_extensions.dart';
 
@@ -188,7 +174,10 @@ class MinePage extends ConsumerWidget {
                               .watch(smartbookCloudServerVersionProvider)
                               .valueOrNull;
                           return AppListTile(
-                            leading: Icons.cloud_queue_outlined,
+                            leading: Icons.cloud_outlined,
+                            leadingColor: const Color(0xFF0284C7),
+                            leadingBgColor:
+                                const Color(0xFF0284C7).withValues(alpha: 0.12),
                             title: AppLocalizations.of(sectionContext)
                                 .mineCloudService,
                             subtitle: activeCfg.when(
@@ -322,6 +311,9 @@ class MinePage extends ConsumerWidget {
                                       BeeTokens.cardDivider(sectionContext),
                                       AppListTile(
                                         leading: Icons.cloud_sync_outlined,
+                                        leadingColor: const Color(0xFF0D9488),
+                                        leadingBgColor: const Color(0xFF0D9488)
+                                            .withValues(alpha: 0.12),
                                         title:
                                             AppLocalizations.of(sectionContext)
                                                 .mineSyncTitle,
@@ -375,48 +367,13 @@ class MinePage extends ConsumerWidget {
                     ),
                   );
                 }),
-                // 功能管理
-                SizedBox(height: 8.0.scaled(context, ref)),
+                // 自动化与智能记账
+                SizedBox(height: 10.0.scaled(context, ref)),
                 SectionCard(
                   margin: EdgeInsets.fromLTRB(12.0.scaled(context, ref), 0,
                       12.0.scaled(context, ref), 0),
                   child: Column(
                     children: [
-                      // 智能记账(共享账本入口已移到"账本管理"页 PrimaryHeader)
-                      AppListTile(
-                        leading: Icons.auto_awesome_outlined,
-                        title: AppLocalizations.of(context).smartBilling,
-                        subtitle: AppLocalizations.of(context).smartBillingDesc,
-                        trailing: Icon(Icons.chevron_right,
-                            color: BeeTokens.iconTertiary(context),
-                            size: 20), // ⭐ 使用 Token
-                        onTap: () async {
-                          await Navigator.of(context).push(
-                            MaterialPageRoute(
-                                builder: (_) => const SmartBillingPage()),
-                          );
-                        },
-                      ),
-                      BeeTokens.cardDivider(context),
-                      // 数据管理
-                      AppListTile(
-                        leading: Icons.storage_outlined,
-                        title: AppLocalizations.of(context).dataManagement,
-                        subtitle:
-                            AppLocalizations.of(context).dataManagementDesc,
-                        trailing: Icon(Icons.chevron_right,
-                            color: BeeTokens.iconTertiary(context),
-                            size: 20), // ⭐ 使用 Token
-                        onTap: () async {
-                          await Navigator.of(context).push(
-                            MaterialPageRoute(
-                                builder: (_) => const DataManagementPage()),
-                          );
-                        },
-                      ),
-                      BeeTokens.cardDivider(context),
-                      // 预算管理 已挪到「账本管理 → 长按某账本 → 预算管理」
-                      // (每个账本独立预算,放在账本菜单内语义更匹配)。
                       // 自动记账:入口 + 健康状态检测(subtitle 动态刷新)
                       Consumer(
                         builder: (ctx, r, _) {
@@ -460,7 +417,10 @@ class MinePage extends ConsumerWidget {
                                           .whereType<String>()
                                           .join('、')));
                           return AppListTile(
-                            leading: Icons.auto_fix_high,
+                            leading: Icons.auto_fix_high_rounded,
+                            leadingColor: const Color(0xFFD97706),
+                            leadingBgColor:
+                                const Color(0xFFD97706).withValues(alpha: 0.12),
                             title: AppLocalizations.of(ctx)
                                 .autoBillingEntryTitle,
                             subtitle: statusText,
@@ -528,6 +488,9 @@ class MinePage extends ConsumerWidget {
                           final count = r.watch(pendingCandidateCountProvider).valueOrNull ?? 0;
                           return AppListTile(
                             leading: Icons.fact_check_outlined,
+                            leadingColor: const Color(0xFFEA580C),
+                            leadingBgColor:
+                                const Color(0xFFEA580C).withValues(alpha: 0.12),
                             title: AppLocalizations.of(ctx).pendingConfirmationTitle,
                             subtitle: count > 0
                                 ? AppLocalizations.of(ctx)
@@ -563,14 +526,36 @@ class MinePage extends ConsumerWidget {
                         },
                       ),
                       BeeTokens.cardDivider(context),
+                      // 智能记账
+                      AppListTile(
+                        leading: Icons.auto_awesome_rounded,
+                        leadingColor: const Color(0xFF7C3AED),
+                        leadingBgColor:
+                            const Color(0xFF7C3AED).withValues(alpha: 0.12),
+                        title: AppLocalizations.of(context).smartBilling,
+                        subtitle: AppLocalizations.of(context).smartBillingDesc,
+                        trailing: Icon(Icons.chevron_right,
+                            color: BeeTokens.iconTertiary(context),
+                            size: 20),
+                        onTap: () async {
+                          await Navigator.of(context).push(
+                            MaterialPageRoute(
+                                builder: (_) => const SmartBillingPage()),
+                          );
+                        },
+                      ),
+                      BeeTokens.cardDivider(context),
                       // 自动化功能
                       AppListTile(
-                        leading: Icons.schedule_outlined,
+                        leading: Icons.schedule_rounded,
+                        leadingColor: const Color(0xFF4F46E5),
+                        leadingBgColor:
+                            const Color(0xFF4F46E5).withValues(alpha: 0.12),
                         title: AppLocalizations.of(context).automation,
                         subtitle: AppLocalizations.of(context).automationDesc,
                         trailing: Icon(Icons.chevron_right,
                             color: BeeTokens.iconTertiary(context),
-                            size: 20), // ⭐ 使用 Token
+                            size: 20),
                         onTap: () async {
                           await Navigator.of(context).push(
                             MaterialPageRoute(
@@ -579,18 +564,71 @@ class MinePage extends ConsumerWidget {
                         },
                       ),
                       BeeTokens.cardDivider(context),
+                      // 自动识别记录(漏记排查):决策码/命中词/计数,不含页面文本
+                      AppListTile(
+                        leading: Icons.manage_search_rounded,
+                        leadingColor: const Color(0xFF475569),
+                        leadingBgColor:
+                            const Color(0xFF475569).withValues(alpha: 0.12),
+                        title: AppLocalizations.of(context)
+                            .autoRecognitionRecordsTitle,
+                        subtitle: AppLocalizations.of(context)
+                            .autoRecognitionRecordsDesc,
+                        trailing: Icon(Icons.chevron_right,
+                            color: BeeTokens.iconTertiary(context),
+                            size: 20),
+                        onTap: () async {
+                          await Navigator.of(context).push(
+                            MaterialPageRoute(
+                                builder: (_) =>
+                                    const AutoRecognitionRecordsPage()),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+
+                // 通用偏好与数据管理
+                SizedBox(height: 10.0.scaled(context, ref)),
+                SectionCard(
+                  margin: EdgeInsets.fromLTRB(12.0.scaled(context, ref), 0,
+                      12.0.scaled(context, ref), 0),
+                  child: Column(
+                    children: [
+                      // 数据管理
+                      AppListTile(
+                        leading: Icons.storage_rounded,
+                        leadingColor: const Color(0xFF059669),
+                        leadingBgColor:
+                            const Color(0xFF059669).withValues(alpha: 0.12),
+                        title: AppLocalizations.of(context).dataManagement,
+                        subtitle:
+                            AppLocalizations.of(context).dataManagementDesc,
+                        trailing: Icon(Icons.chevron_right,
+                            color: BeeTokens.iconTertiary(context),
+                            size: 20),
+                        onTap: () async {
+                          await Navigator.of(context).push(
+                            MaterialPageRoute(
+                                builder: (_) => const DataManagementPage()),
+                          );
+                        },
+                      ),
+                      BeeTokens.cardDivider(context),
                       // 外观设置
                       AppListTile(
                         leading: Icons.palette_outlined,
-                        // 新功能红点的中间一级:这一行亮是为了把用户往外观
-                        // 设置里引(终点是皮肤页)。见 FeatureHighlight。
+                        leadingColor: const Color(0xFFE11D48),
+                        leadingBgColor:
+                            const Color(0xFFE11D48).withValues(alpha: 0.12),
                         dotAnchor: 'personalize',
                         title: AppLocalizations.of(context).appearanceSettings,
                         subtitle:
                             AppLocalizations.of(context).appearanceSettingsDesc,
                         trailing: Icon(Icons.chevron_right,
                             color: BeeTokens.iconTertiary(context),
-                            size: 20), // ⭐ 使用 Token
+                            size: 20),
                         onTap: () async {
                           await Navigator.of(context).push(
                             MaterialPageRoute(
@@ -598,19 +636,13 @@ class MinePage extends ConsumerWidget {
                           );
                         },
                       ),
-                    ],
-                  ),
-                ),
-                // 年度账单(分享/推广入口已全部移除)
-                SizedBox(height: 8.0.scaled(context, ref)),
-                SectionCard(
-                  margin: EdgeInsets.fromLTRB(12.0.scaled(context, ref), 0,
-                      12.0.scaled(context, ref), 0),
-                  child: Column(
-                    children: [
+                      BeeTokens.cardDivider(context),
                       // 年度账单
                       AppListTile(
                         leading: Icons.auto_graph_rounded,
+                        leadingColor: const Color(0xFFF59E0B),
+                        leadingBgColor:
+                            const Color(0xFFF59E0B).withValues(alpha: 0.12),
                         title: AppLocalizations.of(context).annualReportTitle,
                         subtitle: AppLocalizations.of(context)
                             .annualReportEntrySubtitle,
@@ -628,6 +660,9 @@ class MinePage extends ConsumerWidget {
                         BeeTokens.cardDivider(context),
                         AppListTile(
                           leading: Icons.star_border_rounded,
+                          leadingColor: const Color(0xFFEAB308),
+                          leadingBgColor:
+                              const Color(0xFFEAB308).withValues(alpha: 0.12),
                           title: AppLocalizations.of(context).mineRateApp,
                           subtitle:
                               AppLocalizations.of(context).mineRateAppSubtitle,
@@ -657,6 +692,7 @@ class _StatCell extends ConsumerWidget {
   final bool isAmount; // 是否为金额类型
   final String? currencyCode; // 币种代码
   final bool centered; // 是否居中对齐
+  final Widget? trailingWidget;
 
   const _StatCell({
     required this.label,
@@ -666,6 +702,7 @@ class _StatCell extends ConsumerWidget {
     this.isAmount = false,
     this.currencyCode,
     this.centered = false,
+    this.trailingWidget,
   });
 
   @override
@@ -692,69 +729,22 @@ class _StatCell extends ConsumerWidget {
       children: [
         valueWidget,
         SizedBox(height: 4.0.scaled(context, ref)), // 数字与标签间距增大
-        Text(label,
-            style: labelStyle,
-            textAlign: centered ? TextAlign.center : TextAlign.start),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment:
+              centered ? MainAxisAlignment.center : MainAxisAlignment.start,
+          children: [
+            Text(label,
+                style: labelStyle,
+                textAlign: centered ? TextAlign.center : TextAlign.start),
+            if (trailingWidget != null) ...[
+              const SizedBox(width: 4),
+              trailingWidget!,
+            ],
+          ],
+        ),
       ],
     );
-  }
-}
-
-// 导入完成后的短暂动画提示：线性进度条从 0 -> 100%
-class _ImportSuccessTile extends StatelessWidget {
-  const _ImportSuccessTile();
-
-  @override
-  Widget build(BuildContext context) {
-    final primary = Theme.of(context).colorScheme.primary;
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0, end: 1),
-      duration: const Duration(milliseconds: 900),
-      curve: Curves.easeOutCubic,
-      builder: (ctx, v, child) {
-        return AppListTile(
-          leading: Icons.check_circle_outline,
-          title: AppLocalizations.of(ctx).mineImportCompleteTitle,
-          subtitle: AppLocalizations.of(ctx).mineImportCompleteAllSuccess,
-          trailing: SizedBox(
-            width: 72,
-            child: LinearProgressIndicator(
-              value: v,
-              valueColor: AlwaysStoppedAnimation(primary),
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
-/// 尝试使用多种方式打开URL，提供更好的兼容性
-Future<bool> _tryOpenUrl(Uri url) async {
-  try {
-    // 方式1: 默认外部应用打开
-    if (await canLaunchUrl(url)) {
-      await launchUrl(url, mode: LaunchMode.externalApplication);
-      return true;
-    }
-
-    // 方式2: 浏览器内打开
-    if (await canLaunchUrl(url)) {
-      await launchUrl(url, mode: LaunchMode.externalNonBrowserApplication);
-      return true;
-    }
-
-    // 方式3: 平台默认方式
-    if (await canLaunchUrl(url)) {
-      await launchUrl(url, mode: LaunchMode.platformDefault);
-      return true;
-    }
-
-    logger.error('MinePage', '无法打开URL: $url');
-    return false;
-  } catch (e) {
-    logger.error('MinePage', '打开URL失败: $url', e);
-    return false;
   }
 }
 
@@ -787,64 +777,7 @@ Future<void> _rateApp(BuildContext context) async {
   }
 }
 
-/// 昵称编辑弹窗。独立 StatefulWidget 自己持有 controller、在 dispose() 释放,
-/// 把 controller 的生命周期绑到弹窗本身 —— 弹窗(含 TextField)整棵子树卸载后
-/// 才释放,彻底规避调用方在退场动画期间提前 dispose 造成的 "used after disposed"。
-class _EditDisplayNameDialog extends StatefulWidget {
-  const _EditDisplayNameDialog({required this.initial});
 
-  final String initial;
-
-  @override
-  State<_EditDisplayNameDialog> createState() => _EditDisplayNameDialogState();
-}
-
-class _EditDisplayNameDialogState extends State<_EditDisplayNameDialog> {
-  late final TextEditingController _controller =
-      TextEditingController(text: widget.initial);
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    return AlertDialog(
-      title: Text(l10n.mineDisplayNameEditTitle),
-      content: TextField(
-        controller: _controller,
-        autofocus: true,
-        maxLength: 20,
-        textInputAction: TextInputAction.done,
-        decoration: InputDecoration(hintText: l10n.mineDisplayNameHint),
-        onSubmitted: (v) {
-          if (v.trim().isNotEmpty) Navigator.pop(context, v);
-        },
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: Text(l10n.commonCancel),
-        ),
-        ValueListenableBuilder<TextEditingValue>(
-          valueListenable: _controller,
-          builder: (context, value, _) {
-            final canSave = value.text.trim().isNotEmpty;
-            return TextButton(
-              onPressed: canSave
-                  ? () => Navigator.pop(context, _controller.text)
-                  : null,
-              child: Text(l10n.commonSave),
-            );
-          },
-        ),
-      ],
-    );
-  }
-}
 
 /// 我的页面头部
 class _MinePageHeader extends ConsumerStatefulWidget {
@@ -880,44 +813,33 @@ class _MinePageHeaderState extends ConsumerState<_MinePageHeader> {
 
   Future<void> _showProfileOptions() async {
     final l10n = AppLocalizations.of(context);
-    final result = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(l10n.mineProfileEditTitle),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.badge_outlined),
-              title: Text(l10n.mineDisplayNameEditTitle),
-              onTap: () => Navigator.pop(context, 'nickname'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library),
-              title: Text(l10n.mineAvatarFromGallery),
-              onTap: () => Navigator.pop(context, 'gallery'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.camera_alt),
-              title: Text(l10n.mineAvatarFromCamera),
-              onTap: () => Navigator.pop(context, 'camera'),
-            ),
-            if (_avatarPath != null)
-              ListTile(
-                leading: const Icon(Icons.delete, color: Colors.red),
-                title: Text(l10n.mineAvatarDelete,
-                    style: const TextStyle(color: Colors.red)),
-                onTap: () => Navigator.pop(context, 'delete'),
-              ),
-          ],
+    final result = await AppDialog.showActionSheet<String>(
+      context,
+      title: l10n.mineProfileEditTitle,
+      actions: [
+        ActionSheetItem(
+          icon: Icons.badge_outlined,
+          title: l10n.mineDisplayNameEditTitle,
+          value: 'nickname',
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(l10n.commonCancel),
+        ActionSheetItem(
+          icon: Icons.photo_library_outlined,
+          title: l10n.mineAvatarFromGallery,
+          value: 'gallery',
+        ),
+        ActionSheetItem(
+          icon: Icons.camera_alt_outlined,
+          title: l10n.mineAvatarFromCamera,
+          value: 'camera',
+        ),
+        if (_avatarPath != null)
+          ActionSheetItem(
+            icon: Icons.delete_outline_rounded,
+            title: l10n.mineAvatarDelete,
+            isDestructive: true,
+            value: 'delete',
           ),
-        ],
-      ),
+      ],
     );
 
     if (result == null || !mounted) return;
@@ -1039,22 +961,23 @@ class _MinePageHeaderState extends ConsumerState<_MinePageHeader> {
   /// 仍挂载就释放 controller,会触发 "used after disposed" 红屏。
   Future<void> _showEditDisplayName() async {
     final current = ref.read(displayNameProvider);
-    final result = await showDialog<String>(
-      context: context,
-      builder: (_) => _EditDisplayNameDialog(initial: current),
+    final l10n = AppLocalizations.of(context);
+    final result = await AppDialog.prompt(
+      context,
+      title: l10n.mineDisplayNameEditTitle,
+      hintText: l10n.mineDisplayNameHint,
+      initialValue: current,
+      maxLength: 20,
     );
     if (result == null || !mounted) return;
     final name = result.trim();
     if (name.isEmpty || name == current) return; // v1 不清空;无变化不写
     ref.read(displayNameProvider.notifier).state = name;
-    showToast(context, AppLocalizations.of(context).mineDisplayNameSaved);
+    showToast(context, l10n.mineDisplayNameSaved);
   }
 
   @override
   Widget build(BuildContext context) {
-    // 头像功能不受云同步限制，任何时候都可以上传
-    final canEditAvatar = true;
-
     // 监听云同步写下来的头像路径：当 SyncEngine.syncMyProfile 从服务端拉到
     // 新头像并 bump avatarRefreshProvider 时，这里自动拿到新值，无需手动刷新。
     // 优先级：云同步路径 > 本地 optimistic (_avatarPath)。
@@ -1095,171 +1018,265 @@ class _MinePageHeaderState extends ConsumerState<_MinePageHeader> {
     return Padding(
       padding: EdgeInsets.fromLTRB(
         12.0.scaled(context, ref),
+        8.0.scaled(context, ref),
         12.0.scaled(context, ref),
-        12.0.scaled(context, ref),
-        10.0.scaled(context, ref),
+        4.0.scaled(context, ref),
       ),
-      child: Stack(
+      child: Column(
         children: [
-          Column(
-            children: [
-              // 头像/Logo
-              GestureDetector(
-                onTap: canEditAvatar ? _showProfileOptions : null,
-                child: Stack(
-                  children: [
-                    Container(
-                      width: 80.0.scaled(context, ref),
-                      height: 80.0.scaled(context, ref),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
+          // 头像/Logo
+          GestureDetector(
+            onTap: _showProfileOptions,
+            child: Stack(
+              children: [
+                Container(
+                  width: 74.0.scaled(context, ref),
+                  height: 74.0.scaled(context, ref),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Theme.of(context)
+                        .colorScheme
+                        .primary
+                        .withValues(alpha: 0.08),
+                    border: Border.all(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .primary
+                          .withValues(alpha: 0.28),
+                      width: 2.5,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
                         color: Theme.of(context)
                             .colorScheme
                             .primary
-                            .withValues(alpha: 0.1),
-                        border: Border.all(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .primary
-                              .withValues(alpha: 0.3),
-                          width: 2,
-                        ),
+                            .withValues(alpha: 0.12),
+                        blurRadius: 10,
+                        offset: const Offset(0, 3),
                       ),
-                      child: ClipOval(
-                        child: _isLoadingAvatar
-                            ? Center(
-                                child: SizedBox(
-                                  width: 20.0.scaled(context, ref),
-                                  height: 20.0.scaled(context, ref),
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color:
-                                        Theme.of(context).colorScheme.primary,
-                                  ),
-                                ),
+                    ],
+                  ),
+                  child: ClipOval(
+                    child: _isLoadingAvatar
+                        ? Center(
+                            child: SizedBox(
+                              width: 20.0.scaled(context, ref),
+                              height: 20.0.scaled(context, ref),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            ),
+                          )
+                        : (effectiveAvatarPath != null
+                            ? Image.file(
+                                key: ValueKey(effectiveAvatarPath),
+                                File(effectiveAvatarPath),
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) {
+                                  return SmartBookIcon(
+                                    size: 38.0.scaled(context, ref),
+                                  );
+                                },
                               )
-                            : (effectiveAvatarPath != null
-                                ? Image.file(
-                                    // key 加入 path：Flutter 以 (File, key) 区
-                                    // 分不同图片，否则从 A.jpg 换到 B.jpg（路径
-                                    // 不同但 widget 复用）有时仍显示缓存的 A。
-                                    key: ValueKey(effectiveAvatarPath),
-                                    File(effectiveAvatarPath),
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (context, error, stackTrace) {
-                                      return SmartBookIcon(
-                                        size: 40.0.scaled(context, ref),
-                                      );
-                                    },
-                                  )
-                                : SmartBookIcon(
-                                    size: 40.0.scaled(context, ref),
-                                  )),
+                            : SmartBookIcon(
+                                size: 38.0.scaled(context, ref),
+                              )),
+                  ),
+                ),
+                Positioned(
+                    right: 0,
+                    bottom: 0,
+                    child: Container(
+                      width: 22.0.scaled(context, ref),
+                      height: 22.0.scaled(context, ref),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primary,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.15),
+                            blurRadius: 4,
+                            offset: const Offset(0, 1),
+                          ),
+                        ],
+                      ),
+                      child: Icon(
+                        Icons.camera_alt_rounded,
+                        size: 11.0.scaled(context, ref),
+                        color: Colors.white,
                       ),
                     ),
-                    if (canEditAvatar)
-                      Positioned(
-                        right: 0,
-                        bottom: 0,
-                        child: Container(
-                          width: 24.0.scaled(context, ref),
-                          height: 24.0.scaled(context, ref),
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.primary,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 2),
-                          ),
-                          child: Icon(
-                            Icons.edit,
-                            size: 12.0.scaled(context, ref),
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                  ],
+                  ),
+              ],
+            ),
+          ),
+          SizedBox(height: 10.0.scaled(context, ref)),
+          // 昵称行: 时段图标 + 问候/昵称
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              if (displayName.isNotEmpty) ...[
+                Icon(greeting.icon,
+                    size: 18.0.scaled(context, ref), color: greeting.color),
+                SizedBox(width: 6.0.scaled(context, ref)),
+              ],
+              Flexible(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _showEditDisplayName,
+                  child: Text(
+                    headerText,
+                    style: nameStyle?.copyWith(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.2,
+                    ),
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ),
-              SizedBox(height: 12.0.scaled(context, ref)),
-              // 昵称行:已设置 = 「时段图标 + 问候,昵称」(与 web 一致),未设置 =
-              // Slogan;名字可点直接编辑(发现性主入口在头像:点头像→编辑资料,可改
-              // 昵称/头像)。小眼睛(隐藏金额)紧跟其后,整体居中。
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  if (displayName.isNotEmpty) ...[
-                    Icon(greeting.icon,
-                        size: 18.0.scaled(context, ref), color: greeting.color),
-                    SizedBox(width: 6.0.scaled(context, ref)),
-                  ],
-                  Flexible(
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: _showEditDisplayName,
-                      child: Text(
-                        headerText,
-                        style: nameStyle,
-                        textAlign: TextAlign.center,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ),
-                  SizedBox(width: 8.0.scaled(context, ref)),
-                  GestureDetector(
-                    onTap: () {
-                      final cur = ref.read(hideAmountsProvider);
-                      ref.read(hideAmountsProvider.notifier).state = !cur;
-                    },
-                    child: Icon(
-                      hide
-                          ? Icons.visibility_off_outlined
-                          : Icons.visibility_outlined,
-                      size: 18,
-                      color: BeeTokens.textPrimary(context),
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: 16.0.scaled(context, ref)),
-              // 统计数据
-              Row(
-                children: [
-                  Expanded(
-                    child: _StatCell(
-                      label: AppLocalizations.of(context).mineDaysCount,
-                      value: day.toString(),
-                      labelStyle: labelStyle,
-                      numStyle: numStyle,
-                      centered: true,
-                    ),
-                  ),
-                  Expanded(
-                    child: _StatCell(
-                      label: AppLocalizations.of(context).mineTotalRecords,
-                      value: tx.toString(),
-                      labelStyle: labelStyle,
-                      numStyle: numStyle,
-                      centered: true,
-                    ),
-                  ),
-                  Expanded(
-                    child: _StatCell(
-                      label: AppLocalizations.of(context).mineCurrentBalance,
-                      value: balance,
-                      isAmount: true,
-                      currencyCode: currencyCode,
-                      labelStyle: labelStyle,
-                      numStyle: numStyle.copyWith(
-                        color: balance >= 0
-                            ? BeeTokens.textPrimary(context)
-                            : BeeTokens.error(context),
-                      ),
-                      centered: true,
-                    ),
-                  ),
-                ],
+              SizedBox(width: 4.0.scaled(context, ref)),
+              GestureDetector(
+                onTap: _showEditDisplayName,
+                child: Icon(
+                  Icons.edit_outlined,
+                  size: 15,
+                  color: BeeTokens.iconTertiary(context),
+                ),
               ),
             ],
+          ),
+          SizedBox(height: 4.0.scaled(context, ref)),
+          // 状态标签胶囊:已连接 SmartBook Cloud / 本地离线模式
+          Consumer(
+            builder: (ctx, r, _) {
+              final cfg = r.watch(activeCloudConfigProvider).valueOrNull;
+              final isCloud = cfg != null && cfg.type == CloudBackendType.smartbookCloud;
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: isCloud
+                      ? const Color(0xFF10B981).withValues(alpha: 0.10)
+                      : (BeeTokens.isDark(ctx)
+                          ? Colors.white.withValues(alpha: 0.06)
+                          : Colors.black.withValues(alpha: 0.04)),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: isCloud
+                            ? const Color(0xFF10B981)
+                            : BeeTokens.iconTertiary(ctx),
+                      ),
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      isCloud ? 'SmartBook Cloud' : AppLocalizations.of(ctx).mineCloudServiceOffline,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        color: isCloud
+                            ? const Color(0xFF059669)
+                            : BeeTokens.textSecondary(ctx),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+          SizedBox(height: 12.0.scaled(context, ref)),
+          // 统计数据微卡片面板
+          Container(
+            padding: EdgeInsets.symmetric(
+              horizontal: 8.0.scaled(context, ref),
+              vertical: 12.0.scaled(context, ref),
+            ),
+            decoration: BoxDecoration(
+              color: BeeTokens.surface(context),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: BeeTokens.isDark(context)
+                    ? Colors.white10
+                    : Colors.black.withValues(alpha: 0.04),
+                width: 0.8,
+              ),
+              boxShadow: BeeTokens.isDark(context) ? null : BeeShadows.card,
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _StatCell(
+                    label: AppLocalizations.of(context).mineDaysCount,
+                    value: day.toString(),
+                    labelStyle: labelStyle,
+                    numStyle: numStyle,
+                    centered: true,
+                  ),
+                ),
+                Container(
+                  width: 0.5,
+                  height: 28,
+                  color: BeeTokens.isDark(context)
+                      ? Colors.white12
+                      : Colors.black.withValues(alpha: 0.07),
+                ),
+                Expanded(
+                  child: _StatCell(
+                    label: AppLocalizations.of(context).mineTotalRecords,
+                    value: tx.toString(),
+                    labelStyle: labelStyle,
+                    numStyle: numStyle,
+                    centered: true,
+                  ),
+                ),
+                Container(
+                  width: 0.5,
+                  height: 28,
+                  color: BeeTokens.isDark(context)
+                      ? Colors.white12
+                      : Colors.black.withValues(alpha: 0.07),
+                ),
+                Expanded(
+                  child: _StatCell(
+                    label: AppLocalizations.of(context).mineCurrentBalance,
+                    value: hide ? '****' : balance,
+                    isAmount: !hide,
+                    currencyCode: currencyCode,
+                    labelStyle: labelStyle,
+                    numStyle: numStyle.copyWith(
+                      color: balance >= 0
+                          ? BeeTokens.textPrimary(context)
+                          : BeeTokens.error(context),
+                    ),
+                    centered: true,
+                    trailingWidget: GestureDetector(
+                      onTap: () {
+                        final cur = ref.read(hideAmountsProvider);
+                        ref.read(hideAmountsProvider.notifier).state = !cur;
+                      },
+                      child: Icon(
+                        hide
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                        size: 14,
+                        color: BeeTokens.iconTertiary(context),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
