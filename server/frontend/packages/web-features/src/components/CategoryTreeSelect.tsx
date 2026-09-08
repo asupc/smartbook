@@ -1,6 +1,7 @@
 import React, { useMemo, useRef } from 'react'
 import { TreeSelect } from 'antd'
 import type { TreeSelectProps } from 'antd'
+import { cn } from '@smartbook/ui'
 import type { ReadCategory, WorkspaceCategory } from '@smartbook/api-client'
 import { CategoryIcon } from './CategoryIcon'
 
@@ -341,14 +342,17 @@ export function CategoryTreeSelect({
   }, [dropdownStyle, popupStyle, styles])
 
   return (
-    <div ref={containerRef} className="relative w-full">
+    <div
+      ref={containerRef}
+      className={cn('relative inline-flex min-w-0', className)}
+      style={style}
+    >
       <TreeSelect
         showSearch
         allowClear={allowClear}
         disabled={disabled}
         size={size}
-        className={className}
-        style={style}
+        className="w-full"
         value={currentValue}
         placeholder={effectivePlaceholder}
         treeData={treeData}

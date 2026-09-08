@@ -1813,14 +1813,14 @@ export function TransactionsPage() {
                   <div className="flex flex-wrap items-center gap-2">
                     <Input
                       prefix={<Search className="h-3.5 w-3.5 text-muted-foreground/70 mr-0.5" />}
-                      className="w-[150px] lg:w-[190px]"
+                      className="w-[140px] xl:w-[180px]"
                       placeholder={t('shell.placeholder.keyword')}
                       value={listQuery}
                       allowClear
                       onChange={(event) => setListQuery(event.target.value)}
                     />
                     <Select
-                      className="w-[105px]"
+                      className="w-[100px]"
                       value={txFilterApplied.txType || 'all'}
                       aria-label={t('shell.txFilter')}
                       onChange={(value) =>
@@ -1836,7 +1836,7 @@ export function TransactionsPage() {
                       ]}
                     />
                     <CategoryTreeSelect
-                      className="w-[175px] lg:w-[205px]"
+                      className="w-[160px] xl:w-[195px]"
                       categories={txWriteCategories}
                       value={txFilterApplied.categorySyncId || ''}
                       kind={txFilterApplied.txType || 'all'}
@@ -1853,7 +1853,7 @@ export function TransactionsPage() {
                       }}
                     />
                     <RangePicker
-                      className="w-[230px]"
+                      className="w-[220px] xl:w-[230px]"
                       presets={dateRangePresets}
                       placeholder={[t('shell.filter.dateFrom'), t('shell.filter.dateTo')]}
                       value={
