@@ -767,6 +767,144 @@ class LocalTransactionRepository implements TransactionRepository {
     return _hydrateSharedOverrides(out);
   }
 
+  /// 把一条 Drift join 行转成 [TransactionWithRefs]。
+  TransactionWithRefs _rowToRefs(d.TypedResult r) => (
+        t: r.readTable(db.transactions),
+        category: r.readTableOrNull(db.categories),
+        account: r.readTableOrNull(_fromAccountTable),
+        toAccount: r.readTableOrNull(_toAccountTable),
+      );
+
+  @override
+  Future<TransactionPage> getTransactionPageWithCategory({
+    required int ledgerId,
+    TransactionPageCursor? before,
+    TransactionPageCursor? after,
+    int limit = 80,
+  }) async {
+    assert(!(before != null && after != null), 'before/after 互斥');
+    final effective = limit.clamp(1, 400).toInt() + 1; // +1 用于 hasMore 探测
+    final base = db.select(db.transactions)
+      ..where((t) => t.ledgerId.equals(ledgerId));
+
+    if (before != null) {
+      // 向旧记录翻页:happened_at < c 或 (happened_at = c AND id < c.id)
+      base.where((t) =>
+          t.happenedAt.isSmallerThanValue(before.happenedAt) |
+          (t.happenedAt.equals(before.happenedAt) & t.id.isSmallerThanValue(before.id)));
+      base.orderBy([
+        (t) => d.OrderingTerm(expression: t.happenedAt, mode: d.OrderingMode.desc),
+        (t) => d.OrderingTerm(expression: t.id, mode: d.OrderingMode.desc),
+      ]);
+    } else if (after != null) {
+      // 向新记录翻页:happened_at > c 或 (happened_at = c AND id > c.id)
+      base.where((t) =>
+          t.happenedAt.isBiggerThanValue(after.happenedAt) |
+          (t.happenedAt.equals(after.happenedAt) & t.id.isBiggerThanValue(after.id)));
+      base.orderBy([
+        (t) => d.OrderingTerm(expression: t.happenedAt, mode: d.OrderingMode.asc),
+        (t) => d.OrderingTerm(expression: t.id, mode: d.OrderingMode.asc),
+      ]);
+    } else {
+      // 最新一页:默认降序
+      base.orderBy([
+        (t) => d.OrderingTerm(expression: t.happenedAt, mode: d.OrderingMode.desc),
+        (t) => d.OrderingTerm(expression: t.id, mode: d.OrderingMode.desc),
+      ]);
+    }
+
+    base.limit(effective);
+    final rows = await base.join(_txJoins()).get();
+
+    // 向新记录翻页查询是升序，返回前 reverse 回降序，保证页面始终降序。
+    final isAscending = after != null;
+    final result = rows.map(_rowToRefs).toList();
+    if (isAscending) {
+      result.replaceRange(0, result.length, result.reversed);
+    }
+    final hasMore = result.length > limit;
+    if (hasMore) {
+      // 去掉多取的一行，避免把下一页边界混进本页
+      result.removeAt(isAscending ? 0 : result.length - 1);
+    }
+    // 方向语义随查询方向不同：
+    //  - 初始页(after=null,降序):多取的探针在末尾,hasMore=还有更旧;已到最顶,无更新。
+    //  - 翻旧页(before,降序)    :还多取在末尾,hasMore=还有更旧;从更新页翻下,上方必有。
+    //  - 翻新页(after,升序)     :多取在顶部(reverse后),hasMore=还有更新;从更旧页翻上,下方必有。
+    final bool hasOlder;
+    final bool hasNewer;
+    if (after != null) {
+      hasOlder = true;
+      hasNewer = hasMore;
+    } else {
+      hasOlder = hasMore;
+      hasNewer = before != null;
+    }
+
+    // 去重(同一时间戳 + 跨页边界理论上不会重复,保险起见按 id 收敛)
+    final seen = <int>{};
+    final items = <TransactionWithRefs>[];
+    for (final r in result) {
+      if (seen.add(r.t.id)) items.add(r);
+    }
+
+    return TransactionPage(
+      items: items,
+      firstCursor: items.isEmpty ? null : TransactionPageCursor.fromRow(items.first.t),
+      lastCursor: items.isEmpty ? null : TransactionPageCursor.fromRow(items.last.t),
+      hasNewer: hasNewer,
+      hasOlder: hasOlder,
+    );
+  }
+
+  @override
+  Stream<List<TransactionWithRefs>> watchTransactionWindowWithCategory({
+    required int ledgerId,
+    TransactionPageCursor? newestInclusive,
+    required TransactionPageCursor oldestInclusive,
+  }) {
+    final base = db.select(db.transactions)
+      ..where((t) => t.ledgerId.equals(ledgerId))
+      ..orderBy([
+        (t) => d.OrderingTerm(expression: t.happenedAt, mode: d.OrderingMode.desc),
+        (t) => d.OrderingTerm(expression: t.id, mode: d.OrderingMode.desc),
+      ]);
+
+    // 窗口 = 闭区间 [oldestInclusive, newestInclusive](按时间戳，同时间戳看 id)。
+    // 上界:排除比 newestInclusive 更新的 → 保留 happened_at < n 或 (= 且 id <= n.id)。
+    // (最新模式 newestInclusive=null = 上界不限，新交易自然进入窗口并实时重发。)
+    if (newestInclusive != null) {
+      base.where((t) =>
+          t.happenedAt.isSmallerThanValue(newestInclusive.happenedAt) |
+          (t.happenedAt.equals(newestInclusive.happenedAt) &
+              t.id.isSmallerOrEqualValue(newestInclusive.id)));
+    }
+    // 下界:排除比 oldestInclusive 更旧的 → 保留 happened_at > o 或 (= 且 id >= o.id)。
+    base.where((t) =>
+        t.happenedAt.isBiggerThanValue(oldestInclusive.happenedAt) |
+        (t.happenedAt.equals(oldestInclusive.happenedAt) &
+            t.id.isBiggerOrEqualValue(oldestInclusive.id)));
+
+    final q = base.join(_txJoins());
+    return _watchTxJoinWithSharedHydration(q);
+  }
+
+  @override
+  Future<bool> hasTransactionsInPeriod({
+    required int ledgerId,
+    required DateTime start,
+    required DateTime end,
+  }) async {
+    final rows = await (db.select(db.transactions)
+          ..where((t) =>
+              t.ledgerId.equals(ledgerId) &
+              t.happenedAt.isBiggerOrEqualValue(start) &
+              t.happenedAt.isSmallerThanValue(end))
+          ..limit(1))
+        .get();
+    return rows.isNotEmpty;
+  }
+
   @override
   Future<List<NoteHistoryEntry>> getNoteHistory({
     required int ledgerId,

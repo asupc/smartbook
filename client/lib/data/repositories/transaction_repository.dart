@@ -48,6 +48,46 @@ class BatchAttachmentData {
   });
 }
 
+/// 交易详情记录行的稳定表述：交易 + 分类 + from/to 账户(共享账本下可能是
+/// synthetic 实体)。首页/明细列表的窗口分页统一用这一行结构。
+typedef TransactionWithRefs = ({
+  Transaction t,
+  Category? category,
+  Account? account,
+  Account? toAccount,
+});
+
+/// M5-4 keyset 分页游标。固定双键 `(happened_at DESC, id DESC)` 保证同一
+/// 时间戳的多笔交易跨页不重复、不遗漏。
+class TransactionPageCursor {
+  final DateTime happenedAt;
+  final int id;
+
+  const TransactionPageCursor({required this.happenedAt, required this.id});
+
+  TransactionPageCursor.fromRow(Transaction t)
+      : happenedAt = t.happenedAt,
+        id = t.id;
+}
+
+/// 一页交易窗口(含上下界游标与可达方向)。
+/// [hasNewer]/[hasOlder] 基于 `limit + 1` 探测，语义为「该方向是否还有更多」。
+class TransactionPage {
+  final List<TransactionWithRefs> items;
+  final TransactionPageCursor? firstCursor;
+  final TransactionPageCursor? lastCursor;
+  final bool hasNewer;
+  final bool hasOlder;
+
+  const TransactionPage({
+    required this.items,
+    this.firstCursor,
+    this.lastCursor,
+    required this.hasNewer,
+    required this.hasOlder,
+  });
+}
+
 /// 交易Repository接口
 /// 定义交易相关的所有数据操作
 abstract class TransactionRepository {
@@ -90,6 +130,37 @@ abstract class TransactionRepository {
             Account? toAccount
           })>> transactionsWithCategoryAll({
     int? ledgerId,
+  });
+
+  /// M5-4 keyset 分页取一页交易(带分类/账户)。`before` 向下翻旧页、
+  /// `after` 向上翻新页，二者互斥。默认一页 80 笔。
+  ///
+  /// 排序固定 `(happened_at DESC, id DESC)`；用 `limit + 1` 判定 hasMore，
+  /// 返回时按 ID 去重。共享账本 override hydration 语义与
+  /// [transactionsWithCategoryAll] 一致。
+  Future<TransactionPage> getTransactionPageWithCategory({
+    required int ledgerId,
+    TransactionPageCursor? before,
+    TransactionPageCursor? after,
+    int limit = 80,
+  });
+
+  /// M5-4 监听已加载窗口(上下界之间)的交易，含共享账本 override 再 hydration。
+  ///
+  /// [newestInclusive] 可空 = 上界不限(最新模式)；[oldestInclusive] 必填为
+  /// 当前窗口最旧一笔的游标。窗口内增删改账本内数据时 Drift 会重发；共享
+  /// SharedLedger* 变化也会触发重 hydration。
+  Stream<List<TransactionWithRefs>> watchTransactionWindowWithCategory({
+    required int ledgerId,
+    TransactionPageCursor? newestInclusive,
+    required TransactionPageCursor oldestInclusive,
+  });
+
+  /// 账本在 `[start, end)` 区间是否有交易。月份跳转前先探测，避免跳到空月。
+  Future<bool> hasTransactionsInPeriod({
+    required int ledgerId,
+    required DateTime start,
+    required DateTime end,
   });
 
   /// 获取最近的交易记录（带分类信息）- 用于预加载

@@ -22,6 +22,10 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import java.io.File
 import java.io.FileInputStream
+import java.io.ByteArrayOutputStream
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.drawable.BitmapDrawable
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -388,6 +392,33 @@ class MainActivity: FlutterFragmentActivity() {
                     val detail = call.argument<String>("detail") ?: ""
                     ScreenTextWatcher.recordDecision(this, pkg, decision, detail)
                     result.success(true)
+                }
+                // 获取已安装应用的应用图标 (PNG 字节数组)
+                "getAppIcon" -> {
+                    val pkg = call.argument<String>("pkg") ?: ""
+                    if (pkg.isNotEmpty() && pkg != "app") {
+                        try {
+                            val drawable = packageManager.getApplicationIcon(pkg)
+                            val bitmap = if (drawable is BitmapDrawable && drawable.bitmap != null) {
+                                drawable.bitmap
+                            } else {
+                                val width = drawable.intrinsicWidth.takeIf { it > 0 } ?: 96
+                                val height = drawable.intrinsicHeight.takeIf { it > 0 } ?: 96
+                                val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                                val canvas = Canvas(bmp)
+                                drawable.setBounds(0, 0, canvas.width, canvas.height)
+                                drawable.draw(canvas)
+                                bmp
+                            }
+                            val stream = ByteArrayOutputStream()
+                            bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
+                            result.success(stream.toByteArray())
+                        } catch (e: Exception) {
+                            result.success(null)
+                        }
+                    } else {
+                        result.success(null)
+                    }
                 }
                 else -> result.notImplemented()
             }

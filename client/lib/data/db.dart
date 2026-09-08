@@ -550,7 +550,7 @@ class BeeDatabase extends _$BeeDatabase {
   BeeDatabase.forTesting(QueryExecutor executor) : super(executor);
 
   @override
-  int get schemaVersion => 40; // v40: 交易记录时间 recorded_at(server 盖章)
+  int get schemaVersion => 41; // v40: 交易记录时间 recorded_at(server 盖章);v41: keyset 分页索引 (ledger_id, happened_at DESC, id DESC)
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -1397,6 +1397,11 @@ class BeeDatabase extends _$BeeDatabase {
         // 账本流水按时间倒序翻页(首页/明细/统计的主查询)。
         'CREATE INDEX IF NOT EXISTS idx_transactions_ledger_time '
             'ON transactions (ledger_id, happened_at DESC);',
+        // M5-4 keyset 分页:稳定双键 (happened_at DESC, id DESC)。在
+        // idx_transactions_ledger_time 基础上补 id,使同时间戳多笔交易跨页
+        // 不重复/不漏;新装与升级都建,暂保留旧索引一个版本(见计划 v41)。
+        'CREATE INDEX IF NOT EXISTS idx_transactions_ledger_time_id '
+            'ON transactions (ledger_id, happened_at DESC, id DESC);',
         // 自动记账判重、收支分类统计:先按账本 + 类型收窄再按时间。
         'CREATE INDEX IF NOT EXISTS idx_transactions_ledger_type_time '
             'ON transactions (ledger_id, type, happened_at DESC);',

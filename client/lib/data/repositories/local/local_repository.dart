@@ -10,7 +10,8 @@ import '../../../models/note_history.dart';
 import '../base_repository.dart';
 import '../budget_repository.dart';
 import '../transaction_repository.dart'
-    show BatchAttachmentData, TransactionUpdateBySyncIdData;
+    show BatchAttachmentData, TransactionUpdateBySyncIdData, TransactionPage,
+        TransactionPageCursor, TransactionWithRefs;
 import 'local_ledger_repository.dart';
 import 'local_transaction_repository.dart';
 import 'local_category_repository.dart';
@@ -285,6 +286,36 @@ class LocalRepository extends BaseRepository {
             Account? toAccount
           })>> watchTransactionsWithCategoryAll({int? ledgerId}) =>
       _transactionRepo.watchTransactionsWithCategoryAll(ledgerId: ledgerId);
+
+  @override
+  Future<TransactionPage> getTransactionPageWithCategory({
+    required int ledgerId,
+    TransactionPageCursor? before,
+    TransactionPageCursor? after,
+    int limit = 80,
+  }) =>
+      _transactionRepo.getTransactionPageWithCategory(
+          ledgerId: ledgerId, before: before, after: after, limit: limit);
+
+  @override
+  Stream<List<TransactionWithRefs>> watchTransactionWindowWithCategory({
+    required int ledgerId,
+    TransactionPageCursor? newestInclusive,
+    required TransactionPageCursor oldestInclusive,
+  }) =>
+      _transactionRepo.watchTransactionWindowWithCategory(
+          ledgerId: ledgerId,
+          newestInclusive: newestInclusive,
+          oldestInclusive: oldestInclusive);
+
+  @override
+  Future<bool> hasTransactionsInPeriod({
+    required int ledgerId,
+    required DateTime start,
+    required DateTime end,
+  }) =>
+      _transactionRepo.hasTransactionsInPeriod(
+          ledgerId: ledgerId, start: start, end: end);
 
   @override
   Stream<

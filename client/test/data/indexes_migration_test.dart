@@ -24,6 +24,7 @@ void main() {
   /// 两条路径会同时被校验。
   const expected = <String>{
     'idx_transactions_ledger_time',
+    'idx_transactions_ledger_time_id',
     'idx_transactions_ledger_type_time',
     'idx_transactions_sync_id',
     'idx_transaction_tags_transaction',
@@ -81,7 +82,7 @@ void main() {
     addTearDown(db.close);
     final version = await db.customSelect('PRAGMA user_version').getSingle();
 
-    expect(version.read<int>('user_version'), 40);
+    expect(version.read<int>('user_version'), 41);
     expect(await indexNames(db), containsAll(expected));
   });
 
