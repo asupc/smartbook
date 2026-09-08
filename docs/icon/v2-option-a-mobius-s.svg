@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- 方案 A：流光 S 智环 (The Smart Möbius 'S') -->
+  <defs>
+    <linearGradient id="bgA2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0F172A"/>
+      <stop offset="50%" stop-color="#090D16"/>
+      <stop offset="100%" stop-color="#020617"/>
+    </linearGradient>
+    <linearGradient id="ribbonA2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00F2FE"/>
+      <stop offset="35%" stop-color="#38BDF8"/>
+      <stop offset="70%" stop-color="#06B6D4"/>
+      <stop offset="100%" stop-color="#10B981"/>
+    </linearGradient>
+    <linearGradient id="ribbonSubtleA2" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#10B981" stop-opacity="0.05"/>
+    </linearGradient>
+    <radialGradient id="glowA2" cx="40%" cy="35%" r="60%">
+      <stop offset="0%" stop-color="#00F2FE" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#00F2FE" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="shadowA2" x="-15%" y="-15%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="16" stdDeviation="20" flood-color="#00F2FE" flood-opacity="0.22"/>
+    </filter>
+  </defs>
+
+  <!-- 容器背景超椭圆 -->
+  <rect width="512" height="512" rx="124" fill="url(#bgA2)"/>
+  <rect width="510" height="510" x="1" y="1" rx="123" fill="none" stroke="#38BDF8" stroke-opacity="0.18" stroke-width="2"/>
+  
+  <!-- 柔和环境光 -->
+  <circle cx="256" cy="220" r="180" fill="url(#glowA2)"/>
+
+  <!-- S 主体与翻页轮廓 -->
+  <g filter="url(#shadowA2)">
+    <!-- 背后书脊透叠弧 -->
+    <path d="M 160 340 C 160 270, 210 230, 270 216 C 340 200, 370 170, 360 120"
+          fill="none" stroke="url(#ribbonSubtleA2)" stroke-width="44" stroke-linecap="round"/>
+
+    <!-- 主流光 S：自上而下舒展 -->
+    <path d="M 350 148 
+             C 290 102, 192 110, 162 168 
+             C 132 226, 172 278, 240 296 
+             C 328 320, 376 362, 348 424 
+             C 314 480, 194 482, 146 420" 
+          fill="none" 
+          stroke="url(#ribbonA2)" 
+          stroke-width="54" 
+          stroke-linecap="round" 
+          stroke-linejoin="round"/>
+  </g>
+
+  <!-- 核心数据跃升点 -->
+  <circle cx="240" cy="296" r="12" fill="#FFFFFF" opacity="0.95"/>
+  <circle cx="240" cy="296" r="22" fill="#00F2FE" opacity="0.4"/>
+
+  <!-- 灵动 AI 星芒 -->
+  <g transform="translate(372, 116)">
+    <path d="M 0 -36 Q 0 0 36 0 Q 0 0 0 36 Q 0 0 -36 0 Q 0 0 0 -36 Z" fill="#FDE047"/>
+    <circle cx="0" cy="0" r="6" fill="#FFFFFF"/>
+  </g>
+  <!-- 伴随微星 -->
+  <g transform="translate(140, 130)">
+    <path d="M 0 -14 Q 0 0 14 0 Q 0 0 0 14 Q 0 0 -14 0 Q 0 0 0 -14 Z" fill="#38BDF8" opacity="0.75"/>
+  </g>
+</svg>

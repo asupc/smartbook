@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- 方案 D：天平晶体 & 维度 (The FinTech Prism Balance) -->
+  <defs>
+    <linearGradient id="bgD2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#18181B"/>
+      <stop offset="50%" stop-color="#0F0F12"/>
+      <stop offset="100%" stop-color="#050507"/>
+    </linearGradient>
+    <linearGradient id="facetTopD2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#A78BFA"/>
+      <stop offset="100%" stop-color="#6366F1"/>
+    </linearGradient>
+    <linearGradient id="facetRightD2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F43F5E"/>
+      <stop offset="100%" stop-color="#D946EF"/>
+    </linearGradient>
+    <linearGradient id="facetBottomD2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#818CF8"/>
+      <stop offset="100%" stop-color="#4F46E5"/>
+    </linearGradient>
+    <linearGradient id="facetLeftD2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="100%" stop-color="#0284C7"/>
+    </linearGradient>
+    <radialGradient id="glowD2" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#8B5CF6" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#8B5CF6" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="shadowD2" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="24" flood-color="#8B5CF6" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="124" fill="url(#bgD2)"/>
+  <rect width="510" height="510" x="1" y="1" rx="123" fill="none" stroke="#A78BFA" stroke-opacity="0.2" stroke-width="2"/>
+
+  <circle cx="256" cy="256" r="190" fill="url(#glowD2)"/>
+
+  <!-- 几何晶体天平折叠 (中心聚合) -->
+  <g filter="url(#shadowD2)">
+    <!-- 上折面 (智慧之顶) -->
+    <polygon points="256,120 376,210 256,246 136,210" fill="url(#facetTopD2)" opacity="0.95"/>
+    
+    <!-- 右折面 (收入流向) -->
+    <polygon points="376,210 376,310 256,386 256,246" fill="url(#facetRightD2)" opacity="0.88"/>
+
+    <!-- 左折面 (支出平衡) -->
+    <polygon points="136,210 256,246 256,386 136,310" fill="url(#facetLeftD2)" opacity="0.9"/>
+    
+    <!-- 下衬托光面 (稳固底座) -->
+    <polygon points="256,386 376,310 396,326 256,416 116,326 136,310" fill="url(#facetBottomD2)" opacity="0.75"/>
+  </g>
+
+  <!-- 中心光芒汇聚点 (AI 核心) -->
+  <circle cx="256" cy="246" r="14" fill="#FFFFFF"/>
+  <circle cx="256" cy="246" r="28" fill="#FFFFFF" opacity="0.25"/>
+
+  <!-- 右上星核 -->
+  <g transform="translate(376, 130)">
+    <path d="M 0 -24 Q 0 0 24 0 Q 0 0 0 24 Q 0 0 -24 0 Q 0 0 0 -24 Z" fill="#F43F5E"/>
+  </g>
+</svg>
