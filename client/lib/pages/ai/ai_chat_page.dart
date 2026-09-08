@@ -11,7 +11,6 @@ import '../../widgets/ui/ui.dart';
 import '../../widgets/biz/smartbook_icon.dart';
 import '../../widgets/ai/typewriter_text.dart';
 import '../../widgets/ai/bill_card_widget.dart';
-import '../../widgets/ai/ai_quick_commands_bar.dart';
 import '../../styles/tokens.dart';
 import '../../utils/ui_scale_extensions.dart';
 import '../../utils/voice_billing_helper.dart';
@@ -330,11 +329,6 @@ class _AIChatPageState extends ConsumerState<AIChatPage>
                 ],
               ),
             ),
-
-          // 快捷指令横条
-          AIQuickCommandsBar(
-            onCommandTap: _handleQuickCommand,
-          ),
 
           // 输入区域
           _buildInputArea(),
@@ -899,27 +893,16 @@ class _AIChatPageState extends ConsumerState<AIChatPage>
               ),
             ),
             SizedBox(width: 8.0.scaled(context, ref)),
-            // 图片记账(相册/拍照)
+            // 「+」统一入口:相册/拍照/语音 + 快捷分析指令(相册最常用放首位)
             IconButton(
               icon: Icon(
-                Icons.image_outlined,
+                Icons.add_circle_outline,
                 color: _isLoading
                     ? BeeTokens.textTertiary(context)
                     : primaryColor,
               ),
-              tooltip: AppLocalizations.of(context).fabActionGallery,
-              onPressed: _isLoading ? null : _showMediaSourceSheet,
-            ),
-            // 语音记账
-            IconButton(
-              icon: Icon(
-                Icons.mic_none,
-                color: _isLoading
-                    ? BeeTokens.textTertiary(context)
-                    : primaryColor,
-              ),
-              tooltip: AppLocalizations.of(context).fabActionVoice,
-              onPressed: _isLoading ? null : _startVoiceBilling,
+              tooltip: AppLocalizations.of(context).commonMore,
+              onPressed: _isLoading ? null : _showPlusMenu,
             ),
             IconButton(
               icon: Icon(
@@ -961,20 +944,23 @@ class _AIChatPageState extends ConsumerState<AIChatPage>
     }
   }
 
-  /// 显示图片记账来源选择(相册 / 拍照)
-  void _showMediaSourceSheet() {
+  /// 「+」菜单:相册/拍照/语音 + 快捷分析指令(原快捷横条迁入)。
+  /// 相册最常用,固定放第一位;快捷指令按 AIQuickCommands 预设顺序排列。
+  void _showPlusMenu() {
     if (_isLoading) return;
     final l10n = AppLocalizations.of(context);
+    final commands = AIQuickCommands.getAllCommands();
 
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: BeeTokens.surface(context),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+        child: ListView(
+          shrinkWrap: true,
           children: [
             ListTile(
               leading: const Icon(Icons.photo_library_outlined),
@@ -992,10 +978,49 @@ class _AIChatPageState extends ConsumerState<AIChatPage>
                 _handleImageBilling(ImageSource.camera);
               },
             ),
+            ListTile(
+              leading: const Icon(Icons.mic_none),
+              title: Text(l10n.fabActionVoice),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                _startVoiceBilling();
+              },
+            ),
+            const Divider(height: 8),
+            for (final command in commands)
+              ListTile(
+                leading: Icon(command.icon),
+                title: Text(_quickCommandTitle(command)),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  _handleQuickCommand(command);
+                },
+              ),
           ],
         ),
       ),
     );
+  }
+
+  /// 快捷指令标题(按 titleKey 取 l10n,与「+」菜单/消息展示口径一致)。
+  String _quickCommandTitle(AIQuickCommand command) {
+    final l10n = AppLocalizations.of(context);
+    switch (command.titleKey) {
+      case 'aiQuickCommandFinancialHealthTitle':
+        return l10n.aiQuickCommandFinancialHealthTitle;
+      case 'aiQuickCommandMonthlyExpenseTitle':
+        return l10n.aiQuickCommandMonthlyExpenseTitle;
+      case 'aiQuickCommandCategoryAnalysisTitle':
+        return l10n.aiQuickCommandCategoryAnalysisTitle;
+      case 'aiQuickCommandBudgetPlanningTitle':
+        return l10n.aiQuickCommandBudgetPlanningTitle;
+      case 'aiQuickCommandAbnormalExpenseTitle':
+        return l10n.aiQuickCommandAbnormalExpenseTitle;
+      case 'aiQuickCommandSavingTipsTitle':
+        return l10n.aiQuickCommandSavingTipsTitle;
+      default:
+        return command.titleKey;
+    }
   }
 
   /// 图片记账:选图(相册可多选) → 每张:用户图片消息 → 识别入库 → AI 卡片消息
@@ -1266,35 +1291,12 @@ class _AIChatPageState extends ConsumerState<AIChatPage>
     try {
       final ledgerId = ref.read(currentLedgerIdProvider);
       final commandService = ref.read(aiQuickCommandServiceProvider(ledgerId));
-      final l10n = AppLocalizations.of(context);
 
       // 生成完整的 Prompt
       final prompt = await commandService.generatePrompt(command, context);
 
       // 获取快捷指令的标题作为显示文本
-      String displayText;
-      switch (command.titleKey) {
-        case 'aiQuickCommandFinancialHealthTitle':
-          displayText = l10n.aiQuickCommandFinancialHealthTitle;
-          break;
-        case 'aiQuickCommandMonthlyExpenseTitle':
-          displayText = l10n.aiQuickCommandMonthlyExpenseTitle;
-          break;
-        case 'aiQuickCommandCategoryAnalysisTitle':
-          displayText = l10n.aiQuickCommandCategoryAnalysisTitle;
-          break;
-        case 'aiQuickCommandBudgetPlanningTitle':
-          displayText = l10n.aiQuickCommandBudgetPlanningTitle;
-          break;
-        case 'aiQuickCommandAbnormalExpenseTitle':
-          displayText = l10n.aiQuickCommandAbnormalExpenseTitle;
-          break;
-        case 'aiQuickCommandSavingTipsTitle':
-          displayText = l10n.aiQuickCommandSavingTipsTitle;
-          break;
-        default:
-          displayText = command.titleKey;
-      }
+      final displayText = _quickCommandTitle(command);
 
       // 发送完整prompt给AI，但在对话中只显示标题
       await _sendMessageText(

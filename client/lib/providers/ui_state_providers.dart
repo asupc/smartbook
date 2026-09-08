@@ -43,6 +43,13 @@ final pendingOpenPageProvider = StateProvider<String?>((ref) => null);
 // 首页滚动到顶部触发器（每次改变值时触发滚动）
 final homeScrollToTopProvider = StateProvider<int>((ref) => 0);
 
+// M5-4 首页交易窗口化分页功能开关。
+// 默认 true：HomePage 走窗口控制器 + TransactionList 双向 loader。
+// 置 false：回退到旧的全量 transactionsWithCategoryAll 路径（回滚开关，文档
+// §3.4「至少保留一个版本的旧全量路径」）。调试/异常时可通过置 false 快速回退。
+final homeWindowPaginationEnabledProvider =
+    StateProvider<bool>((ref) => true);
+
 // 首页切换到 Stream 模式触发器（用户交互时触发）
 final homeSwitchToStreamProvider = StateProvider<int>((ref) => 0);
 

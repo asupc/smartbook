@@ -195,14 +195,18 @@ class ScreenTextMonitorService {
         );
 
         if (execution.skipped) {
-          await _logDecision('drain_skipped', 'pkg=$pkg state=${execution.state.value}');
+          await _logDecision(
+            'drain_skipped',
+            'pkg=$pkg state=${execution.state.value}',
+            pkg: pkg,
+          );
           if (execution.terminal) await _ack(fingerprint, eventKey);
           continue;
         }
 
         final outcome = execution.value;
         if (outcome == null) continue;
-        await _logDecision('drain_${outcome.name}', 'pkg=$pkg');
+        await _logDecision('drain_${outcome.name}', 'pkg=$pkg', pkg: pkg);
         if (outcome == SmsProcessOutcome.noAiConfigured) {
           _noAiNotified.add(eventKey);
         }
@@ -228,7 +232,7 @@ class ScreenTextMonitorService {
     });
   }
 
-  /// 最近识别决策(原生环形队列,设置页「最近识别记录」排查真机漏记用)。
+  /// 最近识别决策(原生环形队列,「自动识别记录」页排查真机漏记用)。
   /// 不含页面文本 —— 只有决策码/命中关键词/长度计数。
   Future<List<Map<String, String>>> recentDecisions() async {
     if (!Platform.isAndroid) return const [];
@@ -244,12 +248,23 @@ class ScreenTextMonitorService {
     }
   }
 
+  /// 获取已安装 App 的应用图标(PNG 字节数组),仅 Android 平台支持。
+  Future<Uint8List?> getAppIcon(String pkg) async {
+    if (!Platform.isAndroid || pkg.isEmpty || pkg == 'app') return null;
+    try {
+      final bytes = await _channel.invokeMethod<Uint8List>('getAppIcon', {'pkg': pkg});
+      return bytes;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// 追加一条 Dart 段(drain/AI)决策记录,与原生判定拼成完整链路。失败静默。
-  Future<void> _logDecision(String decision, String detail) async {
+  Future<void> _logDecision(String decision, String detail, {String? pkg}) async {
     if (!Platform.isAndroid) return;
     try {
       await _channel.invokeMethod('appendDecision', {
-        'pkg': 'app',
+        'pkg': pkg ?? 'app',
         'decision': decision,
         'detail': detail,
       });

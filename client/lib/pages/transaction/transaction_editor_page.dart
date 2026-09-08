@@ -136,24 +136,33 @@ class _TransactionEditorPageState extends ConsumerState<TransactionEditorPage>
                           child: TabBar(
                             controller: _tab,
                             isScrollable: false,
-                            labelColor: BeeTokens.textPrimary(context),
+                            labelColor: Theme.of(context).colorScheme.primary,
+                            labelStyle: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                            ),
                             unselectedLabelColor:
                                 BeeTokens.textSecondary(context),
+                            unselectedLabelStyle: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w500,
+                            ),
                             indicator: UnderlineTabIndicator(
                               borderSide: BorderSide(
-                                  width: 2,
-                                  color: BeeTokens.textPrimary(context)),
-                              insets: const EdgeInsets.symmetric(horizontal: 0),
+                                  width: 3,
+                                  color: Theme.of(context).colorScheme.primary),
+                              borderRadius: BorderRadius.circular(2),
+                              insets: const EdgeInsets.symmetric(horizontal: 16),
                             ),
                             tabs: [
                               Tab(
-                                  text: AppLocalizations.of(context)!
+                                  text: AppLocalizations.of(context)
                                       .categoryExpense),
                               Tab(
-                                  text: AppLocalizations.of(context)!
+                                  text: AppLocalizations.of(context)
                                       .categoryIncome),
                               Tab(
-                                  text: AppLocalizations.of(context)!
+                                  text: AppLocalizations.of(context)
                                       .transferTitle),
                             ],
                           ),
@@ -161,7 +170,7 @@ class _TransactionEditorPageState extends ConsumerState<TransactionEditorPage>
                       ),
                       TextButton(
                         onPressed: () => Navigator.pop(context),
-                        child: Text(AppLocalizations.of(context)!.commonCancel,
+                        child: Text(AppLocalizations.of(context).commonCancel,
                             style: TextStyle(
                                 color: BeeTokens.textPrimary(context))),
                       )

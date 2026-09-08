@@ -12,6 +12,8 @@ import '../ai/ai_settings_page.dart';
 import '../automation/auto_billing_settings_page.dart';
 import 'shortcuts_guide_page.dart';
 import '../../l10n/app_localizations.dart';
+import '../../utils/image_billing_helper.dart';
+import '../../utils/voice_billing_helper.dart';
 
 /// Google Play 版本(CI 注入)。截屏自动记账依赖 READ_MEDIA_IMAGES,在 Google
 /// Play 渠道被砍掉,这里用来隐藏入口。详见 release.yml 的临时 manifest 配置。
@@ -29,13 +31,15 @@ class SmartBillingPage extends ConsumerWidget {
     String aiRequirement,
     bool requiresAI, {
     String? actionHint,
+    VoidCallback? onTryAction,
+    String? tryActionLabel,
   }) {
     final l10n = AppLocalizations.of(context);
     final hint = actionHint ?? l10n.smartBillingGuideHint;
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: Row(
           children: [
             Icon(Icons.info_outline, color: Theme.of(context).colorScheme.primary),
@@ -116,9 +120,17 @@ class SmartBillingPage extends ConsumerWidget {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: () => Navigator.of(dialogContext).pop(),
             child: Text(l10n.commonKnow),
           ),
+          if (onTryAction != null)
+            FilledButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                onTryAction();
+              },
+              child: Text(tryActionLabel ?? l10n.smartBillingTryNow),
+            ),
         ],
       ),
     );
@@ -260,6 +272,8 @@ class SmartBillingPage extends ConsumerWidget {
                             l10n.smartBillingImageBillingGuide,
                             l10n.smartBillingVisionAIRequired,
                             true,
+                            onTryAction: () =>
+                                ImageBillingHelper.pickImageForBilling(context, ref),
                           );
                         },
                       ),
@@ -277,6 +291,8 @@ class SmartBillingPage extends ConsumerWidget {
                             l10n.smartBillingCameraBillingGuide,
                             l10n.smartBillingVisionAIRequired,
                             true,
+                            onTryAction: () =>
+                                ImageBillingHelper.openCameraForBilling(context, ref),
                           );
                         },
                       ),
@@ -294,6 +310,8 @@ class SmartBillingPage extends ConsumerWidget {
                             l10n.smartBillingVoiceBillingGuide,
                             l10n.smartBillingAIRequired,
                             true,
+                            onTryAction: () =>
+                                VoiceBillingHelper.startVoiceBilling(context, ref),
                           );
                         },
                       ),

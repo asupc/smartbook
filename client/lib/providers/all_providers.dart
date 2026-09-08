@@ -18,6 +18,9 @@ export 'sync_providers.dart';
 // UI状态相关
 export 'ui_state_providers.dart';
 
+// M5-4 首页交易窗口化分页控制器
+export 'home_transaction_window_provider.dart';
+
 // 导入导出相关
 export 'import_export_providers.dart';
 
