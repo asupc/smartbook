@@ -10,6 +10,7 @@ import type {
 import { useT } from '@smartbook/ui'
 import type { BudgetUsage } from '@smartbook/web-features'
 
+import { Layers, TrendingUp } from 'lucide-react'
 import { useLedgers } from '../../context/LedgersContext'
 import {
   dispatchOpenDetailAccount,
@@ -45,6 +46,7 @@ interface Props {
   /** Top 卡片点击分类名时的钩子 — page 端反查 WorkspaceCategory 后派发详情。
    *  没传则 Top 卡片回退到 onJumpToTransactionsWithQuery。 */
   onCategoryClickFromTop?: (name: string, kind: 'expense' | 'income') => void
+  onOpenAnnualReport?: (year?: number) => void
 }
 
 /**
@@ -76,6 +78,7 @@ export function OverviewSection({
   budgetUsageById,
   onJumpToTransactionsWithQuery,
   onCategoryClickFromTop,
+  onOpenAnnualReport,
 }: Props) {
   const t = useT()
   const { ledgers, activeLedgerId, currency } = useLedgers()
@@ -87,7 +90,7 @@ export function OverviewSection({
   ).length
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <HomeHero
         ledgers={ledgers}
         currentLedgerId={activeLedgerId || undefined}
@@ -102,6 +105,7 @@ export function OverviewSection({
         budgetUsageById={budgetUsageById}
         anomalyMonths={analyticsData?.anomaly_months || []}
         hasEnoughMonthsForAnomaly={yearOccurredMonths >= 3}
+        onOpenAnnualReport={onOpenAnnualReport}
       />
 
       <HomeHabitStats
@@ -110,26 +114,58 @@ export function OverviewSection({
         currency={currency}
       />
 
-      {/* 扩展分析:Web 端独有的加强仪表,不属于 mobile 首页对标范围 */}
-      <div className="flex items-center gap-2 pt-2">
-        <span className="h-px flex-1 bg-border/60" aria-hidden />
-        <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-          {t('analytics.ext.title')}
-        </span>
-        <span className="h-px flex-1 bg-border/60" aria-hidden />
+      {/* 分区 2: 走势与资产结构 */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-border/60">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary shadow-xs">
+            <TrendingUp size={15} />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-foreground tracking-tight">收支趋势与资产结构</h3>
+            <p className="text-xs text-muted-foreground">月度支出分类、全年度支出热力、资产构成与 12 期走势</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/5 px-2.5 py-0.5 text-[11px] font-medium text-primary">
+            <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
+            {t('analytics.ext.title')}
+          </span>
+        </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
+      <div className="grid gap-5 lg:grid-cols-2 items-stretch">
         <HomeMonthCategoryDonut ranks={currentMonthCategoryRanks} currency={currency} />
-        <HomeYearHeatmap yearSeries={currentYearSeries} currency={currency} />
+        <HomeYearHeatmap
+          yearSeries={currentYearSeries}
+          currency={currency}
+          onOpenAnnualReport={onOpenAnnualReport}
+        />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[1.1fr_1fr]">
+      <div className="grid gap-5 lg:grid-cols-2 items-stretch">
         <AssetCompositionDonut accounts={accounts} />
         <MonthlyTrendBars data={analyticsData?.series || []} />
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      {/* 分区 3: 分类排行与高频资产 */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-border/60">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-600 shadow-xs">
+            <Layers size={15} />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-foreground tracking-tight">分类排行与高频资产</h3>
+            <p className="text-xs text-muted-foreground">收支 Top 5 分类分布、常用标签与高频活跃账户</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-muted/40 px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+            Top 5 洞察
+          </span>
+        </div>
+      </div>
+
+      <div className="grid gap-5 md:grid-cols-2 items-stretch">
         <TopCategoriesList
           ranks={analyticsData?.category_ranks || []}
           variant="expense"
@@ -152,7 +188,7 @@ export function OverviewSection({
         />
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-5 md:grid-cols-2 items-stretch">
         <HomeTopTags
           tags={tags}
           currency={currency}

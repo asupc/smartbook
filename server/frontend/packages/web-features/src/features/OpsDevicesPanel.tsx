@@ -162,56 +162,65 @@ export function OpsDevicesPanel({ rows, onReload }: OpsDevicesPanelProps) {
               return (
                 <TableRow
                   key={row.id}
-                  className="odd:bg-muted/20"
+                  className="group transition-colors duration-150 odd:bg-muted/[0.12] hover:bg-primary/[0.04] dark:hover:bg-primary/[0.07]"
                 >
                   <TableCell>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2.5">
                       <span
-                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-base"
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-base shadow-2xs"
                         style={{ background: `${color}20` }}
                       >
                         {glyph}
                       </span>
                       <div className="min-w-0">
-                        <div className="truncate text-sm font-medium">
+                        <div className="truncate text-sm font-semibold tracking-tight text-foreground">
                           {row.name || (row.device_model || row.platform || t('ops.device.unknownName'))}
                         </div>
-                        <Badge
-                          variant={row.is_online ? 'default' : 'secondary'}
-                          className="mt-0.5 shrink-0 text-[10px]"
+                        <span
+                          className={`mt-0.5 inline-flex items-center rounded-md px-1.5 py-0.2 text-[10px] font-semibold border ${
+                            row.is_online
+                              ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                              : 'border-slate-500/20 bg-muted/50 text-muted-foreground'
+                          }`}
                         >
                           {row.is_online ? t('ops.devices.online') : t('ops.devices.offline')}
-                        </Badge>
+                        </span>
                       </div>
                     </div>
                   </TableCell>
                   <TableCell className="max-w-[180px]">
-                    <div className="truncate text-xs">{row.user_email || row.user_id}</div>
+                    <div className="truncate text-xs font-medium text-foreground/90">{row.user_email || row.user_id}</div>
                   </TableCell>
                   <TableCell className="whitespace-nowrap text-xs">
-                    {row.platform || '-'}
-                    {row.app_version ? <span className="ml-1 text-muted-foreground">v{row.app_version}</span> : null}
+                    <span className="font-medium">{row.platform || '-'}</span>
+                    {row.app_version ? <span className="ml-1 font-mono text-muted-foreground">v{row.app_version}</span> : null}
                   </TableCell>
                   <TableCell className="max-w-[160px]">
-                    <div className="truncate text-xs">{row.device_model || '-'}</div>
+                    <div className="truncate text-xs text-muted-foreground">{row.device_model || '-'}</div>
                   </TableCell>
                   <TableCell className="max-w-[120px]">
-                    <div className="truncate text-xs">{row.os_version || '-'}</div>
+                    <div className="truncate text-xs text-muted-foreground">{row.os_version || '-'}</div>
                   </TableCell>
-                  <TableCell className="whitespace-nowrap text-xs">
+                  <TableCell className="whitespace-nowrap font-mono tabular-nums text-xs text-muted-foreground">
                     <span title={formatIsoDateTime(row.last_seen_at)}>{timeAgo(row.last_seen_at)}</span>
                   </TableCell>
-                  <TableCell className="whitespace-nowrap text-xs">
+                  <TableCell className="whitespace-nowrap font-mono tabular-nums text-xs text-muted-foreground">
                     <span title={formatIsoDateTime(row.created_at)}>{timeAgo(row.created_at)}</span>
                   </TableCell>
-                  <TableCell className="font-mono text-[10px]">{row.last_ip || '-'}</TableCell>
+                  <TableCell className="font-mono text-xs text-muted-foreground">
+                    {row.last_ip ? (
+                      <span className="rounded-md border border-border/60 bg-muted/40 px-1.5 py-0.5">
+                        {row.last_ip}
+                      </span>
+                    ) : '-'}
+                  </TableCell>
                   <TableCell>
-                    <Badge variant="secondary" className="text-[10px]">
+                    <span className="inline-flex items-center rounded-md border border-border/60 bg-muted/40 px-2 py-0.5 font-mono text-[11px] font-medium text-muted-foreground">
                       {t('ops.devices.sessionCount', { count: row.session_count })}
-                    </Badge>
+                    </span>
                   </TableCell>
                   <TableCell className="max-w-[150px]">
-                    <div className="truncate font-mono text-[10px] text-muted-foreground" title={row.id}>
+                    <div className="truncate font-mono text-xs text-muted-foreground" title={row.id}>
                       {row.id}
                     </div>
                   </TableCell>

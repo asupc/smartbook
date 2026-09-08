@@ -193,28 +193,28 @@ export function AnalyticsPanel({ data }: AnalyticsPanelProps) {
           <CardTitle>{t('analytics.rank.title')}</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
+          <div className="bc-table-panel overflow-x-auto shadow-xs">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>{t('analytics.rank.category')}</TableHead>
-                  <TableHead>{t('analytics.rank.total')}</TableHead>
-                  <TableHead>{t('analytics.rank.count')}</TableHead>
+                  <TableHead className="bc-table-head">{t('analytics.rank.category')}</TableHead>
+                  <TableHead className="bc-table-head">{t('analytics.rank.total')}</TableHead>
+                  <TableHead className="bc-table-head">{t('analytics.rank.count')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {categoryRanks.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={3} className="py-10 text-center text-sm text-muted-foreground">
+                    <TableCell colSpan={3} className="py-12 text-center text-sm text-muted-foreground">
                       {t('table.empty')}
                     </TableCell>
                   </TableRow>
                 ) : null}
                 {categoryRanks.map((item) => (
-                  <TableRow key={item.category_name} className="odd:bg-muted/20">
-                    <TableCell>{item.category_name}</TableCell>
-                    <TableCell>{formatAmountCny(item.total)}</TableCell>
-                    <TableCell>{item.tx_count}</TableCell>
+                  <TableRow key={item.category_name} className="group transition-colors duration-150 odd:bg-muted/[0.12] hover:bg-primary/[0.04] dark:hover:bg-primary/[0.07]">
+                    <TableCell className="font-semibold text-sm text-foreground">{item.category_name}</TableCell>
+                    <TableCell className="font-mono tabular-nums text-sm font-bold text-foreground">{formatAmountCny(item.total)}</TableCell>
+                    <TableCell className="font-mono tabular-nums text-xs text-muted-foreground">{item.tx_count}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

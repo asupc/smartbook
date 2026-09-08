@@ -41,44 +41,61 @@ export function TopCategoriesList({ ranks, variant = 'expense', title, onClickCa
 
   return (
     <Card
-      className="overflow-hidden"
+      className="h-full overflow-hidden border border-border/60 shadow-xs transition-all duration-200 hover:shadow-md hover:border-primary/20"
       size="small"
-      title={<span className="text-base">{title || defaultTitle}</span>}
-      styles={{ body: { padding: '12px 16px 16px' } }}
+      title={
+        <div className="flex items-center gap-2">
+          <span className={`flex h-5 w-5 items-center justify-center rounded-md text-xs ${
+            isExpense ? 'bg-rose-500/10 text-rose-600' : 'bg-emerald-500/10 text-emerald-600'
+          }`}>
+            {isExpense ? '📉' : '📈'}
+          </span>
+          <span className="text-sm font-bold text-foreground">{title || defaultTitle}</span>
+        </div>
+      }
+      styles={{ body: { padding: '16px 20px 20px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' } }}
     >
         {top.length === 0 ? (
           <div className="flex h-32 items-center justify-center text-xs text-muted-foreground">
             {emptyLabel}
           </div>
         ) : (
-          <ul className="space-y-2.5">
+          <ul className="space-y-2">
             {top.map((r, i) => {
               // 进度条用 maxTotal 归一化(Top 1 = 满条 = 视觉锚点);
               // 占比文字用 grandTotal 归一化(反映真实份额)。
               const barPct = (r.total / maxTotal) * 100
               const sharePct = (r.total / grandTotal) * 100
+              const rankBadgeClass =
+                i === 0
+                  ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'
+                  : i === 1
+                    ? 'bg-slate-400/15 text-slate-600 dark:text-slate-300 border border-slate-400/30'
+                    : i === 2
+                      ? 'bg-amber-700/15 text-amber-700 dark:text-amber-500 border border-amber-700/30'
+                      : 'bg-muted text-muted-foreground border border-transparent'
               return (
                 <li
                   key={r.category_name}
-                  className={`group ${onClickCategory ? 'cursor-pointer' : ''}`}
+                  className={`group rounded-lg p-1.5 transition-all hover:bg-muted/40 ${onClickCategory ? 'cursor-pointer' : ''}`}
                   onClick={() => onClickCategory?.(r.category_name)}
                 >
                   <div className="flex items-center justify-between text-sm">
-                    <span className="inline-flex items-center gap-2">
-                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-muted text-[10px] font-semibold">
+                    <span className="inline-flex items-center gap-2.5">
+                      <span className={`flex h-5 w-5 items-center justify-center rounded-md text-[11px] font-bold ${rankBadgeClass}`}>
                         {i + 1}
                       </span>
-                      <span className="font-medium">{r.category_name || t('home.topCat.uncategorized')}</span>
-                      <span className="text-[11px] text-muted-foreground">{r.tx_count} {t('home.topCat.countUnit')}</span>
+                      <span className="font-semibold text-foreground">{r.category_name || t('home.topCat.uncategorized')}</span>
+                      <span className="rounded bg-muted/60 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">{r.tx_count} {t('home.topCat.countUnit')}</span>
                     </span>
-                    <span className="inline-flex items-baseline gap-1.5 font-mono tabular-nums">
-                      <span className="text-sm">{fmt(r.total)}</span>
-                      <span className="text-[11px] text-muted-foreground">
+                    <span className="inline-flex items-baseline gap-2 font-mono tabular-nums">
+                      <span className="text-sm font-bold text-foreground">{fmt(r.total)}</span>
+                      <span className="rounded bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
                         {fmtPct(sharePct)}
                       </span>
                     </span>
                   </div>
-                  <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted/50">
+                  <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted/60">
                     <div
                       className={`h-full rounded-full transition-all ${barClass}`}
                       style={{ width: `${barPct}%` }}

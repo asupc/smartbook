@@ -39,6 +39,7 @@ import type {
 
 import { CurrencySelectorTrigger } from '../components/CurrencySelector'
 import { CategoryIcon } from '../components/CategoryIcon'
+import { CategoryTreeSelect } from '../components/CategoryTreeSelect'
 import { TagChip } from '../components/TagChip'
 import { buildTagColorMap, tagTextColorOn } from '../lib/tagColorPalette'
 import { currencySymbol } from '../lib/currencies'
@@ -374,11 +375,11 @@ export function TransactionsPanel({
       {/* dialogOnlyMode: 全局编辑容器复用本 panel 的 Dialog + picker 联动,
           不渲染列表 / 分页。 */}
       {dialogOnlyMode ? null : (
-        <div className="rounded-xl border border-border/50 bg-card overflow-x-auto">
+        <div className="bc-table-panel overflow-x-auto shadow-xs">
           <Table>
             <TableHeader>
               <TableRow>
-                {selectionMode ? <TableHead className="bc-table-head w-[40px]"><input type="checkbox" aria-label="select" className="h-4 w-4 cursor-pointer accent-primary" /></TableHead> : null}
+                {selectionMode ? <TableHead className="bc-table-head w-[48px]"><input type="checkbox" aria-label="select" className="h-4 w-4 cursor-pointer accent-primary" /></TableHead> : null}
                 <TableHead className="bc-table-head">{t('transactions.table.time')}</TableHead>
                 <TableHead className="bc-table-head">{t('transactions.table.amount')}</TableHead>
                 <TableHead className="bc-table-head">{t('transactions.table.type')}</TableHead>
@@ -386,13 +387,13 @@ export function TransactionsPanel({
                 <TableHead className="bc-table-head">{t('transactions.table.account')}</TableHead>
                 <TableHead className="bc-table-head">{t('transactions.table.tags')}</TableHead>
                 <TableHead className="bc-table-head">{t('transactions.table.createdAt')}</TableHead>
-                <TableHead className="bc-table-head">{t('transactions.table.ops')}</TableHead>
+                <TableHead className="bc-table-head text-right pr-6">{t('transactions.table.ops')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {rows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={colCount} className="py-12 text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={colCount} className="py-16 text-center text-sm text-muted-foreground">
                     {t('table.empty')}
                   </TableCell>
                 </TableRow>
@@ -507,38 +508,29 @@ export function TransactionsPanel({
                 }
               />
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1 relative z-20">
               <Label>{t('transactions.table.category')}</Label>
               {isTransfer ? (
                 <Input disabled value={t('common.none')} />
               ) : (
-                <Select
-                  value={categoryValue || '__none__'}
+                <CategoryTreeSelect
+                  className="w-full"
+                  categories={categories}
+                  kind={form.tx_type}
+                  value={categoryValue}
+                  valueType="name"
+                  mode="form"
                   disabled={dictionariesLoading}
-                  onValueChange={(value) =>
+                  placeholder={t('transactions.placeholder.categoryName')}
+                  iconPreviewUrlByFileId={iconPreviewUrlByFileId}
+                  onChange={(_val, name) =>
                     onFormChange({
                       ...form,
-                      category_name: value === '__none__' ? '' : value,
+                      category_name: name,
                       category_kind: form.tx_type,
                     })
                   }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder={t('transactions.placeholder.categoryName')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">
-                      <span className="text-muted-foreground">
-                        {t('common.none')}
-                      </span>
-                    </SelectItem>
-                    {categoryOptions.map((name) => (
-                      <SelectItem key={name} value={name}>
-                        {name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                />
               )}
             </div>
 
@@ -594,7 +586,7 @@ export function TransactionsPanel({
                 </div>
               </>
             ) : (
-              <div className="space-y-1">
+              <div className="space-y-1 relative z-10">
                 <Label>{t('transactions.table.account')}</Label>
                 <Select
                   // Radix SelectItem 不允许 value=""(undefined-state 由 placeholder
@@ -630,7 +622,7 @@ export function TransactionsPanel({
               </div>
             )}
 
-            <div className="space-y-1">
+            <div className="space-y-1 relative z-0">
               <Label>{t('tags.title')}</Label>
               {/* tag 多选改为内联 DropdownMenu —— 无需打开弹窗,直接在触发器下
                   展开勾选列表,已选标签在触发器里以彩色 chip 缩略展示。 */}
@@ -891,10 +883,10 @@ function TransactionRowCell({
   return (
     <TableRow
       onClick={handleRowClick}
-      className={`odd:bg-muted/20 ${(selectionMode || onSelect) ? 'cursor-pointer' : ''} ${selectionMode && selected ? 'bg-primary/8' : ''}`}
+      className={`group transition-colors duration-150 odd:bg-muted/[0.12] hover:bg-primary/[0.04] dark:hover:bg-primary/[0.07] ${(selectionMode || onSelect) ? 'cursor-pointer' : ''} ${selectionMode && selected ? '!bg-primary/10' : ''}`}
     >
       {selectionMode ? (
-        <TableCell className="w-[40px]">
+        <TableCell className="w-[48px]">
           <input
             type="checkbox"
             checked={selected}
@@ -908,65 +900,79 @@ function TransactionRowCell({
           />
         </TableCell>
       ) : null}
-      <TableCell className="whitespace-nowrap font-mono tabular-nums text-xs text-muted-foreground">
+      <TableCell className="whitespace-nowrap font-mono tabular-nums text-xs font-medium text-muted-foreground">
         {formatTableDateTime(row.happened_at)}
       </TableCell>
       <TableCell className="whitespace-nowrap text-left">
-        <span className={`font-mono tabular-nums font-bold ${
-          amountTone === 'positive' ? 'text-income'
-            : amountTone === 'negative' ? 'text-expense'
-              : 'text-foreground'
-        }`}>
-          {sign}
-          {isForeignCurrency ? currencySymbolByCode(row.currency_code as string) : ''}
-          {(row.amount ?? 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-        </span>
-        {isForeignCurrency ? (
-          <span className="ml-1 font-mono tabular-nums text-[10px] text-muted-foreground" title={t('transactions.convertedToBase')}>
-            ≈{(row.native_amount as number).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        <div className="flex items-center gap-1.5">
+          <span className={`font-mono tabular-nums text-[15px] font-bold tracking-tight ${
+            amountTone === 'positive' ? 'text-income'
+              : amountTone === 'negative' ? 'text-expense'
+                : 'text-foreground'
+          }`}>
+            {sign}
+            {isForeignCurrency ? currencySymbolByCode(row.currency_code as string) : ''}
+            {(row.amount ?? 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </span>
-        ) : null}
-        {hasAttachments && firstAttachment ? (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              void onPreviewAttachment?.(attachments, 0)
-            }}
-            className="ml-1 inline-flex items-center gap-1 rounded border border-border/60 bg-muted/30 px-1 py-0.5 text-[10px] text-muted-foreground hover:border-primary/40 hover:text-primary"
-            title={firstAttachment.originalName || firstAttachment.fileName || t('attachment.default')}
-          >
-            <span aria-hidden>📎</span>
-            <span className="font-mono tabular-nums">{attachments.length}</span>
-          </button>
-        ) : null}
+          {isForeignCurrency ? (
+            <span className="rounded-md bg-muted/60 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-muted-foreground" title={t('transactions.convertedToBase')}>
+              ≈{(row.native_amount as number).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+          ) : null}
+          {hasAttachments && firstAttachment ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                void onPreviewAttachment?.(attachments, 0)
+              }}
+              className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-muted/40 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground transition-all hover:border-primary/50 hover:bg-background hover:text-primary"
+              title={firstAttachment.originalName || firstAttachment.fileName || t('attachment.default')}
+            >
+              <span aria-hidden>📎</span>
+              <span className="font-mono tabular-nums">{attachments.length}</span>
+            </button>
+          ) : null}
+        </div>
       </TableCell>
       <TableCell className="whitespace-nowrap">
-        <Badge variant={row.tx_type === 'transfer' ? 'secondary' : row.tx_type === 'income' ? 'outline' : 'default'}>
+        <span
+          className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold border ${
+            row.tx_type === 'expense'
+              ? 'border-slate-500/20 bg-slate-500/10 text-slate-700 dark:text-slate-300'
+              : row.tx_type === 'income'
+                ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                : 'border-blue-500/25 bg-blue-500/10 text-blue-600 dark:text-blue-400'
+          }`}
+        >
           {t(`enum.txType.${row.tx_type}`)}
-        </Badge>
+        </span>
       </TableCell>
       <TableCell>
-        <div className="flex min-w-0 items-center gap-1.5">
+        <div className="flex min-w-0 items-center gap-2">
           {categoryEntry ? (
-            <CategoryIcon
-              icon={categoryEntry.icon}
-              iconType={categoryEntry.icon_type}
-              iconCloudFileId={categoryEntry.icon_cloud_file_id}
-              iconPreviewUrlByFileId={iconPreviewUrlByFileId}
-              size={16}
-              className="shrink-0 text-muted-foreground"
-            />
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-border/40 bg-muted/40 shadow-2xs">
+              <CategoryIcon
+                icon={categoryEntry.icon}
+                iconType={categoryEntry.icon_type}
+                iconCloudFileId={categoryEntry.icon_cloud_file_id}
+                iconPreviewUrlByFileId={iconPreviewUrlByFileId}
+                size={15}
+                className="text-foreground"
+              />
+            </div>
           ) : null}
-          <span className="truncate text-sm font-medium">{rowTitle.primary}</span>
-          {rowTitle.parenNote ? (
-            <span className="truncate text-xs text-muted-foreground">({rowTitle.parenNote})</span>
-          ) : null}
+          <div className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate text-sm font-semibold text-foreground tracking-tight">{rowTitle.primary}</span>
+            {rowTitle.parenNote ? (
+              <span className="truncate text-xs text-muted-foreground">({rowTitle.parenNote})</span>
+            ) : null}
+          </div>
           {showCreator ? <CreatorBadge row={row} currentUserId={currentUserId} t={t} /> : null}
         </div>
       </TableCell>
       <TableCell className="max-w-[180px]">
-        <span className="block truncate text-xs text-muted-foreground" title={accountText}>{accountText}</span>
+        <span className="block truncate text-xs font-medium text-muted-foreground" title={accountText}>{accountText}</span>
       </TableCell>
       <TableCell className="max-w-[220px]">
         <div className="flex flex-wrap items-center gap-1">
@@ -982,13 +988,13 @@ function TransactionRowCell({
       <TableCell className="whitespace-nowrap font-mono tabular-nums text-xs text-muted-foreground">
         {row.created_at ? formatTableDateTime(row.created_at) : '-'}
       </TableCell>
-      <TableCell className="whitespace-nowrap">
-        <div className="flex items-center gap-3">
+      <TableCell className="whitespace-nowrap text-right pr-6">
+        <div className="flex items-center justify-end gap-1 opacity-75 group-hover:opacity-100 transition-opacity">
           {canManage ? (
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); onEdit(row) }}
-              className="text-sm text-foreground underline-offset-4 hover:text-primary hover:underline"
+              className="rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors"
             >
               {t('common.edit')}
             </button>
@@ -997,7 +1003,7 @@ function TransactionRowCell({
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); onDelete(row) }}
-              className="text-sm text-destructive underline-offset-4 hover:text-destructive/90 hover:underline"
+              className="rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
             >
               {t('common.delete')}
             </button>

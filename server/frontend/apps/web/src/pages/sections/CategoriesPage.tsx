@@ -305,7 +305,12 @@ export function CategoriesPage() {
         dialogOpen={editDialogOpen}
         onDialogOpenChange={setEditDialogOpen}
         onFormChange={setForm}
-        onCreate={() => setForm(categoryDefaults())}
+        onCreate={(defaultKind) =>
+          setForm({
+            ...categoryDefaults(),
+            ...(defaultKind ? { kind: defaultKind } : {}),
+          })
+        }
         onSave={onSave}
         onReset={() => setForm(categoryDefaults())}
         onEdit={enterEdit}

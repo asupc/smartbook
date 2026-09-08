@@ -311,6 +311,10 @@ export function OverviewPage() {
         navigate(`/app/transactions${suffix}`)
       }}
       onCategoryClickFromTop={onCategoryClickFromHome}
+      onOpenAnnualReport={(year) => {
+        const suffix = year ? `?year=${year}` : ''
+        navigate(`/app/annual-report${suffix}`)
+      }}
     />
   )
 }

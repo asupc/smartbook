@@ -1,25 +1,24 @@
 /** Local storage key for user's custom primary color (hex). */
 export const PRIMARY_COLOR_STORAGE_KEY = 'beecount.primary-color'
 
-/** Default matches mobile `BeeTheme.honeyGold` hex（品牌深蓝，logo 底色）。 */
-export const DEFAULT_PRIMARY_COLOR = '#1D2C50'
+/** Default matches mobile `BeeTheme.honeyGold` hex（现代科技钴蓝）。 */
+export const DEFAULT_PRIMARY_COLOR = '#2563EB'
 
 /**
  * 预设色板（对齐 mobile `personalize_page.dart` 的常用色，加上几种互补）。
  * color picker 里先摆这些，用户也可以用 `<input type="color">` 自定义。
  */
 export const PRIMARY_COLOR_PRESETS: string[] = [
-  '#1D2C50', // 品牌深蓝（默认）
-  '#F59E0B', // 蜂蜜金
-  '#EF4444', // 玫瑰红
-  '#EC4899', // 粉
-  '#8B5CF6', // 紫
-  '#3B82F6', // 蓝
-  '#06B6D4', // 青
-  '#10B981', // 翠绿
-  '#22C55E', // 叶绿
-  '#84CC16', // 柠檬
-  '#F97316'  // 橙
+  '#2563EB', // 现代科技钴蓝（默认）
+  '#3B82F6', // 经典亮蓝
+  '#1D2C50', // 品牌深蓝
+  '#F59E0B', // 暖琥珀金
+  '#10B981', // 翡翠绿
+  '#8B5CF6', // 紫罗兰
+  '#EC4899', // 玫瑰粉
+  '#06B6D4', // 天空青
+  '#EF4444', // 珊瑚红
+  '#F97316'  // 暖橙
 ]
 
 /** 把 #RRGGBB 转 HSL（tailwind CSS variable 需要 `H S% L%` 格式，不带 hsl() 包装）。 */

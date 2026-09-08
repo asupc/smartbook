@@ -161,13 +161,23 @@ export function SettingsExchangeRatesSection() {
 
   return (
     <Card
+      className="border-border/70 shadow-sm"
       size="small"
-      title={<span className="text-base">{t('rates.title')}</span>}
+      title={
+        <div className="flex items-center gap-2 py-1">
+          <span className="text-base font-semibold">{t('rates.title')}</span>
+          {base ? (
+            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+              {base}
+            </span>
+          ) : null}
+        </div>
+      }
       extra={
         base ? (
           <Button
             size="small"
-            icon={refreshing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+            icon={refreshing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
             onClick={() => void handleRefreshRates()}
             disabled={refreshing || loading}
           >
@@ -175,83 +185,107 @@ export function SettingsExchangeRatesSection() {
           </Button>
         ) : null
       }
-      styles={{ body: { padding: '12px 16px 16px' } }}
+      styles={{ body: { padding: '16px 20px 20px' } }}
     >
-        <div className="space-y-3">
+      <div className="space-y-4">
         {!base ? (
-          <p className="rounded-lg border border-dashed border-border/60 bg-muted/20 px-4 py-6 text-center text-sm text-muted-foreground">
-            {t('rates.emptyHint')}
-          </p>
+          <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border/70 bg-muted/10 px-4 py-8 text-center">
+            <p className="text-sm font-medium text-foreground">{t('rates.emptyHint')}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{t('settings.primaryCurrency.hint')}</p>
+          </div>
         ) : loading ? (
-          <div className="flex items-center justify-center py-6 text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
+          <div className="flex items-center justify-center py-10 text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+            <span className="ml-2 text-xs">{t('common.loading')}</span>
           </div>
         ) : quotes.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-border/60 bg-muted/20 px-4 py-6 text-center text-sm text-muted-foreground">
-            {t('rates.emptyHint')}
-          </p>
+          <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border/70 bg-muted/10 px-4 py-8 text-center">
+            <p className="text-sm text-muted-foreground">{t('rates.emptyHint')}</p>
+          </div>
         ) : (
-          <div className="space-y-1.5">
+          <div className="grid gap-2.5 sm:grid-cols-2">
             {quotes.map((quote) => {
               const eff = effectiveRateToBase(quote, base, auto, overrides)
               const isEditing = editingQuote === quote
               const isSaving = savingQuote === quote
+              const currencyLabel = t(`currency.${quote}`)
+
               return (
                 <div
                   key={quote}
-                  className="rounded-lg border border-border/60 bg-muted/20 px-4 py-2.5"
+                  className="group relative flex flex-col justify-between rounded-xl border border-border/60 bg-card p-3.5 shadow-xs transition hover:border-primary/40 hover:shadow-sm"
                 >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <span className="text-sm font-semibold">{quote}</span>
-                      {eff ? (
-                        <span className="text-xs text-muted-foreground">
-                          1 {quote} = {eff.rate.toPrecision(6)} {base}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">
-                          {t('rates.notFetched')}
-                        </span>
-                      )}
-                    </div>
+                  <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
+                      <span className="flex h-7 items-center justify-center rounded-md bg-muted px-2 font-mono text-xs font-bold text-foreground">
+                        {quote}
+                      </span>
+                      {currencyLabel && !currencyLabel.startsWith('currency.') ? (
+                        <span className="text-xs text-muted-foreground">
+                          {currencyLabel}
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
                       {eff?.source === 'manual' ? (
-                        <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-medium text-primary">
+                        <span className="rounded-full bg-primary/12 px-2 py-0.5 text-[10px] font-medium text-primary">
                           {t('rates.sourceManual')}
                         </span>
                       ) : eff?.source === 'auto' ? (
-                        <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
+                        <span className="rounded-full bg-muted/80 px-2 py-0.5 text-[10px] text-muted-foreground" title={eff.date ? t('rates.updatedAt', { date: eff.date }) : undefined}>
                           {t('rates.sourceAuto')}
-                          {eff.date ? ` · ${t('rates.updatedAt', { date: eff.date })}` : ''}
+                          {eff.date ? ` · ${eff.date}` : ''}
                         </span>
                       ) : null}
+
                       {!isEditing ? (
-                        <>
+                        <div className="flex items-center gap-1">
                           <Button
                             size="small"
+                            type="text"
                             icon={<Pencil className="h-3.5 w-3.5" />}
                             aria-label={t('rates.edit') as string}
                             onClick={() => startEdit(quote)}
                             disabled={isSaving}
+                            className="text-muted-foreground hover:text-foreground"
                           />
                           {eff?.source === 'manual' ? (
                             <Button
                               size="small"
+                              type="text"
                               icon={isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
                               aria-label={t('rates.resetToAuto') as string}
                               onClick={() => void resetToAuto(quote)}
                               disabled={isSaving}
+                              className="text-muted-foreground hover:text-primary"
+                              title={t('rates.resetToAuto') as string}
                             />
                           ) : null}
-                        </>
+                        </div>
                       ) : null}
                     </div>
                   </div>
 
-                  {isEditing ? (
-                    <div className="mt-2 space-y-1.5">
+                  {!isEditing ? (
+                    <div className="mt-3 flex items-baseline justify-between pt-1">
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="font-mono text-xs text-muted-foreground">1 {quote} =</span>
+                        <span className="font-mono text-base font-semibold text-foreground">
+                          {eff ? eff.rate.toPrecision(6) : '-'}
+                        </span>
+                        <span className="text-xs font-medium text-muted-foreground">{base}</span>
+                      </div>
+                      {!eff ? (
+                        <span className="text-[11px] text-destructive">
+                          {t('rates.notFetched')}
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div className="mt-3 space-y-2 pt-1 border-t border-border/40">
                       <div className="flex items-center gap-2">
-                        <span className="shrink-0 text-xs text-muted-foreground">
+                        <span className="shrink-0 font-mono text-xs text-muted-foreground">
                           1 {quote} =
                         </span>
                         <Input
@@ -268,12 +302,14 @@ export function SettingsExchangeRatesSection() {
                               cancelEdit()
                             }
                           }}
+                          size="small"
+                          suffix={<span className="text-xs text-muted-foreground">{base}</span>}
                           style={{ maxWidth: 160 }}
                           disabled={isSaving}
                         />
-                        <span className="shrink-0 text-xs text-muted-foreground">{base}</span>
                         <Button
                           size="small"
+                          type="primary"
                           icon={isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
                           aria-label={t('common.save') as string}
                           onClick={() => void submitEdit(quote)}
@@ -291,7 +327,7 @@ export function SettingsExchangeRatesSection() {
                         const r = Number(draft)
                         if (!Number.isFinite(r) || r <= 0) return null
                         return (
-                          <p className="text-[11px] text-muted-foreground">
+                          <p className="font-mono text-[11px] text-muted-foreground">
                             {t('rates.inverseHint', {
                               base,
                               rate: (1 / r).toPrecision(6),
@@ -301,7 +337,7 @@ export function SettingsExchangeRatesSection() {
                         )
                       })()}
                     </div>
-                  ) : null}
+                  )}
                 </div>
               )
             })}
@@ -309,11 +345,12 @@ export function SettingsExchangeRatesSection() {
         )}
 
         {base ? (
-          <p className="pt-1 text-[11px] leading-relaxed text-muted-foreground">
-            {t('rates.disclaimer')}
-          </p>
+          <div className="flex items-start gap-1.5 rounded-lg bg-muted/30 p-2.5 text-[11px] leading-relaxed text-muted-foreground">
+            <span className="font-medium text-foreground">说明:</span>
+            <span>{t('rates.disclaimer')}</span>
+          </div>
         ) : null}
-        </div>
+      </div>
     </Card>
   )
 }

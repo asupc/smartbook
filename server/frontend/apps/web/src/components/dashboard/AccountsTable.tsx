@@ -87,14 +87,16 @@ export function AccountsTable({
           if (!record.account) {
             const g = record.group!
             return (
-              <span className="inline-flex items-center gap-2">
-                <TypeIcon type={g.type} size={18} />
-                <span className="font-semibold">{g.label}</span>
-                <span className="rounded-full bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+              <span className="inline-flex items-center gap-2.5 py-1">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted/80 text-foreground shadow-2xs">
+                  <TypeIcon type={g.type} size={15} />
+                </div>
+                <span className="font-bold text-sm text-foreground tracking-tight">{g.label}</span>
+                <span className="rounded-full bg-muted/90 px-2 py-0.5 font-mono text-[10px] font-bold tabular-nums text-muted-foreground">
                   {g.rows.length}
                 </span>
                 {g.isLiability ? (
-                  <span className="rounded-md border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-[10px] leading-none text-destructive">
+                  <span className="rounded-md border border-destructive/30 bg-destructive/10 px-2 py-0.5 text-[10px] font-semibold leading-none text-destructive">
                     {t('accounts.badge.liability')}
                   </span>
                 ) : null}
@@ -104,12 +106,14 @@ export function AccountsTable({
           const row = record.account
           const sub = accountSubText(row)
           return (
-            <span className="inline-flex min-w-0 items-center gap-2">
-              <TypeIcon type={row.account_type || 'other'} size={18} />
+            <span className="inline-flex min-w-0 items-center gap-2.5 py-0.5">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border/50 bg-muted/30 shadow-2xs">
+                <TypeIcon type={row.account_type || 'other'} size={16} />
+              </div>
               <span className="flex min-w-0 flex-col">
-                <span className="truncate">{row.name}</span>
+                <span className="truncate font-semibold text-foreground text-sm">{row.name}</span>
                 {sub ? (
-                  <span className="truncate text-[11px] text-muted-foreground">{sub}</span>
+                  <span className="truncate font-mono text-[11px] text-muted-foreground">{sub}</span>
                 ) : null}
               </span>
             </span>
@@ -121,7 +125,7 @@ export function AccountsTable({
         width: 120,
         render: (_v, record) =>
           record.account ? (
-            <span className="rounded bg-muted/60 px-1.5 py-0.5 text-[11px] text-muted-foreground">
+            <span className="rounded-md border border-border/60 bg-muted/40 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
               {record.groupLabel}
             </span>
           ) : null,
@@ -131,7 +135,7 @@ export function AccountsTable({
         width: 90,
         render: (_v, record) =>
           record.account ? (
-            <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium uppercase text-primary">
+            <span className="rounded-md border border-primary/20 bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-primary">
               {(record.account.currency || 'CNY').toUpperCase()}
             </span>
           ) : null,
@@ -145,15 +149,16 @@ export function AccountsTable({
             return (
               <span className="inline-flex flex-col items-end gap-0.5">
                 {g.subtotals.map((st) => (
-                  <Amount
-                    key={st.currency}
-                    value={g.isLiability ? Math.abs(st.value) : st.value}
-                    currency={st.currency}
-                    showCurrency
-                    compact={false}
-                    bold
-                    tone={g.isLiability ? 'negative' : 'default'}
-                  />
+                  <span key={st.currency} className="font-mono tabular-nums font-bold text-sm">
+                    <Amount
+                      value={g.isLiability ? Math.abs(st.value) : st.value}
+                      currency={st.currency}
+                      showCurrency
+                      compact={false}
+                      bold
+                      tone={g.isLiability ? 'negative' : 'default'}
+                    />
+                  </span>
                 ))}
               </span>
             )
@@ -161,13 +166,15 @@ export function AccountsTable({
           const row = record.account
           const bal = displayBalance(row)
           return (
-            <Amount
-              value={bal}
-              currency={row.currency}
-              showCurrency
-              compact={false}
-              tone={bal < 0 ? 'negative' : 'positive'}
-            />
+            <span className="font-mono tabular-nums font-bold text-sm">
+              <Amount
+                value={bal}
+                currency={row.currency}
+                showCurrency
+                compact={false}
+                tone={bal < 0 ? 'negative' : 'positive'}
+              />
+            </span>
           )
         },
       },
@@ -176,13 +183,15 @@ export function AccountsTable({
         align: 'right',
         render: (_v, record) =>
           record.account ? (
-            <Amount
-              value={record.account.income_total ?? 0}
-              currency={record.account.currency}
-              showCurrency
-              compact={false}
-              tone="positive"
-            />
+            <span className="font-mono tabular-nums text-xs font-semibold">
+              <Amount
+                value={record.account.income_total ?? 0}
+                currency={record.account.currency}
+                showCurrency
+                compact={false}
+                tone="positive"
+              />
+            </span>
           ) : null,
       },
       {
@@ -190,13 +199,15 @@ export function AccountsTable({
         align: 'right',
         render: (_v, record) =>
           record.account ? (
-            <Amount
-              value={record.account.expense_total ?? 0}
-              currency={record.account.currency}
-              showCurrency
-              compact={false}
-              tone="negative"
-            />
+            <span className="font-mono tabular-nums text-xs font-semibold">
+              <Amount
+                value={record.account.expense_total ?? 0}
+                currency={record.account.currency}
+                showCurrency
+                compact={false}
+                tone="negative"
+              />
+            </span>
           ) : null,
       },
       {
@@ -206,7 +217,7 @@ export function AccountsTable({
           const row = record.account
           if (isValuation(row)) {
             return (
-              <span className="text-muted-foreground">{t('accounts.bankcard.currentValue')}</span>
+              <span className="text-muted-foreground text-xs">{t('accounts.bankcard.currentValue')}</span>
             )
           }
           if (isCreditCard(row)) {
@@ -214,7 +225,7 @@ export function AccountsTable({
             const owed = Math.max(0, -displayBalance(row))
             if (limit !== null) {
               return (
-                <span className="text-muted-foreground">
+                <span className="font-mono tabular-nums text-xs text-muted-foreground">
                   {t('accounts.bankcard.creditUsed')}{' '}
                   <Amount value={owed} currency={row.currency} showCurrency compact={false} /> /{' '}
                   <Amount value={limit} currency={row.currency} showCurrency compact={false} />
@@ -222,7 +233,7 @@ export function AccountsTable({
               )
             }
             return (
-              <span className="text-muted-foreground">{t('accounts.bankcard.currentOwed')}</span>
+              <span className="text-muted-foreground text-xs">{t('accounts.bankcard.currentOwed')}</span>
             )
           }
           return <span className="text-muted-foreground">—</span>
@@ -270,19 +281,21 @@ export function AccountsTable({
   )
 
   return (
-    <Table<AccountRecord>
-      rowKey="key"
-      columns={columns}
-      dataSource={dataSource}
-      pagination={false}
-      size="middle"
-      scroll={{ x: 900 }}
-      expandable={{ defaultExpandAllRows: true }}
-      onRow={(record) =>
-        record.account
-          ? { onClick: () => onClickAccount?.(record.account!), style: { cursor: 'pointer' } }
-          : {}
-      }
-    />
+    <div className="bc-table-panel">
+      <Table<AccountRecord>
+        rowKey="key"
+        columns={columns}
+        dataSource={dataSource}
+        pagination={false}
+        size="middle"
+        scroll={{ x: 900 }}
+        expandable={{ defaultExpandAllRows: true }}
+        onRow={(record) =>
+          record.account
+            ? { onClick: () => onClickAccount?.(record.account!), style: { cursor: 'pointer' } }
+            : {}
+        }
+      />
+    </div>
   )
 }

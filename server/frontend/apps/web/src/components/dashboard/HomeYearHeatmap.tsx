@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
-import { Card } from 'antd'
+import { Button, Card } from 'antd'
+import { Sparkles } from 'lucide-react'
 import { useT } from '@smartbook/ui'
 
 import type { WorkspaceAnalyticsSeriesItem } from '@smartbook/api-client'
@@ -9,13 +10,14 @@ interface Props {
   /** year scope 的 series，bucket 是 YYYY-MM。 */
   yearSeries?: WorkspaceAnalyticsSeriesItem[]
   currency?: string
+  onOpenAnnualReport?: (year: number) => void
 }
 
 /**
  * 12 个月支出热力条：用当月支出的相对大小染色，把"今年哪几个月花得最多"
  * 一眼能看出。对比之下 MonthlyTrendBars 只展示最近 6 期，这里补齐整年。
  */
-export function HomeYearHeatmap({ yearSeries, currency = 'CNY' }: Props) {
+export function HomeYearHeatmap({ yearSeries, currency = 'CNY', onOpenAnnualReport }: Props) {
   const t = useT()
   const data = useMemo(() => {
     const year = new Date().getFullYear()
@@ -41,28 +43,38 @@ export function HomeYearHeatmap({ yearSeries, currency = 'CNY' }: Props) {
   }, [yearSeries, t])
 
   return (
-    // overflow-visible:tooltip 通过 -translate-y-full 向上展开会越出 Card 边界,
-    // overflow-hidden 会把顶行(1-6 月)的 tooltip clip 掉,只剩底边像被截断的卡片
-    // 漂出来(2026-05-16 用户上报)。bc-panel 圆角靠 border-radius,跟 overflow
-    // 无关,改 visible 不破圆角。
     <Card
-      className="overflow-visible"
+      className="h-full overflow-visible border border-border/60 shadow-xs transition-all duration-200 hover:shadow-md hover:border-primary/20"
       size="small"
       title={
-        <span className="text-base">
-          {t('home.heatmap.title').replace('{year}', String(data.year))}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="flex h-5 w-5 items-center justify-center rounded-md bg-amber-500/10 text-amber-600 text-xs">
+            🔥
+          </span>
+          <span className="text-sm font-bold text-foreground">
+            {t('home.heatmap.title').replace('{year}', String(data.year))}
+          </span>
+        </div>
       }
       extra={
-        <span className="text-[11px] text-muted-foreground">{t('home.heatmap.hint')}</span>
+        <div className="flex items-center gap-2.5">
+          <span className="hidden sm:inline text-[11px] text-muted-foreground">{t('home.heatmap.hint')}</span>
+          {onOpenAnnualReport ? (
+            <Button
+              type="link"
+              size="small"
+              className="inline-flex items-center gap-1 text-xs text-primary font-medium p-0 h-auto hover:opacity-80"
+              onClick={() => onOpenAnnualReport(data.year)}
+            >
+              <Sparkles size={12} className="text-amber-500" />
+              <span>{t('home.heatmap.annualReportCta')}</span>
+            </Button>
+          ) : null}
+        </div>
       }
-      styles={{ body: { padding: '12px 16px 16px' } }}
+      styles={{ body: { padding: '16px 20px 20px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' } }}
     >
-        {/* 12 格月度热力 —— 改成 **永远 2 排**(sm 4 列 × 3 行,md+ 6 列 × 2 行)。
-             之前试过 lg:12 列挤一排,桌面 13 寸仍然窄得金额 truncate 成 "9,..."
-             视觉上更糟。两排布局让每格有 120px+ 宽度,月名 + 完整金额都舒展,
-             代价是卡片高度翻倍 —— 但首页下方本来就空着,换个立体感反而好看。 */}
-        <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
+        <div className="grid grid-cols-4 gap-2.5 sm:grid-cols-6 my-auto">
           {data.rows.map((row) => {
             const pct = data.maxExpense > 0 ? row.expense / data.maxExpense : 0
             const bg =
@@ -75,8 +87,8 @@ export function HomeYearHeatmap({ yearSeries, currency = 'CNY' }: Props) {
             return (
               <div
                 key={row.monthIndex}
-                className={`group relative flex min-w-0 flex-col gap-0.5 rounded-lg border px-2 py-2 ${
-                  isCurrent ? 'border-primary ring-1 ring-primary/40' : 'border-border/40'
+                className={`group relative flex min-w-0 flex-col gap-1 rounded-xl border p-2.5 transition-all duration-200 hover:scale-[1.03] hover:shadow-xs ${
+                  isCurrent ? 'border-primary ring-2 ring-primary/40 shadow-xs' : 'border-border/40'
                 }`}
                 style={{ background: bg }}
               >

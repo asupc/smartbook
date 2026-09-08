@@ -40,11 +40,11 @@ export function HomeHabitStats({ monthSummary, ledgerCounts, currency = 'CNY' }:
   const avgTxPerDay = totalDays > 0 ? totalTx / totalDays : 0
 
   return (
-    <div className="grid gap-3 md:grid-cols-3">
+    <div className="grid gap-4 md:grid-cols-3">
       {/* 卡 1：储蓄率 */}
-      <div className="group relative overflow-hidden rounded-xl border border-income/30 bg-card p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
+      <div className="group relative overflow-hidden rounded-2xl border border-income/30 bg-card p-5 shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:border-income/50">
         <div
-          className="pointer-events-none absolute inset-0 bg-gradient-to-br from-income/20 via-income/5 to-transparent"
+          className="pointer-events-none absolute inset-0 bg-gradient-to-br from-income/15 via-income/5 to-transparent"
           aria-hidden
         />
         <div
@@ -52,14 +52,14 @@ export function HomeHabitStats({ monthSummary, ledgerCounts, currency = 'CNY' }:
           aria-hidden
         />
         <div className="relative flex items-center justify-between">
-          <span className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted-foreground">
-            <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-income/20 text-income">
+          <span className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-income/15 text-income shadow-2xs">
               <PiggyBank className="h-4 w-4" />
             </span>
             {t('home.habit.savingRate')}
           </span>
         </div>
-        <div className="relative mt-2 font-mono text-3xl font-bold tabular-nums leading-tight">
+        <div className="relative mt-3 font-mono text-3xl font-extrabold tabular-nums tracking-tight leading-tight">
           {savingRate === null ? (
             <span className="text-muted-foreground">—</span>
           ) : (
@@ -74,7 +74,7 @@ export function HomeHabitStats({ monthSummary, ledgerCounts, currency = 'CNY' }:
             </span>
           )}
         </div>
-        <div className="relative mt-2">
+        <div className="relative mt-3">
           {/* 简单进度条 —— 0~100% 用绿，负数用红，超 100% 夹住 */}
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted/60">
             {savingRate !== null ? (
@@ -91,7 +91,7 @@ export function HomeHabitStats({ monthSummary, ledgerCounts, currency = 'CNY' }:
             ) : null}
           </div>
         </div>
-        <div className="relative mt-1.5 text-[11px] text-muted-foreground">
+        <div className="relative mt-2 text-xs text-muted-foreground">
           {savingRate === null
             ? t('home.habit.savingRate.noIncome')
             : savingRate >= 0
@@ -101,9 +101,9 @@ export function HomeHabitStats({ monthSummary, ledgerCounts, currency = 'CNY' }:
       </div>
 
       {/* 卡 2：本月日均支出 */}
-      <div className="group relative overflow-hidden rounded-xl border border-expense/30 bg-card p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
+      <div className="group relative overflow-hidden rounded-2xl border border-expense/30 bg-card p-5 shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:border-expense/50">
         <div
-          className="pointer-events-none absolute inset-0 bg-gradient-to-br from-expense/20 via-expense/5 to-transparent"
+          className="pointer-events-none absolute inset-0 bg-gradient-to-br from-expense/15 via-expense/5 to-transparent"
           aria-hidden
         />
         <div
@@ -111,8 +111,8 @@ export function HomeHabitStats({ monthSummary, ledgerCounts, currency = 'CNY' }:
           aria-hidden
         />
         <div className="relative flex items-center justify-between">
-          <span className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted-foreground">
-            <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-expense/20 text-expense">
+          <span className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-expense/15 text-expense shadow-2xs">
               <Flame className="h-4 w-4" />
             </span>
             {t('home.habit.dailyExpense')}
@@ -125,9 +125,9 @@ export function HomeHabitStats({ monthSummary, ledgerCounts, currency = 'CNY' }:
           bold
           size="3xl"
           tone={avgDailyExpense > 0 ? 'negative' : 'default'}
-          className="relative mt-2 block leading-tight"
+          className="relative mt-3 block leading-tight font-mono tracking-tight"
         />
-        <div className="relative mt-1.5 text-[11px] text-muted-foreground">
+        <div className="relative mt-2 text-xs text-muted-foreground">
           {t('home.habit.dailyExpense.footer')
             .replace('{day}', String(dayOfMonth))
             .replace('{total}', monthExpense.toLocaleString(undefined, { maximumFractionDigits: 2 }))}
@@ -135,9 +135,9 @@ export function HomeHabitStats({ monthSummary, ledgerCounts, currency = 'CNY' }:
       </div>
 
       {/* 卡 3：累计记账习惯 */}
-      <div className="group relative overflow-hidden rounded-xl border border-sky-500/30 bg-card p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
+      <div className="group relative overflow-hidden rounded-2xl border border-sky-500/30 bg-card p-5 shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:border-sky-500/50">
         <div
-          className="pointer-events-none absolute inset-0 bg-gradient-to-br from-sky-500/20 via-sky-400/5 to-transparent"
+          className="pointer-events-none absolute inset-0 bg-gradient-to-br from-sky-500/15 via-sky-400/5 to-transparent"
           aria-hidden
         />
         <div
@@ -145,20 +145,20 @@ export function HomeHabitStats({ monthSummary, ledgerCounts, currency = 'CNY' }:
           aria-hidden
         />
         <div className="relative flex items-center justify-between">
-          <span className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted-foreground">
-            <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-sky-500/20 text-sky-600 dark:text-sky-400">
+          <span className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-sky-500/15 text-sky-600 dark:text-sky-400 shadow-2xs">
               <Sparkles className="h-4 w-4" />
             </span>
             {t('home.habit.routine')}
           </span>
         </div>
-        <div className="relative mt-2 font-mono text-3xl font-bold tabular-nums leading-tight">
+        <div className="relative mt-3 font-mono text-3xl font-extrabold tabular-nums tracking-tight leading-tight">
           {avgTxPerDay.toFixed(2)}
           <span className="ml-1 text-sm font-normal text-muted-foreground">
             {t('home.habit.routine.unit')}
           </span>
         </div>
-        <div className="relative mt-1.5 text-[11px] text-muted-foreground">
+        <div className="relative mt-2 text-xs text-muted-foreground">
           {t('home.habit.routine.footer')
             .replace('{tx}', totalTx.toLocaleString())
             .replace('{days}', totalDays.toLocaleString())}

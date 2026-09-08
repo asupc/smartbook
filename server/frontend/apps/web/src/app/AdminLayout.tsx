@@ -38,15 +38,9 @@ import { parseRoute, routePath } from '../state/router'
 
 const { Header, Sider, Content } = Layout
 
-// CommandPalette + AnnualReportLauncher 都不在首屏关键路径,只在用户主动
-// 打开时才需要,懒加载省 ~150KB(framer-motion / cmdk / 年度报告整包)
+// CommandPalette 不在首屏关键路径,只在用户主动打开时才需要,懒加载省体积
 const CommandPalette = lazy(() =>
   import('../components/CommandPalette').then((m) => ({ default: m.CommandPalette })),
-)
-const AnnualReportLauncher = lazy(() =>
-  import('../components/dashboard/AnnualReportEntry').then((m) => ({
-    default: m.AnnualReportLauncher,
-  })),
 )
 
 // 侧栏 Menu 的图标 —— 新增 AppSection 时在这里加一行即可。
@@ -97,7 +91,6 @@ export function AdminLayout({ onOpenLogs, onOpenAbout }: Props) {
 
   const [collapsed, setCollapsed] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
-  const [annualReportOpen, setAnnualReportOpen] = useState(false)
   const [openKeys, setOpenKeys] = useState<string[]>(() => {
     const parsed = parseRoute(location.pathname)
     const section = parsed.kind === 'app' ? parsed.section : 'transactions'
@@ -235,10 +228,6 @@ export function AdminLayout({ onOpenLogs, onOpenAbout }: Props) {
             openKeys={collapsed ? undefined : openKeys}
             onOpenChange={setOpenKeys}
             onClick={({ key }) => {
-              if (key === 'annual-report') {
-                setAnnualReportOpen(true)
-                return
-              }
               goToSection(key as AppSection)
             }}
             style={{ borderInlineEnd: 'none', flex: 1, minHeight: 0, overflowY: 'auto' }}
@@ -247,11 +236,11 @@ export function AdminLayout({ onOpenLogs, onOpenAbout }: Props) {
       </Sider>
       <Layout>
         <Header
-          className="flex h-14 items-center justify-between gap-2 px-4"
+          className="sticky top-0 z-30 flex h-14 items-center justify-between gap-2 backdrop-blur-md transition-colors"
           style={{
-            background: token.colorBgContainer,
+            background: token.colorBgContainer === '#ffffff' ? 'rgba(255, 255, 255, 0.85)' : 'rgba(17, 23, 38, 0.85)',
             borderBottom: `1px solid ${token.colorSplit}`,
-            paddingInline: 16,
+            paddingInline: 20,
           }}
         >
           <div className="flex min-w-0 items-center gap-2">
@@ -327,28 +316,18 @@ export function AdminLayout({ onOpenLogs, onOpenAbout }: Props) {
             ) : null}
           </div>
         </Header>
-        <Content>
-          <div className="space-y-4 p-4 lg:p-6">
+        <Content className="overflow-y-auto">
+          <div className="mx-auto w-full max-w-[1560px] space-y-6 p-4 sm:p-6 lg:p-8">
             <Outlet />
           </div>
         </Content>
       </Layout>
-      {/* 只在 open 时挂载 — 既保证 lazy chunk 不在首屏拉,又让组件内部
-          useEffect/state 跟弹窗生命周期严格绑定,关闭时彻底卸载 */}
-      {annualReportOpen ? (
-        <Suspense fallback={null}>
-          <AnnualReportLauncher
-            open={annualReportOpen}
-            onClose={() => setAnnualReportOpen(false)}
-          />
-        </Suspense>
-      ) : null}
       {paletteOpen ? (
         <Suspense fallback={null}>
           <CommandPalette
             open={paletteOpen}
             onClose={() => setPaletteOpen(false)}
-            onOpenAnnualReport={() => setAnnualReportOpen(true)}
+            onOpenAnnualReport={() => goToSection('annual-report')}
           />
         </Suspense>
       ) : null}

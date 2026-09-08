@@ -19,9 +19,12 @@ import { useLedgers } from '../../context/LedgersContext'
 import { useSharedLedgerResources } from '../../context/SharedLedgerResourcesContext'
 import { bundleToReadResources } from '../../lib/shared-ledger-mappers'
 
-import { CheckSquare, Download, Plus } from 'lucide-react'
+import { CheckSquare, Download, Filter, Plus, RotateCcw, Search } from 'lucide-react'
 
-import { Button, Input, Modal, Select, Tooltip } from 'antd'
+import { Button, DatePicker, Input, Modal, Select, Tooltip } from 'antd'
+import dayjs from 'dayjs'
+
+const { RangePicker } = DatePicker
 import {
   useToast,
   usePrimaryColor,
@@ -67,6 +70,7 @@ import {
   loadRatesToBase,
   ConfirmDialog,
   TransactionsPanel,
+  CategoryTreeSelect,
   canManageLedger,
   canWriteTransactions,
   txDefaults,
@@ -558,6 +562,55 @@ export function TransactionsPage() {
     },
     [txWriteTags, txFilterApplied.tagName, txFilterApplied.tagSyncId]
   )
+
+  const dateRangePresets = useMemo(
+    () => [
+      { label: '今天', value: [dayjs().startOf('day'), dayjs().endOf('day')] as [dayjs.Dayjs, dayjs.Dayjs] },
+      { label: '本周', value: [dayjs().startOf('week'), dayjs().endOf('week')] as [dayjs.Dayjs, dayjs.Dayjs] },
+      { label: '本月', value: [dayjs().startOf('month'), dayjs().endOf('month')] as [dayjs.Dayjs, dayjs.Dayjs] },
+      {
+        label: '上月',
+        value: [
+          dayjs().subtract(1, 'month').startOf('month'),
+          dayjs().subtract(1, 'month').endOf('month'),
+        ] as [dayjs.Dayjs, dayjs.Dayjs],
+      },
+      { label: '今年', value: [dayjs().startOf('year'), dayjs().endOf('year')] as [dayjs.Dayjs, dayjs.Dayjs] },
+    ],
+    []
+  )
+
+  const hasActiveTxFilters = useMemo(() => {
+    return Boolean(
+      (txFilterApplied.txType && (txFilterApplied.txType as string) !== 'all') ||
+      (txFilterApplied.accountName && txFilterApplied.accountName !== '__all__') ||
+      txFilterApplied.dateFrom ||
+      txFilterApplied.dateTo ||
+      txFilterApplied.amountMin ||
+      txFilterApplied.amountMax ||
+      (txFilterApplied.categorySyncId && txFilterApplied.categorySyncId !== '__all__') ||
+      (txFilterApplied.tagSyncId && txFilterApplied.tagSyncId !== '__all__') ||
+      listQuery.trim()
+    )
+  }, [txFilterApplied, listQuery])
+
+  const activeTxFilterCount = useMemo(() => {
+    let count = 0
+    if (txFilterApplied.txType && (txFilterApplied.txType as string) !== 'all') count++
+    if (txFilterApplied.accountName && txFilterApplied.accountName !== '__all__') count++
+    if (txFilterApplied.dateFrom || txFilterApplied.dateTo) count++
+    if (txFilterApplied.amountMin || txFilterApplied.amountMax) count++
+    if (txFilterApplied.categorySyncId && txFilterApplied.categorySyncId !== '__all__') count++
+    if (txFilterApplied.tagSyncId && txFilterApplied.tagSyncId !== '__all__') count++
+    if (listQuery.trim()) count++
+    return count
+  }, [txFilterApplied, listQuery])
+
+  const handleResetTxFilters = useCallback(() => {
+    setListQuery('')
+    setTxFilterApplied(defaultTxFilter())
+    setTxPage(1)
+  }, [])
   // visibleNavGroups 已搬到 AppHeader。
   // headerCoreItems / headerMoreGroups / avatarMenuItems / moreMenuActive
   // 已搬到 AppHeader。visibleNavGroups 目前还没人用到,保留 —— 后续如有
@@ -1754,41 +1807,181 @@ export function TransactionsPage() {
 
           {route.section === 'transactions' ? (
             <div className="space-y-3">
-              {/* 交易搜索简化：keyword + 全部查询条件平铺在搜索区，去掉 Card
-                  包裹与 admin 用户选择（admin 场景走单独页，普通用户不需要暴露）。
-                  查询条件不再用弹窗展示，全部内联、改动即生效；分类 / 标签用
-                  picker 弹窗选择（独立于搜索行下方渲染）。左组 = 搜索输入 + 各
-                  条件控件;右组 = 导出 / 新建,ml-auto 套在右组上(而不是单按钮),
-                  即便其中一个 button 隐藏另一个仍会贴右,不会跟左组贴在一起。 */}
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Input
-                    className="w-[140px] lg:w-[190px]"
-                    placeholder={t('shell.placeholder.keyword')}
-                    value={listQuery}
-                    onChange={(event) => setListQuery(event.target.value)}
-                  />
+              <div className="rounded-xl border border-border/80 bg-card p-3 shadow-xs space-y-2.5">
+                {/* 第一行：核心搜索、类型、树形分类、日期区间与核心操作 */}
+                <div className="flex flex-wrap items-center justify-between gap-2.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Input
+                      prefix={<Search className="h-3.5 w-3.5 text-muted-foreground/70 mr-0.5" />}
+                      className="w-[150px] lg:w-[190px]"
+                      placeholder={t('shell.placeholder.keyword')}
+                      value={listQuery}
+                      allowClear
+                      onChange={(event) => setListQuery(event.target.value)}
+                    />
+                    <Select
+                      className="w-[105px]"
+                      value={txFilterApplied.txType || 'all'}
+                      aria-label={t('shell.txFilter')}
+                      onChange={(value) =>
+                        onInlineTxFilterPatch({
+                          txType: value === 'all' ? '' : (value as TxFilter['txType']),
+                        })
+                      }
+                      options={[
+                        { value: 'all', label: t('shell.filter.all') },
+                        { value: 'expense', label: t('enum.txType.expense') },
+                        { value: 'income', label: t('enum.txType.income') },
+                        { value: 'transfer', label: t('enum.txType.transfer') },
+                      ]}
+                    />
+                    <CategoryTreeSelect
+                      className="w-[175px] lg:w-[205px]"
+                      categories={txWriteCategories}
+                      value={txFilterApplied.categorySyncId || ''}
+                      kind={txFilterApplied.txType || 'all'}
+                      mode="filter"
+                      placeholder={t('shell.filter.category')}
+                      allLabel={t('shell.filter.all') + '分类'}
+                      iconPreviewUrlByFileId={categoryIconPreviewByFileId}
+                      fallbackDisplayName={txFilterApplied.categoryName}
+                      onChange={(catId, catName) => {
+                        onInlineTxFilterPatch({
+                          categorySyncId: catId,
+                          categoryName: catName,
+                        })
+                      }}
+                    />
+                    <RangePicker
+                      className="w-[230px]"
+                      presets={dateRangePresets}
+                      placeholder={[t('shell.filter.dateFrom'), t('shell.filter.dateTo')]}
+                      value={
+                        txFilterApplied.dateFrom && txFilterApplied.dateTo
+                          ? [dayjs(txFilterApplied.dateFrom), dayjs(txFilterApplied.dateTo)]
+                          : txFilterApplied.dateFrom
+                          ? [dayjs(txFilterApplied.dateFrom), null]
+                          : txFilterApplied.dateTo
+                          ? [null, dayjs(txFilterApplied.dateTo)]
+                          : null
+                      }
+                      onChange={(_dates, dateStrings) => {
+                        onInlineTxFilterPatch({
+                          dateFrom: dateStrings[0] || '',
+                          dateTo: dateStrings[1] || '',
+                        })
+                      }}
+                      allowClear
+                    />
+                  </div>
+
+                  <div className="ml-auto flex items-center gap-2 shrink-0">
+                    {/* 「批量选择」入口 — 桌面端独占,小屏完全不渲染。点击进选择
+                        模式,toolbar 出现,行首加 checkbox。设计:.docs/web-tx-batch-actions.md */}
+                    {canWriteTx && !selectionMode ? (
+                      <Tooltip title={t('txBatch.entryTooltip')}>
+                        <Button
+                          icon={<CheckSquare className="h-4 w-4" />}
+                          aria-label={t('txBatch.entryTooltip') as string}
+                          onClick={() => enterSelection()}
+                        >
+                          <span className="hidden sm:inline">{t('txBatch.entryTooltip')}</span>
+                        </Button>
+                      </Tooltip>
+                    ) : null}
+                    {/* 「导出 CSV」按钮 — 跟新建按钮做一组,布局对称。
+                        复用当前 txFilterApplied 全部字段(date / type / q / amount /
+                        category/tag/account syncId)— 所见即所得。 */}
+                    {activeLedgerId ? (
+                      <Tooltip title={t('export.csv.tooltip')}>
+                        <Button
+                          icon={<Download className="h-3.5 w-3.5" />}
+                          disabled={exportingCsv}
+                          onClick={async () => {
+                            if (!activeLedgerId) return
+                            setExportingCsv(true)
+                            try {
+                              const filter = txFilterApplied
+                              // dateTo 是 YYYY-MM-DD 含整天 → 转成"次日 00:00 独占"
+                              let dateTo: string | undefined
+                              if (filter.dateTo) {
+                                const [y, m, d] = filter.dateTo.split('-').map(Number)
+                                const next = new Date(y, m - 1, d + 1)
+                                dateTo = next.toISOString()
+                              }
+                              await downloadWorkspaceTransactionsCsv(token, {
+                                ledgerId: activeLedgerId,
+                                dateFrom: filter.dateFrom
+                                  ? new Date(filter.dateFrom + 'T00:00:00').toISOString()
+                                  : undefined,
+                                dateTo,
+                                txType: filter.txType || undefined,
+                                // 头部 search bar (listQuery) 优先,跟列表一致;
+                                // filter.q 是 filter modal 里的备用关键词。
+                                q: listQuery || filter.q || undefined,
+                                accountName: filter.accountName || undefined,
+                                categorySyncId: filter.categorySyncId || undefined,
+                                tagSyncId: filter.tagSyncId || undefined,
+                                amountMin: filter.amountMin
+                                  ? Number(filter.amountMin)
+                                  : undefined,
+                                amountMax: filter.amountMax
+                                  ? Number(filter.amountMax)
+                                  : undefined,
+                                lang: locale,
+                              })
+                              toast.success(t('export.csv.success'))
+                            } catch (err) {
+                              toast.error(localizeError(err, t))
+                            } finally {
+                              setExportingCsv(false)
+                            }
+                          }}
+                        >
+                          <span className="hidden sm:inline">
+                            {exportingCsv ? t('export.csv.loading') : t('export.csv')}
+                          </span>
+                        </Button>
+                      </Tooltip>
+                    ) : null}
+                    {/* "新建交易" — 跟导出 CSV 一组,跟搜索框同一行同高。
+                        需要有写权限 + writeLedger 候选可用,否则隐藏。 */}
+                    {canWriteTx && txWriteLedgerOptions.length > 0 ? (
+                      <Button
+                        type="primary"
+                        icon={<Plus className="h-4 w-4" />}
+                        onClick={() => {
+                          setTxForm(txDefaults())
+                          if (
+                            activeLedgerId &&
+                            txWriteLedgerOptions.some((option) => option.ledger_id === activeLedgerId)
+                          ) {
+                            setTxWriteLedgerId(activeLedgerId)
+                          } else {
+                            setTxWriteLedgerId(txWriteLedgerOptions[0]?.ledger_id || '')
+                          }
+                          setTxDialogOpen(true)
+                        }}
+                      >
+                        {t('transactions.button.create')}
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+
+                {/* 第二行：细化过滤（账户、标签、金额区间）与一键重置 */}
+                <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-border/40 text-xs">
+                  <div className="flex items-center gap-1 text-muted-foreground mr-0.5 text-xs font-medium">
+                    <Filter className="h-3 w-3" />
+                    <span>细化筛选:</span>
+                  </div>
                   <Select
-                    className="w-[110px]"
-                    value={txFilterApplied.txType || 'all'}
-                    aria-label={t('shell.txFilter')}
-                    onChange={(value) =>
-                      onInlineTxFilterPatch({
-                        txType: value === 'all' ? '' : (value as TxFilter['txType']),
-                      })
-                    }
-                    options={[
-                      { value: 'all', label: t('shell.filter.all') },
-                      { value: 'expense', label: t('enum.txType.expense') },
-                      { value: 'income', label: t('enum.txType.income') },
-                      { value: 'transfer', label: t('enum.txType.transfer') },
-                    ]}
-                  />
-                  <Select
-                    className="w-[110px]"
+                    className="w-[125px]"
+                    size="small"
                     value={txFilterApplied.accountName || '__all__'}
                     aria-label={t('shell.accountFilter')}
                     showSearch
+                    placeholder={t('shell.accountFilter')}
                     optionFilterProp="label"
                     onChange={(value) =>
                       onInlineTxFilterPatch({
@@ -1796,79 +1989,13 @@ export function TransactionsPage() {
                       })
                     }
                     options={[
-                      { value: '__all__', label: t('shell.filter.all') },
+                      { value: '__all__', label: t('shell.filter.all') + '账户' },
                       ...txFilterAccountOptions.map((name) => ({ value: name, label: name })),
                     ]}
                   />
-                  <Input
-                    type="date"
-                    className="w-[140px]"
-                    aria-label={t('shell.filter.dateFrom')}
-                    value={txFilterApplied.dateFrom}
-                    onChange={(event) =>
-                      onInlineTxFilterPatch({ dateFrom: event.target.value })
-                    }
-                  />
-                  <span className="text-xs text-muted-foreground">–</span>
-                  <Input
-                    type="date"
-                    className="w-[140px]"
-                    aria-label={t('shell.filter.dateTo')}
-                    value={txFilterApplied.dateTo}
-                    onChange={(event) =>
-                      onInlineTxFilterPatch({ dateTo: event.target.value })
-                    }
-                  />
-                  <Input
-                    type="number"
-                    className="w-[110px]"
-                    min="0"
-                    step="0.01"
-                    aria-label={t('shell.filter.amountMin')}
-                    placeholder={t('shell.filter.amountMin')}
-                    value={txFilterApplied.amountMin}
-                    onChange={(event) =>
-                      onInlineTxFilterPatch({ amountMin: event.target.value })
-                    }
-                  />
-                  <span className="text-xs text-muted-foreground">–</span>
-                  <Input
-                    type="number"
-                    className="w-[110px]"
-                    min="0"
-                    step="0.01"
-                    aria-label={t('shell.filter.amountMax')}
-                    placeholder={t('shell.filter.amountMax')}
-                    value={txFilterApplied.amountMax}
-                    onChange={(event) =>
-                      onInlineTxFilterPatch({ amountMax: event.target.value })
-                    }
-                  />
                   <Select
-                    className="w-[130px]"
-                    value={txFilterApplied.categorySyncId || '__all__'}
-                    aria-label={t('shell.filter.category')}
-                    showSearch
-                    placeholder={t('shell.filter.category')}
-                    optionFilterProp="label"
-                    onChange={(value) => {
-                      if (value === '__all__') {
-                        onInlineTxFilterPatch({ categorySyncId: '', categoryName: '' })
-                        return
-                      }
-                      const hit = txWriteCategories.find((row) => row.id === value)
-                      onInlineTxFilterPatch({
-                        categorySyncId: value,
-                        categoryName: hit?.name || '',
-                      })
-                    }}
-                    options={[
-                      { value: '__all__', label: t('shell.filter.all') },
-                      ...txFilterCategoryOptions,
-                    ]}
-                  />
-                  <Select
-                    className="w-[130px]"
+                    className="w-[125px]"
+                    size="small"
                     value={txFilterApplied.tagSyncId || '__all__'}
                     aria-label={t('shell.filter.tag')}
                     showSearch
@@ -1886,114 +2013,51 @@ export function TransactionsPage() {
                       })
                     }}
                     options={[
-                      { value: '__all__', label: t('shell.filter.all') },
+                      { value: '__all__', label: t('shell.filter.all') + '标签' },
                       ...txFilterTagOptions,
                     ]}
                   />
-                  {txFilterApplied.categorySyncId || txFilterApplied.tagSyncId ? (
+                  <div className="inline-flex items-center rounded-md border border-input bg-background/50 px-2 py-0.5 text-xs shadow-2xs">
+                    <span className="text-muted-foreground mr-1">¥</span>
+                    <input
+                      type="number"
+                      className="w-[65px] bg-transparent outline-hidden text-xs tabular-nums text-foreground placeholder:text-muted-foreground/60"
+                      min="0"
+                      step="0.01"
+                      aria-label={t('shell.filter.amountMin')}
+                      placeholder="最小金额"
+                      value={txFilterApplied.amountMin}
+                      onChange={(event) =>
+                        onInlineTxFilterPatch({ amountMin: event.target.value })
+                      }
+                    />
+                    <span className="text-muted-foreground/60 mx-1">~</span>
+                    <span className="text-muted-foreground mr-1">¥</span>
+                    <input
+                      type="number"
+                      className="w-[65px] bg-transparent outline-hidden text-xs tabular-nums text-foreground placeholder:text-muted-foreground/60"
+                      min="0"
+                      step="0.01"
+                      aria-label={t('shell.filter.amountMax')}
+                      placeholder="最大金额"
+                      value={txFilterApplied.amountMax}
+                      onChange={(event) =>
+                        onInlineTxFilterPatch({ amountMax: event.target.value })
+                      }
+                    />
+                  </div>
+                  {hasActiveTxFilters ? (
                     <Button
                       size="small"
-                      onClick={() =>
-                        onInlineTxFilterPatch({
-                          categorySyncId: '',
-                          categoryName: '',
-                          tagSyncId: '',
-                          tagName: '',
-                        })
-                      }
+                      type="text"
+                      danger
+                      icon={<RotateCcw className="h-3 w-3" />}
+                      onClick={handleResetTxFilters}
+                      className="text-xs ml-auto sm:ml-1"
                     >
-                      {t('shell.filter.reset')}
+                      重置筛选 ({activeTxFilterCount})
                     </Button>
                   ) : null}
-                </div>
-                <div className="ml-auto flex items-center gap-2">
-                {/* 「批量选择」入口 — 桌面端独占,小屏完全不渲染。点击进选择
-                    模式,toolbar 出现,行首加 checkbox。设计:.docs/web-tx-batch-actions.md */}
-                {canWriteTx && !selectionMode ? (
-                  <Tooltip title={t('txBatch.entryTooltip')}>
-                    <Button
-                      size="small"
-                      icon={<CheckSquare className="h-4 w-4" />}
-                      aria-label={t('txBatch.entryTooltip') as string}
-                      onClick={() => enterSelection()}
-                    />
-                  </Tooltip>
-                ) : null}
-                {/* 「导出 CSV」按钮 — 跟新建按钮做一组,布局对称。
-                    复用当前 txFilterApplied 全部字段(date / type / q / amount /
-                    category/tag/account syncId)— 所见即所得。 */}
-                {activeLedgerId ? (
-                  <Tooltip title={t('export.csv.tooltip')}>
-                    <Button
-                      icon={<Download className="h-3.5 w-3.5" />}
-                      disabled={exportingCsv}
-                      onClick={async () => {
-                        if (!activeLedgerId) return
-                        setExportingCsv(true)
-                        try {
-                          const filter = txFilterApplied
-                          // dateTo 是 YYYY-MM-DD 含整天 → 转成"次日 00:00 独占"
-                          let dateTo: string | undefined
-                          if (filter.dateTo) {
-                            const [y, m, d] = filter.dateTo.split('-').map(Number)
-                            const next = new Date(y, m - 1, d + 1)
-                            dateTo = next.toISOString()
-                          }
-                          await downloadWorkspaceTransactionsCsv(token, {
-                            ledgerId: activeLedgerId,
-                            dateFrom: filter.dateFrom
-                              ? new Date(filter.dateFrom + 'T00:00:00').toISOString()
-                              : undefined,
-                            dateTo,
-                            txType: filter.txType || undefined,
-                            // 头部 search bar (listQuery) 优先,跟列表一致;
-                            // filter.q 是 filter modal 里的备用关键词。
-                            q: listQuery || filter.q || undefined,
-                            accountName: filter.accountName || undefined,
-                            categorySyncId: filter.categorySyncId || undefined,
-                            tagSyncId: filter.tagSyncId || undefined,
-                            amountMin: filter.amountMin
-                              ? Number(filter.amountMin)
-                              : undefined,
-                            amountMax: filter.amountMax
-                              ? Number(filter.amountMax)
-                              : undefined,
-                            lang: locale,
-                          })
-                          toast.success(t('export.csv.success'))
-                        } catch (err) {
-                          toast.error(localizeError(err, t))
-                        } finally {
-                          setExportingCsv(false)
-                        }
-                      }}
-                    >
-                      {exportingCsv ? t('export.csv.loading') : t('export.csv')}
-                    </Button>
-                  </Tooltip>
-                ) : null}
-                {/* "新建交易" — 跟导出 CSV 一组,跟搜索框同一行同高。
-                    需要有写权限 + writeLedger 候选可用,否则隐藏。 */}
-                {canWriteTx && txWriteLedgerOptions.length > 0 ? (
-                  <Button
-                    type="primary"
-                    icon={<Plus className="h-4 w-4" />}
-                    onClick={() => {
-                      setTxForm(txDefaults())
-                      if (
-                        activeLedgerId &&
-                        txWriteLedgerOptions.some((option) => option.ledger_id === activeLedgerId)
-                      ) {
-                        setTxWriteLedgerId(activeLedgerId)
-                      } else {
-                        setTxWriteLedgerId(txWriteLedgerOptions[0]?.ledger_id || '')
-                      }
-                      setTxDialogOpen(true)
-                    }}
-                  >
-                    {t('transactions.button.create')}
-                  </Button>
-                ) : null}
                 </div>
               </div>
               {selectionMode ? (

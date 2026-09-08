@@ -222,17 +222,17 @@ export function AdminDuplicateTransactionsPage() {
               {g.items.map((r) => {
                 const key = itemKey(r)
                 return (
-                  <div key={key} className="flex items-center gap-3 py-2">
+                  <div key={key} className="flex items-center gap-3 py-2 px-1 rounded-lg transition-colors hover:bg-muted/30">
                     <Checkbox
                       checked={selected.has(key)}
                       onChange={() => toggleOne(r)}
                       disabled={cleaning}
                     />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm">
+                      <p className="truncate text-sm font-semibold text-foreground">
                         {r.note || t('admin.duplicates.noNote')}
                         {r.is_keeper ? (
-                          <Tag color="green" className="ml-2">
+                          <Tag color="green" className="ml-2 font-medium">
                             {t('admin.duplicates.keeper')}
                           </Tag>
                         ) : null}
@@ -241,13 +241,13 @@ export function AdminDuplicateTransactionsPage() {
                         {r.tx_type} · {r.account_name || '-'} · {r.category_name || '-'}
                         {r.tags_csv ? ` · ${r.tags_csv}` : ''}
                       </p>
-                      <p className="truncate text-xs text-muted-foreground">
+                      <p className="truncate font-mono text-xs text-muted-foreground">
                         {r.created_at
                           ? t('admin.duplicates.recordedAt', { time: formatTime(r.created_at) })
                           : t('admin.duplicates.noRecordedAt')}
                       </p>
                     </div>
-                    <span className="text-sm font-medium">
+                    <span className="font-mono tabular-nums text-sm font-bold">
                       {formatAmount(r.amount)}
                     </span>
                   </div>

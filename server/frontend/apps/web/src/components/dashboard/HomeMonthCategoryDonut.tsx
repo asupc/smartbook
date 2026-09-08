@@ -60,9 +60,16 @@ export function HomeMonthCategoryDonut({ ranks, currency = 'CNY' }: Props) {
 
   return (
     <Card
-      className="overflow-hidden"
+      className="h-full overflow-hidden border border-border/60 shadow-xs transition-all duration-200 hover:shadow-md hover:border-primary/20"
       size="small"
-      title={<span className="text-base">{t('home.monthDonut.title')}</span>}
+      title={
+        <div className="flex items-center gap-2">
+          <span className="flex h-5 w-5 items-center justify-center rounded-md bg-rose-500/10 text-rose-600 text-xs">
+            🥧
+          </span>
+          <span className="text-sm font-bold text-foreground">{t('home.monthDonut.title')}</span>
+        </div>
+      }
       extra={
         <span className="text-[11px] text-muted-foreground">
           {t('home.monthDonut.total')}{' '}
@@ -76,7 +83,7 @@ export function HomeMonthCategoryDonut({ ranks, currency = 'CNY' }: Props) {
           />
         </span>
       }
-      styles={{ body: { padding: '12px 16px 16px' } }}
+      styles={{ body: { padding: '16px 20px 20px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' } }}
     >
         {slices.length === 0 ? (
           <div className="flex h-48 items-center justify-center text-xs text-muted-foreground">
@@ -108,27 +115,28 @@ export function HomeMonthCategoryDonut({ ranks, currency = 'CNY' }: Props) {
                 </div>
               </div>
             </div>
-            <ul className="min-w-0 flex-1 space-y-1.5">
+            <ul className="min-w-0 flex-1 space-y-2">
               {slices.map((s, i) => {
                 const color =
                   s.name === otherLabel ? OTHER_COLOR : PALETTE[i % PALETTE.length]
                 const pct = total > 0 ? (s.total / total) * 100 : 0
                 return (
-                  <li key={`${s.name}-${i}`} className="flex items-center gap-2 text-xs">
+                  <li key={`${s.name}-${i}`} className="flex items-center gap-2.5 text-xs">
                     <span
-                      className="h-2.5 w-2.5 shrink-0 rounded-sm"
+                      className="h-2.5 w-2.5 shrink-0 rounded-sm shadow-xs"
                       style={{ background: color }}
                       aria-hidden
                     />
-                    <span className="flex-1 truncate">{s.name}</span>
-                    <span className="text-muted-foreground font-mono tabular-nums">
+                    <span className="flex-1 truncate font-medium text-foreground">{s.name}</span>
+                    <span className="rounded bg-muted/60 px-1.5 py-0.5 font-mono text-[10.5px] font-semibold tabular-nums text-muted-foreground">
                       {pct.toFixed(1)}%
                     </span>
                     <Amount
                       value={s.total}
                       currency={currency}
                       size="xs"
-                      className="w-20 text-right"
+                      bold
+                      className="w-20 text-right font-mono"
                     />
                   </li>
                 )

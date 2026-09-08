@@ -232,11 +232,11 @@ export function AiLogsPage() {
                 {selected.size > 0 ? ` (${selected.size})` : ''}
               </Button>
             </div>
-            <div className="overflow-x-auto">
+            <div className="bc-table-panel overflow-x-auto shadow-xs">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="bc-table-head w-[40px]">
+                    <TableHead className="bc-table-head w-[48px]">
                       <Checkbox
                         checked={allSelected}
                         indeterminate={selected.size > 0 && !allSelected}
@@ -249,17 +249,17 @@ export function AiLogsPage() {
                     <TableHead className="bc-table-head">{t('settings.aiLogs.table.inputPreview')}</TableHead>
                     <TableHead className="bc-table-head">{t('settings.aiLogs.table.duration')}</TableHead>
                     <TableHead className="bc-table-head">{t('settings.aiLogs.table.calledAt')}</TableHead>
-                    <TableHead className="bc-table-head">{t('settings.aiLogs.table.ops')}</TableHead>
+                    <TableHead className="bc-table-head text-right pr-6">{t('settings.aiLogs.table.ops')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {items.map((it) => (
                     <TableRow
                       key={it.id}
-                      className="cursor-pointer odd:bg-muted/20"
+                      className="group cursor-pointer transition-colors duration-150 odd:bg-muted/[0.12] hover:bg-primary/[0.04] dark:hover:bg-primary/[0.07]"
                       onClick={() => void openDetail(it.id)}
                     >
-                      <TableCell>
+                      <TableCell className="w-[48px]">
                         <Checkbox
                           checked={selected.has(it.id)}
                           onClick={(e) => e.stopPropagation()}
@@ -267,25 +267,37 @@ export function AiLogsPage() {
                         />
                       </TableCell>
                       <TableCell>
-                        <Badge variant={it.status === 'ok' ? 'outline' : 'destructive'}>
+                        <span
+                          className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold border ${
+                            it.status === 'ok'
+                              ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                              : 'border-destructive/25 bg-destructive/10 text-destructive'
+                          }`}
+                        >
                           {it.status === 'ok'
                             ? t('settings.aiLogs.filter.ok')
                             : t('settings.aiLogs.filter.error')}
-                        </Badge>
+                        </span>
                       </TableCell>
-                      <TableCell className="font-medium">
-                        {t(ENTRY_LABEL_KEYS[it.entry_type] ?? it.entry_type)}
-                        {it.model ? <span className="ml-1 text-xs text-muted-foreground">{it.model}</span> : null}
+                      <TableCell className="font-semibold text-sm">
+                        <div className="flex items-center gap-1.5">
+                          <span>{t(ENTRY_LABEL_KEYS[it.entry_type] ?? it.entry_type)}</span>
+                          {it.model ? (
+                            <span className="rounded-md border border-border/60 bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                              {it.model}
+                            </span>
+                          ) : null}
+                        </div>
                       </TableCell>
                       <TableCell className="max-w-[320px]">
-                        <div className="truncate text-xs text-muted-foreground" title={it.input_preview || ''}>
+                        <div className="truncate font-mono text-xs text-muted-foreground" title={it.input_preview || ''}>
                           {it.input_preview || '-'}
                         </div>
                       </TableCell>
-                      <TableCell className="tabular-nums text-xs">{it.duration_ms}ms</TableCell>
-                      <TableCell className="text-xs">{new Date(it.called_at).toLocaleString()}</TableCell>
-                      <TableCell>
-                        <Button size="small" type="text" onClick={(e) => { e.stopPropagation(); void openDetail(it.id) }}>
+                      <TableCell className="font-mono tabular-nums text-xs font-semibold text-muted-foreground">{it.duration_ms}ms</TableCell>
+                      <TableCell className="font-mono tabular-nums text-xs text-muted-foreground">{new Date(it.called_at).toLocaleString()}</TableCell>
+                      <TableCell className="text-right pr-6">
+                        <Button size="small" type="text" className="text-xs font-medium text-muted-foreground hover:text-primary" onClick={(e) => { e.stopPropagation(); void openDetail(it.id) }}>
                           {t('settings.aiLogs.table.view')}
                         </Button>
                       </TableCell>

@@ -20,9 +20,10 @@ export type AppSection =
   | 'admin-data-cleanup'
   | 'admin-duplicate-transactions'
   | 'import'
+  | 'annual-report'
 
 export type NavItem = {
-  key: AppSection | 'annual-report'
+  key: AppSection
   labelKey: string
 }
 
@@ -36,11 +37,9 @@ export type NavGroup = {
  *
  * 分组约定:
  *   - bookkeeping …… 记账主视图
- *   - tools …… 高频但非"主视图"级的工具入口(预算/账本/导入) + 年度报告弹窗
+ *   - tools …… 高频但非"主视图"级的工具入口(预算/账本/年度报告/导入)
  *   - settings …… 用户偏好类设置
  *   - admin …… 平台管理,仅 admin 用户可见(渲染侧按 isAdmin 过滤)
- *
- * 非路由入口(弹窗)用 key 带 'annual-report',消费方按 key 特殊处理。
  */
 export const NAV_GROUPS: NavGroup[] = [
   {

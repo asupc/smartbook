@@ -15,6 +15,8 @@ import {
 
 import type { ReadTag, WorkspaceTag, WorkspaceTransactionPage } from '@smartbook/api-client'
 
+import { Plus } from 'lucide-react'
+
 import { TransactionList } from '../components/TransactionList'
 import type { TagForm } from '../forms'
 import {
@@ -175,8 +177,8 @@ function TagDetailPane({
 
       {/* 最近交易 */}
       {loadTransactions ? (
-        <div className="min-h-0 flex-1">
-          <h4 className="mb-2 text-xs font-semibold text-muted-foreground">
+        <div className="flex min-h-0 flex-1 flex-col">
+          <h4 className="mb-2 shrink-0 text-xs font-semibold text-muted-foreground">
             {t('tags.detail.recentTransactions')}
           </h4>
           <TransactionList
@@ -185,7 +187,7 @@ function TagDetailPane({
             loading={loading}
             hasMore={hasMore}
             onLoadMore={hasMore ? loadMore : undefined}
-            className="max-h-[360px] overflow-y-auto pr-1"
+            className="min-h-0 flex-1 overflow-y-auto pr-1"
             emptyTitle={t('tags.detail.noTransactions')}
           />
         </div>
@@ -281,16 +283,15 @@ export function TagsPanel({
   const isEmpty = rows.length === 0
   const selected = rows.find((r) => r.id === selectedId) ?? null
 
+  // 默认选中第一个标签，避免首次载入时右侧大面积留白
+  useEffect(() => {
+    if (!selectedId && rows.length > 0) {
+      setSelectedId(rows[0].id)
+    }
+  }, [selectedId, rows])
+
   return (
     <>
-      {/* 顶部操作条:右上角"新建标签"。即使 rows 为空也保留(EmptyState 那边
-          也会再放一个 CTA 按钮,两处都点都能创建)。 */}
-      {onCreate && canManage ? (
-        <div className="mb-4 flex justify-end">
-          <Button onClick={startCreate}>{t('tags.button.create')}</Button>
-        </div>
-      ) : null}
-
       {isEmpty ? (
         <EmptyState
           icon={
@@ -310,38 +311,63 @@ export function TagsPanel({
           }
         />
       ) : (
-        <div className="grid h-[calc(100vh-160px)] min-h-[420px] grid-cols-[280px_1fr] gap-4">
+        <div className="grid h-[calc(100vh-88px)] sm:h-[calc(100vh-104px)] lg:h-[calc(100vh-120px)] min-h-[480px] grid-cols-[280px_1fr] gap-4">
           {/* 左栏 列表 */}
-          <div className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-border/50 bg-card/40 p-2">
-            <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto">
-              {rows.map((row) => {
-                const color = row.color || '#94a3b8'
-                const count = statsById?.[row.id]?.count ?? 0
-                const active = row.id === selectedId
-                return (
-                  <button
-                    key={row.id}
-                    type="button"
-                    onClick={() => setSelectedId(row.id)}
-                    className={`flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-left text-sm transition-colors ${
-                      active ? 'bg-primary/15 text-primary' : 'hover:bg-accent/40 hover:text-foreground'
-                    }`}
-                  >
-                    <span
-                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-xs font-bold text-white"
-                      style={{ background: color }}
+          <div className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-border/50 bg-card/40">
+            {/* 卡片头部: 标题 + 数量 + 新建操作 */}
+            <div className="flex shrink-0 items-center justify-between border-b border-border/50 px-3 py-2">
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-semibold text-foreground">
+                  {t('nav.tags')}
+                </span>
+                <span className="rounded-full bg-muted/80 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground tabular-nums">
+                  {rows.length}
+                </span>
+              </div>
+              {onCreate && canManage ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={startCreate}
+                  className="h-6 gap-1 px-1.5 text-xs font-medium text-primary hover:bg-primary/10"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  <span>{t('tags.button.create')}</span>
+                </Button>
+              ) : null}
+            </div>
+
+            <div className="flex min-h-0 flex-1 flex-col p-2">
+              <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto">
+                {rows.map((row) => {
+                  const color = row.color || '#94a3b8'
+                  const count = statsById?.[row.id]?.count ?? 0
+                  const active = row.id === selectedId
+                  return (
+                    <button
+                      key={row.id}
+                      type="button"
+                      onClick={() => setSelectedId(row.id)}
+                      className={`flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-left text-sm transition-colors ${
+                        active ? 'bg-primary/15 text-primary' : 'hover:bg-accent/40 hover:text-foreground'
+                      }`}
                     >
-                      #
-                    </span>
-                    <span className="min-w-0 truncate">{row.name}</span>
-                    {count > 0 ? (
-                      <span className="ml-auto shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground tabular-nums">
-                        {count}
+                      <span
+                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-xs font-bold text-white"
+                        style={{ background: color }}
+                      >
+                        #
                       </span>
-                    ) : null}
-                  </button>
-                )
-              })}
+                      <span className="min-w-0 truncate">{row.name}</span>
+                      {count > 0 ? (
+                        <span className="ml-auto shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground tabular-nums">
+                          {count}
+                        </span>
+                      ) : null}
+                    </button>
+                  )
+                })}
+              </div>
             </div>
           </div>
 

@@ -2,9 +2,11 @@ import { useMemo, useState } from 'react'
 import { Area, AreaChart, ResponsiveContainer, Tooltip } from 'recharts'
 import {
   ArrowDownLeft,
+  ArrowRight,
   ArrowUpRight,
   CalendarDays,
-  Receipt
+  Receipt,
+  Sparkles,
 } from 'lucide-react'
 
 import type {
@@ -38,6 +40,7 @@ interface Props {
   /** 异常月份(scope=year analytics 返回),空数组 + hasEnoughMonths=true 显示 ✓ */
   anomalyMonths?: WorkspaceAnalyticsAnomalyMonth[]
   hasEnoughMonthsForAnomaly?: boolean
+  onOpenAnnualReport?: (year?: number) => void
 }
 
 // 三个 scope 的 label/hint 在组件里 t() 时动态查,这里只留 value 列表
@@ -64,7 +67,8 @@ export function HomeHero({
   budgets,
   budgetUsageById,
   anomalyMonths,
-  hasEnoughMonthsForAnomaly
+  hasEnoughMonthsForAnomaly,
+  onOpenAnnualReport,
 }: Props) {
   const t = useT()
   const [scope, setScope] = useState<HeroScope>('month')
@@ -112,10 +116,10 @@ export function HomeHero({
     // overflow-visible:hero 内的 InsightsRow chip 用 popover 浮出详情,需要
     // 越出 hero 边界。装饰光斑挪到内层 overflow-hidden 子层去 clip。
     <div
-      className="relative rounded-2xl border border-primary/30"
+      className="relative rounded-2xl border border-primary/25 shadow-xs"
       style={{
         background:
-          'linear-gradient(135deg, hsl(var(--primary)/0.18) 0%, hsl(var(--primary)/0.04) 55%, transparent 100%)'
+          'linear-gradient(135deg, hsl(var(--primary)/0.15) 0%, hsl(var(--primary)/0.03) 55%, transparent 100%)'
       }}
     >
       {/* 装饰光斑容器 — 单独 overflow-hidden + inset-0 + rounded-2xl 跟父
@@ -251,14 +255,28 @@ export function HomeHero({
             currency={currency}
             ledgerMonthStartDay={ledgerMonthStartDay}
           />
+
+          {scope === 'year' && onOpenAnnualReport ? (
+            <div className="mt-3">
+              <button
+                type="button"
+                onClick={() => onOpenAnnualReport(new Date().getFullYear())}
+                className="group inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-[11px] font-medium text-primary hover:bg-primary/20 transition-all shadow-xs cursor-pointer"
+              >
+                <Sparkles className="h-3.5 w-3.5 text-amber-500 animate-pulse" />
+                <span>{t('home.hero.annualReportCta')}</span>
+                <ArrowRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5" />
+              </button>
+            </div>
+          ) : null}
         </div>
 
         {/* 右侧：sparkline，随 scope 变 */}
-        <div className="flex min-h-[220px] flex-col gap-2 rounded-xl border border-border/40 bg-background/40 p-3 backdrop-blur-sm">
+        <div className="flex min-h-[220px] flex-col justify-between rounded-2xl border border-border/60 bg-background/75 p-4 shadow-xs backdrop-blur-md transition-all hover:border-primary/30">
           <div className="flex items-center justify-between text-[11px] uppercase tracking-wider text-muted-foreground">
-            <span>{t('home.hero.trend').replace('{scope}', scopeLabel)}</span>
+            <span className="font-medium text-foreground/80">{t('home.hero.trend').replace('{scope}', scopeLabel)}</span>
             {trendData.length > 0 ? (
-              <span className="font-mono tabular-nums">
+              <span className="rounded-md bg-muted/60 px-1.5 py-0.5 font-mono text-[10px] font-semibold tabular-nums text-muted-foreground">
                 {trendData.length}
                 {scope === 'month'
                   ? t('home.hero.trendUnit.day')
@@ -280,12 +298,12 @@ export function HomeHero({
                       <stop
                         offset="5%"
                         stopColor="hsl(var(--primary))"
-                        stopOpacity={0.55}
+                        stopOpacity={0.45}
                       />
                       <stop
                         offset="95%"
                         stopColor="hsl(var(--primary))"
-                        stopOpacity={0.02}
+                        stopOpacity={0.0}
                       />
                     </linearGradient>
                   </defs>
@@ -294,8 +312,9 @@ export function HomeHero({
                     contentStyle={{
                       background: 'hsl(var(--popover))',
                       border: '1px solid hsl(var(--border))',
-                      borderRadius: 6,
-                      fontSize: 11
+                      borderRadius: 8,
+                      fontSize: 12,
+                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
                     }}
                     formatter={
                       ((v: number) => [
@@ -312,7 +331,7 @@ export function HomeHero({
                     type="monotone"
                     dataKey="v"
                     stroke="hsl(var(--primary))"
-                    strokeWidth={2}
+                    strokeWidth={2.5}
                     fill="url(#homeHeroGrad)"
                   />
                 </AreaChart>
@@ -338,7 +357,7 @@ function ScopeSwitcher({
 }) {
   const t = useT()
   return (
-    <div className="inline-flex rounded-lg border border-border/60 bg-background/60 p-0.5 backdrop-blur-sm">
+    <div className="inline-flex rounded-xl border border-border/70 bg-background/80 p-1 shadow-xs backdrop-blur-md">
       {SCOPE_VALUES.map((scope) => {
         const active = scope === value
         return (
@@ -346,7 +365,7 @@ function ScopeSwitcher({
             key={scope}
             type="button"
             onClick={() => onChange(scope)}
-            className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
               active
                 ? 'bg-primary text-primary-foreground shadow-sm'
                 : 'text-muted-foreground hover:text-foreground'
@@ -375,14 +394,16 @@ function HeroStat({
 }) {
   return (
     <div
-      className={`rounded-xl border border-border/40 bg-background/50 px-3 py-2 backdrop-blur-sm${className ? ` ${className}` : ''}`}
+      className={`rounded-xl border border-border/60 bg-background/75 p-3 shadow-xs backdrop-blur-md transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md hover:bg-background/90${className ? ` ${className}` : ''}`}
       style={style}
     >
-      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
-        {icon}
-        {label}
+      <div className="flex items-center gap-1.5 text-[10.5px] font-medium uppercase tracking-wider text-muted-foreground">
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-muted/60">
+          {icon}
+        </span>
+        <span className="truncate">{label}</span>
       </div>
-      {children}
+      <div className="mt-1">{children}</div>
     </div>
   )
 }

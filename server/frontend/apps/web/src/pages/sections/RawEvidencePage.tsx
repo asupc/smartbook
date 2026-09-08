@@ -96,20 +96,59 @@ function EvidenceViewer({ token }: { token: string }) {
         <Button icon={<ReloadOutlined />} onClick={reload} disabled={busy}>{t('evidence.refresh')}</Button>
         <Button danger disabled={busy || loading} onClick={() => setConfirm({ source, before: new Date().toISOString() })}>{t('evidence.cleanup')}</Button>
       </Space>
-      <Table<RawEvidence> rowKey="id" dataSource={items} loading={loading} scroll={{ x: 850 }}
-        locale={{ emptyText: <Empty description={t('evidence.empty')} /> }}
-        pagination={{ current: page, pageSize: PAGE_SIZE, total, showSizeChanger: false, onChange: setPage, showTotal: count => t('evidence.total', { count }) }}
-        columns={[
-          { title: t('evidence.source'), dataIndex: 'source', width: 130, render: sourceName },
-          { title: t('evidence.actor'), dataIndex: 'actor', width: 150, ellipsis: true, render: value => value || '—' },
-          { title: t('evidence.preview'), key: 'preview', ellipsis: true, render: (_, row) => row.title || row.body || '—' },
-          { title: t('evidence.capturedAt'), dataIndex: 'captured_at', width: 180, render: stamp },
-          { title: t('evidence.expiresAt'), dataIndex: 'expires_at', width: 180, render: stamp },
-          { title: t('evidence.actions'), key: 'actions', width: 130, render: (_, row) => <Space>
-            <Button type="link" onClick={() => { setError(false); setDetailId(row.id) }}>{t('evidence.view')}</Button>
-            <Button type="link" danger disabled={busy} onClick={() => setConfirm({ id: row.id })}>{t('evidence.delete')}</Button>
-          </Space> },
-        ]} />
+      <div className="bc-table-panel">
+        <Table<RawEvidence> rowKey="id" dataSource={items} loading={loading} scroll={{ x: 850 }}
+          locale={{ emptyText: <Empty description={t('evidence.empty')} /> }}
+          pagination={{ current: page, pageSize: PAGE_SIZE, total, showSizeChanger: false, onChange: setPage, showTotal: count => t('evidence.total', { count }) }}
+          columns={[
+            {
+              title: t('evidence.source'),
+              dataIndex: 'source',
+              width: 130,
+              render: (value) => (
+                <span className="inline-flex items-center rounded-md border border-primary/20 bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
+                  {sourceName(value)}
+                </span>
+              ),
+            },
+            {
+              title: t('evidence.actor'),
+              dataIndex: 'actor',
+              width: 150,
+              ellipsis: true,
+              render: (value) => <span className="text-xs font-medium text-muted-foreground">{value || '—'}</span>,
+            },
+            {
+              title: t('evidence.preview'),
+              key: 'preview',
+              ellipsis: true,
+              render: (_, row) => <span className="font-mono text-xs text-foreground">{row.title || row.body || '—'}</span>,
+            },
+            {
+              title: t('evidence.capturedAt'),
+              dataIndex: 'captured_at',
+              width: 180,
+              render: (value) => <span className="font-mono tabular-nums text-xs text-muted-foreground">{stamp(value)}</span>,
+            },
+            {
+              title: t('evidence.expiresAt'),
+              dataIndex: 'expires_at',
+              width: 180,
+              render: (value) => <span className="font-mono tabular-nums text-xs text-muted-foreground">{stamp(value)}</span>,
+            },
+            {
+              title: t('evidence.actions'),
+              key: 'actions',
+              width: 130,
+              render: (_, row) => (
+                <Space size="small">
+                  <Button type="link" size="small" onClick={() => { setError(false); setDetailId(row.id) }}>{t('evidence.view')}</Button>
+                  <Button type="link" danger size="small" disabled={busy} onClick={() => setConfirm({ id: row.id })}>{t('evidence.delete')}</Button>
+                </Space>
+              ),
+            },
+          ]} />
+      </div>
     </Card>
     <Drawer title={t('evidence.detail')} open={Boolean(detailId)} width={640} onClose={() => setDetailId(null)} destroyOnClose>
       {detailLoading ? <Spin /> : detail && <Space direction="vertical" size="middle" style={{ width: '100%' }}>

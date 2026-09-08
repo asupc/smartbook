@@ -100,9 +100,9 @@ export function AdminUsersPanel({
   const [passwordDialog, setPasswordDialog] = useState<PasswordDialogState | null>(null)
   const [brokenAvatarUserIds, setBrokenAvatarUserIds] = useState<Set<string>>(new Set())
   const textActionClass =
-    'text-sm text-foreground underline-offset-4 hover:text-primary hover:underline disabled:pointer-events-none disabled:text-muted-foreground disabled:no-underline'
+    'rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors disabled:pointer-events-none disabled:opacity-40'
   const textDangerActionClass =
-    'text-sm text-destructive underline-offset-4 hover:text-destructive/90 hover:underline disabled:pointer-events-none disabled:text-muted-foreground disabled:no-underline'
+    'rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors disabled:pointer-events-none disabled:opacity-40'
 
   const rowById = useMemo(() => {
     const map = new Map<string, UserAdmin>()
@@ -254,16 +254,16 @@ export function AdminUsersPanel({
             {rows.map((row) => (
               <TableRow
                 key={row.id}
-                className="odd:bg-muted/20 [&>td:last-child]:sticky [&>td:last-child]:right-0 [&>td:last-child]:z-10 [&>td:last-child]:min-w-[180px] [&>td:last-child]:bg-background odd:[&>td:last-child]:bg-muted/20"
+                className="group transition-colors duration-150 odd:bg-muted/[0.12] hover:bg-primary/[0.04] dark:hover:bg-primary/[0.07] [&>td:last-child]:sticky [&>td:last-child]:right-0 [&>td:last-child]:z-10 [&>td:last-child]:min-w-[180px] [&>td:last-child]:bg-card"
               >
                 <TableCell>
                   {/* mobile 上 min-w 设 160 够放头像 + 名字 + 邮箱,sm+ 恢复 220。
                       过宽会顶走 Ops sticky 列的可用空间。 */}
-                  <div className="flex min-w-[160px] items-center gap-2 sm:min-w-[220px]">
+                  <div className="flex min-w-[160px] items-center gap-2.5 sm:min-w-[220px]">
                     {row.avatar_url && !brokenAvatarUserIds.has(row.id) ? (
                       <img
                         alt={userDisplayName(row)}
-                        className="h-7 w-7 rounded-full border border-border/60 object-cover"
+                        className="h-8 w-8 rounded-full border border-border/70 object-cover shadow-2xs"
                         src={row.avatar_url}
                         onError={() =>
                           setBrokenAvatarUserIds((prev) => {
@@ -275,32 +275,46 @@ export function AdminUsersPanel({
                         }
                       />
                     ) : (
-                      <div className="flex h-7 w-7 items-center justify-center rounded-full border border-border/60 bg-muted text-xs font-medium text-muted-foreground">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full border border-border/70 bg-muted/60 text-xs font-bold text-muted-foreground shadow-2xs">
                         {userAvatarInitial(row)}
                       </div>
                     )}
                     <div className="min-w-0">
-                      <p className="truncate text-sm">{userDisplayName(row)}</p>
+                      <p className="truncate text-sm font-semibold tracking-tight text-foreground">{userDisplayName(row)}</p>
                       <p className="truncate text-xs text-muted-foreground">{row.email}</p>
                     </div>
                   </div>
                 </TableCell>
-                <TableCell className="font-mono text-xs">{row.id}</TableCell>
                 <TableCell>
-                  <Badge variant={row.is_admin ? 'default' : 'secondary'}>
-                    {row.is_admin
-                      ? t('enum.platformRole.admin')
-                      : t('enum.platformRole.user')}
-                  </Badge>
+                  <span className="rounded-md border border-border/60 bg-muted/40 px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
+                    {row.id}
+                  </span>
                 </TableCell>
                 <TableCell>
-                  <Badge variant={row.is_enabled ? 'outline' : 'destructive'}>
-                    {row.is_enabled
-                      ? t('enum.userStatus.enabled')
-                      : t('enum.userStatus.disabled')}
-                  </Badge>
+                  <span
+                    className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold border ${
+                      row.is_admin
+                        ? 'border-blue-500/25 bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                        : 'border-slate-500/20 bg-muted/50 text-muted-foreground'
+                    }`}
+                  >
+                    {row.is_admin ? t('enum.platformRole.admin') : t('enum.platformRole.user')}
+                  </span>
                 </TableCell>
-                <TableCell>{formatIsoDateTime(row.created_at)}</TableCell>
+                <TableCell>
+                  <span
+                    className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold border ${
+                      row.is_enabled
+                        ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                        : 'border-destructive/25 bg-destructive/10 text-destructive'
+                    }`}
+                  >
+                    {row.is_enabled ? t('enum.userStatus.enabled') : t('enum.userStatus.disabled')}
+                  </span>
+                </TableCell>
+                <TableCell className="font-mono tabular-nums text-xs text-muted-foreground">
+                  {formatIsoDateTime(row.created_at)}
+                </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-3 whitespace-nowrap">
                     <button

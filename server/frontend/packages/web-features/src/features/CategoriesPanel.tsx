@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Select as AntSelect } from 'antd'
 
 import {
   Button,
@@ -20,10 +21,12 @@ import {
 
 import type { ReadCategory, ReadTransaction, WorkspaceCategory, WorkspaceTransaction, WorkspaceTransactionPage } from '@smartbook/api-client'
 
+import { Plus } from 'lucide-react'
+
 import { CategoryIcon } from '../components/CategoryIcon'
 import { TransactionList } from '../components/TransactionList'
 import { getIconGroupsByKind, type CategoryIconItem } from '../lib/categoryIconGroups'
-import type { CategoryForm } from '../forms'
+import { categoryDefaults, type CategoryForm } from '../forms'
 
 type CategoryKind = 'expense' | 'income' | 'transfer'
 
@@ -210,8 +213,8 @@ type CategoriesPanelProps = {
    *  的总笔数。CardBody 上展示 + 编辑 level=2 时父级候选过滤都会用。 */
   txCountById?: Record<string, number>
   onFormChange: (next: CategoryForm) => void
-  /** 触发"新建"流程:外层负责把 form 重置成 categoryDefaults() 并打开 dialog。 */
-  onCreate?: () => void
+  /** 触发"新建"流程:外层负责把 form 重置成 categoryDefaults() 并打开 dialog。可带入预选的 kind。 */
+  onCreate?: (defaultKind?: 'expense' | 'income') => void
   onSave: () => Promise<boolean> | boolean
   onReset: () => void
   onEdit: (row: ReadCategory) => void
@@ -363,10 +366,16 @@ export function CategoriesPanel({
     />
   )
 
-  const startCreate = () => {
+  const startCreate = (defaultKind?: 'expense' | 'income') => {
     if (!canManage) return
     setDuplicateError(null)
-    onCreate?.()
+    onCreate?.(defaultKind)
+    if (defaultKind) {
+      onFormChange({
+        ...categoryDefaults(),
+        kind: defaultKind,
+      })
+    }
     setOpen(true)
   }
 
@@ -411,13 +420,6 @@ export function CategoriesPanel({
       {/* dialogOnlyMode: 全局编辑容器复用 Dialog + picker,不渲染列表 */}
       {!dialogOnlyMode && (
         <>
-          {/* 顶部操作条:右上角"新建分类"。即使 rows 为空也保留 */}
-          {onCreate && canManage ? (
-            <div className="mb-4 flex justify-end">
-              <Button onClick={startCreate}>{t('categories.button.create')}</Button>
-            </div>
-          ) : null}
-
           {isEmpty ? (
             <EmptyState
               icon={
@@ -433,7 +435,7 @@ export function CategoriesPanel({
               description={t('categories.empty.desc')}
               action={
                 onCreate && canManage ? (
-                  <Button onClick={startCreate}>{t('categories.button.create')}</Button>
+                  <Button onClick={() => startCreate()}>{t('categories.button.create')}</Button>
                 ) : undefined
               }
             />
@@ -449,6 +451,7 @@ export function CategoriesPanel({
               onRowClick={onRowClick}
               loadTransactions={loadCategoryTransactions}
               onBatchMove={onBatchMove}
+              onCreate={startCreate}
             />
           )}
         </>
@@ -529,7 +532,7 @@ export function CategoriesPanel({
                 → 孤儿)。
                 **编辑 level=2**:可换到另一个同 kind 的父分类;也可点「无父分类」
                 清空父级 → 升级回顶级(对齐 mobile 关闭子分类开关)。 */}
-            <div className="space-y-1">
+            <div className="space-y-1 relative z-20">
               <Label>{t('categories.placeholder.parent')}</Label>
               {form.editingId && form.level === '1' && editingHasChildren ? (
                 <div className="flex items-center justify-between rounded-md border border-border/40 bg-muted/30 px-3 py-2 text-sm">
@@ -541,28 +544,28 @@ export function CategoriesPanel({
                   </span>
                 </div>
               ) : (
-                <Select
+                <AntSelect
+                  showSearch
+                  className="w-full"
                   value={form.parent_name || PARENT_NONE}
-                  onValueChange={(value) => {
+                  placeholder={t('categories.placeholder.parent')}
+                  optionFilterProp="label"
+                  getPopupContainer={(triggerNode) => (triggerNode.parentElement as HTMLElement) || document.body}
+                  onChange={(value) => {
                     if (value === PARENT_NONE) {
                       onFormChange({ ...form, parent_name: '', level: '1' })
                     } else {
                       onFormChange({ ...form, parent_name: value, level: '2' })
                     }
                   }}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={PARENT_NONE}>{t('common.none')}</SelectItem>
-                    {parentOptions.map((row) => (
-                      <SelectItem key={row.id} value={row.name}>
-                        {row.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  options={[
+                    { value: PARENT_NONE, label: t('common.none') },
+                    ...parentOptions.map((row) => ({
+                      value: row.name,
+                      label: row.name,
+                    })),
+                  ]}
+                />
               )}
             </div>
 
@@ -987,8 +990,8 @@ function CategoryDetailPane({
 
       {/* 最近交易 */}
       {loadTransactions ? (
-        <div className="min-h-0 flex-1">
-          <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="mb-2 flex shrink-0 items-center justify-between gap-2">
             <h4 className="text-xs font-semibold text-muted-foreground">
               {t('categories.detail.recentTransactions')}
             </h4>
@@ -1028,7 +1031,7 @@ function CategoryDetailPane({
             loading={loading}
             hasMore={hasMore}
             onLoadMore={hasMore ? loadMore : undefined}
-            className="max-h-[360px] overflow-y-auto pr-1"
+            className="min-h-0 flex-1 overflow-y-auto pr-1"
             emptyTitle={t('categories.detail.noTransactions')}
             selectionMode={selectionMode}
             selectedIds={selectedIds}
@@ -1055,6 +1058,7 @@ function CategoriesTwoPane({
   onRowClick,
   loadTransactions,
   onBatchMove,
+  onCreate,
 }: {
   rows: WorkspaceCategory[]
   txCountById?: Record<string, number>
@@ -1066,6 +1070,7 @@ function CategoriesTwoPane({
   onRowClick?: (row: WorkspaceCategory) => void
   loadTransactions?: CategoryRecentLoader
   onBatchMove?: (source: WorkspaceCategory, txIds?: string[]) => void
+  onCreate?: (defaultKind?: 'expense' | 'income') => void
 }) {
   const t = useT()
   const [activeKind, setActiveKind] = useState<CategoryKind>('expense')
@@ -1109,11 +1114,42 @@ function CategoriesTwoPane({
 
   const emptyByKind = parents.length === 0
 
+  // 默认选中当前分类树中的第一项，避免首次载入时右侧大面积留白
+  useEffect(() => {
+    if (!selectedId && parents.length > 0) {
+      setSelectedId(parents[0].id)
+    }
+  }, [selectedId, parents])
+
   return (
-    <div className="grid h-[calc(100vh-160px)] min-h-[420px] grid-cols-[280px_1fr] gap-4">
+    <div className="grid h-[calc(100vh-88px)] sm:h-[calc(100vh-104px)] lg:h-[calc(100vh-120px)] min-h-[480px] grid-cols-[280px_1fr] gap-4">
       {/* 左栏 树 */}
-      <div className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-border/50 bg-card/40 p-2">
-        <div className="mb-2 flex shrink-0 gap-1 rounded-lg bg-muted/30 p-1">
+      <div className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-border/50 bg-card/40">
+        {/* 卡片头部: 标题 + 数量 + 新建操作 */}
+        <div className="flex shrink-0 items-center justify-between border-b border-border/50 px-3 py-2">
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-semibold text-foreground">
+              {t('nav.categories')}
+            </span>
+            <span className="rounded-full bg-muted/80 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground tabular-nums">
+              {rows.length}
+            </span>
+          </div>
+          {onCreate && canManage ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onCreate(activeKind === 'income' ? 'income' : 'expense')}
+              className="h-6 gap-1 px-1.5 text-xs font-medium text-primary hover:bg-primary/10"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              <span>{t('categories.button.create')}</span>
+            </Button>
+          ) : null}
+        </div>
+
+        <div className="flex min-h-0 flex-1 flex-col p-2">
+          <div className="mb-2 flex shrink-0 gap-1 rounded-lg bg-muted/30 p-1">
           {KIND_ORDER.map((k) => {
             const active = k === activeKind
             return (
@@ -1183,6 +1219,7 @@ function CategoriesTwoPane({
           )}
         </div>
       </div>
+    </div>
 
       {/* 右栏 详情 */}
       <div className="min-h-0 overflow-y-auto rounded-xl border border-border/50 bg-card/40 p-4">

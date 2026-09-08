@@ -75,17 +75,24 @@ export function AssetCompositionDonut({ accounts }: Props) {
 
   return (
     <Card
-      className="overflow-hidden"
+      className="h-full overflow-hidden border border-border/60 shadow-xs transition-all duration-200 hover:shadow-md hover:border-primary/20"
       size="small"
-      title={<span className="text-base">{t('home.assetComp.title')}</span>}
-      styles={{ body: { padding: '12px 16px 16px' } }}
+      title={
+        <div className="flex items-center gap-2">
+          <span className="flex h-5 w-5 items-center justify-center rounded-md bg-emerald-500/10 text-emerald-600 text-xs">
+            💎
+          </span>
+          <span className="text-sm font-bold text-foreground">{t('home.assetComp.title')}</span>
+        </div>
+      }
+      styles={{ body: { padding: '16px 20px 20px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' } }}
     >
         {data.length === 0 ? (
           <div className="flex h-48 items-center justify-center text-xs text-muted-foreground">
             {t('home.assetComp.empty')}
           </div>
         ) : (
-          <div className="grid gap-4 md:grid-cols-[200px_1fr]">
+          <div className="grid gap-4 md:grid-cols-[200px_1fr] items-center">
             <div className="relative h-48">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
@@ -93,8 +100,8 @@ export function AssetCompositionDonut({ accounts }: Props) {
                     data={data}
                     dataKey="value"
                     nameKey="label"
-                    innerRadius={52}
-                    outerRadius={80}
+                    innerRadius={54}
+                    outerRadius={82}
                     paddingAngle={2}
                     strokeWidth={2}
                     stroke="hsl(var(--background))"
@@ -107,33 +114,36 @@ export function AssetCompositionDonut({ accounts }: Props) {
                     contentStyle={{
                       background: 'hsl(var(--popover))',
                       border: '1px solid hsl(var(--border))',
-                      borderRadius: 6,
-                      fontSize: 12
+                      borderRadius: 8,
+                      fontSize: 12,
+                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
                     }}
                     formatter={((v: number) => fmt(v)) as unknown as never}
                   />
                 </PieChart>
               </ResponsiveContainer>
               <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{t('home.assetComp.totalAsset')}</div>
-                <div className="text-sm font-bold">{fmt(totalAsset)}</div>
+                <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{t('home.assetComp.totalAsset')}</div>
+                <div className="mt-0.5 font-mono text-base font-bold tracking-tight text-foreground">{fmt(totalAsset)}</div>
                 {totalLiability > 0 ? (
-                  <div className="mt-0.5 text-[10px] text-rose-500">{t('home.assetComp.liability').replace('{value}', fmt(totalLiability))}</div>
+                  <div className="mt-0.5 rounded px-1.5 py-0.5 text-[9.5px] font-semibold text-rose-500 bg-rose-500/10 border border-rose-500/20">
+                    {t('home.assetComp.liability').replace('{value}', fmt(totalLiability))}
+                  </div>
                 ) : null}
               </div>
             </div>
-            <ul className="space-y-1.5">
+            <ul className="space-y-2">
               {data.map((d) => {
                 // 分母用展示项之和(见上方 shownAssetTotal 注释),保证各项百分比合计 = 100%。
                 const pct = shownAssetTotal > 0 ? (d.value / shownAssetTotal) * 100 : 0
                 return (
-                  <li key={d.type} className="flex items-center gap-2 text-sm">
-                    <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: d.color }} />
-                    <span className="flex-1 truncate">{d.label}</span>
-                    <span className="font-mono tabular-nums text-xs text-muted-foreground">
+                  <li key={d.type} className="flex items-center gap-2.5 text-xs">
+                    <span className="h-2.5 w-2.5 shrink-0 rounded-sm shadow-xs" style={{ background: d.color }} />
+                    <span className="flex-1 truncate font-medium text-foreground">{d.label}</span>
+                    <span className="rounded bg-muted/60 px-1.5 py-0.5 font-mono text-[10.5px] font-semibold tabular-nums text-muted-foreground">
                       {pct.toFixed(1)}%
                     </span>
-                    <span className="w-20 text-right font-mono tabular-nums">{compact(d.value)}</span>
+                    <span className="w-20 text-right font-mono text-xs font-semibold tabular-nums text-foreground">{compact(d.value)}</span>
                   </li>
                 )
               })}

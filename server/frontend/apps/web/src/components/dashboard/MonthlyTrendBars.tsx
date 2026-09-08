@@ -63,19 +63,26 @@ export function MonthlyTrendBars({ data }: Props) {
 
   return (
     <Card
-      className="overflow-hidden"
+      className="h-full overflow-hidden border border-border/60 shadow-xs transition-all duration-200 hover:shadow-md hover:border-primary/20"
       size="small"
-      title={<span className="text-base">{t('home.trendBars.title')}</span>}
-      styles={{ body: { padding: '12px 16px 16px' } }}
+      title={
+        <div className="flex items-center gap-2">
+          <span className="flex h-5 w-5 items-center justify-center rounded-md bg-blue-500/10 text-blue-600 text-xs">
+            📊
+          </span>
+          <span className="text-sm font-bold text-foreground">{t('home.trendBars.title')}</span>
+        </div>
+      }
+      styles={{ body: { padding: '16px 20px 20px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' } }}
     >
         {slice.length === 0 ? (
           <div className="flex h-48 items-center justify-center text-xs text-muted-foreground">
             {t('home.trendBars.empty')}
           </div>
         ) : (
-          <div className="h-56">
+          <div className="h-48 sm:h-52 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={slice} margin={{ left: 0, right: 8, top: 8, bottom: 0 }}>
+              <ComposedChart data={slice} margin={{ left: -10, right: 8, top: 8, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
                 <XAxis
                   dataKey="bucket"
@@ -95,8 +102,9 @@ export function MonthlyTrendBars({ data }: Props) {
                   contentStyle={{
                     background: 'hsl(var(--popover))',
                     border: '1px solid hsl(var(--border))',
-                    borderRadius: 6,
-                    fontSize: 12
+                    borderRadius: 8,
+                    fontSize: 12,
+                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
                   }}
                   cursor={{ fill: 'hsl(var(--muted) / 0.4)' }}
                   formatter={((v: number, name: string) => {

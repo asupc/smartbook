@@ -67,17 +67,24 @@ export function HomeTopAccounts({ accounts, currency = 'CNY', onSelectAccount }:
 
   return (
     <Card
-      className="overflow-hidden"
+      className="h-full overflow-hidden border border-border/60 shadow-xs transition-all duration-200 hover:shadow-md hover:border-primary/20"
       size="small"
-      title={<span className="text-base">{t('home.topAccounts.title')}</span>}
-      styles={{ body: { padding: '12px 16px 16px' } }}
+      title={
+        <div className="flex items-center gap-2">
+          <span className="flex h-5 w-5 items-center justify-center rounded-md bg-sky-500/10 text-sky-600 text-xs">
+            💳
+          </span>
+          <span className="text-sm font-bold text-foreground">{t('home.topAccounts.title')}</span>
+        </div>
+      }
+      styles={{ body: { padding: '16px 20px 20px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' } }}
     >
         {top.list.length === 0 ? (
           <div className="flex h-32 items-center justify-center text-xs text-muted-foreground">
             {t('home.topAccounts.empty')}
           </div>
         ) : (
-          <ul className="space-y-2.5">
+          <ul className="space-y-2">
             {top.list.map((a, i) => {
               const pct = top.maxCount > 0 ? (a.count / top.maxCount) * 100 : 0
               const iconUrl = TYPE_ICON_URL[a.type] || TYPE_ICON_URL.other
@@ -85,41 +92,38 @@ export function HomeTopAccounts({ accounts, currency = 'CNY', onSelectAccount }:
               return (
                 <li
                   key={a.id || `${a.name}-${i}`}
-                  className={`flex items-center gap-3 rounded-md ${
-                    onSelectAccount
-                      ? '-mx-2 cursor-pointer px-2 py-1 transition-colors hover:bg-muted/40'
-                      : ''
+                  className={`flex items-center gap-3 rounded-lg p-1.5 transition-all hover:bg-muted/40 ${
+                    onSelectAccount ? 'cursor-pointer' : ''
                   }`}
                   onClick={() => onSelectAccount?.(a.raw)}
                 >
                   <span
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md"
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl shadow-xs"
                     style={{ background: `${color}18`, border: `1px solid ${color}40` }}
                     aria-hidden
                   >
                     <img
                       src={iconUrl}
                       alt=""
-                      width={20}
-                      height={20}
+                      width={22}
+                      height={22}
                       className="select-none"
                       draggable={false}
                     />
                   </span>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="truncate text-sm font-medium">{a.name}</span>
+                      <span className="truncate text-sm font-semibold text-foreground">{a.name}</span>
                       <div className="shrink-0 text-xs text-muted-foreground">
-                        <span className="font-mono font-semibold tabular-nums">
-                          {a.count}
-                        </span>{' '}
-                        {t('home.topAccounts.countUnit')}
+                        <span className="rounded bg-muted/60 px-1.5 py-0.5 font-mono text-[10px] font-semibold tabular-nums text-muted-foreground">
+                          {a.count} {t('home.topAccounts.countUnit')}
+                        </span>
                       </div>
                     </div>
-                    <div className="mt-1 flex items-center gap-2">
+                    <div className="mt-1.5 flex items-center gap-2">
                       <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted/60">
                         <div
-                          className="h-full rounded-full"
+                          className="h-full rounded-full transition-all"
                           style={{ width: `${pct}%`, background: color }}
                         />
                       </div>
@@ -127,8 +131,9 @@ export function HomeTopAccounts({ accounts, currency = 'CNY', onSelectAccount }:
                         value={a.balance}
                         currency={currency}
                         size="xs"
+                        bold
                         tone={a.balance < 0 ? 'negative' : 'muted'}
-                        className="shrink-0"
+                        className="shrink-0 font-mono"
                       />
                     </div>
                   </div>

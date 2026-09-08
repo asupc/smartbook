@@ -24,6 +24,11 @@ expect(parseRoute('/app/workspace/transactions')).toEqual({
       ledgerId: '',
       section: 'transactions'
     })
+    expect(parseRoute('/app/annual-report')).toEqual({
+      kind: 'app',
+      ledgerId: '',
+      section: 'annual-report'
+    })
     expect(parseRoute('/app/settings/health')).toEqual({
       kind: 'app',
       ledgerId: '',
@@ -54,5 +59,12 @@ expect(parseRoute('/app/workspace/transactions')).toEqual({
         section: 'settings-health'
       })
     ).toBe('/app/settings/health')
+    expect(
+      routePath({
+        kind: 'app',
+        ledgerId: 'ledger a',
+        section: 'annual-report'
+      })
+    ).toBe('/app/annual-report')
   })
 })

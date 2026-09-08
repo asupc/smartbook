@@ -34,23 +34,23 @@ export function TransactionsPreviewCard({ samples, totalRows }: Props) {
           </p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-[11px]">
-              <thead className="bg-muted/30 text-[10px] uppercase tracking-wider text-muted-foreground">
+            <table className="w-full text-xs">
+              <thead className="border-b border-border/80 bg-muted/40 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                 <tr>
-                  <th className="px-3 py-2 text-left">#</th>
-                  <th className="px-3 py-2 text-left">{t('import.preview.col.time')}</th>
-                  <th className="px-3 py-2 text-left">{t('import.preview.col.type')}</th>
-                  <th className="px-3 py-2 text-right">{t('import.preview.col.amount')}</th>
-                  <th className="px-3 py-2 text-left">{t('import.preview.col.category')}</th>
-                  <th className="px-3 py-2 text-left">{t('import.preview.col.account')}</th>
-                  <th className="px-3 py-2 text-left">{t('import.preview.col.tags')}</th>
-                  <th className="px-3 py-2 text-left">{t('import.preview.col.note')}</th>
+                  <th className="px-3.5 py-2.5 text-left">#</th>
+                  <th className="px-3.5 py-2.5 text-left">{t('import.preview.col.time')}</th>
+                  <th className="px-3.5 py-2.5 text-left">{t('import.preview.col.type')}</th>
+                  <th className="px-3.5 py-2.5 text-right">{t('import.preview.col.amount')}</th>
+                  <th className="px-3.5 py-2.5 text-left">{t('import.preview.col.category')}</th>
+                  <th className="px-3.5 py-2.5 text-left">{t('import.preview.col.account')}</th>
+                  <th className="px-3.5 py-2.5 text-left">{t('import.preview.col.tags')}</th>
+                  <th className="px-3.5 py-2.5 text-left">{t('import.preview.col.note')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/40">
                 {samples.map((tx, idx) => (
-                  <tr key={idx} className="hover:bg-muted/20">
-                    <td className="px-3 py-1.5 text-muted-foreground">
+                  <tr key={idx} className="transition-colors hover:bg-primary/[0.04] odd:bg-muted/[0.12]">
+                    <td className="px-3.5 py-2 text-muted-foreground font-mono text-[11px]">
                       L{tx.source_row_number}
                     </td>
                     <td className="px-3 py-1.5 font-mono">{formatDate(tx.happened_at)}</td>

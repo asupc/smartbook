@@ -30,7 +30,9 @@ export const APP_SECTIONS: AppSection[] = [
   'admin-users',
   'admin-backup',
   'admin-data-cleanup',
-  'admin-duplicate-transactions'
+  'admin-duplicate-transactions',
+  'import',
+  'annual-report'
 ]
 
 export const DEFAULT_APP_SECTION: AppSection = 'transactions'
@@ -94,6 +96,10 @@ function parseRootSection(parts: string[]): AppSection {
       return 'budgets'
     case 'ledgers':
       return 'ledgers'
+    case 'annual-report':
+      return 'annual-report'
+    case 'import':
+      return 'import'
     case 'overview':
       return 'overview'
     case 'admin/users':
@@ -135,6 +141,10 @@ function parseLegacyLedgerSection(parts: string[]): AppSection {
       return 'tags'
     case 'budgets':
       return 'budgets'
+    case 'annual-report':
+      return 'annual-report'
+    case 'import':
+      return 'import'
     case 'overview':
       return 'overview'
     case 'settings/profile':
@@ -201,6 +211,9 @@ export function parseRoute(pathname: string): AppRoute {
   if (parts[1] === 'import') {
     return { kind: 'app', ledgerId: '', section: 'import' }
   }
+  if (parts[1] === 'annual-report') {
+    return { kind: 'app', ledgerId: '', section: 'annual-report' }
+  }
 
   const ledgerId = decodeURIComponent(parts[1])
   return {
@@ -231,6 +244,8 @@ export function routePath(route: AppRoute): string {
       return '/app/ledgers'
     case 'overview':
       return '/app/overview'
+    case 'annual-report':
+      return '/app/annual-report'
     case 'settings-profile':
       return '/app/settings/profile'
     case 'settings-appearance':

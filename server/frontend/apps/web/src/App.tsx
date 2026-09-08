@@ -34,6 +34,9 @@ const AdminDuplicateTransactionsPage = lazy(() =>
 const AdminUsersPage = lazy(() =>
   import('./pages/sections/AdminUsersPage').then((m) => ({ default: m.AdminUsersPage })),
 )
+const AnnualReportPage = lazy(() =>
+  import('./pages/sections/AnnualReportPage').then((m) => ({ default: m.AnnualReportPage })),
+)
 const BudgetsPage = lazy(() =>
   import('./pages/sections/BudgetsPage').then((m) => ({ default: m.BudgetsPage })),
 )
@@ -288,6 +291,14 @@ function AppRoutes() {
           element={
             <Suspense fallback={<RouteFallback />}>
               <ImportPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="annual-report"
+          element={
+            <Suspense fallback={<RouteFallback />}>
+              <AnnualReportPage />
             </Suspense>
           }
         />

@@ -67,14 +67,13 @@ export function Pagination({
   return (
     <div
       className={[
-        'flex flex-col gap-2 border-t border-border/60 px-3 py-3',
-        'sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-3',
+        'flex flex-col gap-3 border-t border-border/60 bg-muted/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between',
         className || '',
       ]
         .filter(Boolean)
         .join(' ')}
     >
-      <p className="text-xs text-muted-foreground">
+      <p className="text-xs font-medium text-muted-foreground">
         {t('pagination.summary', { start: rangeStart, end: rangeEnd, total })}
       </p>
       <div className="flex flex-wrap items-center gap-2">
@@ -82,7 +81,7 @@ export function Pagination({
           value={`${pageSize}`}
           onValueChange={(value) => onPageSizeChange(Number(value))}
         >
-          <SelectTrigger className="h-8 w-[96px]">
+          <SelectTrigger className="h-8 w-[100px] rounded-lg border-border/70 bg-background text-xs font-medium shadow-2xs">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -94,7 +93,7 @@ export function Pagination({
           </SelectContent>
         </Select>
         <Button
-          className="h-8 px-3"
+          className="h-8 rounded-lg border-border/70 px-3 text-xs font-medium shadow-2xs transition-all hover:border-primary/40 hover:bg-background"
           disabled={safePage <= 1}
           size="sm"
           variant="outline"
@@ -102,9 +101,9 @@ export function Pagination({
         >
           {t('pagination.prev')}
         </Button>
-        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <Input
-            className="h-8 w-[56px] text-center"
+            className="h-8 w-[58px] rounded-lg border-border/70 bg-background text-center font-mono text-xs font-semibold tabular-nums shadow-2xs"
             type="number"
             inputMode="numeric"
             min={1}
@@ -119,10 +118,10 @@ export function Pagination({
               }
             }}
           />
-          <span>/ {totalPages}</span>
+          <span className="font-mono font-medium tabular-nums">/ {totalPages}</span>
         </div>
         <Button
-          className="h-8 px-3"
+          className="h-8 rounded-lg border-border/70 px-3 text-xs font-medium shadow-2xs transition-all hover:border-primary/40 hover:bg-background"
           disabled={safePage >= totalPages}
           size="sm"
           variant="outline"

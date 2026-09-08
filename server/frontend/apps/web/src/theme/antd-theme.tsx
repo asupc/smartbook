@@ -30,12 +30,51 @@ export function AntdProvider({ children }: PropsWithChildren) {
   const { color } = usePrimaryColor()
   const { locale } = useLocale()
 
+  const isDark = resolved === 'dark'
+
   return (
     <ConfigProvider
       locale={LOCALE_ANTD[locale]}
       theme={{
-        algorithm: resolved === 'dark' ? theme.darkAlgorithm : theme.defaultAlgorithm,
-        token: { colorPrimary: color },
+        algorithm: isDark ? theme.darkAlgorithm : theme.defaultAlgorithm,
+        token: {
+          colorPrimary: color || '#2563EB',
+          borderRadius: 10,
+          fontFamily:
+            '"Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+          colorBgContainer: isDark ? '#111726' : '#ffffff',
+          colorBgElevated: isDark ? '#1a2234' : '#ffffff',
+          colorBgLayout: isDark ? '#090d16' : '#f8fafc',
+          colorBorderSecondary: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(15, 23, 42, 0.08)',
+        },
+        components: {
+          Card: {
+            borderRadiusLG: 16,
+            headerHeight: 48,
+          },
+          Button: {
+            borderRadius: 8,
+          },
+          Table: {
+            borderRadius: 12,
+            headerBg: isDark ? '#141c2e' : '#f8fafc',
+            headerColor: isDark ? '#94a3b8' : '#475569',
+            headerSplitColor: 'transparent',
+            headerBorderRadius: 10,
+            rowHoverBg: isDark ? 'rgba(37, 99, 235, 0.08)' : 'rgba(37, 99, 235, 0.04)',
+            borderColor: isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(15, 23, 42, 0.06)',
+            cellPaddingBlock: 12,
+            cellPaddingInline: 16,
+            footerBg: isDark ? '#111726' : '#ffffff',
+          },
+          Modal: {
+            borderRadiusLG: 16,
+          },
+          Menu: {
+            itemBorderRadius: 8,
+            itemMarginInline: 8,
+          },
+        },
       }}
     >
       <AntdApp>{children}</AntdApp>
