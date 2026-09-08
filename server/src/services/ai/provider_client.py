@@ -22,6 +22,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import logging
@@ -36,6 +37,82 @@ from ...config import get_settings
 from ...models import User, UserProfile
 
 logger = logging.getLogger(__name__)
+
+
+# 进程内共享的 AI 上游 HTTP client。httpx 会按 origin 分池，因此同一个 client
+# 可以安全承载用户动态配置的不同 provider URL，同时复用 DNS/TCP/TLS/keep-alive。
+# 每个请求仍显式传自己的 timeout，避免文本、图片、语音和 embedding 相互污染。
+_AI_HTTP_MAX_CONNECTIONS = 32
+_AI_HTTP_MAX_KEEPALIVE_CONNECTIONS = 16
+_AI_HTTP_KEEPALIVE_EXPIRY_S = 30.0
+_ai_http_client: httpx.AsyncClient | None = None
+_ai_http_client_loop: asyncio.AbstractEventLoop | None = None
+_ai_http_verify_ssl: bool | None = None
+
+
+async def get_ai_http_client() -> httpx.AsyncClient:
+    """返回当前 event loop 的共享 AI 上游 client（懒初始化）。
+
+    FastAPI 启动时会预热一次；懒初始化仍保留给不触发生命周期的单元测试。
+    测试可能为每个 case 新建 event loop，因此 loop 或 SSL 配置变化时重建，
+    生产环境则始终复用同一个 keep-alive 连接池。
+    """
+    global _ai_http_client, _ai_http_client_loop, _ai_http_verify_ssl
+
+    loop = asyncio.get_running_loop()
+    verify_ssl = get_settings().ai_http_verify_ssl
+    client = _ai_http_client
+    if client is not None and (
+        _ai_http_client_loop is not loop
+        or _ai_http_verify_ssl != verify_ssl
+        or getattr(client, "is_closed", False)
+    ):
+        await close_ai_http_client()
+        # close 期间若另一个 task 已初始化新 client，直接复用，避免并发重建泄漏。
+        client = _ai_http_client
+
+    if client is None:
+        client = httpx.AsyncClient(
+            timeout=None,
+            verify=verify_ssl,
+            limits=httpx.Limits(
+                max_connections=_AI_HTTP_MAX_CONNECTIONS,
+                max_keepalive_connections=_AI_HTTP_MAX_KEEPALIVE_CONNECTIONS,
+                keepalive_expiry=_AI_HTTP_KEEPALIVE_EXPIRY_S,
+            ),
+        )
+        _ai_http_client = client
+        _ai_http_client_loop = loop
+        _ai_http_verify_ssl = verify_ssl
+        logger.info(
+            "ai.http_pool initialized max_connections=%d max_keepalive=%d verify_ssl=%s",
+            _AI_HTTP_MAX_CONNECTIONS,
+            _AI_HTTP_MAX_KEEPALIVE_CONNECTIONS,
+            verify_ssl,
+        )
+    return client
+
+
+async def close_ai_http_client() -> None:
+    """关闭共享连接池；供 FastAPI shutdown 与测试清理调用。"""
+    global _ai_http_client, _ai_http_client_loop, _ai_http_verify_ssl
+
+    client = _ai_http_client
+    _ai_http_client = None
+    _ai_http_client_loop = None
+    _ai_http_verify_ssl = None
+    if client is None or getattr(client, "is_closed", False):
+        return
+
+    close = getattr(client, "aclose", None)
+    if close is None:  # 兼容只实现 post 的轻量测试 double
+        return
+    try:
+        await close()
+    except RuntimeError:
+        # 测试可能已关闭创建该 client 的旧 event loop；生产 shutdown 同 loop
+        # 正常关闭，不会走到这里。
+        logger.debug("ai.http_pool close skipped because owner loop is closed", exc_info=True)
 
 
 # Anthropic 协议适配(/v1/messages) ────────────────────────────────────────
@@ -121,18 +198,29 @@ def _anthropic_text_from_response(data: dict) -> str:
 
 
 async def _post_anthropic_adaptive(
-    client: httpx.AsyncClient, url: str, headers: dict, payload: dict,
+    client: httpx.AsyncClient,
+    url: str,
+    headers: dict,
+    payload: dict,
+    *,
+    timeout: float | httpx.Timeout | None = None,
 ) -> httpx.Response:
     """POST /v1/messages;max_tokens 被拒(部分模型有上限)时逐步砍半重发。"""
     payload = dict(payload)
-    resp = await client.post(url, headers=headers, json=payload)
+    if timeout is None:
+        resp = await client.post(url, headers=headers, json=payload)
+    else:
+        resp = await client.post(url, headers=headers, json=payload, timeout=timeout)
     for _ in range(3):
         if resp.status_code < 400:
             return resp
         low = resp.text.lower()
         if "max_tokens" in payload and "max_tokens" in low:
             payload = {**payload, "max_tokens": max(256, int(payload["max_tokens"]) // 2)}
-            resp = await client.post(url, headers=headers, json=payload)
+            if timeout is None:
+                resp = await client.post(url, headers=headers, json=payload)
+            else:
+                resp = await client.post(url, headers=headers, json=payload, timeout=timeout)
             continue
         break
     return resp
@@ -156,17 +244,15 @@ async def embed_query(query: str) -> list[float]:
         raise EmbeddingNotConfiguredError(
             "EMBEDDING_API_KEY 未配置;请在 .env 文件或环境变量设置 SiliconFlow / OpenAI key"
         )
-    async with httpx.AsyncClient(
+    client = await get_ai_http_client()
+    resp = await client.post(
+        f"{settings.embedding_base_url.rstrip('/')}/embeddings",
+        headers={"Authorization": f"Bearer {settings.embedding_api_key}"},
+        json={"model": settings.embedding_model, "input": query},
         timeout=settings.embedding_timeout,
-        verify=settings.ai_http_verify_ssl,
-    ) as client:
-        resp = await client.post(
-            f"{settings.embedding_base_url.rstrip('/')}/embeddings",
-            headers={"Authorization": f"Bearer {settings.embedding_api_key}"},
-            json={"model": settings.embedding_model, "input": query},
-        )
-        resp.raise_for_status()
-        data = resp.json()
+    )
+    resp.raise_for_status()
+    data = resp.json()
     embedding = data["data"][0]["embedding"]
     if not isinstance(embedding, list):
         raise RuntimeError("embedding API 返回 shape 异常")
@@ -468,7 +554,12 @@ def _rejected_param(payload: dict, status_code: int, body: str) -> str | None:
 
 
 async def _post_chat_adaptive(
-    client: httpx.AsyncClient, url: str, headers: dict, payload: dict,
+    client: httpx.AsyncClient,
+    url: str,
+    headers: dict,
+    payload: dict,
+    *,
+    timeout: float | httpx.Timeout | None = None,
 ) -> httpx.Response:
     """POST /chat/completions;若上游因某个可选参数报 4xx,摘掉它重发,最多 _MAX_PARAM_STRIPS 次。
 
@@ -478,7 +569,10 @@ async def _post_chat_adaptive(
     只在「拿到响应且是参数类错误」时重试;超时 / 网络异常照常向上抛(由调用方处理)。
     """
     payload = dict(payload)  # 不改调用方的 dict
-    resp = await client.post(url, headers=headers, json=payload)
+    if timeout is None:
+        resp = await client.post(url, headers=headers, json=payload)
+    else:
+        resp = await client.post(url, headers=headers, json=payload, timeout=timeout)
     for _ in range(_MAX_PARAM_STRIPS):
         if resp.status_code < 400:
             return resp
@@ -491,7 +585,10 @@ async def _post_chat_adaptive(
         )
         # 重建(而非 in-place pop):每次 POST 用独立 dict,不改已发出去的引用
         payload = {k: v for k, v in payload.items() if k != param}
-        resp = await client.post(url, headers=headers, json=payload)
+        if timeout is None:
+            resp = await client.post(url, headers=headers, json=payload)
+        else:
+            resp = await client.post(url, headers=headers, json=payload, timeout=timeout)
     return resp  # 摘到上限仍失败,返回最后一次让上层报错
 
 
@@ -521,6 +618,7 @@ async def call_chat_json(
         )
 
     last_exc: Exception | None = None
+    client = await get_ai_http_client()
     url = f"{config.base_url}/chat/completions"
     headers = {
         "Authorization": f"Bearer {config.api_key}",
@@ -551,11 +649,9 @@ async def call_chat_json(
             attempt == 0, disable_thinking,
         )
         try:
-            async with httpx.AsyncClient(
-                timeout=timeout,
-                verify=get_settings().ai_http_verify_ssl,
-            ) as client:
-                resp = await _post_chat_adaptive(client, url, headers, payload)
+            resp = await _post_chat_adaptive(
+                client, url, headers, payload, timeout=timeout,
+            )
             elapsed = time.monotonic() - t0
             logger.info(
                 "ai.call_chat_json done attempt=%d status=%d elapsed=%.2fs body_len=%d",
@@ -624,6 +720,7 @@ async def _call_chat_json_anthropic(
     import time
 
     last_exc: Exception | None = None
+    client = await get_ai_http_client()
     system, a_messages = _anthropic_system_and_messages(messages)
     headers = {
         "x-api-key": config.api_key,
@@ -648,11 +745,9 @@ async def _call_chat_json_anthropic(
             config.provider_id, config.model, attempt + 1, len(a_messages),
         )
         try:
-            async with httpx.AsyncClient(
-                timeout=timeout,
-                verify=get_settings().ai_http_verify_ssl,
-            ) as client:
-                resp = await _post_anthropic_adaptive(client, url, headers, payload)
+            resp = await _post_anthropic_adaptive(
+                client, url, headers, payload, timeout=timeout,
+            )
             if resp.status_code >= 400:
                 raise ChatProviderError(
                     f"provider {config.provider_id} returned {resp.status_code}: {resp.text[:200]}"
@@ -738,11 +833,10 @@ async def call_chat_text(
         config.provider_id, config.model, len(messages), disable_thinking,
     )
     try:
-        async with httpx.AsyncClient(
-            timeout=timeout,
-            verify=get_settings().ai_http_verify_ssl,
-        ) as client:
-            resp = await _post_chat_adaptive(client, url, headers, payload)
+        client = await get_ai_http_client()
+        resp = await _post_chat_adaptive(
+            client, url, headers, payload, timeout=timeout,
+        )
     except httpx.TimeoutException as exc:
         elapsed = time.monotonic() - t0
         logger.warning("ai.call_chat_text timeout provider=%s elapsed=%.2fs", config.provider_id, elapsed)
@@ -807,11 +901,10 @@ async def _call_chat_text_anthropic(
         config.provider_id, config.model, len(a_messages),
     )
     try:
-        async with httpx.AsyncClient(
-            timeout=timeout,
-            verify=get_settings().ai_http_verify_ssl,
-        ) as client:
-            resp = await _post_anthropic_adaptive(client, url, headers, payload)
+        client = await get_ai_http_client()
+        resp = await _post_anthropic_adaptive(
+            client, url, headers, payload, timeout=timeout,
+        )
     except httpx.TimeoutException as exc:
         elapsed = time.monotonic() - t0
         logger.warning("ai.call_chat_text_anthropic timeout provider=%s elapsed=%.2fs", config.provider_id, elapsed)
@@ -872,70 +965,69 @@ async def transcribe_audio(
         )
     headers = {"Authorization": f"Bearer {config.api_key}"}
     try:
-        async with httpx.AsyncClient(
-            timeout=timeout,
-            verify=get_settings().ai_http_verify_ssl,
-        ) as client:
-            if _is_zhipu_audio(config):
-                logger.info(
-                    "ai.transcribe_audio path=input_audio provider=%s model=%s bytes=%d",
-                    config.provider_id, config.model, len(audio_bytes),
-                )
-                content = [
-                    {
-                        "type": "input_audio",
-                        "input_audio": {
-                            "data": base64.b64encode(audio_bytes).decode(),
-                            "format": _audio_format_for(audio_mime, filename),
-                        },
-                    },
-                    {"type": "text", "text": _STT_PROMPT},
-                ]
-                payload = {
-                    "model": config.model,
-                    "messages": [{"role": "user", "content": content}],
-                    "temperature": 0.1,
-                }
-                resp = await _post_chat_adaptive(
-                    client,
-                    f"{config.base_url}/chat/completions",
-                    {**headers, "Content-Type": "application/json"},
-                    payload,
-                )
-                if resp.status_code >= 400:
-                    raise ChatProviderError(
-                        f"provider {config.provider_id} returned {resp.status_code}: {resp.text[:200]}"
-                    )
-                data = resp.json()
-                text = (
-                    data.get("choices", [{}])[0]
-                    .get("message", {})
-                    .get("content", "")
-                )
-                return (text or "").strip()
-
+        client = await get_ai_http_client()
+        if _is_zhipu_audio(config):
             logger.info(
-                "ai.transcribe_audio path=transcriptions provider=%s model=%s bytes=%d",
+                "ai.transcribe_audio path=input_audio provider=%s model=%s bytes=%d",
                 config.provider_id, config.model, len(audio_bytes),
             )
-            resp = await client.post(
-                f"{config.base_url}/audio/transcriptions",
-                headers=headers,
-                files={
-                    "file": (
-                        filename or "audio",
-                        audio_bytes,
-                        audio_mime or "application/octet-stream",
-                    ),
+            content = [
+                {
+                    "type": "input_audio",
+                    "input_audio": {
+                        "data": base64.b64encode(audio_bytes).decode(),
+                        "format": _audio_format_for(audio_mime, filename),
+                    },
                 },
-                data={"model": config.model},
+                {"type": "text", "text": _STT_PROMPT},
+            ]
+            payload = {
+                "model": config.model,
+                "messages": [{"role": "user", "content": content}],
+                "temperature": 0.1,
+            }
+            resp = await _post_chat_adaptive(
+                client,
+                f"{config.base_url}/chat/completions",
+                {**headers, "Content-Type": "application/json"},
+                payload,
+                timeout=timeout,
             )
             if resp.status_code >= 400:
                 raise ChatProviderError(
                     f"provider {config.provider_id} returned {resp.status_code}: {resp.text[:200]}"
                 )
-            body = resp.json()
-            return (body.get("text") or "").strip()
+            data = resp.json()
+            text = (
+                data.get("choices", [{}])[0]
+                .get("message", {})
+                .get("content", "")
+            )
+            return (text or "").strip()
+
+        logger.info(
+            "ai.transcribe_audio path=transcriptions provider=%s model=%s bytes=%d",
+            config.provider_id, config.model, len(audio_bytes),
+        )
+        resp = await client.post(
+            f"{config.base_url}/audio/transcriptions",
+            headers=headers,
+            files={
+                "file": (
+                    filename or "audio",
+                    audio_bytes,
+                    audio_mime or "application/octet-stream",
+                ),
+            },
+            data={"model": config.model},
+            timeout=timeout,
+        )
+        if resp.status_code >= 400:
+            raise ChatProviderError(
+                f"provider {config.provider_id} returned {resp.status_code}: {resp.text[:200]}"
+            )
+        body = resp.json()
+        return (body.get("text") or "").strip()
     except httpx.TimeoutException as exc:
         logger.warning("ai.transcribe_audio timeout provider=%s err=%s", config.provider_id, exc)
         raise ChatProviderError(
@@ -966,7 +1058,9 @@ async def stream_chat_completion(
     出错抛 ChatProviderError(不细分:对前端来说就是「AI 服务出错,请重试 / 检查 key」)。
     """
     if config.protocol == "anthropic":
-        async for chunk in _stream_chat_anthropic(config=config, messages=messages, timeout=timeout):
+        async for chunk in _stream_chat_anthropic(
+            config=config, messages=messages, timeout=timeout,
+        ):
             yield chunk
         return
 
@@ -984,54 +1078,57 @@ async def stream_chat_completion(
     url = f"{config.base_url}/chat/completions"
 
     try:
-        async with httpx.AsyncClient(
-            timeout=timeout,
-            verify=get_settings().ai_http_verify_ssl,
-        ) as client:
-            # 参数被模型拒绝(如推理模型锁 temperature)→ 摘掉重开一次流。
-            attempt_payload = dict(payload)
-            for _ in range(_MAX_PARAM_STRIPS + 1):
-                async with client.stream("POST", url, headers=headers, json=attempt_payload) as resp:
-                    if resp.status_code >= 400:
-                        body = (await resp.aread()).decode("utf-8", errors="replace")
-                        param = _rejected_param(attempt_payload, resp.status_code, body)
-                        if param is None:
-                            raise ChatProviderError(
-                                f"provider {config.provider_id} returned {resp.status_code}: {body[:200]}"
-                            )
-                        logger.info(
-                            "ai.stream_param_stripped param=%s model=%s status=%d",
-                            param, attempt_payload.get("model"), resp.status_code,
+        client = await get_ai_http_client()
+        # 参数被模型拒绝(如推理模型锁 temperature)→ 摘掉重开一次流。
+        attempt_payload = dict(payload)
+        for _ in range(_MAX_PARAM_STRIPS + 1):
+            async with client.stream(
+                "POST",
+                url,
+                headers=headers,
+                json=attempt_payload,
+                timeout=timeout,
+            ) as resp:
+                if resp.status_code >= 400:
+                    body = (await resp.aread()).decode("utf-8", errors="replace")
+                    param = _rejected_param(attempt_payload, resp.status_code, body)
+                    if param is None:
+                        raise ChatProviderError(
+                            f"provider {config.provider_id} returned {resp.status_code}: {body[:200]}"
                         )
-                        attempt_payload = {
-                            k: v for k, v in attempt_payload.items() if k != param
-                        }
-                        continue  # 摘掉该参数,重开流
-                    async for line in resp.aiter_lines():
-                        if not line:
-                            continue
-                        line = line.strip()
-                        if not line.startswith("data:"):
-                            continue
-                        payload_str = line[len("data:"):].strip()
-                        if payload_str == "[DONE]":
-                            break
-                        try:
-                            chunk = json.loads(payload_str)
-                        except (ValueError, TypeError):
-                            logger.warning("ai.chat malformed SSE chunk: %s", payload_str[:80])
-                            continue
-                        choices = chunk.get("choices") or []
-                        if not choices:
-                            continue
-                        delta = choices[0].get("delta") or {}
-                        content = delta.get("content")
-                        if content:
-                            yield content
-                    return  # 流正常结束
-            raise ChatProviderError(
-                f"provider {config.provider_id} stream failed after stripping params"
-            )
+                    logger.info(
+                        "ai.stream_param_stripped param=%s model=%s status=%d",
+                        param, attempt_payload.get("model"), resp.status_code,
+                    )
+                    attempt_payload = {
+                        k: v for k, v in attempt_payload.items() if k != param
+                    }
+                    continue
+                async for line in resp.aiter_lines():
+                    if not line:
+                        continue
+                    line = line.strip()
+                    if not line.startswith("data:"):
+                        continue
+                    payload_str = line[len("data:"):].strip()
+                    if payload_str == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(payload_str)
+                    except (ValueError, TypeError):
+                        logger.warning("ai.chat malformed SSE chunk: %s", payload_str[:80])
+                        continue
+                    choices = chunk.get("choices") or []
+                    if not choices:
+                        continue
+                    delta = choices[0].get("delta") or {}
+                    content = delta.get("content")
+                    if content:
+                        yield content
+                return
+        raise ChatProviderError(
+            f"provider {config.provider_id} stream failed after stripping params"
+        )
     except httpx.HTTPError as exc:
         raise ChatProviderError(f"network error: {exc}") from exc
 
@@ -1062,32 +1159,33 @@ async def _stream_chat_anthropic(
     url = f"{_normalize_anthropic_base_url(config.base_url)}/v1/messages"
 
     try:
-        async with httpx.AsyncClient(
-            timeout=timeout,
-            verify=get_settings().ai_http_verify_ssl,
-        ) as client:
-            async with client.stream("POST", url, headers=headers, json=payload) as resp:
-                if resp.status_code >= 400:
-                    body = (await resp.aread()).decode("utf-8", errors="replace")
-                    raise ChatProviderError(
-                        f"provider {config.provider_id} returned {resp.status_code}: {body[:200]}"
+        client = await get_ai_http_client()
+        async with client.stream(
+            "POST", url, headers=headers, json=payload, timeout=timeout,
+        ) as resp:
+            if resp.status_code >= 400:
+                body = (await resp.aread()).decode("utf-8", errors="replace")
+                raise ChatProviderError(
+                    f"provider {config.provider_id} returned {resp.status_code}: {body[:200]}"
+                )
+            async for line in resp.aiter_lines():
+                if not line or not line.strip().startswith("data:"):
+                    continue
+                payload_str = line.strip()[len("data:"):].strip()
+                try:
+                    chunk = json.loads(payload_str)
+                except (ValueError, TypeError):
+                    logger.warning(
+                        "ai.chat anthropic malformed SSE chunk: %s", payload_str[:80],
                     )
-                async for line in resp.aiter_lines():
-                    if not line or not line.strip().startswith("data:"):
-                        continue
-                    payload_str = line.strip()[len("data:"):].strip()
-                    try:
-                        chunk = json.loads(payload_str)
-                    except (ValueError, TypeError):
-                        logger.warning("ai.chat anthropic malformed SSE chunk: %s", payload_str[:80])
-                        continue
-                    etype = chunk.get("type")
-                    if etype == "content_block_delta":
-                        delta = chunk.get("delta") or {}
-                        text = delta.get("text")
-                        if text:
-                            yield text
-                    elif etype == "message_stop":
-                        return
+                    continue
+                etype = chunk.get("type")
+                if etype == "content_block_delta":
+                    delta = chunk.get("delta") or {}
+                    text = delta.get("text")
+                    if text:
+                        yield text
+                elif etype == "message_stop":
+                    return
     except httpx.HTTPError as exc:
         raise ChatProviderError(f"network error: {exc}") from exc

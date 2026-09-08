@@ -46,7 +46,7 @@ from ...services.ai import (
     get_user_custom_prompt,
     resolve_vision_provider,
 )
-from ...services.ai.analysis_log import token_count, write_ai_analysis_log
+from ...services.ai.analysis_log import token_count, write_ai_analysis_log_async
 from ...services.ai.image_cache import store_image
 
 logger = logging.getLogger(__name__)
@@ -170,7 +170,7 @@ async def _parse_and_log(
     502 AI_PROVIDER_ERROR / 422 AI_SCHEMA_INVALID),与改造前的行为一致。
     finally 里写日志(成功返 drafts 时 status='ok' + 模型返回全文;错误路径
     已把 status 置 'error' 并附 raw 输出 / 错误信息) —— 写日志失败静默
-    (analysis_log.write_ai_analysis_log 内部吞),不影响响应。
+    (analysis_log.write_ai_analysis_log_async 内部在线程池执行并吞写入失败),不影响响应。
     """
     import json as _json
 
@@ -234,7 +234,7 @@ async def _parse_and_log(
         output_text = _json.dumps(result, ensure_ascii=False)
         return drafts
     finally:
-        write_ai_analysis_log(
+        await write_ai_analysis_log_async(
             user_id=user_id,
             entry_type=entry_type,
             status=log_status,

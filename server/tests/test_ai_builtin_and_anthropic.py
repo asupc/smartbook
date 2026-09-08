@@ -340,7 +340,7 @@ async def test_call_chat_text_anthropic(monkeypatch) -> None:
         async def __aexit__(self, *a):
             return False
 
-        async def post(self, url, headers=None, json=None):
+        async def post(self, url, headers=None, json=None, **_):
             captured["url"] = url
             captured["headers"] = headers
             captured["payload"] = json
@@ -393,7 +393,7 @@ async def test_call_chat_json_anthropic(monkeypatch) -> None:
         async def __aexit__(self, *a):
             return False
 
-        async def post(self, url, headers=None, json=None):
+        async def post(self, url, headers=None, json=None, **_):
             return FakeResp()
 
     monkeypatch.setattr("src.services.ai.provider_client.httpx.AsyncClient", FakeClient)
@@ -453,7 +453,7 @@ def test_post_anthropic_adaptive_halves_max_tokens(monkeypatch) -> None:
         async def __aexit__(self, *a):
             return False
 
-        async def post(self, url, headers=None, json=None):
+        async def post(self, url, headers=None, json=None, **_):
             calls.append(json["max_tokens"])
             return FakeResp(200 if json["max_tokens"] <= 2048 else 400)
 

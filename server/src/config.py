@@ -49,6 +49,19 @@ class Settings(BaseSettings):
     # AI 日志无自动保留期)。
     ai_log_image_dir: str = Field(default="", alias="AI_LOG_IMAGE_DIR")
 
+    # ===== M6-5 AI 日志可靠 outbox =====
+    # 开启后 AI 日志写入走「先持久化 enqueue → 返回 → worker 异步归档」，响应
+    # 尾部不再等 DB commit / 图片写盘。默认关闭，先存量部署一版再灰度开启。
+    ai_log_outbox_enabled: bool = Field(
+        default=False, alias="AI_LOG_OUTBOX_ENABLED"
+    )
+    # 图片 spool 临时目录(未显式配置时从 data_dir 派生 `<DATA_DIR>/ai-log-spool`)。
+    ai_log_spool_dir: str = Field(default="", alias="AI_LOG_SPOOL_DIR")
+    # worker 参数(上限保护)。
+    ai_log_outbox_batch_size: int = Field(default=20, alias="AI_LOG_OUTBOX_BATCH_SIZE")
+    ai_log_outbox_max_attempts: int = Field(default=10, alias="AI_LOG_OUTBOX_MAX_ATTEMPTS")
+    ai_log_outbox_lease_seconds: int = Field(default=60, alias="AI_LOG_OUTBOX_LEASE_SECONDS")
+
     # ===== 中转识别的账单唯一标识去重(/ai/relay/*) =====
     # App 识别请求到达后、调用 LLM 前,先在新请求文本里匹配该用户已识别过的
     # 账单唯一标识(external_id/订单号/流水号);命中即判重复:记日志
@@ -152,6 +165,7 @@ class Settings(BaseSettings):
             "backup_storage_dir": "backups",
             "attachment_storage_dir": "attachments",
             "ai_log_image_dir": "ai_log_images",
+            "ai_log_spool_dir": "ai-log-spool",
             "rclone_config_path": "rclone.conf",
             "backup_staging_dir": "backup-staging",
             "restore_dir": "restore",

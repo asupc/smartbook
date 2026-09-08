@@ -17,8 +17,10 @@
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import sqlite3
+import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -111,6 +113,30 @@ def _count_logs(Session) -> int:
 # ──────────────────────────────────────────────────────────────────────
 # write_ai_analysis_log
 # ──────────────────────────────────────────────────────────────────────
+
+
+def test_async_log_writer_runs_in_worker_thread(monkeypatch) -> None:
+    """异步入口必须把同步 DB/文件 I/O 移出 FastAPI event loop。"""
+    seen: dict[str, object] = {}
+
+    def fake_write(**kwargs) -> None:
+        seen["thread_id"] = threading.get_ident()
+        seen["kwargs"] = kwargs
+
+    monkeypatch.setattr(analysis_log_module, "write_ai_analysis_log", fake_write)
+
+    async def run() -> int:
+        caller_thread_id = threading.get_ident()
+        await analysis_log_module.write_ai_analysis_log_async(
+            user_id="u-thread", entry_type="chat", status="ok",
+        )
+        return caller_thread_id
+
+    caller_thread_id = asyncio.run(run())
+    assert seen["thread_id"] != caller_thread_id
+    assert seen["kwargs"] == {
+        "user_id": "u-thread", "entry_type": "chat", "status": "ok",
+    }
 
 
 def test_write_log_persists_row(monkeypatch) -> None:

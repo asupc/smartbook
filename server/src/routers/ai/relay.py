@@ -72,8 +72,8 @@ from ...services.ai.bill_identifier import (
 )
 from ...services.ai.analysis_log import (
     token_count,
-    write_ai_analysis_log,
-    write_ai_analysis_log_with_image,
+    write_ai_analysis_log_async,
+    write_ai_analysis_log_with_image_async,
 )
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -255,7 +255,7 @@ async def relay_chat(
         duplicate_of = find_duplicate_identifier(db, current_user, input_text)
         if duplicate_of:
             mark_duplicate_hit(db, current_user, duplicate_of)
-            write_ai_analysis_log(
+            await write_ai_analysis_log_async(
                 user_id=current_user.id,
                 entry_type="parse_tx_text",
                 status="ok",
@@ -328,7 +328,7 @@ async def relay_chat(
                 detail={"error_code": "AI_PROVIDER_ERROR", "message": str(exc)[:200]},
             ) from exc
     finally:
-        write_ai_analysis_log(
+        await write_ai_analysis_log_async(
             user_id=current_user.id,
             entry_type=req.entry_type,
             status=log_status,
@@ -415,7 +415,7 @@ async def relay_vision(
                 detail={"error_code": "AI_PROVIDER_ERROR", "message": str(exc)[:200]},
             ) from exc
     finally:
-        write_ai_analysis_log_with_image(
+        await write_ai_analysis_log_with_image_async(
             user_id=current_user.id,
             entry_type="parse_tx_image",
             status=log_status,
@@ -505,7 +505,7 @@ async def relay_vision_batch(
                 error_message = str(exc)[:500]
             finally:
                 duration_ms = int((time.perf_counter() - t0) * 1000)
-                write_ai_analysis_log_with_image(
+                await write_ai_analysis_log_with_image_async(
                     user_id=current_user.id,
                     entry_type="parse_tx_image",
                     status="ok" if error_message is None else "error",
@@ -616,7 +616,7 @@ async def relay_stt(
                 detail={"error_code": "AI_PROVIDER_ERROR", "message": str(exc)[:200]},
             ) from exc
     finally:
-        write_ai_analysis_log(
+        await write_ai_analysis_log_async(
             user_id=current_user.id,
             entry_type="stt",
             status=log_status,

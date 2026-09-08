@@ -223,6 +223,11 @@ class AIAnalysisLog(Base):
     # 命中账单唯一标识(订单号/流水号)判重,直接按重复处理('duplicate_identifier')。
     # 正常 LLM 调用为 null。
     dedup_hit: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # M6-5:产生本行的 outbox 行 ID(UUID)。worker 重试时防重复生成最终日志;
+    # 排查一条最终日志来自哪个 outbox。旧日志保持 null,不需 backfill。
+    source_outbox_id: Mapped[str | None] = mapped_column(
+        String(36), nullable=True, unique=True
+    )
     called_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, index=True
     )
@@ -232,6 +237,64 @@ Index(
     "ix_ai_log_user_time",
     AIAnalysisLog.user_id,
     AIAnalysisLog.called_at.desc(),
+)
+
+
+class AIAnalysisLogOutbox(Base):
+    """M6-5 AI 日志可靠 outbox:请求先持久化 enqueue,worker 异步归档。
+
+    状态机:
+      pending ──claim──> processing ──success──> 删除行(最终日志已写)
+        │                    │
+        │                    ├─ transient ──> retry(退避后重试)
+        │                    └─ permanent / attempts 耗尽 ──> dead
+        └─ enqueue 后等待
+
+    图片归档:spool 目录写 `{outbox_id}.tmp` → 原子 rename 成 `.ready`,outbox
+    行指向 `.ready`;worker 归档时 `os.replace` 成确定性最终名
+    `{source_outbox_id}.{ext}`。
+    """
+
+    __tablename__ = "ai_analysis_log_outbox"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    # 不含图片二进制的最终日志字段(JSON)。
+    payload_json: Mapped[str] = mapped_column(Text)
+    # 图片 spool 文件绝对路径(未带图任务为 null)。
+    image_spool_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    image_mime: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # pending / processing / retry / dead
+    state: Mapped[str] = mapped_column(String(16), index=True, default="pending")
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+    next_attempt_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    lease_owner: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+Index(
+    "ix_ai_log_outbox_state_attempt",
+    AIAnalysisLogOutbox.state,
+    AIAnalysisLogOutbox.next_attempt_at,
+    AIAnalysisLogOutbox.created_at,
+)
+Index(
+    "ix_ai_log_outbox_user_time",
+    AIAnalysisLogOutbox.user_id,
+    AIAnalysisLogOutbox.created_at.desc(),
 )
 
 
@@ -298,6 +361,79 @@ Index(
     "ix_raw_evidence_user_captured",
     RawBookkeepingEvidence.user_id,
     RawBookkeepingEvidence.captured_at.desc(),
+)
+
+
+class RawEvidenceTransactionLink(Base):
+    """M6-6:原始证据 ↔ 投影交易的多对多确定性关联。
+
+    display-only 数据,不入 sync_changes。删除交易时只删关联边,不删证据行或
+    asset。确定性关联只接受 transaction_sync_id(客户端上传时提供),禁止
+    按金额/时间模糊回填。
+    """
+
+    __tablename__ = "raw_evidence_transaction_links"
+    __table_args__ = (
+        UniqueConstraint(
+            "evidence_id",
+            "ledger_id",
+            "transaction_sync_id",
+            name="uq_raw_evidence_tx_link",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    evidence_id: Mapped[str] = mapped_column(
+        ForeignKey("raw_bookkeeping_evidence.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    ledger_id: Mapped[str] = mapped_column(String(128), index=True)
+    transaction_sync_id: Mapped[str] = mapped_column(String(255), index=True)
+    event_item_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # client / admin / backfill
+    link_source: Mapped[str] = mapped_column(String(16), default="client")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+Index(
+    "ix_raw_evidence_tx_link_user_time",
+    RawEvidenceTransactionLink.user_id,
+    RawEvidenceTransactionLink.created_at.desc(),
+)
+
+
+class RawEvidenceAsset(Base):
+    """M6-6:原始证据的图片/媒体资源,与文字证据行分离存储。
+
+    只存元数据 + 内部路径,不下发前端绝对路径。sha256 用于去重与完整性校验。
+    """
+
+    __tablename__ = "raw_evidence_assets"
+    __table_args__ = (
+        UniqueConstraint("evidence_id", "sha256", name="uq_raw_evidence_asset_sha"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    evidence_id: Mapped[str] = mapped_column(
+        ForeignKey("raw_bookkeeping_evidence.id", ondelete="CASCADE"), index=True
+    )
+    kind: Mapped[str] = mapped_column(String(16), default="image")
+    mime_type: Mapped[str] = mapped_column(String(64))
+    storage_path: Mapped[str] = mapped_column(String(512))
+    size_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    sha256: Mapped[str] = mapped_column(String(64))
+    width: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+Index(
+    "ix_raw_evidence_asset_evidence_time",
+    RawEvidenceAsset.evidence_id,
+    RawEvidenceAsset.created_at,
 )
 
 

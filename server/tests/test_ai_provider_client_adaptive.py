@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import httpx
@@ -14,6 +15,8 @@ from src.services.ai.provider_client import (
     ChatProviderConfig,
     _rejected_param,
     call_chat_json,
+    call_chat_text,
+    close_ai_http_client,
     supports_disabled_thinking,
     with_disabled_thinking,
 )
@@ -138,3 +141,74 @@ def test_call_chat_json_sends_disabled_thinking_for_glm46():
     assert result.parsed == {"ok": True}
     assert len(calls) == 1
     assert calls[0]["thinking"] == {"type": "disabled"}
+
+def test_ai_http_pool_reuses_client_across_providers_and_keeps_timeouts():
+    """不同 provider 共用一个 keep-alive client，且每次请求保留独立 timeout。"""
+    clients = []
+    calls: list[dict] = []
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            self.init_kwargs = kwargs
+            self.is_closed = False
+            self.close_count = 0
+            clients.append(self)
+
+        async def post(self, url, headers=None, json=None, timeout=None, **_):
+            payload = dict(json) if json else {}
+            calls.append({"url": url, "payload": payload, "timeout": timeout})
+            if url.startswith("https://one.example") and "temperature" in payload:
+                return httpx.Response(400, text=_MOONSHOT_TEMP_ERR)
+            provider = "one" if url.startswith("https://one.example") else "two"
+            return httpx.Response(
+                200, json={"choices": [{"message": {"content": provider}}]},
+            )
+
+        async def aclose(self):
+            self.close_count += 1
+            self.is_closed = True
+
+    async def scenario():
+        await close_ai_http_client()
+        settings = SimpleNamespace(ai_http_verify_ssl=False)
+        with (
+            patch("src.services.ai.provider_client.get_settings", return_value=settings),
+            patch("src.services.ai.provider_client.httpx.AsyncClient", FakeClient),
+        ):
+            first = await call_chat_text(
+                config=ChatProviderConfig(
+                    provider_id="one",
+                    base_url="https://one.example/v1",
+                    api_key="sk-one",
+                    model="kimi-k2.5",
+                ),
+                messages=[{"role": "user", "content": "hi"}],
+                timeout=3.25,
+            )
+            second = await call_chat_text(
+                config=ChatProviderConfig(
+                    provider_id="two",
+                    base_url="https://two.example/v1",
+                    api_key="sk-two",
+                    model="plain-model",
+                ),
+                messages=[{"role": "user", "content": "hi"}],
+                timeout=7.5,
+            )
+            assert first.content == "one"
+            assert second.content == "two"
+            assert len(clients) == 1
+            assert clients[0].init_kwargs["timeout"] is None
+            assert clients[0].init_kwargs["verify"] is False
+            limits = clients[0].init_kwargs["limits"]
+            assert limits.max_connections == 32
+            assert limits.max_keepalive_connections == 16
+            assert [call["timeout"] for call in calls] == [3.25, 3.25, 7.5]
+            assert "temperature" in calls[0]["payload"]
+            assert "temperature" not in calls[1]["payload"]
+            assert calls[0]["url"].startswith("https://one.example")
+            assert calls[2]["url"].startswith("https://two.example")
+            await close_ai_http_client()
+            assert clients[0].close_count == 1
+
+    asyncio.run(scenario())

@@ -2,7 +2,8 @@
 
 跟 `mcp/server.py` 的 `_write_call_log` 同模式:
   - 用独立 `SessionLocal`(与请求 session 解耦)
-  - 失败静默(打日志告警即可),不阻塞 / 不改变 AI 主流程
+  - 同步 writer 失败静默(打日志告警即可),不改变 AI 主流程
+  - async endpoint 必须走本文末尾的异步 wrapper，把 DB / 图片 I/O 丢到线程池
 
 区别是**记录完整输入输出**(含用户文本与模型回复全文,截断到合理上限),
 而不是脱敏摘要 —— 这是调试 prompt、排查 provider 问题的核心价值。图片输入
@@ -12,8 +13,11 @@
 """
 from __future__ import annotations
 
+import asyncio
 import logging
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from ...config import get_settings
 from ...database import SessionLocal
@@ -157,3 +161,37 @@ def write_ai_analysis_log_with_image(
             "ai: failed to write analysis log with image entry_type=%s user=%s",
             entry_type, user_id,
         )
+
+async def _run_log_write_in_thread(
+    writer: Callable[..., None],
+    kwargs: dict[str, Any],
+) -> None:
+    """在线程池执行同步日志写入，避免 SQLite/文件 I/O 阻塞事件循环。"""
+    await asyncio.to_thread(writer, **kwargs)
+
+
+async def write_ai_analysis_log_async(**kwargs: Any) -> None:
+    """异步 endpoint 使用的无图日志入口；完成后再返回，保持日志可靠性。
+
+    M6-5:开关 `AI_LOG_OUTBOX_ENABLED` 开启时改走可靠 outbox(先落 pending 行
+    即返回,worker 异步归档);关闭时维持原「线程池同步落库」路径。
+    """
+    from .analysis_log_outbox import enqueue_ai_analysis_log
+
+    if get_settings().ai_log_outbox_enabled:
+        await asyncio.to_thread(enqueue_ai_analysis_log, **kwargs)
+        return
+    await _run_log_write_in_thread(write_ai_analysis_log, kwargs)
+
+
+async def write_ai_analysis_log_with_image_async(**kwargs: Any) -> None:
+    """异步 endpoint 使用的带图日志入口；图片写盘同样在线程池执行。
+
+    M6-5:开关开启时改走可靠 outbox(图片先落 spool,再落 pending 行)。
+    """
+    from .analysis_log_outbox import enqueue_ai_analysis_log_with_image
+
+    if get_settings().ai_log_outbox_enabled:
+        await asyncio.to_thread(enqueue_ai_analysis_log_with_image, **kwargs)
+        return
+    await _run_log_write_in_thread(write_ai_analysis_log_with_image, kwargs)

@@ -59,6 +59,11 @@ from ..schemas import (
     DataCleanupScanReport,
     DuplicateCleanRequest,
     DuplicateCleanResult,
+    DuplicateCompareRequest,
+    DuplicateCompareResponse,
+    DuplicateEvidenceDetailRequest,
+    DuplicateEvidenceDetailResponse,
+    DuplicateEvidenceLinkRequest,
     DuplicateGroup,
     UserAdminCreateRequest,
     UserAdminListOut,
@@ -606,6 +611,97 @@ def duplicate_transactions_clean(
     """批量删除选中的重复交易。走与 write 删除一致的链路(含附件 GC + SyncChange
     delete 行),逐条 commit,失败收集进 failures。"""
     return data_cleanup_svc.clean_duplicate_transactions(db, payload.items)
+
+
+@router.post("/duplicate-transactions/compare", response_model=DuplicateCompareResponse)
+def duplicate_transactions_compare(
+    payload: DuplicateCompareRequest,
+    _scopes: set[str] = Depends(require_scopes(SCOPE_OPS_WRITE)),
+    admin_user: User = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+) -> DuplicateCompareResponse:
+    """打开对比抽屉:批量取回所选交易的交易摘要 + 已关联原始证据摘要。
+
+    不返回正文全文与图片二进制;正文走 /evidence-detail,图片走
+    /evidence-assets。admin 查看证据的行为落 AuditLog(不记录正文)。
+    """
+    items = [(i.ledger_id, i.sync_id) for i in payload.items]
+    resp = data_cleanup_svc.compare_duplicate_transactions(db, items)
+    db.add(AuditLog(
+        user_id=admin_user.id,
+        action="admin_duplicate_evidence_compare",
+        metadata_json={
+            "item_hint": len(items),
+            "ledger_hint": sorted({li for li, _ in items})[:5],
+        },
+    ))
+    db.commit()
+    return resp
+
+
+@router.post(
+    "/duplicate-transactions/evidence-detail",
+    response_model=DuplicateEvidenceDetailResponse,
+)
+def duplicate_evidence_detail(
+    payload: DuplicateEvidenceDetailRequest,
+    _scopes: set[str] = Depends(require_scopes(SCOPE_OPS_WRITE)),
+    admin_user: User = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+) -> DuplicateEvidenceDetailResponse:
+    """证据正文详情:必须校验该 evidence 确实关联到指定交易(防越权读其它记录)。
+
+    AuditLog 只记短 hash 与结果,不记正文。
+    """
+    resp = data_cleanup_svc.get_evidence_detail(
+        db,
+        transaction_ledger_id=payload.transaction_ledger_id,
+        transaction_sync_id=payload.transaction_sync_id,
+        evidence_id=payload.evidence_id,
+    )
+    if resp is None:
+        raise HTTPException(status_code=404, detail="evidence not available")
+    db.add(AuditLog(
+        user_id=admin_user.id,
+        action="admin_duplicate_evidence_view",
+        metadata_json={
+            "evidence_id_short": payload.evidence_id[:16],
+            "ledger_id": payload.transaction_ledger_id,
+            "result": "ok",
+        },
+    ))
+    db.commit()
+    return resp
+
+
+@router.post("/duplicate-transactions/evidence-link")
+def duplicate_evidence_link(
+    payload: DuplicateEvidenceLinkRequest,
+    _scopes: set[str] = Depends(require_scopes(SCOPE_OPS_WRITE)),
+    admin_user: User = Depends(require_admin_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """为一条证据补确定性关联(幂等)。服务端验证 evidence 与交易归属。"""
+    link = data_cleanup_svc.link_evidence_to_transaction(
+        db,
+        evidence_id=payload.evidence_id,
+        ledger_id=payload.transaction_ledger_id,
+        transaction_sync_id=payload.transaction_sync_id,
+        event_item_index=payload.event_item_index,
+        link_source="admin",
+    )
+    if link is None:
+        raise HTTPException(status_code=404, detail="evidence or tx not found")
+    db.add(AuditLog(
+        user_id=admin_user.id,
+        action="admin_duplicate_evidence_link",
+        metadata_json={
+            "evidence_id_short": payload.evidence_id[:16],
+            "ledger_id": payload.transaction_ledger_id,
+        },
+    ))
+    db.commit()
+    return {"ok": True, "link_id": link.id}
 
 
 @router.get("/health")

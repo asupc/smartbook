@@ -515,6 +515,100 @@ class DuplicateCleanResult(BaseModel):
     failures: list[DuplicateCleanFailure] = []
 
 
+# ────────── M6-6 重复交易原始证据对比 ──────────
+# 列表/扫描保持轻量;只有主动打开对比抽屉时才加载证据(正文/图片均为懒加载)。
+
+
+class DuplicateEvidenceItemKey(BaseModel):
+    """对比请求里的一笔交易,以 (ledger_id, sync_id) 唯一定位。
+
+    不信任前端传的 keeper 标记,服务端重新从 projection 读取。
+    """
+
+    ledger_id: str
+    sync_id: str
+
+
+class DuplicateCompareRequest(BaseModel):
+    items: list[DuplicateEvidenceItemKey] = []  # 最多 20 笔,通常是一组重复组
+
+
+class DuplicateEvidenceAssetOut(BaseModel):
+    """asset 元数据(不含 binary/绝对路径)。"""
+
+    id: str
+    kind: str
+    mime_type: str
+    size_bytes: int
+    sha256: str
+    width: int | None = None
+    height: int | None = None
+
+
+class DuplicateEvidenceOut(BaseModel):
+    """原始证据摘要(与一笔交易关联的)。正文全文走 detail 接口。"""
+
+    id: str
+    source: str
+    source_channel: str | None = None
+    external_id: str | None = None
+    title: str | None = None
+    body_preview: str | None = None  # 截断预览,不进列表全文
+    content_hash_short: str | None = None
+    captured_at: datetime | None = None
+    occurred_at: datetime | None = None
+    expires_at: datetime | None = None
+    # available / none / not_linked / expired / not_retained / asset_missing
+    status: str = "available"
+    assets: list[DuplicateEvidenceAssetOut] = []
+
+
+class DuplicateCompareItemOut(BaseModel):
+    """对比抽屉里的一栏交易:已落库交易 + 原始输入摘要。"""
+
+    ledger_id: str
+    sync_id: str
+    is_keeper: bool = False
+    amount: float | None = None
+    happened_at: datetime | None = None
+    created_at: datetime | None = None
+    tx_type: str | None = None
+    note: str | None = None
+    account_name: str | None = None
+    category_name: str | None = None
+    tags_csv: str | None = None
+    attachment_count: int = 0
+    raw_evidence_status: str = "none"
+    raw_evidence_count: int = 0
+    evidences: list[DuplicateEvidenceOut] = []
+
+
+class DuplicateCompareResponse(BaseModel):
+    items: list[DuplicateCompareItemOut]
+
+
+class DuplicateEvidenceDetailRequest(BaseModel):
+    transaction_ledger_id: str
+    transaction_sync_id: str
+    evidence_id: str
+
+
+class DuplicateEvidenceDetailResponse(BaseModel):
+    evidence: DuplicateEvidenceOut
+    asset_ids: list[str] = []
+    body_full: str | None = None  # 单条正文全文(≤ 65,536 字符),detail 才返回
+
+
+class DuplicateEvidenceLinkRequest(BaseModel):
+    """为一条证据补确定性关联(客户端上传后补 link)。"""
+
+    evidence_id: str
+    transaction_ledger_id: str
+    transaction_sync_id: str
+    event_item_index: int | None = None
+
+
+
 class ReadLedgerOut(BaseModel):
     ledger_id: str
     ledger_name: str

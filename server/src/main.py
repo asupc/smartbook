@@ -69,6 +69,21 @@ app = FastAPI(
 )
 
 
+@app.on_event("startup")
+async def _start_ai_http_pool() -> None:  # noqa: B008
+    # 预热共享 httpx client；真实连接仍在首次请求时按 provider origin 建立。
+    from .services.ai.provider_client import get_ai_http_client
+
+    await get_ai_http_client()
+
+
+@app.on_event("shutdown")
+async def _stop_ai_http_pool() -> None:  # noqa: B008
+    from .services.ai.provider_client import close_ai_http_client
+
+    await close_ai_http_client()
+
+
 # 公开版本接口:mobile / web UI 都会调用它,在设置区或 header 展示
 # "SmartBook 智记 vX.Y.Z"。不需要认证 —— 版本号不敏感,且 mobile 未登录
 # 状态下(登录页)也可能想告诉用户 server 版本。
@@ -278,6 +293,11 @@ async def _stop_mcp_streamable() -> None:  # noqa: B008
     if cm is not None:
         await cm.__aexit__(None, None, None)
         app.state._mcp_streamable_cm = None
+
+    # MCP write tools 的进程内 ASGI client 也是 keep-alive 单例，显式释放。
+    from ._mcp_internal_client import close_internal_client
+
+    await close_internal_client()
 
 
 # ============================================================================

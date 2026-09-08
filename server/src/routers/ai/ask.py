@@ -39,7 +39,7 @@ from ...services.ai import (
     resolve_chat_provider,
     stream_chat_completion,
 )
-from ...services.ai.analysis_log import write_ai_analysis_log
+from ...services.ai.analysis_log import write_ai_analysis_log_async
 from ...services.ai.provider_client import EmbeddingNotConfiguredError
 
 logger = logging.getLogger(__name__)
@@ -145,7 +145,7 @@ async def ask(
                 {"error_code": "AI_PROVIDER_ERROR", "message": str(exc)[:200]},
             ).encode("utf-8")
         finally:
-            write_ai_analysis_log(
+            await write_ai_analysis_log_async(
                 user_id=current_user.id,
                 entry_type="ask",
                 status="error" if err_message is not None else "ok",
