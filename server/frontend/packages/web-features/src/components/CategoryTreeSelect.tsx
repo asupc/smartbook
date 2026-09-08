@@ -322,6 +322,24 @@ export function CategoryTreeSelect({
     return value
   }, [value, mode])
 
+  const mergedStyles: TreeSelectProps['styles'] = useMemo(() => {
+    return {
+      ...styles,
+      popup: {
+        ...styles?.popup,
+        root: {
+          maxHeight: 280,
+          overflowY: 'auto',
+          minWidth: 220,
+          zIndex: 1050,
+          ...dropdownStyle,
+          ...popupStyle,
+          ...styles?.popup?.root,
+        },
+      },
+    }
+  }, [dropdownStyle, popupStyle, styles])
+
   return (
     <div ref={containerRef} className="relative w-full">
       <TreeSelect
@@ -345,13 +363,7 @@ export function CategoryTreeSelect({
           ).toLowerCase()
           return text.includes(inputValue.toLowerCase().trim())
         }}
-        dropdownStyle={{
-          maxHeight: 280,
-          overflowY: 'auto',
-          minWidth: 220,
-          zIndex: 1050,
-          ...dropdownStyle,
-        }}
+        styles={mergedStyles}
         getPopupContainer={
           getPopupContainer ||
           ((triggerNode) => {
