@@ -1,6 +1,11 @@
 # 智记 SmartBook —— 自动记账项目
 
-本目录承载 **智记 SmartBook** —— vivo Android 自动记账方案,基于上游 **BeeCount**(开源跨端客户端)与 **BeeCount-Cloud**(可自托管服务端)二开(品牌已统一为 SmartBook / SmartBook Cloud)。
+**智记 SmartBook** 是一套 vivo Android 自动记账解决方案，基于上游 **BeeCount**（开源跨端客户端）与 **BeeCount-Cloud**（可自托管服务端）深度二开而成（品牌已统一为 SmartBook / SmartBook Cloud），由两部分组成：
+
+- **SmartBook 客户端**（`client/`，Flutter / Android，包名 `com.smartbook.zhi`）：短信 / 通知 / 截图 OCR / 无障碍读屏四路自动采集 + AI 记账 + 本地统计
+- **SmartBook-Cloud 服务端**（`server/`，FastAPI + React，自托管）：AI 中转、云同步、Web 管理端，使用自建镜像 `smartbook-server` 部署
+
+目前客户端与服务端均已在真机 / 生产环境日常使用，主要二开功能已全部落地（与上游的逐项差异见下文「与上游的功能差异」）。
 
 > ## 🙏 致谢 —— 感谢原创作者
 >
@@ -13,28 +18,52 @@
 >
 > **特此向原作者致敬**:没有其慷慨开源与授权,就没有本项目。上游的代码、设计思路与知识产权均归原作者所有;所有许可协议文本已**原样保留在仓库中**。作为二开后的衍生作品,我们遵循上游许可的要求:个人使用/学习研究/非营利组织/开源贡献免费,商业使用需向原作者购买商业授权(见下文「许可证」)。
 
-## 当前方案结论
+## 核心功能
 
-- 后端：**SmartBook-Cloud**（自托管，Docker 一键部署，FastAPI + React Web 端）
-- 客户端：**SmartBook** 开源客户端（Flutter / Android / iOS / Web），直接复用其通知监听、截图 OCR、AI 自动记账、本地统计能力
-- 技术栈（客户端）：Flutter + Riverpod + Drift(SQLite)；服务端 FastAPI + SQLite/PostgreSQL + React
-- 统计方式：SmartBook 客户端本地统计 + SmartBook-Cloud Web 端统计
-- 正式账本：SmartBook-Cloud（自托管）
-- 采集来源：
-  - 短信监听（本项目新增，见「与上游的功能差异（实测验证）」）
-  - 通知监听（SmartBook 已内置 + 本项目增强 NotificationWatcher）
-  - 截图导入 / OCR + AI 记账（SmartBook 已内置）
-  - 手动记账
+### 自动记账（客户端）
 
+- **四路采集入口**：短信监听（银行/支付白名单 + 验证码/营销/余额提醒过滤 + 指纹去重，原文不落盘，本项目新增）、支付通知监听（包名白名单 + 垃圾过滤）、截图导入 / OCR + AI、账单详情页无障碍读屏（支付宝/微信/京东/抖音），外加手动记账
+- **AI 解析入账，服务端中转**：App AI 调用全部经自托管服务端 `/ai/relay/{chat,vision,stt}` 中转，API Key 只存服务端、任何接口不下发明文；支持 OpenAI 兼容与 Anthropic 双协议，内置智谱 GLM / DeepSeek / Kimi / MiniMax / 小米 MiMo 服务商预设
+- **可靠入账**：「自动入账校验」开启后，低置信（< 0.9）与疑似重复交易先进「待确认」队列；四路统一协调器 + 持久化事件存储（崩溃/重启后恢复）+ 瞬态失败自动重试；「最近识别记录」环形队列可查看各过滤闸命中与 AI 决策，另有自动记账健康检测（权限/开关/AI 配置/电池优化）+ vivo 保活引导
+- **渠道映射与调试**：短信/通知来源解析渠道名并支持渠道 → 账户映射（AI 账户名 > 映射 > 默认账户）；「手动模拟测试」可注入模拟短信/通知/屏幕文本走完整 AI → 入账链路
+
+### 统计与隐私
+
+- **本地统计**：明细 / 资产 / 年度总览、分类统计与排行、月/年/自定义区间、同比 + 环比、账户分布、商户 Top、JSON 结构化导出；支付宝/微信账单 CSV 导入、交易 CSV 导出
+- **隐私面板**：原文统计（截图/附件占用）与一键清除原文（保留交易）、原始记账证据上行服务端 + 保留期策略、远程证据管理（查看/删除已上行证据）
+
+### 服务端 / Web 端
+
+- **Web 管理端（antd）**：首页、交易、账户（KPI + 分组表格）、分类/标签（双栏树 + 详情）、分析、备份、设置、PAT、AI 配置、AI 调用记录
+- **云同步**：LWW + rename 级联 + `change_id` 单调性契约（见 `server/docs/SYNC_ARCHITECTURE.md`）、增量 pull 实时化、交易 `created_at` 盖章；客户端「以服务端为准」覆盖重建（账户/分类/标签整表覆盖）
+- **平台能力**：共享账本（邀请码/成员双角色/MCP 接入）、rclone 多远端 AES-256 加密备份 + 计划/保留期、AI 调用日志与原始证据留存、管理端疑似重复交易管理、`DATA_DIR` 单挂载全量持久化
+
+## 界面预览
+
+### 客户端（SmartBook · Flutter / Android）
+
+| 智能记账 | 自动记账 | 自动识别记录 | AI助手 |
+|:---:|:---:|:---:|:---:|
+| ![智能记账](docs/images/mobile/智能记账.jpg) | ![自动记账](docs/images/mobile/自动记账.jpg) | ![自动识别记录](docs/images/mobile/自动识别记录.jpg) | ![AI助手](docs/images/mobile/AI助手.jpg) |
+
+| 明细 | 资产 | 年度总览 | 我的 |
+|:---:|:---:|:---:|:---:|
+| ![明细](docs/images/mobile/明细.jpg) | ![资产](docs/images/mobile/资产.jpg) | ![年度总览](docs/images/mobile/年度总览.jpg) | ![我的](docs/images/mobile/我的.jpg) |
+
+### Web 端（SmartBook-Cloud · React + antd）
+
+| 首页 | 交易 | AI 配置 |
+|:---:|:---:|:---:|
+| ![首页](docs/images/web/首页.png) | ![交易](docs/images/web/交易.png) | ![AI配置](docs/images/web/AI配置.png) |
 
 ## 与上游的功能差异（实测验证）
 
 > **实测方式（2026-09-04 首测，2026-09-07 复核更新）**
 >
 > - **服务端**：将上游仓库（`TNT-Likely/BeeCount-Cloud` `main`）与本项目 `server/` 分别本地起服（FastAPI + SQLite），抓取 `/openapi.json` 逐端点 diff；上游官方线上实例当日已全量切换为本项目镜像，故上游侧以本地运行源码为准。
-> - **客户端**：本项目以真机（vivo Android；首测 v1.0.20，现核对至 v1.0.34+1）实测；上游侧核对克隆仓库（`TNT-Likely/BeeCount` `main`）代码行为（上游官方发行渠道为 iOS App Store / Google Play，未本地运行）。
+> - **客户端**：本项目以真机（vivo Android；首测 v1.0.20，现核对至 v1.0.41+1）实测；上游侧核对克隆仓库（`TNT-Likely/BeeCount` `main`）代码行为（上游官方发行渠道为 iOS App Store / Google Play，未本地运行）。
 > - 2026-09-04 之后新增的差异，按提交记录与现行代码逐项核对补充（未重跑 openapi diff）。
-> - 本节的差异均经上述方式核实；与 `docs/development-plan.md`、旧文档不一致之处，**以本节为准**（如「大额/异常提醒」已下线、「支付宝 CSV 导入」上游已有）。
+> - 本节的差异均经上述方式核实；与旧规划文档不一致之处，**以本节为准**（如「大额/异常提醒」已下线、「支付宝 CSV 导入」上游已有）。
 
 ### 客户端（基于 BeeCount）
 
@@ -85,7 +114,7 @@
 
 - `client/` + `server/` 收进**统一 git 仓库**（上游两个项目各自独立仓库）；服务端目录原为 `beecount-cloud`，已重命名为 `server`（本地无独立 `.git`）
 - `deploy/`：客户端构建脚本 `build.sh`、服务端镜像构建脚本 `build_docker.sh`、`docker-compose.yml` 部署模板
-- 根文档：`CLAUDE.md`（AI 工作指南）、`AGENTS.md`、`docs/` 二开规划（`development-plan.md` 主计划、`backend-selection.md`、`ai-custom-model.md`、`app-feature-plan.md`）
+- 根文档：`CLAUDE.md`（AI 工作指南）、`AGENTS.md`（协作约定）、`docs/`（UX/性能优化等专项计划 + README 界面截图 `docs/images/`）
 - 工具脚本：`scripts/seed_categories_tags.py`（分类/标签注册）、`server/scripts/`（seed_demo、grant_admin、rebuild_all_projections、备份等）
 
 ## 目录结构
@@ -93,35 +122,25 @@
 ```text
 server/                             SmartBook-Cloud 服务端源码（FastAPI + React）
   LICENSE / LICENSE_EN              上游 BeeCount Cloud 软件许可协议（原样保留，未修改）
+  CLAUDE.md                         服务端开发指南（同步契约、路由约定等，改动前必读）
+  docs/                             SYNC_ARCHITECTURE / DEPLOYMENT / MCP / MIGRATION 等
 client/                             SmartBook 客户端源码（Flutter）
   LICENSE / LICENSE_EN              上游 BeeCount 软件许可协议（原样保留，未修改）
   COMMERCIAL_LICENSE.md             上游商业授权说明（价格与购买流程，原样保留，未修改）
-docs/
-  backend-selection.md             后端选型（当前：SmartBook）
-  ai-custom-model.md               AI 记账接入自定义大模型方案
-  app-feature-plan.md              App 功能方案（基于 SmartBook）
-  development-plan.md              开发计划（需求对比 + 里程碑，当前主文档，含二开修改清单细节）
-  android-technical-architecture.md Android 技术架构（原自研方案，已废止）
-  data-model-and-parser-pipeline.md 本地数据模型与解析流水线（原自研方案，已废止）
-  ui-and-mvp-plan.md               UI 结构与 MVP 开发计划（原自研方案，已废止）
+docs/                               本工作区文档与资源
+  images/                           README 界面截图（mobile/、web/）
+  ux-performance-optimization-plan.md 等 UX/性能专项计划
+scripts/
+  seed_categories_tags.py           分类/标签注册脚本
 deploy/
-  build.sh                        SmartBook 客户端一键构建脚本（APK/AAB）
-  build_docker.sh                 smartbook-server 镜像一键构建脚本
-  docker-compose.yml               SmartBook-Cloud 部署模板
-  .env                            SmartBook-Cloud 部署环境变量模板
-.env.example                       部署环境变量模板（根目录，供复制）
+  build.sh                          SmartBook 客户端一键构建脚本（APK/AAB）
+  build_docker.sh                   smartbook-server 镜像一键构建脚本
+  docker-compose.yml                SmartBook-Cloud 部署模板
+docker-compose.yml                  根目录 compose（canonical：SmartBook-Cloud + PostgreSQL）
+.env.example                        部署环境变量模板（根目录，复制为 .env 使用）
+CLAUDE.md / AGENTS.md               AI 协作指南与工作区约定
+LICENSE                             根许可导引（指向 client/、server/ 内原文）
 ```
-
-## 选定后端：SmartBook / SmartBook-Cloud
-
-选择 **SmartBook / SmartBook-Cloud**：
-
-- 官方支持简体中文，界面与操作逻辑符合国人记账习惯（收支流水 + 分类占比 + 月度统计）
-- 客户端开源，通知监听 / 截图 OCR / AI 自动记账 / 去重已内置
-- 服务端暴露标准 REST API（`/api/v1`），支持程序化写入交易（含 `Idempotency-Key` 去重），JWT / PAT 鉴权
-- 许可证为 BSL：个人使用、学习研究、非营利组织免费（详见下文「许可证」）
-
-详细对比与 API 证据见 `docs/backend-selection.md`。
 
 ## 本地启动
 
@@ -149,21 +168,16 @@ deploy/
    接口文档   http://localhost:8869/docs
    ```
 
-5. 在 Android 端安装 SmartBook 开源客户端，在设置里把自建服务端地址配置为你部署的实例地址（本地默认 `http://localhost:8869`）并用服务器初始化的管理员账号登录，即可启用通知监听 / 短信监听 / 截图自动记账同步。
+5. 构建并安装 Android 客户端（本项目 `client/` 源码构建，**不是**应用商店的上游 BeeCount）：
 
-6. **接入自定义大模型（AI 记账）**：在客户端 App「AI 服务商管理」页添加自定义服务商（Base URL + API Key + 文本/视觉/语音模型），它会自动同步到服务端。仅需模型走 OpenAI 兼容协议（DeepSeek / Kimi / Qwen / 自托管 vLLM / Ollama 均可）。详见 `docs/backend-selection.md`「自定义大模型接入方案」。
+   ```powershell
+   bash deploy/build.sh   # 产出 release APK（需 FLUTTER_HOME / JAVA_HOME，见 CLAUDE.md）
+   ```
 
+   安装后在 App 设置里把自建服务端地址配置为你部署的实例地址（本地默认 `http://localhost:8869`），用服务器初始化的管理员账号登录，即可启用短信监听 / 通知监听 / 截图自动记账与云同步。
 
-## 后续开发顺序
+6. **接入自定义大模型（AI 记账）**：在客户端 App「AI 服务商管理」页添加服务商（Base URL + API Key + 文本/视觉/语音模型），配置只保存在服务端，App 的 AI 调用全部经服务端 `/ai/relay` 中转；模型走 OpenAI 兼容协议或 Anthropic 协议均可（DeepSeek / Kimi / Qwen / 智谱 GLM / 自托管 vLLM / Ollama 等）。Web 端另支持贴图/贴文 AI 记账与「问 AI」（文档 RAG，可选）。
 
-优先采用"零自研 / 少自研"路线：
-
-1. 部署 SmartBook-Cloud 并配置 JWT、数据库；
-2. 用 SmartBook 开源客户端对接自建服务端，人工记账验证同步与统计；
-3. 在客户端配置自定义大模型服务商（OpenAI 兼容），启用短信/通知监听、截图 OCR / AI 自动记账，跑通自动链路；
-4. 针对性改造：适配 vivo / OriginOS 后台保活、特定银行短信解析（M4 已提供保活引导与渠道映射）；
-5. 精简 App 界面：移除/隐藏内置推广位（M0.5 已完成）；
-6. 评估是否需要独立客户端，或直接复用 SmartBook。
 
 ## 许可证
 
