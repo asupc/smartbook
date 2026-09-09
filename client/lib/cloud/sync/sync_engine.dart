@@ -261,15 +261,19 @@ class SyncEngine implements app.SyncService {
         );
       }
 
-      // 本地交易数
-      final localTxs = await (db.select(db.transactions)
-            ..where((t) => t.ledgerId.equals(ledgerId)))
-          .get();
-      final localCount = localTxs.length;
+      // 本地交易数(零风险快修:COUNT 替代全表物化取 .length)
+      final localCountRow = await db.customSelect(
+        'SELECT COUNT(*) AS c FROM transactions WHERE ledger_id = ?1',
+        variables: [d.Variable.withInt(ledgerId)],
+        readsFrom: {db.transactions},
+      ).getSingle();
+      final localCountV = localCountRow.data['c'];
+      final localCount =
+          localCountV is num ? localCountV.toInt() : 0;
 
-      // 检查是否有未推送的本地变更
+      // 检查是否有未推送的本地变更(零风险快修:COUNT 版)
       final unpushedCount =
-          (await changeTracker.getUnpushedChangesForLedger(ledgerId)).length;
+          await changeTracker.getUnpushedCountForLedger(ledgerId);
 
       // 检查云端是否有数据。path 用 ledger.syncId 跟 push 侧保持一致。
       final ledgerRowStatus = await (db.select(db.ledgers)

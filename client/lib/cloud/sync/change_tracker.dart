@@ -198,9 +198,30 @@ class ChangeTracker {
 
   /// 获取未推送变更数量
   Future<int> getUnpushedCount() async {
-    final result = await (db.select(db.localChanges)
-          ..where((c) => c.pushedAt.isNull()))
-        .get();
-    return result.length;
+    // 零风险快修:COUNT 替代全表物化取 .length。
+    final row = await db.customSelect(
+      'SELECT COUNT(*) AS c FROM local_changes WHERE pushed_at IS NULL',
+      readsFrom: {db.localChanges},
+    ).getSingle();
+    final v = row.data['c'];
+    if (v is int) return v;
+    if (v is BigInt) return v.toInt();
+    if (v is num) return v.toInt();
+    return 0;
+  }
+
+  /// 获取指定账本的未推送变更数量(getStatus 用,零风险快修同上)。
+  Future<int> getUnpushedCountForLedger(int ledgerId) async {
+    final row = await db.customSelect(
+      'SELECT COUNT(*) AS c FROM local_changes '
+      'WHERE pushed_at IS NULL AND ledger_id = ?1',
+      variables: [d.Variable.withInt(ledgerId)],
+      readsFrom: {db.localChanges},
+    ).getSingle();
+    final v = row.data['c'];
+    if (v is int) return v;
+    if (v is BigInt) return v.toInt();
+    if (v is num) return v.toInt();
+    return 0;
   }
 }

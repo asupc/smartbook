@@ -13,18 +13,17 @@ class IOSNotificationUtil implements util.NotificationUtil {
   Future<void> initialize() async {
     if (_initialized) return;
 
+    // 初始化设置不再顺带请求权限(PERF-P0-02,与 Android 侧对齐):权限统一走
+    // requestPermissions(),由首帧后的延迟任务或用户开启提醒时触发。
     const iosSettings = DarwinInitializationSettings(
-      requestAlertPermission: true,
-      requestBadgePermission: true,
-      requestSoundPermission: true,
+      requestAlertPermission: false,
+      requestBadgePermission: false,
+      requestSoundPermission: false,
     );
 
     const initSettings = InitializationSettings(iOS: iosSettings);
 
     await _plugin.initialize(initSettings);
-
-    // 初始化后立即请求权限
-    await requestPermissions();
 
     _initialized = true;
 

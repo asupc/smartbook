@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:ui' show Color;
 
+import 'package:drift/drift.dart' show TableUpdateQuery;
+
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -688,7 +690,13 @@ final rawEvidenceSyncServiceProvider = Provider<RawEvidenceSyncService>((ref) {
     trigger(); // cold start, sign-in or configuration/session restoration
   }, fireImmediately: true);
   // Table notifications also cover native capture with no transaction changes.
-  final events = db.select(db.autoBookEvents).watch().listen((_) => trigger());
+  // 零风险快修:改用 tableUpdates 只听表变更事件 —— 此前
+  // select().watch() 每次捕获短信/通知都把 auto_book_events 全表(含
+  // raw_text 大列)物化一遍,结果只用来调一次 trigger()。同仓范式见
+  // local_transaction_repository.dart 的 sharedLedger* 监听。
+  final events = db
+      .tableUpdates(TableUpdateQuery.onTable(db.autoBookEvents))
+      .listen((_) => trigger());
   final connectivity = Connectivity().onConnectivityChanged.listen((results) {
     if (results.any((result) => result != ConnectivityResult.none)) trigger();
   });

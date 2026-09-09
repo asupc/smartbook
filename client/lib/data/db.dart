@@ -7,6 +7,7 @@ import '../services/data/category_service.dart';
 import '../services/data/seed_service.dart';
 import '../services/system/logger_service.dart';
 import 'package:drift/native.dart';
+import 'package:sqlite3/sqlite3.dart' as sq;
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 
@@ -1407,6 +1408,28 @@ class BeeDatabase extends _$BeeDatabase {
             'ON transactions (ledger_id, type, happened_at DESC);',
         'CREATE INDEX IF NOT EXISTS idx_transactions_sync_id '
             'ON transactions (sync_id);',
+        // PERF-P0-04 账户维度余额/统计聚合:按 account_id 范围扫描,替代
+        // 逐账户全表扫描;时间列附带加速账户流水按日聚合。
+        'CREATE INDEX IF NOT EXISTS idx_transactions_account_time '
+            'ON transactions (account_id, happened_at DESC);',
+        // 转入侧(转账 to_account)点查;稀疏列,部分索引体积很小。
+        'CREATE INDEX IF NOT EXISTS idx_transactions_to_account '
+            'ON transactions (to_account_id) WHERE to_account_id IS NOT NULL;',
+        // PERF-P1-22 分类维度聚合/分类明细 watch。
+        'CREATE INDEX IF NOT EXISTS idx_transactions_category_time '
+            'ON transactions (category_id, happened_at DESC);',
+        // 共享账本编辑器按 categorySyncIdOverride 反查;稀疏列部分索引。
+        'CREATE INDEX IF NOT EXISTS idx_transactions_category_sync_override '
+            'ON transactions (category_sync_id_override) '
+            'WHERE category_sync_id_override IS NOT NULL;',
+      ],
+      'local_changes': [
+        // PERF-P1-12:push 前未推送变更按 (账本, pushed_at, id) 范围扫描;
+        // recordPulledFromServer 幂等查重按 (entity_type, entity_sync_id)。
+        'CREATE INDEX IF NOT EXISTS idx_local_changes_ledger_pushed '
+            'ON local_changes (ledger_id, pushed_at, id);',
+        'CREATE INDEX IF NOT EXISTS idx_local_changes_entity '
+            'ON local_changes (entity_type, entity_sync_id);',
       ],
       'transaction_tags': [
         'CREATE INDEX IF NOT EXISTS idx_transaction_tags_transaction '
@@ -1417,16 +1440,28 @@ class BeeDatabase extends _$BeeDatabase {
       'transaction_attachments': [
         'CREATE INDEX IF NOT EXISTS idx_attachments_transaction '
             'ON transaction_attachments (transaction_id);',
+        // PERF-P1-18:删除交易时按 file_name 反查待清理附件。
+        'CREATE INDEX IF NOT EXISTS idx_attachments_file_name '
+            'ON transaction_attachments (file_name);',
       ],
       'auto_book_events': [
         // 到期草稿 / 待重试事件扫描:where state = ? and next_retry_at <= ?。
         'CREATE INDEX IF NOT EXISTS idx_auto_book_state_retry '
             'ON auto_book_events (state, next_retry_at);',
+        // PERF-P1-11 判重:external_id 点查(注意列可空,非唯一)。
+        'CREATE INDEX IF NOT EXISTS idx_auto_book_external_id '
+            'ON auto_book_events (external_id);',
+        // 待确认队列按账本 + 状态过滤。
+        'CREATE INDEX IF NOT EXISTS idx_auto_book_ledger_state '
+            'ON auto_book_events (ledger_id, state);',
       ],
       'auto_book_event_items': [
         // 语义去重按 semanticKey 反查历史 item。
         'CREATE INDEX IF NOT EXISTS idx_auto_book_items_semantic '
             'ON auto_book_event_items (semantic_key);',
+        // PERF-P1-11:按已入账 transaction 反查事件(判重豁免/撤销)。
+        'CREATE INDEX IF NOT EXISTS idx_auto_book_items_transaction '
+            'ON auto_book_event_items (transaction_id);',
       ],
       // 以下几张表的索引老版本只在 onUpgrade 分支里建过,新装缺失,一并收敛。
       'accounts': [
@@ -1436,6 +1471,9 @@ class BeeDatabase extends _$BeeDatabase {
       'categories': [
         'CREATE INDEX IF NOT EXISTS idx_categories_sync_id '
             'ON categories (sync_id);',
+        // PERF-P1-22:分类树按 parent_id 取子级。
+        'CREATE INDEX IF NOT EXISTS idx_categories_parent '
+            'ON categories (parent_id);',
       ],
       'tags': [
         'CREATE INDEX IF NOT EXISTS idx_tags_sync_id ON tags (sync_id);',
@@ -1450,6 +1488,15 @@ class BeeDatabase extends _$BeeDatabase {
             'ON budgets (category_id);',
         'CREATE INDEX IF NOT EXISTS idx_budgets_ledger_type '
             'ON budgets (ledger_id, type);',
+      ],
+      'messages': [
+        // AI 会话内消息按会话 + 时间读取。
+        'CREATE INDEX IF NOT EXISTS idx_messages_conversation_time '
+            'ON messages (conversation_id, created_at);',
+      ],
+      'conversations': [
+        'CREATE INDEX IF NOT EXISTS idx_conversations_updated '
+            'ON conversations (updated_at);',
       ],
     };
     final rows =
@@ -1472,6 +1519,13 @@ class BeeDatabase extends _$BeeDatabase {
     if (failed.isNotEmpty) {
       logger.warning(
           'DBMigration', '部分索引未建立(不影响功能,仅影响查询速度)', failed.join('; '));
+    }
+    // 零风险快修:让优化器基于当前库的统计刷新执行计划(无统计时等价一次
+    // 轻量 ANALYZE,只会分析近期变动的表),减少大账本下选错索引。
+    try {
+      await customStatement('PRAGMA optimize;');
+    } catch (_) {
+      // 纯调优语句,失败不致命。
     }
   }
 
@@ -1574,7 +1628,22 @@ LazyDatabase _openConnection() {
       logger.debug('db', '检查锁文件时出错: $e');
     }
 
-    return NativeDatabase.createInBackground(file);
+    return NativeDatabase.createInBackground(
+      file,
+      // WAL 读连接池(PERF-P0-03):主连接负责写,另开 4 条只读连接,写期间
+      // UI 查询不再排队(仅 WAL 模式下生效,见下方 setup)。
+      readPool: 4,
+      setup: (db) {
+        // WAL:读写不再互斥,单条写从「双 fsync + 删 journal」降为一次追加;
+        // synchronous=NORMAL 在 WAL 下进程崩溃不丢数据,仅掉电可能丢最近
+        // 若干事务(要零丢失可退回 FULL,收益约降到 3×)。
+        db.execute('PRAGMA journal_mode = WAL;');
+        db.execute('PRAGMA synchronous = NORMAL;');
+        // 页缓存 8MB(默认 2MB):大账本热页常驻内存,减少回盘。
+        db.execute('PRAGMA cache_size = -8000;');
+        db.execute('PRAGMA temp_store = MEMORY;');
+      },
+    );
   });
 }
 
@@ -1582,8 +1651,26 @@ LazyDatabase _openConnection() {
 Future<void> clearDatabaseLockFiles() async {
   try {
     final dir = await getApplicationDocumentsDirectory();
+    final dbFile = File(p.join(dir.path, 'smartbook.sqlite'));
     final shmFile = File(p.join(dir.path, 'smartbook.sqlite-shm'));
     final walFile = File(p.join(dir.path, 'smartbook.sqlite-wal'));
+
+    // WAL 模式(PERF-P0-03)下 -wal 里可能残留未 checkpoint 的已提交事务,
+    // 直接删文件会丢数据:先 checkpoint(TRUNCATE) 写回主库并截断,失败则
+    // 保留文件不动(宁可留锁也不丢账)。
+    if (walFile.existsSync()) {
+      try {
+        final raw = sq.sqlite3.open(dbFile.path);
+        try {
+          raw.execute('PRAGMA wal_checkpoint(TRUNCATE);');
+        } finally {
+          raw.dispose();
+        }
+      } catch (e) {
+        logger.error('db', 'WAL checkpoint 失败,保留 -wal/-shm 不删除', e);
+        return;
+      }
+    }
 
     if (shmFile.existsSync()) {
       await shmFile.delete();

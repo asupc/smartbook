@@ -58,6 +58,15 @@ class _HomePageState extends ConsumerState<HomePage> {
       _txStream;
   int? _txStreamLedgerId;
 
+  // PERF-P1-07:窗口 items 的映射缓存。TransactionList 用 identical 判断列表
+  // 是否变化(缓存分组/排序结果);此前每次 build 都 .map().toList() 生成新
+  // List,identical 恒 false → 滚动中每次重建都白做一遍 O(N log N) 分组排序。
+  // 这里按 win.items 的引用身份缓存映射结果,items 未变时传同一 List 实例。
+  List<({Transaction t, Category? category, Account? account, Account? toAccount})>?
+      _mappedWindowItems;
+  List<({Transaction t, Category? category, Account? account, Account? toAccount})>?
+      _mappedWindowSource;
+
   // 月初提醒状态
   bool _showLastMonthReminder = false;
   static const String _reminderDismissedKey = 'last_month_reminder_dismissed';
@@ -319,12 +328,18 @@ class _HomePageState extends ConsumerState<HomePage> {
     }
 
     // 窗口 items 就是 TransactionWithRefs,与 TransactionList.transactions 同型。
-    final items = win.items.map((r) => (
-          t: r.t,
-          category: r.category,
-          account: r.account,
-          toAccount: r.toAccount,
-        )).toList();
+    // PERF-P1-07:按 win.items 引用身份缓存映射,保持传给 TransactionList 的
+    // List 引用稳定(否则其 identical 缓存每次 build 都被打破)。
+    if (!identical(_mappedWindowSource, win.items)) {
+      _mappedWindowSource = win.items;
+      _mappedWindowItems = win.items.map((r) => (
+            t: r.t,
+            category: r.category,
+            account: r.account,
+            toAccount: r.toAccount,
+          )).toList();
+    }
+    final items = _mappedWindowItems!;
 
     final list = TransactionList(
       key: _transactionListKey,

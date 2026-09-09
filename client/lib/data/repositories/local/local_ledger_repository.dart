@@ -104,13 +104,30 @@ class LocalLedgerRepository implements LedgerRepository {
     bool accountFeatureEnabled = true,
     List<Transaction>? transactions,
   }) async {
-    // 如果没有传入 transactions，则查询
-    final rows = transactions ?? await (db.select(db.transactions)
-          ..where((t) => t.ledgerId.equals(ledgerId)))
-        .get();
+    // 零风险快修:调用方未传列表时用 SQL 聚合(COALESCE(native_amount, amount)
+    // 与下方 Dart 口径一致),替代全账本物化 + Dart 累加。
+    if (transactions == null) {
+      final row = await db.customSelect(
+        '''
+        SELECT COUNT(*) AS tx_count,
+               COALESCE(SUM(CASE
+                 WHEN type = 'income' THEN COALESCE(native_amount, amount)
+                 WHEN type = 'expense' THEN -COALESCE(native_amount, amount)
+                 ELSE 0 END), 0) AS balance
+          FROM transactions
+         WHERE ledger_id = ?1
+        ''',
+        variables: [d.Variable.withInt(ledgerId)],
+        readsFrom: {db.transactions},
+      ).getSingle();
+      return (
+        balance: ((row.data['balance'] ?? 0) as num).toDouble(),
+        transactionCount: (row.data['tx_count'] as num).toInt(),
+      );
+    }
 
-    // 交易数
-    final transactionCount = rows.length;
+    // 交易数(调用方显式传入已加载的列表,沿用 Dart 累加)
+    final transactionCount = transactions.length;
 
     // v1.15.0: 账户独立后，账本余额仅计算交易收支，不再叠加账户初始余额
     double balance = 0.0;
@@ -118,7 +135,7 @@ class LocalLedgerRepository implements LedgerRepository {
     // 账本余额 = 跨账户收支汇总 → 账本维度,读折算值 nativeAmount(?? amount
     // 兜底,单币种账本 native==amount 结果不变)。原先裸加 t.amount 在多币种
     // 账本下把不同币种原值直接相加(CNY+JPY),且改主币种后不随折算更新。
-    for (final t in rows) {
+    for (final t in transactions) {
       final v = t.nativeAmount ?? t.amount;
       if (t.type == 'income') {
         balance += v;

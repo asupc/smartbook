@@ -1,3 +1,5 @@
+import 'package:drift/drift.dart' as d;
+
 import '../../data/db.dart';
 import '../automation/auto_book_coordinator.dart';
 import '../automation/auto_book_event.dart';
@@ -186,9 +188,12 @@ class RecurringTransactionService {
 
     final generatedTransactions = <Transaction>[];
 
+    // 全部账本共用一次 recurring 全量读(PERF-P0-01):此前放在账本循环内,
+    // 代价是 账本数 × 全表。
+    final allRecurring = await repository.getAllRecurringTransactions();
+
     for (final ledger in ledgers) {
       // 获取所有启用的周期交易
-      final allRecurring = await repository.getAllRecurringTransactions();
       final recurringList = allRecurring
           .where((r) => r.ledgerId == ledger.id && r.enabled)
           .toList();
@@ -254,28 +259,18 @@ class RecurringTransactionService {
             occurrenceKey: occurrenceKey,
           );
 
-          // 使用流式查询获取生成的交易（取第一个）
-          final transactionsWithCategory = await repository
-              .transactionsWithCategoryAll(ledgerId: ledger.id)
-              .first;
-          final matchedTransactions = transactionsWithCategory
-              .where((e) => e.t.id == transactionId)
-              .toList();
-          final transaction = matchedTransactions.isNotEmpty
-              ? matchedTransactions.first.t
-              : null;
-
+          // 直接按 id 取刚生成的交易(PERF-P0-01):此前用
+          // transactionsWithCategoryAll(ledgerId).first(无 limit 的全量 JOIN
+          // 流查询)只为按 id 过滤出一条。
+          final transaction = await repository.getTransactionById(transactionId);
           if (transaction != null) {
             generatedTransactions.add(transaction);
           }
 
-          // 重新读取更新后的重复交易记录，用于下一次循环
-          final updatedList = await repository.getAllRecurringTransactions();
-          final matchedRecurring =
-              updatedList.where((r) => r.id == currentRecurring.id).toList();
-          if (matchedRecurring.isEmpty) break;
-          final updatedRecurring = matchedRecurring.first;
-          currentRecurring = updatedRecurring;
+          // lastGeneratedDate 已在 _createOccurrence 内落库;内存同步推进游标,
+          // 免去每笔 occurrence 再全量重读一次 recurring 表(PERF-P0-01)。
+          currentRecurring =
+              currentRecurring.copyWith(lastGeneratedDate: d.Value(nextDate));
         }
       }
     }

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_cloud_sync/flutter_cloud_sync.dart';
@@ -27,6 +28,8 @@ import 'services/platform/screen_text_monitor_service.dart';
 import 'services/platform/image_share_handler_service.dart';
 import 'services/platform/app_link_service.dart';
 import 'services/system/logger_service.dart';
+import 'services/billing/post_processor.dart';
+import 'services/data/recurring_transaction_service.dart';
 import 'l10n/app_localizations.dart';
 import 'widget/widget_manager.dart';
 import 'package:home_widget/home_widget.dart';
@@ -42,6 +45,14 @@ import 'package:path_provider/path_provider.dart';
 final GlobalKey<NavigatorState> globalNavigatorKey =
     GlobalKey<NavigatorState>();
 
+/// Debug-only 控制台日志(零风险快修:启动路径 print 清理)。release 下
+/// no-op,少写 logcat;debugPrint 自带节流,避免启动期几十条日志放大帧开销。
+void _dlog(String message) {
+  if (kDebugMode) {
+    debugPrint(message);
+  }
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -52,13 +63,13 @@ Future<void> main() async {
 
   // 初始化日志系统（确保原生日志桥接就绪）
   logger.info('App', '应用启动，日志系统已初始化');
-  print('📱 LoggerService 已初始化');
+  _dlog('📱 LoggerService 已初始化');
 
   // 初始化时区（必须在通知服务之前，修复iOS通知问题）
   try {
     NotificationFactory.initializeTimeZone();
   } catch (e) {
-    print('⚠️  时区初始化失败（可能在不支持的平台上运行）: $e');
+    _dlog('⚠️  时区初始化失败（可能在不支持的平台上运行）: $e');
   }
 
   // 配置iOS App Group（widget和主app共享数据必需）
@@ -67,16 +78,12 @@ Future<void> main() async {
       await HomeWidget.setAppGroupId('group.com.smartbook.zhi');
     }
   } catch (e) {
-    print('⚠️  HomeWidget 插件初始化失败（可能在不支持的平台上运行）: $e');
+    _dlog('⚠️  HomeWidget 插件初始化失败（可能在不支持的平台上运行）: $e');
   }
 
-  // 初始化通知服务
-  try {
-    final notificationUtil = NotificationFactory.getInstance();
-    await notificationUtil.initialize();
-  } catch (e) {
-    print('⚠️  通知服务初始化失败（可能在不支持的平台上运行）: $e');
-  }
+  // 通知初始化已移至首帧后(_bootstrapAfterFirstFrame,PERF-P0-02):
+  // Android 上 initialize 原先内联权限请求,Android 13+ 未授权时弹系统
+  // 对话框会阻塞 runApp 之前的首帧。
 
   // 创建全局ProviderContainer（需要在周期交易生成之前创建，因为需要使用 repositoryProvider）
   // observers 必须挂在这里(根容器):无 override 的全局 provider 元素都挂载
@@ -124,12 +131,26 @@ Future<void> main() async {
 
 /// 首帧之后的启动补齐(M2-1)。
 ///
-/// 只放「首帧不需要其结果」的任务:提醒恢复、小组件回调、自动记账协调器与四路
-/// 监听恢复、孤立文件 GC。主题/应用模式/通知初始化仍留在 [main] 首帧前。
+/// 只放「首帧不需要其结果」的任务:通知初始化与权限请求、提醒恢复、小组件
+/// 回调、自动记账协调器与四路监听恢复、孤立文件 GC。主题/应用模式仍留在
+/// [main] 首帧前。
 ///
 /// 每一步都自带 try/catch(或在 helper 内部兜住):这里跑在 framework 的帧回调
 /// 里,异常抛出去只会变成一条 FlutterError,还会吃掉后面所有恢复步骤。
 Future<void> _bootstrapAfterFirstFrame(ProviderContainer container) async {
+  // 通知插件初始化移到首帧后(PERF-P0-02):权限请求与插件初始化已拆开
+  // (见 notification_android/ios),这里再延迟 2s 请求权限,避免系统权限
+  // 对话框压在首帧上;用户开启每日提醒时也会经 requestPermissions 显式请求。
+  try {
+    final notificationUtil = NotificationFactory.getInstance();
+    await notificationUtil.initialize();
+    Future.delayed(const Duration(seconds: 2), () {
+      unawaited(notificationUtil.requestPermissions());
+    });
+  } catch (e) {
+    logger.warning('App', '通知服务初始化失败（可能在不支持的平台上运行）: $e');
+  }
+
   // 恢复用户的记账提醒设置（关键修复：应用重启后自动恢复提醒）
   await _restoreUserReminder();
 
@@ -137,7 +158,7 @@ Future<void> _bootstrapAfterFirstFrame(ProviderContainer container) async {
   try {
     ReminderMonitorService().startMonitoring();
   } catch (e) {
-    print('⚠️  提醒监控服务启动失败（可能在不支持的平台上运行）: $e');
+    _dlog('⚠️  提醒监控服务启动失败（可能在不支持的平台上运行）: $e');
   }
 
   // 恢复信用卡还款提醒
@@ -164,6 +185,12 @@ Future<void> _bootstrapAfterFirstFrame(ProviderContainer container) async {
   } catch (e) {
     logger.warning('App', '自动记账协调器初始化失败(后续会按事件 retry)', '$e');
   }
+
+  // 周期交易补生成移出 Splash 闸门(PERF-P0-01):历史上在 appSplashInitProvider
+  // 内 await,积压多时把首页出现推迟数百 ms～数秒。幂等由 occurrenceEventKey +
+  // event store 保护,首帧后 fire-and-forget;必须等协调器 initialize 完成
+  // (共用事件串行链),但不阻塞后面的四路监听恢复。
+  unawaited(_generateRecurringAfterReady(container));
 
   // 恢复四路自动记账监听（Android专属）。M2-2 后 enable() 只等桥接/observer
   // 注册，积压队列由各自的 drain 在后台消化，不会卡住这里的串行恢复。
@@ -231,6 +258,27 @@ class _WidgetUpdateObserver extends ProviderObserver {
   }
 }
 
+/// 首帧后补生成周期交易(PERF-P0-01)。
+///
+/// 从 appSplashInitProvider 移来:此前在 Splash 闸门内 await,逐笔 occurrence
+/// 还各自触发全量账本查询。幂等由 occurrenceEventKey(event store)保证,重复
+/// 调用不会产生第二笔;生成成功后用 [PostProcessor.runC] 刷新统计并触发同步。
+Future<void> _generateRecurringAfterReady(ProviderContainer container) async {
+  try {
+    final repo = container.read(repositoryProvider);
+    final generatedLedgerIds =
+        await RecurringTransactionService.generatePendingTransactionsStatic(
+      repository: repo,
+      coordinator: container.read(autoBookCoordinatorProvider),
+    );
+    for (final ledgerId in generatedLedgerIds) {
+      await PostProcessor.runC(container, ledgerId: ledgerId);
+    }
+  } catch (e, stackTrace) {
+    logger.error('App', '周期交易生成失败', e, stackTrace);
+  }
+}
+
 /// 恢复用户之前设置的记账提醒
 ///
 /// 问题场景：
@@ -243,16 +291,16 @@ class _WidgetUpdateObserver extends ProviderObserver {
 /// - 如果开启了，重新设置通知任务
 Future<void> _restoreUserReminder() async {
   try {
-    print('🔄 检查并恢复记账提醒...');
+    _dlog('🔄 检查并恢复记账提醒...');
     final prefs = await SharedPreferences.getInstance();
     final isEnabled = prefs.getBool('reminder_enabled') ?? false;
 
     if (isEnabled) {
       final hour = prefs.getInt('reminder_hour') ?? 21;
       final minute = prefs.getInt('reminder_minute') ?? 0;
-      print(
+      _dlog(
           '✅ 发现用户已启用记账提醒: ${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}');
-      print('🔔 正在重新设置提醒任务...');
+      _dlog('🔔 正在重新设置提醒任务...');
 
       try {
         final notificationUtil = NotificationFactory.getInstance();
@@ -263,15 +311,15 @@ Future<void> _restoreUserReminder() async {
           hour: hour,
           minute: minute,
         );
-        print('✅ 记账提醒已成功恢复');
+        _dlog('✅ 记账提醒已成功恢复');
       } catch (e) {
-        print('❌ 记账提醒设置失败（可能在不支持的平台上运行）: $e');
+        _dlog('❌ 记账提醒设置失败（可能在不支持的平台上运行）: $e');
       }
     } else {
-      print('ℹ️  用户未启用记账提醒，跳过恢复');
+      _dlog('ℹ️  用户未启用记账提醒，跳过恢复');
     }
   } catch (e) {
-    print('❌ 恢复记账提醒失败: $e');
+    _dlog('❌ 恢复记账提醒失败: $e');
     // 不抛出异常，避免影响应用启动
   }
 }
@@ -289,20 +337,20 @@ Future<void> _restoreScreenshotMonitor(ProviderContainer container) async {
   if (!Platform.isAndroid) return;
 
   try {
-    print('📸 检查并恢复截图自动识别...');
+    _dlog('📸 检查并恢复截图自动识别...');
     final screenshotMonitor = ScreenshotMonitorService(container);
     final isEnabled = await screenshotMonitor.isEnabled();
 
     if (isEnabled) {
-      print('✅ 发现用户已启用截图自动识别');
-      print('🔄 正在重新启动监听服务...');
+      _dlog('✅ 发现用户已启用截图自动识别');
+      _dlog('🔄 正在重新启动监听服务...');
       await screenshotMonitor.enable();
-      print('✅ 截图监听服务已成功恢复');
+      _dlog('✅ 截图监听服务已成功恢复');
     } else {
-      print('ℹ️  用户未启用截图自动识别，跳过恢复');
+      _dlog('ℹ️  用户未启用截图自动识别，跳过恢复');
     }
   } catch (e) {
-    print('❌ 恢复截图监听失败: $e');
+    _dlog('❌ 恢复截图监听失败: $e');
     // 不抛出异常，避免影响应用启动
   }
 }
@@ -317,7 +365,7 @@ Future<void> _restoreNotifyMonitor(ProviderContainer container) async {
   if (!Platform.isAndroid) return;
 
   try {
-    print('🔔 检查并恢复通知自动记账...');
+    _dlog('🔔 检查并恢复通知自动记账...');
     final notifyMonitor = NotifyMonitorService(container);
     final isEnabled = await notifyMonitor.isEnabled();
 
@@ -325,17 +373,17 @@ Future<void> _restoreNotifyMonitor(ProviderContainer container) async {
       // 系统侧授权可能被用户事后撤销:恢复失败(授权丢失)时仅告警,
       // 不闪退、不弹窗 —— 用户进入设置页会看到未授权引导。
       if (await notifyMonitor.isListenerGranted()) {
-        print('✅ 发现用户已启用通知自动记账');
+        _dlog('✅ 发现用户已启用通知自动记账');
         await notifyMonitor.enable();
-        print('✅ 通知自动记账已成功恢复');
+        _dlog('✅ 通知自动记账已成功恢复');
       } else {
-        print('⚠️ 通知自动记账已启用但「通知使用权」授权丢失,跳过恢复');
+        _dlog('⚠️ 通知自动记账已启用但「通知使用权」授权丢失,跳过恢复');
       }
     } else {
-      print('ℹ️  用户未启用通知自动记账，跳过恢复');
+      _dlog('ℹ️  用户未启用通知自动记账，跳过恢复');
     }
   } catch (e) {
-    print('❌ 恢复通知自动记账失败: $e');
+    _dlog('❌ 恢复通知自动记账失败: $e');
     // 不抛出异常，避免影响应用启动
   }
 }
@@ -350,20 +398,20 @@ Future<void> _restoreSmsMonitor(ProviderContainer container) async {
   if (!Platform.isAndroid) return;
 
   try {
-    print('📨 检查并恢复短信自动记账...');
+    _dlog('📨 检查并恢复短信自动记账...');
     final smsMonitor = SmsMonitorService(container);
     final isEnabled = await smsMonitor.isEnabled();
 
     if (isEnabled) {
-      print('✅ 发现用户已启用短信自动记账');
-      print('🔄 正在恢复监听并补处理积压...');
+      _dlog('✅ 发现用户已启用短信自动记账');
+      _dlog('🔄 正在恢复监听并补处理积压...');
       await smsMonitor.enable();
-      print('✅ 短信自动记账已成功恢复');
+      _dlog('✅ 短信自动记账已成功恢复');
     } else {
-      print('ℹ️  用户未启用短信自动记账，跳过恢复');
+      _dlog('ℹ️  用户未启用短信自动记账，跳过恢复');
     }
   } catch (e) {
-    print('❌ 恢复短信自动记账失败: $e');
+    _dlog('❌ 恢复短信自动记账失败: $e');
     // 不抛出异常，避免影响应用启动
   }
 }
@@ -376,22 +424,22 @@ Future<void> _restoreScreenTextMonitor(ProviderContainer container) async {
   if (!Platform.isAndroid) return;
 
   try {
-    print('📄 检查并恢复详情页自动记账...');
+    _dlog('📄 检查并恢复详情页自动记账...');
     final monitor = ScreenTextMonitorService(container);
     final enabled = await monitor.isEnabled();
     if (!enabled) {
-      print('ℹ️  用户未启用详情页自动记账，跳过恢复');
+      _dlog('ℹ️  用户未启用详情页自动记账，跳过恢复');
       return;
     }
 
     if (await monitor.isAccessibilityGranted()) {
       await monitor.enable();
-      print('✅ 详情页自动记账已成功恢复');
+      _dlog('✅ 详情页自动记账已成功恢复');
     } else {
-      print('⚠️ 详情页自动记账已启用但无障碍授权丢失，跳过恢复');
+      _dlog('⚠️ 详情页自动记账已启用但无障碍授权丢失，跳过恢复');
     }
   } catch (e) {
-    print('❌ 恢复详情页自动记账失败: $e');
+    _dlog('❌ 恢复详情页自动记账失败: $e');
     // 不抛出异常，避免影响应用启动；native 队列保留待下次恢复。
   }
 }
@@ -403,7 +451,7 @@ Future<void> _restoreScreenTextMonitor(ProviderContainer container) async {
 /// [container] Provider容器
 Future<void> _initializeAppMode(ProviderContainer container) async {
   try {
-    print('⏳ 初始化应用模式...');
+    _dlog('⏳ 初始化应用模式...');
 
     // 从 SharedPreferences 直接读取模式
     final prefs = await SharedPreferences.getInstance();
@@ -414,9 +462,9 @@ Future<void> _initializeAppMode(ProviderContainer container) async {
     // switchMode 不会重复写入 SharedPreferences，因为值已经存在
     await container.read(appModeProvider.notifier).switchMode(mode);
 
-    print('✅ 应用模式已初始化: ${mode.label}');
+    _dlog('✅ 应用模式已初始化: ${mode.label}');
   } catch (e, stackTrace) {
-    print('⚠️  应用模式初始化失败: $e');
+    _dlog('⚠️  应用模式初始化失败: $e');
     logger.error('Main', '应用模式初始化失败', e, stackTrace);
   }
 }

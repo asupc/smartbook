@@ -11,11 +11,8 @@ import 'budget_providers.dart';
 import 'font_scale_provider.dart';
 import 'update_providers.dart';
 import 'smart_billing_providers.dart';
-import 'automation_providers.dart';
 import '../data/db.dart';
 import '../utils/month_range.dart';
-import '../services/data/recurring_transaction_service.dart';
-import '../services/billing/post_processor.dart';
 import '../services/system/logger_service.dart';
 import '../ai/providers/ai_constants.dart';
 import '../services/platform/app_link_service.dart';
@@ -354,24 +351,10 @@ final appSplashInitProvider = FutureProvider<void>((ref) async {
           '账本统计(异步): ${DateTime.now().difference(start).inMilliseconds}ms');
     });
 
-    // 生成待处理的周期交易
-    try {
-      final generatedLedgerIds =
-          await RecurringTransactionService.generatePendingTransactionsStatic(
-        repository: repo,
-        verbose: false,
-        coordinator: ref.read(autoBookCoordinatorProvider),
-      );
-      logger.info(tag,
-          '周期交易生成完成: ${DateTime.now().difference(stepTime).inMilliseconds}ms');
-
-      // 统一后处理：刷新UI + 触发云同步（如果有生成交易）
-      for (final genLedgerId in generatedLedgerIds) {
-        await PostProcessor.runR(ref, ledgerId: genLedgerId);
-      }
-    } catch (e, stackTrace) {
-      logger.error(tag, '周期交易生成失败', e, stackTrace);
-    }
+    // 生成待处理的周期交易 —— 已移出 Splash 闸门(PERF-P0-01):积压多时
+    // 这一步会串行做数十次全量查询,曾把首页出现推迟数百 ms～数秒。现在由
+    // main.dart 的 _bootstrapAfterFirstFrame 在首帧后 fire-and-forget,生成
+    // 结果经 PostProcessor.runC 刷新 UI 并触发同步。
   } catch (e, stackTrace) {
     logger.error(tag, '预加载数据失败', e, stackTrace);
   }

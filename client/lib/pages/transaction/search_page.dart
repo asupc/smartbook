@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/db.dart';
@@ -30,13 +32,18 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   bool _isSearching = false;
   String _searchText = '';
 
+  // PERF-P0-07:输入 debounce 与数据源订阅。
+  Timer? _searchDebounce;
+  StreamSubscription<
+          List<({Transaction t, Category? category, Account? account, Account? toAccount})>>?
+      _txSubscription;
+
   // 筛选条件
   double? _minAmount;
   double? _maxAmount;
   DateTime? _startDate;
   DateTime? _endDate;
   Category? _selectedCategory;
-  bool _hasScheduledSearch = false; // 防止重复调度搜索
 
   // 缓存汇总金额，避免每次 build() 重复计算
   double _totalExpense = 0.0;
@@ -50,41 +57,66 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   void initState() {
     super.initState();
     _searchController.addListener(_onSearchChanged);
+    // PERF-P0-07:数据源从 build 内联 StreamBuilder 改为 initState 订阅一次。
+    // 此前页面任何 setState 都会重建 Drift stream(旧订阅取消、新查询全表、
+    // snapshot 回 waiting),造成结果闪烁与滚动位置丢失;且在 builder 里写
+    // _allTransactions 属于 build 期改状态。
+    final repo = ref.read(repositoryProvider);
+    final ledgerId = ref.read(currentLedgerIdProvider);
+    _txSubscription =
+        repo.transactionsWithCategoryAll(ledgerId: ledgerId).listen((rows) {
+      if (!mounted) return;
+      _allTransactions = rows;
+      // 库数据变化时,若当前有筛选条件则静默重算结果(不闪 spinner)。
+      if (_hasActiveCriteria && !_isSearching) {
+        _applySearchResult(_computeResults());
+      }
+    });
   }
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
+    unawaited(_txSubscription?.cancel());
     _searchController.dispose();
     _noteController.dispose();
     super.dispose();
   }
 
+  /// 是否有任一生效的搜索/筛选条件
+  bool get _hasActiveCriteria =>
+      _searchText.isNotEmpty ||
+      _minAmount != null ||
+      _maxAmount != null ||
+      _startDate != null ||
+      _endDate != null ||
+      _selectedCategory != null;
+
   void _onSearchChanged() {
     setState(() {
       _searchText = _searchController.text.trim();
     });
-    _performSearch();
+    // PERF-P0-07:250ms debounce —— 输入框即时回显,过滤按停顿触发。
+    // 此前每敲一个字符都同步全量过滤一次(按键 ~10/s ⇒ 每秒 10 次 O(N) 遍历)。
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 250), _performSearch);
   }
 
-  /// 执行搜索
-  void _performSearch() {
-    // 如果没有任何搜索条件，清空结果
-    if (_searchText.isEmpty && _minAmount == null && _maxAmount == null &&
-        _startDate == null && _endDate == null && _selectedCategory == null) {
-      setState(() {
-        _searchResults = [];
-        _totalExpense = 0.0;
-        _totalIncome = 0.0;
-        _isSearching = false;
-        _hasScheduledSearch = false;
-      });
-      return;
+  /// 纯计算:按当前条件过滤 [_allTransactions] 并汇总收支,不触发 setState。
+  ({List<({Transaction t, Category? category, Account? account, Account? toAccount})> results,
+          double expense, double income})
+      _computeResults() {
+    // 循环外算一次(PERF-P0-07:此前每条交易重复 toLowerCase)。
+    final searchLower = _searchText.toLowerCase();
+    // 分类显示名做 l10n + 拼接,按原始名缓存,避免大账本下每笔重复调用。
+    final categoryNameCache = <String, String>{};
+    String categoryNameOf(Category? category) {
+      final raw = category?.name;
+      return categoryNameCache.putIfAbsent(
+        raw ?? '',
+        () => CategoryUtils.getDisplayName(raw, context),
+      );
     }
-
-    setState(() {
-      _isSearching = true;
-      _hasScheduledSearch = false;
-    });
 
     final results = _allTransactions.where((item) {
       final transaction = item.t;
@@ -92,11 +124,9 @@ class _SearchPageState extends ConsumerState<SearchPage> {
 
       // 文本搜索
       bool textMatch = true;
-      if (_searchText.isNotEmpty) {
-        final searchLower = _searchText.toLowerCase();
+      if (searchLower.isNotEmpty) {
         final note = transaction.note?.toLowerCase() ?? '';
-        final categoryName =
-            CategoryUtils.getDisplayName(category?.name, context).toLowerCase();
+        final categoryName = categoryNameOf(category).toLowerCase();
         final amountStr = transaction.amount.toString();
 
         textMatch = note.contains(searchLower) ||
@@ -142,16 +172,47 @@ class _SearchPageState extends ConsumerState<SearchPage> {
       return textMatch && categoryMatch && amountMatch && dateMatch;
     }).toList();
 
+    double totalExpense = 0.0;
+    double totalIncome = 0.0;
+    for (final e in results) {
+      final v = (e.t.nativeAmount ?? e.t.amount).abs();
+      if (e.t.type == 'expense') {
+        totalExpense += v;
+      } else if (e.t.type == 'income') {
+        totalIncome += v;
+      }
+    }
+    return (results: results, expense: totalExpense, income: totalIncome);
+  }
+
+  /// 单次 setState 应用搜索结果(PERF-P0-07:原实现两次 setState + 随后
+  /// 再跑两遍 where+fold 汇总)。
+  void _applySearchResult(
+      ({List<({Transaction t, Category? category, Account? account, Account? toAccount})> results,
+              double expense, double income})
+          r) {
     setState(() {
-      _searchResults = results;
-      _totalExpense = results
-          .where((e) => e.t.type == 'expense')
-          .fold(0.0, (sum, e) => sum + (e.t.nativeAmount ?? e.t.amount).abs());
-      _totalIncome = results
-          .where((e) => e.t.type == 'income')
-          .fold(0.0, (sum, e) => sum + (e.t.nativeAmount ?? e.t.amount).abs());
+      _searchResults = r.results;
+      _totalExpense = r.expense;
+      _totalIncome = r.income;
       _isSearching = false;
     });
+  }
+
+  /// 执行搜索(输入停顿 / 筛选变化后触发)
+  void _performSearch() {
+    // 如果没有任何搜索条件，清空结果
+    if (!_hasActiveCriteria) {
+      setState(() {
+        _searchResults = [];
+        _totalExpense = 0.0;
+        _totalIncome = 0.0;
+        _isSearching = false;
+      });
+      return;
+    }
+
+    _applySearchResult(_computeResults());
   }
 
   /// 从数据库重新加载并执行搜索
@@ -674,8 +735,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
 
   @override
   Widget build(BuildContext context) {
-    final repo = ref.watch(repositoryProvider);
-    final ledgerId = ref.watch(currentLedgerIdProvider);
+    // PERF-P0-07:数据流在 initState 订阅,build 不再 watch repository。
     final hide = ref.watch(hideAmountsProvider);
     final l10n = AppLocalizations.of(context);
 
@@ -846,29 +906,10 @@ class _SearchPageState extends ConsumerState<SearchPage> {
             ),
           // 搜索结果
           Expanded(
-            child: StreamBuilder<List<({Transaction t, Category? category, Account? account, Account? toAccount})>>(
-              stream: repo.transactionsWithCategoryAll(ledgerId: ledgerId),
-              builder: (context, snapshot) {
-                if (snapshot.hasData) {
-                  _allTransactions = snapshot.data!;
-                  if ((_searchText.isNotEmpty ||
-                          _minAmount != null ||
-                          _maxAmount != null ||
-                          _startDate != null ||
-                          _endDate != null ||
-                          _selectedCategory != null) &&
-                      _searchResults.isEmpty &&
-                      !_isSearching &&
-                      !_hasScheduledSearch) {
-                    _hasScheduledSearch = true;
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (mounted) {
-                        _performSearch();
-                      }
-                    });
-                  }
-                }
-
+            child: Builder(
+              builder: (context) {
+                // PERF-P0-07:数据源已在 initState 订阅,build 只读状态 ——
+                // 不再每次 build 新建 stream / 在 build 期写 _allTransactions。
                 if (_isSearching) {
                   return const Center(child: CircularProgressIndicator());
                 }

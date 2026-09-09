@@ -270,12 +270,22 @@ class LookupCache {
       final s = t.syncId;
       if (s != null && s.isNotEmpty) _tag[s] = t.id;
     }
-    // tx 全表加载:只保留 id + syncId + createdByUserId(每行 ~100B,10k 条 ~1MB)
-    final txs = await db.select(db.transactions).get();
-    for (final t in txs) {
-      final s = t.syncId;
+    // PERF-P1-13/零风险快修:selectOnly 只取 3 列(id/syncId/createdByUserId),
+    // 替代全 22 列物化 —— 注释里的「每行 ~100B」估算此前并不成立。
+    final txRows = await (db.selectOnly(db.transactions)
+          ..addColumns([
+            db.transactions.id,
+            db.transactions.syncId,
+            db.transactions.createdByUserId,
+          ]))
+        .get();
+    for (final row in txRows) {
+      final s = row.read(db.transactions.syncId);
       if (s != null && s.isNotEmpty) {
-        _tx[s] = _TxCacheEntry(id: t.id, createdByUserId: t.createdByUserId);
+        _tx[s] = _TxCacheEntry(
+          id: row.read(db.transactions.id)!,
+          createdByUserId: row.read(db.transactions.createdByUserId),
+        );
       }
     }
     logger.info('LookupCache',

@@ -386,7 +386,8 @@ class AutoBillingService {
     String? eventKey,
   }) async {
     final totalStartTime = DateTime.now().millisecondsSinceEpoch;
-    print('📸 [AutoBilling] 开始处理截图: $imagePath');
+    // 隐私:控制台日志只留文件名,完整路径不打印(结构化日志走 pathHash)。
+    print('📸 [AutoBilling] 开始处理截图: ${imagePath.split('/').last}');
     logger.info('AutoBilling', '开始处理截图',
         'pathHash=${autoBookHash(imagePath, length: 12)}');
 

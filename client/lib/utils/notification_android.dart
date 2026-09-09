@@ -20,8 +20,10 @@ class AndroidNotificationUtil implements util.NotificationUtil {
 
     await _plugin.initialize(initSettings);
 
-    // 初始化后立即请求权限
-    await requestPermissions();
+    // 权限请求不再混在 initialize() 里(PERF-P0-02):requestNotificationsPermission
+    // 在 Android 13+ 未授权时会弹系统对话框并 await 到用户点完,放在 runApp 之前
+    // 会把首装首屏卡在「原生白底 + 系统弹窗」。权限改由启动首帧后延迟请求
+    // (main.dart),或用户开启提醒时经 requestPermissions() 显式触发。
 
     _initialized = true;
 

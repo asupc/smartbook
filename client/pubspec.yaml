@@ -14,6 +14,8 @@ dependencies:
   flutter_riverpod: ^2.5.1
   collection: ^1.18.0
   drift: ^2.20.2
+  # 直接依赖(clearDatabaseLockFiles 的 WAL checkpoint 用);drift 本身也传递依赖。
+  sqlite3: ^2.9.0
   sqlite3_flutter_libs: ^0.5.24
   path_provider: ^2.1.4
   path: ^1.9.0

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' show Random;
 
 import 'package:crypto/crypto.dart';
 import 'package:device_info_plus/device_info_plus.dart';
@@ -1356,8 +1357,14 @@ class SmartBookCloudAuthService implements CloudAuthService {
     try {
       await _refreshSession();
       return true;
-    } catch (_) {
+    } on CloudAuthException {
+      // 401 / refresh token 无效:session 真失效,清除并走静默恢复(旧语义)。
       await _clearSession();
+      return false;
+    } catch (_) {
+      // PERF-P0-05:网络类失败(离线 / DNS / 超时)**不清 session**。此前任何
+      // 异常都 _clearSession(),飞行模式下首轮 refresh 失败就把用户登出,恢复
+      // 联网后只能靠 silent recovery 重新登录。保留 session,联网后可直接续期。
       return false;
     }
   }
@@ -1745,6 +1752,17 @@ class SmartBookCloudAuthService implements CloudAuthService {
         session.accessTokenExpiresAt.subtract(const Duration(seconds: 30)));
   }
 
+  /// PERF-P0-05:供 realtime 重连路径判断 —— 只在 access token 已过期/将过期
+  /// (30s 提前量)或无 session 时才需要 refresh。server 是 rotating refresh
+  /// token,每次 refresh 都轮换并 revoke 旧 token,无谓的 refresh 有真实副作用。
+  bool get isAccessTokenExpired {
+    final session = _session;
+    if (session == null) {
+      return true;
+    }
+    return _isAccessTokenExpired(session);
+  }
+
   Future<http.Response> _request({
     required String method,
     required String path,
@@ -1768,8 +1786,8 @@ class SmartBookCloudAuthService implements CloudAuthService {
       request.body = jsonEncode(body);
     }
 
-    final streamed = await _httpClient.send(request);
-    return http.Response.fromStream(streamed);
+    // PERF-P0-06:统一 deadline,覆盖 send + 读 body 两个阶段。
+    return sendWithDeadline(_httpClient, request);
   }
 }
 
@@ -2228,6 +2246,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
         'device_id': deviceId,
         'changes': changes,
       },
+      // PERF-P0-06:push 体积大/弱网慢,给 60s 预算(pull/list 走默认 30s)。
+      deadline: kCloudHttpUploadDeadline,
     );
     final bodyPreview = response.body.length > 200
         ? response.body.substring(0, 200)
@@ -3397,6 +3417,7 @@ class SmartBookCloudStorageService implements CloudStorageService {
     Map<String, String>? query,
     Map<String, dynamic>? body,
     Map<String, String>? headers,
+    Duration? deadline,
   }) async {
     var token = await auth.requireAccessToken();
     var response = await _request(
@@ -3406,6 +3427,7 @@ class SmartBookCloudStorageService implements CloudStorageService {
       body: body,
       headers: headers,
       token: token,
+      deadline: deadline,
     );
 
     if (response.statusCode == 401) {
@@ -3422,6 +3444,7 @@ class SmartBookCloudStorageService implements CloudStorageService {
         body: body,
         headers: headers,
         token: token,
+        deadline: deadline,
       );
     }
 
@@ -3435,6 +3458,7 @@ class SmartBookCloudStorageService implements CloudStorageService {
     Map<String, dynamic>? body,
     Map<String, String>? headers,
     required String token,
+    Duration? deadline,
   }) async {
     final uri = Uri.parse('$baseUrl$apiPrefix$path').replace(
       queryParameters: query == null || query.isEmpty ? null : query,
@@ -3448,8 +3472,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     if (body != null) {
       request.body = jsonEncode(body);
     }
-    final streamed = await _httpClient.send(request);
-    return http.Response.fromStream(streamed);
+    // PERF-P0-06:统一 deadline,覆盖 send + 读 body 两个阶段。
+    return sendWithDeadline(_httpClient, request, deadline: deadline);
   }
 
   Future<http.Response> _multipartRequest({
@@ -3473,8 +3497,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     if (mimeType != null && mimeType.trim().isNotEmpty) {
       request.fields['mime_type'] = mimeType.trim();
     }
-    final streamed = await _httpClient.send(request);
-    return http.Response.fromStream(streamed);
+    return sendWithDeadline(_httpClient, request,
+        deadline: kCloudHttpUploadDeadline);
   }
 
   /// 分类图标上传的 multipart 请求。跟 [_multipartRequest] 的差别:
@@ -3499,8 +3523,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     if (mimeType != null && mimeType.trim().isNotEmpty) {
       request.fields['mime_type'] = mimeType.trim();
     }
-    final streamed = await _httpClient.send(request);
-    return http.Response.fromStream(streamed);
+    return sendWithDeadline(_httpClient, request,
+        deadline: kCloudHttpUploadDeadline);
   }
 
   Future<http.Response> _profileAvatarMultipartRequest({
@@ -3522,8 +3546,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     if (mimeType != null && mimeType.trim().isNotEmpty) {
       request.fields['mime_type'] = mimeType.trim();
     }
-    final streamed = await _httpClient.send(request);
-    return http.Response.fromStream(streamed);
+    return sendWithDeadline(_httpClient, request,
+        deadline: kCloudHttpUploadDeadline);
   }
 }
 
@@ -4376,6 +4400,10 @@ class SmartBookCloudRealtimeClient {
   bool _running = false;
   bool _connecting = false;
 
+  /// PERF-P0-05:连续失败次数,用于指数退避。收到服务端任何消息归零。
+  int _reconnectAttempt = 0;
+  static const int _kReconnectMaxDelaySeconds = 120;
+
   Stream<SmartBookCloudRealtimeEvent> get events => _events.stream;
 
   Future<void> start() async {
@@ -4457,6 +4485,9 @@ class SmartBookCloudRealtimeClient {
   }
 
   void _onMessage(dynamic message) {
+    // PERF-P0-05:收到服务端任何消息(含 pong)说明链路真正可用,重置退避。
+    _reconnectAttempt = 0;
+
     if (message is! String || message.trim().isEmpty || message == 'pong') {
       return;
     }
@@ -4494,14 +4525,48 @@ class SmartBookCloudRealtimeClient {
     _channel = null;
 
     _reconnectTimer?.cancel();
-    _reconnectTimer = Timer(const Duration(seconds: 3), () async {
+    // PERF-P0-05:指数退避 + 上限 + ±20% jitter,替代固定 3s —— 离线/服务端
+    // 不可达时此前每 3s 空转一轮(本地失败循环 + token 过期时反复 refresh)。
+    // 收到服务端消息时在 _onMessage 归零;上限 120s 意味着「服务端刚恢复」
+    // 场景下最多延迟约 2 分钟重连。
+    final attempt = _reconnectAttempt;
+    _reconnectAttempt += 1;
+    final exp = 3 * (1 << attempt.clamp(0, 6).toInt()); // 3,6,12,24,48,96,192
+    var delaySeconds =
+        exp > _kReconnectMaxDelaySeconds ? _kReconnectMaxDelaySeconds : exp;
+    final jitterFactor = 0.8 + Random().nextDouble() * 0.4; // 0.8 ~ 1.2
+    final delay = Duration(
+        milliseconds: (delaySeconds * 1000 * jitterFactor).round());
+    _reconnectTimer = Timer(delay, () async {
       if (!_running) {
         return;
       }
-      await auth.tryRefreshSession();
+      // 只在 access token 已过期/将过期时 refresh:server 是 rotating refresh
+      // token,每次 refresh 都轮换并 revoke 旧 token,无谓的 refresh 有真实
+      // 副作用(且离线时会触发清 session)。
+      if (auth.isAccessTokenExpired) {
+        await auth.tryRefreshSession();
+      }
       await _connect();
     });
   }
+}
+
+/// PERF-P0-06:同步 HTTP 统一 deadline。此前 send→fromStream 全程无超时,
+/// DNS 挂起 / 服务端半开连接会把 pull/list/push 长时间挂在 TCP 上。send 与
+/// fromStream 各自包 timeout,读 body 阶段一并覆盖(弱网大响应总耗时上限
+/// 约为 2×deadline)。附件/头像上传走 [kCloudHttpUploadDeadline]。
+const Duration kCloudHttpDeadline = Duration(seconds: 30);
+const Duration kCloudHttpUploadDeadline = Duration(seconds: 60);
+
+Future<http.Response> sendWithDeadline(
+  http.Client client,
+  http.BaseRequest request, {
+  Duration? deadline,
+}) async {
+  final d = deadline ?? kCloudHttpDeadline;
+  final streamed = await client.send(request).timeout(d);
+  return http.Response.fromStream(streamed).timeout(d);
 }
 
 String _normalizeApiPrefix(String raw) {
