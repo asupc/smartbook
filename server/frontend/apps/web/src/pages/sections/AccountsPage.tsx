@@ -328,7 +328,7 @@ export function AccountsPage() {
    * 账本」— 与记账/新建交易默认账本一致。
    */
   const handleAdjustBalance = useCallback(
-    async (acc: AdjustableAccount, targetBalance: number): Promise<boolean> => {
+    async (acc: AdjustableAccount, targetBalance: number, note?: string): Promise<boolean> => {
       const ledgerId = (activeLedgerId || '').trim()
       if (!ledgerId || !ledgers.some((l) => l.ledger_id === ledgerId &&
           (l.role === 'owner' || l.role === 'editor'))) {
@@ -371,7 +371,7 @@ export function AccountsPage() {
             tx_type: isIncome ? 'income' : 'expense',
             amount,
             happened_at: new Date().toISOString(),
-            note: t('detail.account.adjustBalanceNote'),
+            note: note ?? t('detail.account.adjustBalanceNote'),
             account_name: acc.name,
             account_id: acc.id,
             // 对齐 mobile:调整账不计入统计/预算,只影响余额(审计留痕);

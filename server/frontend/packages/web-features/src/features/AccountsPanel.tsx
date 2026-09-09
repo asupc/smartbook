@@ -22,7 +22,7 @@ import {
 import type { ReadAccount } from '@smartbook/api-client'
 
 import { Amount } from '../components/Amount'
-import { ADJUSTABLE_ACCOUNT_TYPES, type AdjustableAccount } from '../components/adjustableAccount'
+import { ADJUSTABLE_ACCOUNT_TYPES, creditAvailableToBalance, type AdjustableAccount } from '../components/adjustableAccount'
 import { CurrencySelectorTrigger } from '../components/CurrencySelector'
 import type { AccountForm } from '../forms'
 import { accountDefaults } from '../forms'
@@ -1045,8 +1045,13 @@ type AccountsPanelProps = {
    *  不传则该按钮不渲染(调用方尚未接线时零影响)。 */
   onRestore?: (row: ReadAccount) => void
   /** 「调整余额」(编辑弹窗内,日常账户):输入调整后的余额,调整交易由
-   *  调用方负责写入。返回 true = 成功(关闭对话框),false = 失败(保持打开)。 */
-  onAdjustBalance?: (account: AdjustableAccount, targetBalance: number) => Promise<boolean>
+   *  调用方负责写入。返回 true = 成功(关闭对话框),false = 失败(保持打开)。
+   *  note 可选:信用卡「更新可用额度」传入专属备注,缺省用「余额调整」。 */
+  onAdjustBalance?: (
+    account: AdjustableAccount,
+    targetBalance: number,
+    note?: string
+  ) => Promise<boolean>
   /** 当前账本不可写时禁用调整按钮 */
   adjustBalanceDisabled?: boolean
   /** 见 {@link AccountListRenderArgs}:上层接管账户列表渲染(方案 A 表格)。 */
@@ -1075,6 +1080,10 @@ export function AccountsPanel({
   const [open, setOpen] = useState(false)
   const [adjustSubmitting, setAdjustSubmitting] = useState(false)
   const [adjustValue, setAdjustValue] = useState('')
+  // 信用卡「更新可用额度」:输入银行 App 显示的可用额度,欠款 = 额度 − 可用,
+  // 经 onAdjustBalance 记一笔调整交易把余额对齐到 −欠款(复用审计留痕通道)。
+  const [creditSubmitting, setCreditSubmitting] = useState(false)
+  const [ccAvailableValue, setCcAvailableValue] = useState('')
 
   // 编辑弹窗内的「调整余额」:balance 优先 server 统计,缺失兜底 initial_balance。
   const editingAccount = useMemo<AdjustableAccount | undefined>(() => {
@@ -1099,6 +1108,77 @@ export function AccountsPanel({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editingAccount?.id, currentBalance])
+
+  // ── 信用卡「更新可用额度」── 仅编辑已有账户时提供(新建走初始余额)。
+  // 额度优先取表单当前值(弹窗内可同步改),缺失/非法回退已存值。
+  const editingIsCreditCard =
+    !!form.editingId && !!editingAccount && form.account_type === 'credit_card'
+  const ccLimit =
+    editingIsCreditCard && editingAccount
+      ? (() => {
+          const fromForm = Number(form.credit_limit)
+          if (Number.isFinite(fromForm) && fromForm > 0) return fromForm
+          const saved = editingAccount.credit_limit
+          return typeof saved === 'number' && saved > 0 ? saved : null
+        })()
+      : null
+  // 欠款口径与账户卡一致:余额为负的部分是欠款,可用 = 额度 − 欠款(截断非负)。
+  const ccCurrentOwed = Math.max(0, -currentBalance)
+  const ccCurrentAvailable = ccLimit !== null ? Math.max(0, ccLimit - ccCurrentOwed) : null
+
+  // 预填只在打开弹窗/切换账户时做一次 —— 若跟随表单额度实时重算会清掉用户
+  // 正在输入的可用额度。
+  useEffect(() => {
+    if (open && editingIsCreditCard) {
+      const fromForm = Number(form.credit_limit)
+      const limit =
+        Number.isFinite(fromForm) && fromForm > 0
+          ? fromForm
+          : typeof editingAccount?.credit_limit === 'number' && editingAccount.credit_limit > 0
+            ? editingAccount.credit_limit
+            : null
+      setCcAvailableValue(
+        limit !== null ? Math.max(0, limit - Math.max(0, -currentBalance)).toFixed(2) : ''
+      )
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, editingAccount?.id])
+
+  // 实时预览:可用额度合法时换算目标余额(欠款为负,溢缴为正),供按钮上方展示。
+  const ccParsedAvailable = Number(ccAvailableValue.trim())
+  const ccPreviewTarget =
+    editingIsCreditCard && ccLimit !== null && Number.isFinite(ccParsedAvailable)
+      ? creditAvailableToBalance(ccLimit, ccParsedAvailable)
+      : null
+
+  const handleSubmitCreditAvailable = async () => {
+    if (!editingAccount || !onAdjustBalance || ccLimit === null) return
+    const parsed = Number(ccAvailableValue.trim())
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      toast.error(t('accounts.error.availableCreditInvalid'), t('notice.error'))
+      return
+    }
+    const target = creditAvailableToBalance(ccLimit, parsed)
+    if (target === null) {
+      toast.error(t('accounts.error.availableCreditInvalid'), t('notice.error'))
+      return
+    }
+    if (Math.abs(target - currentBalance) < 0.005) {
+      toast.success(t('detail.account.adjustBalanceSame'))
+      return
+    }
+    setCreditSubmitting(true)
+    try {
+      const ok = await onAdjustBalance(
+        editingAccount,
+        target,
+        t('detail.account.adjustAvailableNote')
+      )
+      if (ok) setCcAvailableValue(parsed.toFixed(2))
+    } finally {
+      setCreditSubmitting(false)
+    }
+  }
 
   const handleSubmitAdjust = async () => {
     if (!editingAccount || !onAdjustBalance) return
@@ -1340,6 +1420,66 @@ export function AccountsPanel({
                     />
                   </div>
                 </div>
+                {/* 更新可用额度(仅编辑已有账户):银行 App 直接给「可用额度」,
+                    欠款 = 额度 − 可用,确认后记一笔不计统计的调整交易把余额对齐。
+                    无信用额度时无从换算,只出提示引导先填额度。 */}
+                {form.editingId ? (
+                  ccLimit !== null ? (
+                    <div className="space-y-2 rounded-lg border border-border/60 bg-background/80 p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                        <span>
+                          {t('accounts.bankcard.currentOwed')}{' '}
+                          <span className="font-medium text-foreground">
+                            {fmt(ccCurrentOwed)}
+                          </span>
+                        </span>
+                        <span>
+                          {t('accounts.bankcard.creditAvailable')}{' '}
+                          <span className="font-medium text-foreground">
+                            {fmt(ccCurrentAvailable ?? 0)}
+                          </span>
+                        </span>
+                      </div>
+                      <Input
+                        inputMode="decimal"
+                        disabled={creditSubmitting || adjustBalanceDisabled}
+                        value={ccAvailableValue}
+                        onChange={(e) => setCcAvailableValue(e.target.value)}
+                        placeholder={t('accounts.field.availableCredit')}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        {t('accounts.ccAvailable.hint')}
+                      </p>
+                      {ccPreviewTarget !== null ? (
+                        <p className="text-xs text-muted-foreground">
+                          {t('accounts.ccAvailable.debtPreview')}{' '}
+                          <Amount
+                            value={ccPreviewTarget}
+                            currency={editingAccount?.currency || form.currency || 'CNY'}
+                            showCurrency
+                            size="xs"
+                            bold
+                            className={ccPreviewTarget < 0 ? 'text-destructive' : undefined}
+                          />
+                        </p>
+                      ) : null}
+                      <Button
+                        className="w-full"
+                        disabled={creditSubmitting || adjustBalanceDisabled}
+                        onClick={handleSubmitCreditAvailable}
+                        title={adjustBalanceDisabled ? t('shell.selectLedgerFirst') : undefined}
+                      >
+                        {creditSubmitting
+                          ? t('common.loading')
+                          : t('detail.account.adjustBalanceUpdate')}
+                      </Button>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      {t('accounts.ccAvailable.limitRequired')}
+                    </p>
+                  )
+                ) : null}
               </div>
             ) : null}
 
