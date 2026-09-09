@@ -23,11 +23,16 @@ class SemanticDedupMatch {
 
 /// 自动入口的交易级去重匹配器。
 ///
-/// 这是“证据是否指向同一交易”的业务规则，不负责原始事件去重。弱匹配
-/// 只返回 possible，调用方必须把它放入待确认，不能静默丢弃。
+/// 「同一笔消费」的硬性定义:金额完全一致(无容差)且消费时间相差
+/// 1 分钟以内——金额不同不可能是同一笔,时间差超过 1 分钟视为两笔独立消费。
+/// 商户/备注与币种只决定分数高低(能否达到强判自动合并),不放宽硬闸门。
+/// 弱匹配只返回 possible,调用方必须把它放入待确认,不能静默丢弃。
 class SemanticDedupMatcher {
   static const strongThreshold = 0.92;
-  static const possibleThreshold = 0.72;
+
+  /// 疑似重复线:低于 strong 的相似对(如同金额同分钟但商户对不上)也要
+  /// 进待确认让用户裁决,因此该线必须低于硬闸门通过后的最低分 0.65。
+  static const possibleThreshold = 0.60;
 
   const SemanticDedupMatcher();
 
@@ -59,7 +64,8 @@ class SemanticDedupMatcher {
     return 'semantic:v1:${autoBookHash('$type|${amount.abs().toStringAsFixed(2)}|$currency|$merchant|$minute')}';
   }
 
-  /// 从本账本近 90 天交易中找最高匹配项。
+  /// 在本账本中找与 bill 同金额(完全相等)、时间相差 1 分钟以内的最高匹配项。
+  /// 窗口收紧到硬闸门口径后,候选集就是「可能通过 _score 硬闸门」的那一批。
   Future<SemanticDedupMatch?> findBest({
     required BaseRepository repository,
     required int ledgerId,
@@ -98,18 +104,17 @@ class SemanticDedupMatcher {
         _normalize(bill.merchant) ?? _normalize(bill.note);
 
     // M3-2:判重只用得到纯 Transaction 行,过滤条件(账本 / 类型 / 时间窗 /
-    // 金额区间)全部下推到 SQL。金额区间与 _score 的容差同源、时间窗口口径不变,
-    // 因此候选集就是「可能打出非 null 分数」的那一批,匹配结果与全量扫描等价。
+    // 金额区间)全部下推到 SQL。金额与时间窗和 _score 的硬闸门同源
+    // (金额完全相等、时间 ±1 分钟),因此候选集就是「可能打出非 null 分数」
+    // 的那批,匹配结果与全量扫描等价。
     final billAmount = amount.abs();
-    final amountTolerance = (billAmount * 0.01).clamp(0.01, 10.0).toDouble();
     final rows = await repository.getDedupCandidates(
       ledgerId: ledgerId,
       type: _typeValue(bill.type),
-      start: time.subtract(const Duration(days: 90)),
-      end: time.add(const Duration(days: 2)),
-      minAmount:
-          (billAmount - amountTolerance).clamp(0.0, billAmount).toDouble(),
-      maxAmount: billAmount + amountTolerance,
+      start: time.subtract(const Duration(minutes: 1)),
+      end: time.add(const Duration(minutes: 1)),
+      minAmount: billAmount,
+      maxAmount: billAmount,
     );
     SemanticDedupMatch? best;
     for (final tx in rows) {
@@ -129,24 +134,19 @@ class SemanticDedupMatcher {
     return best;
   }
 
+  /// 相似 = 同一笔消费。两条硬闸门(不过即返回 null):
+  /// 1. 金额完全一致(无容差)——金额不同绝不可能是重复消费;
+  /// 2. 消费时间相差 1 分钟以内——同一笔支付的多通道重复上报几乎同时发生。
+  /// 商户/备注与币种只在闸门之内决定分数高低(能否强判自动合并)。
   SemanticDedupMatch? _score(BillInfo bill, Transaction tx) {
     final expectedType = _typeValue(bill.type);
     if (expectedType != tx.type) return null;
 
     final billAmount = bill.amount!.abs();
-    final amountDiff = (billAmount - tx.amount.abs()).abs();
-    final amountTolerance = (billAmount * 0.01).clamp(0.01, 10.0).toDouble();
-    if (amountDiff > amountTolerance) return null;
+    if (billAmount != tx.amount.abs()) return null;
 
-    var score = 0.0;
-    final reasons = <String>[];
-    if (amountDiff <= 0.01) {
-      score += 0.40;
-      reasons.add('amount_exact');
-    } else {
-      score += 0.22;
-      reasons.add('amount_close');
-    }
+    var score = 0.40;
+    final reasons = <String>['amount_exact'];
 
     final currency = bill.currency?.trim().toUpperCase();
     final txCurrency = tx.currencyCode?.trim().toUpperCase();
@@ -157,16 +157,9 @@ class SemanticDedupMatcher {
     }
 
     final diff = bill.time!.difference(tx.happenedAt).abs();
-    if (diff <= const Duration(minutes: 5)) {
-      score += 0.25;
-      reasons.add('time_5m');
-    } else if (diff <= const Duration(hours: 24)) {
-      score += 0.14;
-      reasons.add('time_24h');
-    } else if (diff <= const Duration(days: 3)) {
-      score += 0.05;
-      reasons.add('time_3d');
-    }
+    if (diff > const Duration(minutes: 1)) return null;
+    score += 0.25;
+    reasons.add('time_1m');
 
     final billMerchant = _normalize(bill.merchant) ?? _normalize(bill.note);
     final txNote = _normalize(tx.note);
@@ -180,8 +173,9 @@ class SemanticDedupMatcher {
     }
 
     if (!hasMerchantSignal) {
-      // 没有商户/备注时，金额+时间最多只能作为候选，绝不强判重复。
-      score = score.clamp(0.0, 0.68).toDouble();
+      // 没有商户/备注时:金额+时间两条硬闸门已过,按疑似重复(possible)
+      // 进待确认由用户裁决,但固定在 strong 阈值之下,绝不静默合并。
+      score = 0.75;
       reasons.add('merchant_missing');
     }
 
