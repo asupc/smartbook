@@ -1,5 +1,5 @@
 import { useEffect, useState, type CSSProperties } from 'react'
-import { Button, Modal, Select } from 'antd'
+import { Button, Drawer, Select } from 'antd'
 
 import { useT } from '@smartbook/ui'
 import type { ImportFieldMapping } from '@smartbook/api-client'
@@ -72,10 +72,10 @@ export function FieldMappingDialog({
   const reset = () => setDraft({ ...suggestedMapping })
 
   return (
-    <Modal
+    <Drawer
       open={open}
       width={512}
-      onCancel={() => !saving && onClose()}
+      onClose={() => !saving && onClose()}
       title={<span className="text-base">{t('import.mapping.title')}</span>}
       // footer 布局与原顺序一致(reset 在最左,cancel/apply 靠右),
       // antd 默认 footer 无法表达中分,用自定义 ReactNode。
@@ -125,7 +125,7 @@ export function FieldMappingDialog({
           ))}
         </div>
       </div>
-    </Modal>
+    </Drawer>
   )
 }
 

@@ -219,7 +219,7 @@ export function BackupRunsPanel({
         open={detailRun !== null}
         onOpenChange={(v) => !v && setDetailRun(null)}
       >
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="w-[640px]">
           <DialogHeader>
             <DialogTitle>
               {t('backup.runs.detail.title')} #{detailRun?.id}

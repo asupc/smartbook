@@ -1,5 +1,5 @@
 import { useCallback, useState, type CSSProperties } from 'react'
-import { Button, Input, Modal } from 'antd'
+import { Button, Input, Drawer } from 'antd'
 
 import {
   acceptLedgerInvite,
@@ -100,9 +100,9 @@ export function JoinSharedLedgerDialog({ open, onOpenChange }: Props) {
   ])
 
   return (
-    <Modal
+    <Drawer
       open={open}
-      onCancel={() => {
+      onClose={() => {
         reset()
         onOpenChange(false)
       }}
@@ -179,6 +179,6 @@ export function JoinSharedLedgerDialog({ open, onOpenChange }: Props) {
           </div>
         ) : null}
       </div>
-    </Modal>
+    </Drawer>
   )
 }

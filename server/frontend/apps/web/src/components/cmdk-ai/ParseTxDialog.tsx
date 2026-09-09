@@ -15,7 +15,7 @@ import {
   parseTxImage,
   parseTxText,
 } from '@smartbook/api-client'
-import { Button, Input, Modal } from 'antd'
+import { Button, Input, Drawer } from 'antd'
 import {
   useLocale,
   useT,
@@ -170,9 +170,9 @@ export function ParseTxDialog({
   const titleText = mode === 'image' ? t('cmdk.parseTx.dialogTitleImage') : t('cmdk.parseTx.dialogTitleText')
 
   return (
-    <Modal
+    <Drawer
       open={open}
-      onCancel={() => onOpenChange(false)}
+      onClose={() => onOpenChange(false)}
       width={672}
       footer={null}
       title={
@@ -186,7 +186,7 @@ export function ParseTxDialog({
           )}
         </span>
       }
-      styles={{ body: { padding: 0, maxHeight: 'calc(85vh - 57px)', overflow: 'hidden' } }}
+      styles={{ body: { padding: 0, overflow: 'hidden' } }}
     >
       <div className="flex h-full flex-col">
         {/* 原始输入展示区 */}
@@ -276,7 +276,7 @@ export function ParseTxDialog({
           )}
         </div>
       </div>
-    </Modal>
+    </Drawer>
   )
 }
 

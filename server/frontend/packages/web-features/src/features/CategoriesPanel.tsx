@@ -147,7 +147,7 @@ function IconPickerDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) onClose() }}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="w-[640px]">
         <DialogHeader>
           <DialogTitle>{t('categories.iconPicker.title')}</DialogTitle>
         </DialogHeader>

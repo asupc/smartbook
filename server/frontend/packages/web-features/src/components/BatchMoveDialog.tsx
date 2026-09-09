@@ -64,7 +64,7 @@ export function BatchMoveDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) close() }}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="w-[640px]">
         <DialogHeader>
           <DialogTitle>{t('categories.batchMove.title', { count })}</DialogTitle>
         </DialogHeader>

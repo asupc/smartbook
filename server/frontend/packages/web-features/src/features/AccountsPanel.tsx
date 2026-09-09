@@ -1202,7 +1202,7 @@ export function AccountsPanel({
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[88vh] overflow-y-auto">
+        <DialogContent className="w-[520px]">
           <DialogHeader>
             <DialogTitle>{form.editingId ? t('accounts.button.update') : t('accounts.button.create')}</DialogTitle>
           </DialogHeader>

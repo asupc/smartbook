@@ -1,8 +1,14 @@
-import type { PropsWithChildren } from 'react'
+import { useEffect, type PropsWithChildren } from 'react'
 import { App as AntdApp, ConfigProvider, theme } from 'antd'
 import enUS from 'antd/locale/en_US'
 import zhCN from 'antd/locale/zh_CN'
 import zhTW from 'antd/locale/zh_TW'
+import dayjs from 'dayjs'
+// antd v5 DatePicker 的月份/星期面板文字通过 locale.lang.locale(如 'zh-cn')
+// 向 dayjs 取数据,dayjs 没注册对应 locale 时会静默回退英文(表现为
+// RangePicker 月份显示 Jan/Feb…)。这里必须显式注册。
+import 'dayjs/locale/zh-cn'
+import 'dayjs/locale/zh-tw'
 
 import { useLocale, usePrimaryColor, useTheme, type Locale } from '@smartbook/ui'
 
@@ -31,10 +37,17 @@ export function AntdProvider({ children }: PropsWithChildren) {
   const { locale } = useLocale()
 
   const isDark = resolved === 'dark'
+  const antdLocale = LOCALE_ANTD[locale]
+
+  // dayjs 全局 locale 跟 antd 同步 —— antd ConfigProvider 只管自己的组件,
+  // 业务代码里直接 new dayjs() / dayjs().format('MMM') 的场景吃这个兜底。
+  useEffect(() => {
+    dayjs.locale(antdLocale.locale || 'en')
+  }, [antdLocale])
 
   return (
     <ConfigProvider
-      locale={LOCALE_ANTD[locale]}
+      locale={antdLocale}
       theme={{
         algorithm: isDark ? theme.darkAlgorithm : theme.defaultAlgorithm,
         token: {

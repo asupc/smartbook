@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { BarChart3, Pencil, Trash2, TrendingDown, TrendingUp, Upload, UserPlus, Users } from 'lucide-react'
 
 import type { ReadLedger } from '@smartbook/api-client'
-import { Button, Card, Input, Modal } from 'antd'
+import { Button, Card, Drawer, Input } from 'antd'
 import { useT } from '@smartbook/ui'
 import {
   Amount,
@@ -437,15 +437,26 @@ export function LedgerEditDialog({
     }
   }
   return (
-    <Modal
+    <Drawer
       open={open}
-      onCancel={() => { if (!submitting) onClose() }}
+      onClose={() => { if (!submitting) onClose() }}
       width={448}
       title={mode === 'create' ? t('ledgers.button.create') : t('ledgers.button.update')}
-      okText={mode === 'create' ? t('ledgers.button.create') : t('ledgers.button.update')}
-      cancelText={t('dialog.cancel')}
-      confirmLoading={submitting}
-      onOk={() => void handleSubmit()}
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button disabled={submitting} onClick={onClose}>
+            {t('dialog.cancel')}
+          </Button>
+          <Button
+            disabled={submitting}
+            loading={submitting}
+            type="primary"
+            onClick={() => void handleSubmit()}
+          >
+            {mode === 'create' ? t('ledgers.button.create') : t('ledgers.button.update')}
+          </Button>
+        </div>
+      }
     >
       <div className="space-y-3">
         <div className="space-y-1">
@@ -497,6 +508,6 @@ export function LedgerEditDialog({
           </div>
         ) : null}
       </div>
-    </Modal>
+    </Drawer>
   )
 }

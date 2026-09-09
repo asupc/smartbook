@@ -56,6 +56,32 @@ const config: Config = {
       },
       boxShadow: {
         soft: '0 10px 30px -16px hsl(var(--shadow) / 0.55)'
+      },
+      keyframes: {
+        // DialogContent 抽屉化(@smartbook/ui dialog.tsx):右侧滑入/滑出 +
+        // 遮罩淡入淡出。cubic-bezier 与 antd Drawer 默认曲线一致。
+        'drawer-in': {
+          '0%': { transform: 'translateX(100%)' },
+          '100%': { transform: 'translateX(0)' }
+        },
+        'drawer-out': {
+          '0%': { transform: 'translateX(0)' },
+          '100%': { transform: 'translateX(100%)' }
+        },
+        'fade-in': {
+          '0%': { opacity: '0' },
+          '100%': { opacity: '1' }
+        },
+        'fade-out': {
+          '0%': { opacity: '1' },
+          '100%': { opacity: '0' }
+        }
+      },
+      animation: {
+        'drawer-in': 'drawer-in 260ms cubic-bezier(0.32, 0.72, 0, 1)',
+        'drawer-out': 'drawer-out 200ms cubic-bezier(0.32, 0.72, 0, 1) forwards',
+        'fade-in': 'fade-in 200ms ease-out',
+        'fade-out': 'fade-out 160ms ease-in forwards'
       }
     }
   },

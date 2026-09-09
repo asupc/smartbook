@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Button, Modal } from 'antd'
+import { Button, Drawer } from 'antd'
 import { Loader2 } from 'lucide-react'
 import {
   Bar,
@@ -156,10 +156,10 @@ export function SharedLedgerStatsDialog({
   const showFirstSpinner = loading && !data
 
   return (
-    <Modal
+    <Drawer
       open={open}
       width={768}
-      onCancel={() => onOpenChange(false)}
+      onClose={() => onOpenChange(false)}
       title={
         <span className="inline-flex items-center gap-2">
           <span>📊 {ledgerName} · {t('sharedLedger.statsTitle')}</span>
@@ -390,7 +390,7 @@ export function SharedLedgerStatsDialog({
           </div>
         )}
 
-    </Modal>
+    </Drawer>
   )
 }
 

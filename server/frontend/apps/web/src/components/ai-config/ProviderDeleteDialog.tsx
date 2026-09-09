@@ -1,4 +1,4 @@
-import { Modal } from 'antd'
+import { Button, Drawer } from 'antd'
 import { useT } from '@smartbook/ui'
 import { AlertTriangle } from 'lucide-react'
 
@@ -42,22 +42,26 @@ export function ProviderDeleteDialog({
     .join('、')
 
   return (
-    <Modal
+    <Drawer
       open={open}
       width={448}
-      onCancel={() => !saving && onClose()}
+      onClose={() => !saving && onClose()}
       title={
         <span className="flex items-center gap-2 text-base">
           <AlertTriangle className="h-4 w-4 text-destructive" />
           {t('ai.editor.providers.delete.title', { name: target.name })}
         </span>
       }
-      okText={t('common.delete')}
-      cancelText={t('common.cancel')}
-      okButtonProps={{ danger: true }}
-      cancelButtonProps={{ disabled: saving }}
-      confirmLoading={saving}
-      onOk={onConfirm}
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button disabled={saving} onClick={onClose}>
+            {t('common.cancel')}
+          </Button>
+          <Button danger loading={saving} type="primary" onClick={onConfirm}>
+            {t('common.delete')}
+          </Button>
+        </div>
+      }
     >
       <div className="text-sm">
         {boundCaps.length > 0 ? (
@@ -70,6 +74,6 @@ export function ProviderDeleteDialog({
           </p>
         )}
       </div>
-    </Modal>
+    </Drawer>
   )
 }

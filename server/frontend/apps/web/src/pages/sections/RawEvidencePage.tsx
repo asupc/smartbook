@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Alert, Button, Card, DatePicker, Descriptions, Drawer, Empty, Modal, Select, Space, Spin, Table, Typography } from 'antd'
+import { Alert, Button, Card, DatePicker, Descriptions, Drawer, Empty,  Select, Space, Spin, Table, Typography } from 'antd'
 import { ReloadOutlined } from '@ant-design/icons'
 import { cleanupRawEvidence, deleteRawEvidence, getRawEvidence, listRawEvidence, type RawEvidence } from '@smartbook/api-client'
 import { useT } from '@smartbook/ui'
@@ -167,9 +167,15 @@ function EvidenceViewer({ token }: { token: string }) {
         <Button danger disabled={busy} onClick={() => setConfirm({ id: detail.id })}>{t('evidence.delete')}</Button>
       </Space>}
     </Drawer>
-    <Modal title={t(confirm?.id ? 'evidence.deleteTitle' : 'evidence.cleanupTitle')} open={Boolean(confirm)}
-      onCancel={() => { if (!busy) setConfirm(null) }} onOk={remove} confirmLoading={busy} okButtonProps={{ danger: true }} okText={t('evidence.confirmDelete')} cancelText={t('evidence.cancel')}>
+    <Drawer title={t(confirm?.id ? 'evidence.deleteTitle' : 'evidence.cleanupTitle')} open={Boolean(confirm)} width={448}
+      onClose={() => { if (!busy) setConfirm(null) }}
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button disabled={busy} onClick={() => setConfirm(null)}>{t('evidence.cancel')}</Button>
+          <Button danger disabled={busy} loading={busy} type="primary" onClick={remove}>{t('evidence.confirmDelete')}</Button>
+        </div>
+      }>
       <Typography.Paragraph>{t(confirm?.id ? 'evidence.deleteNotice' : 'evidence.cleanupNotice', { source: sourceName(confirm?.source), before: stamp(confirm?.before ?? null) })}</Typography.Paragraph>
-    </Modal>
+    </Drawer>
   </Space>
 }

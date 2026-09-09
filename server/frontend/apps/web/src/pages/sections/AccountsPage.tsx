@@ -22,7 +22,7 @@ import {
   type WorkspaceTag,
   type WorkspaceTransaction,
 } from '@smartbook/api-client'
-import { Button, Card, Modal } from 'antd'
+import { Button, Card, Drawer } from 'antd'
 import { useT, useToast } from '@smartbook/ui'
 import {
   AccountsPanel,
@@ -641,13 +641,13 @@ export function AccountsPage() {
       {/* 分币种明细 dialog —— 折算汇总卡(多币种态)的「详情」入口,复用
           CurrencyAssetCard 按网格逐币种渲染(含缺失汇率币种,原样不折算)。
           needsBase / 单币种态不会打开此 dialog。 */}
-      <Modal
+      <Drawer
         open={detailOpen}
-        onCancel={() => setDetailOpen(false)}
+        onClose={() => setDetailOpen(false)}
         title={t('accounts.converted.detailTitle')}
         width={896}
         footer={null}
-        styles={{ body: { maxHeight: '88vh', overflowY: 'auto' } }}
+        styles={{ body: { overflowY: 'auto' } }}
       >
           {converted && !converted.needsBase ? (
             <div className="grid gap-3 sm:grid-cols-2">
@@ -656,7 +656,7 @@ export function AccountsPage() {
               ))}
             </div>
           ) : null}
-      </Modal>
+      </Drawer>
     </>
   )
 }

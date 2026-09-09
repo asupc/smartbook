@@ -64,7 +64,7 @@ export function CategoryPickerDialog({
   const t = useT()
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="w-[640px]">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>

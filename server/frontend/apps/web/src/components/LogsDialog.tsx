@@ -3,7 +3,7 @@ import { RefreshCcw } from 'lucide-react'
 
 import type { AdminLogEntry, AdminLogList } from '@smartbook/api-client'
 import { fetchAdminLogs } from '@smartbook/api-client'
-import { Button, Input, Modal, Select } from 'antd'
+import { Button, Input, Drawer, Select } from 'antd'
 import { useT } from '@smartbook/ui'
 
 interface Props {
@@ -162,9 +162,9 @@ export function LogsDialog({ token, open, onOpenChange }: Props) {
   const items: AdminLogEntry[] = data?.items || []
 
   return (
-    <Modal
+    <Drawer
       open={open}
-      onCancel={() => onOpenChange(false)}
+      onClose={() => onOpenChange(false)}
       title={
         <span className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 pr-6">
           <span>{t('logs.title')}</span>
@@ -276,6 +276,6 @@ export function LogsDialog({ token, open, onOpenChange }: Props) {
         <div className="flex items-center justify-between border-t border-border/60 bg-muted/20 px-3 py-2 text-[11px] text-muted-foreground sm:px-5">
           <span>{t('logs.footer.hint')}</span>
         </div>
-    </Modal>
+    </Drawer>
   )
 }

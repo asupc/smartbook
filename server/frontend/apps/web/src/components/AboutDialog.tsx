@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { ArrowUpRight, BookOpen, Cloud, Github, Heart, Smartphone } from 'lucide-react'
 
-import { Modal } from 'antd'
+import { Drawer } from 'antd'
 import { useT } from '@smartbook/ui'
 
 /**
@@ -53,13 +53,13 @@ export function AboutDialog({ open, onOpenChange }: Props) {
   )
 
   return (
-    <Modal
+    <Drawer
       open={open}
-      onCancel={() => onOpenChange(false)}
+      onClose={() => onOpenChange(false)}
       title={t('about.title')}
       width={672}
       footer={null}
-      styles={{ body: { maxHeight: '80vh', overflowY: 'auto' } }}
+      styles={{ body: { overflowY: 'auto' } }}
     >
       {/* 致敬原作者 */}
       <div className="flex flex-col items-center gap-2.5 rounded-xl border border-border/60 bg-muted/30 px-6 py-5 text-center">
@@ -110,6 +110,6 @@ export function AboutDialog({ open, onOpenChange }: Props) {
           ))}
         </div>
       </div>
-    </Modal>
+    </Drawer>
   )
 }

@@ -11,7 +11,7 @@ import {
   type PatListItem,
   type PatScope,
 } from '@smartbook/api-client'
-import { Button, Card, Input, Modal, Select, Tag } from 'antd'
+import { Button, Card, Drawer, Input, Select, Tag } from 'antd'
 import {
   useT,
   useToast,
@@ -219,16 +219,25 @@ export function SettingsPatsPage() {
 
       <CallHistoryCard />
 
-      <Modal
+      <Drawer
         open={createOpen}
-        onCancel={() => setCreateOpen(false)}
+        onClose={() => setCreateOpen(false)}
         title={t('settings.pats.create.title')}
-        okText={creating ? t('common.loading') : t('settings.pats.actions.create')}
-        cancelText={t('common.cancel')}
-        confirmLoading={creating}
-        okButtonProps={{ disabled: !newName.trim() }}
-        cancelButtonProps={{ disabled: creating }}
-        onOk={() => void handleCreate()}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button disabled={creating} onClick={() => setCreateOpen(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              disabled={!newName.trim() || creating}
+              loading={creating}
+              type="primary"
+              onClick={() => void handleCreate()}
+            >
+              {t('settings.pats.actions.create')}
+            </Button>
+          </div>
+        }
       >
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">{t('settings.pats.create.description')}</p>
@@ -278,11 +287,11 @@ export function SettingsPatsPage() {
             />
           </div>
         </div>
-      </Modal>
+      </Drawer>
 
-      <Modal
+      <Drawer
         open={!!createdToken}
-        onCancel={() => setCreatedToken(null)}
+        onClose={() => setCreatedToken(null)}
         title={t('settings.pats.created.title')}
         footer={
           <Button type="primary" onClick={() => setCreatedToken(null)}>
@@ -304,18 +313,27 @@ export function SettingsPatsPage() {
             </p>
           </div>
         ) : null}
-      </Modal>
+      </Drawer>
 
-      <Modal
+      <Drawer
         open={!!editing}
-        onCancel={() => setEditing(null)}
+        onClose={() => setEditing(null)}
         title={t('settings.pats.edit.title')}
-        okText={savingEdit ? t('common.loading') : t('common.save')}
-        cancelText={t('common.cancel')}
-        confirmLoading={savingEdit}
-        okButtonProps={{ disabled: !editName.trim() }}
-        cancelButtonProps={{ disabled: savingEdit }}
-        onOk={() => void handleSaveEdit()}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button disabled={savingEdit} onClick={() => setEditing(null)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              disabled={!editName.trim() || savingEdit}
+              loading={savingEdit}
+              type="primary"
+              onClick={() => void handleSaveEdit()}
+            >
+              {t('common.save')}
+            </Button>
+          </div>
+        }
       >
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">{t('settings.pats.edit.description')}</p>
@@ -350,7 +368,7 @@ export function SettingsPatsPage() {
             {t('settings.pats.edit.expirationLocked')}
           </p>
         </div>
-      </Modal>
+      </Drawer>
 
       <ConfirmDialog
         open={!!pendingRevoke}

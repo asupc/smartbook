@@ -1,5 +1,5 @@
 import type { ReadTag, WorkspaceTag, WorkspaceTransaction } from '@smartbook/api-client'
-import { Modal } from 'antd'
+import { Drawer } from 'antd'
 import { useT } from '@smartbook/ui'
 import { TransactionList } from '@smartbook/web-features'
 
@@ -50,13 +50,13 @@ export function TagDetailDialog({
   const noteDisplayMode = profileMe?.appearance?.note_display_mode ?? 'category'
   const stats = tag ? tagStatsById[tag.id] : null
   return (
-    <Modal
+    <Drawer
       open={Boolean(tag)}
-      onCancel={onClose}
+      onClose={onClose}
       width={672}
       destroyOnHidden
       footer={null}
-      styles={{ body: { padding: 0, maxHeight: '85vh', overflowY: 'auto' } }}
+      styles={{ body: { padding: 0, overflowY: 'auto' } }}
       title={
         <span className="flex w-full items-center gap-2">
           <span
@@ -108,7 +108,7 @@ export function TagDetailDialog({
             </div>
           </div>
         ) : null}
-    </Modal>
+    </Drawer>
   )
 }
 

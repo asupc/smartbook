@@ -5,7 +5,7 @@ import type {
   WorkspaceTag,
   WorkspaceTransaction,
 } from '@smartbook/api-client'
-import { Button, Modal } from 'antd'
+import { Button, Drawer } from 'antd'
 import { useLocale, useT } from '@smartbook/ui'
 import { Amount, CategoryIcon, periodLabel, TransactionList } from '@smartbook/web-features'
 import { ArrowRight, Edit3, TrendingDown, TrendingUp } from 'lucide-react'
@@ -155,12 +155,12 @@ export function CategoryDetailDialog({
         : 'default'
 
   return (
-    <Modal
+    <Drawer
       open={Boolean(category)}
-      onCancel={onClose}
+      onClose={onClose}
       width={672}
       destroyOnHidden
-      styles={{ body: { padding: 0, maxHeight: '88vh', overflowY: 'auto' } }}
+      styles={{ body: { padding: 0, overflowY: 'auto' } }}
       title={
         <span className="flex items-center gap-3">
             {category ? (
@@ -312,7 +312,7 @@ export function CategoryDetailDialog({
             </div>
           </div>
         ) : null}
-    </Modal>
+    </Drawer>
   )
 }
 

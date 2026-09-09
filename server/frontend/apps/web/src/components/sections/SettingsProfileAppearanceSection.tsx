@@ -23,7 +23,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 
-import { Button, Card, Input, Modal, Select, Switch, Tooltip } from 'antd'
+import { Button, Card, Input, Drawer, Select, Switch, Tooltip } from 'antd'
 import {
   PrimaryColorPicker,
   useT,
@@ -511,13 +511,13 @@ export function SettingsProfileAppearanceSection() {
       </Card>
 
       {/* 主题色弹窗 */}
-      <Modal
+      <Drawer
         open={themeOpen}
         title={t('profile.theme.title')}
-        onCancel={() => setThemeOpen(false)}
+        onClose={() => setThemeOpen(false)}
         width={400}
         footer={null}
-        destroyOnClose
+        destroyOnHidden
       >
         <p className="mb-4 text-xs text-muted-foreground leading-relaxed">
           {t('profile.theme.desc')}
@@ -525,7 +525,7 @@ export function SettingsProfileAppearanceSection() {
         <div className="py-1">
           <PrimaryColorPicker />
         </div>
-      </Modal>
+      </Drawer>
 
       {/* 模块 2: 界面与外观偏好 (Appearance & Preferences) */}
       <Card

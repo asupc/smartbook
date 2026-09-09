@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Button, Modal } from 'antd'
+import { Button, Drawer } from 'antd'
 import { AlertTriangle, CheckCircle2, Loader2, X } from 'lucide-react'
 
 import { useT } from '@smartbook/ui'
@@ -106,10 +106,10 @@ export function ImportProgressDialog({ open, importToken, onClose, onSuccess }: 
   const overallPercent = computeOverallPercent(progress)
 
   return (
-    <Modal
+    <Drawer
       open={open}
       width={448}
-      onCancel={() => phase !== 'running' && onClose()}
+      onClose={() => phase !== 'running' && onClose()}
       title={
         <span className="flex items-center gap-2 text-base">
           {phase === 'running' ? (
@@ -196,7 +196,7 @@ export function ImportProgressDialog({ open, importToken, onClose, onSuccess }: 
           ) : null}
         </div>
 
-    </Modal>
+    </Drawer>
   )
 }
 

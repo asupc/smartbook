@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { Button, Input, InputNumber, Modal, Select } from 'antd'
+import { Button, Drawer, Input, InputNumber, Select } from 'antd'
 import { Loader2 } from 'lucide-react'
 
 import {
@@ -165,21 +165,30 @@ export function ProviderEditDialog({ open, initial, saving = false, onClose, onS
   })()
 
   return (
-    <Modal
+    <Drawer
       open={open}
       width={448}
-      onCancel={() => !saving && onClose()}
+      onClose={() => !saving && onClose()}
       title={
         <span className="text-base">
           {isEdit ? t('ai.editor.providers.edit') : t('ai.editor.providers.add')}
         </span>
       }
-      okText={t('common.save')}
-      cancelText={t('common.cancel')}
-      okButtonProps={{ disabled: !canSave || saving }}
-      cancelButtonProps={{ disabled: saving }}
-      confirmLoading={saving}
-      onOk={() => void handleSave()}
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button disabled={saving} onClick={onClose}>
+            {t('common.cancel')}
+          </Button>
+          <Button
+            disabled={!canSave || saving}
+            loading={saving}
+            type="primary"
+            onClick={() => void handleSave()}
+          >
+            {t('common.save')}
+          </Button>
+        </div>
+      }
     >
       <div className="space-y-3">
           <Field label={t('ai.editor.providers.field.name')} required>
@@ -319,7 +328,7 @@ export function ProviderEditDialog({ open, initial, saving = false, onClose, onS
             </Button>
           </div>
         </div>
-    </Modal>
+    </Drawer>
   )
 }
 

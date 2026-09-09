@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { resolveApiUrl, type AttachmentRef, type WorkspaceTag, type WorkspaceTransaction } from '@smartbook/api-client'
-import { Button, Modal } from 'antd'
+import { Button, Drawer } from 'antd'
 import { useT } from '@smartbook/ui'
 import { buildTagColorMap, TagChip } from '@smartbook/web-features'
 import { Calendar, ChevronLeft, ChevronRight, Edit3, Hash, ImageOff, Tag, User, Wallet, X } from 'lucide-react'
@@ -67,9 +67,9 @@ export function TransactionDetailDialog({
           .filter((s) => s.length > 0)
 
   return (
-    <Modal
+    <Drawer
       open={open}
-      onCancel={onClose}
+      onClose={onClose}
       width={448}
       destroyOnHidden
       styles={{ body: { padding: 0 } }}
@@ -209,7 +209,7 @@ export function TransactionDetailDialog({
           </div>
         ) : null}
 
-    </Modal>
+    </Drawer>
   )
 }
 

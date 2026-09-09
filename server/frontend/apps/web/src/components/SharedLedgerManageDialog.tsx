@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type CSSProperties } from 'react'
-import { Button, Modal, Select } from 'antd'
+import { Button, Drawer, Select } from 'antd'
 import { Copy, Loader2, Share2, Trash2 } from 'lucide-react'
 
 import {
@@ -187,10 +187,10 @@ export function SharedLedgerManageDialog({
   )
 
   return (
-    <Modal
+    <Drawer
       open={open}
       width={672}
-      onCancel={() => onOpenChange(false)}
+      onClose={() => onOpenChange(false)}
       title={
         <span className="text-base">
           🤝 {ledgerName} · {t('sharedLedger.manageTitle')}
@@ -393,6 +393,6 @@ export function SharedLedgerManageDialog({
           setPendingLeave(null)
         }}
       />
-    </Modal>
+    </Drawer>
   )
 }

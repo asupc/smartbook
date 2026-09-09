@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 
-import { Button, Card, Checkbox, Image, Modal, Select } from 'antd'
+import { Button, Card, Checkbox, Image, Drawer, Select } from 'antd'
 import {
   Badge,
   Table,
@@ -325,9 +325,9 @@ export function AiLogsPage() {
           </>
         )}
 
-        <Modal
+        <Drawer
           open={!!detail || detailLoading}
-          onCancel={() => setDetail(null)}
+          onClose={() => setDetail(null)}
           title={t('settings.aiLogs.detail.title')}
           footer={
             <>
@@ -393,7 +393,7 @@ export function AiLogsPage() {
           ) : (
             <div className="py-6 text-center text-sm text-muted-foreground">{t('common.loading')}</div>
           )}
-        </Modal>
+        </Drawer>
         <ConfirmDialog
           open={pendingDelete !== null}
           title={t('settings.aiLogs.detail.deleteTitle')}

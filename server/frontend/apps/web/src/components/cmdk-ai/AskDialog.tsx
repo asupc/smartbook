@@ -17,7 +17,7 @@ import {
   type AskSource,
   streamAsk,
 } from '@smartbook/api-client'
-import { Button, Input, Modal } from 'antd'
+import { Button, Input, Drawer } from 'antd'
 import {
   useLocale,
   useT,
@@ -163,9 +163,9 @@ export function AskDialog({ open, initialQuery, onOpenChange }: AskDialogProps) 
   }, [])
 
   return (
-    <Modal
+    <Drawer
       open={open}
-      onCancel={() => onOpenChange(false)}
+      onClose={() => onOpenChange(false)}
       width={672}
       footer={null}
       title={
@@ -189,7 +189,7 @@ export function AskDialog({ open, initialQuery, onOpenChange }: AskDialogProps) 
           </span>
         </span>
       }
-      styles={{ body: { padding: 0, maxHeight: 'calc(80vh - 57px)', overflow: 'hidden' } }}
+      styles={{ body: { padding: 0, overflow: 'hidden' } }}
     >
       <div className="flex h-full flex-col">
         {/* 输入框(显示当前 query,可改) — 回车提交 follow-up */}
@@ -308,7 +308,7 @@ export function AskDialog({ open, initialQuery, onOpenChange }: AskDialogProps) 
           </span>
         </div>
       </div>
-    </Modal>
+    </Drawer>
   )
 }
 
