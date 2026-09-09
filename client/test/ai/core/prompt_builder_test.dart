@@ -8,6 +8,22 @@ void main() {
   group('PromptBuilder', () {
     const builder = PromptBuilder();
 
+    test('屏幕路径 guard 含信用支付成交语义', () {
+      // 2026-09-09 抖音月付订单页支持:「确认收货后付款」是已成交的信用
+      // 支付,不能让 AI 按未成交返回 pendingOrder(下游 AutoBookPolicy 会
+      // 以 unsettled_order 忽略,等于白抓)
+      expect(PromptBuilder.billGuardForScreen, contains('确认收货后付款'));
+      expect(PromptBuilder.billGuardForScreen,
+          contains('settlement_status 填 settled'));
+      final out = builder.build(
+        context: AiExtractionContext.fallback,
+        inputSource: 'X',
+        billGuard: PromptBuilder.billGuardForScreen,
+        now: DateTime(2026, 5, 26),
+      );
+      expect(out, contains('不要因「收货后付款」字样返回 pendingOrder'));
+    });
+
     test('注入分类列表替换 {{CATEGORIES}}', () {
       final ctx = AiExtractionContext(
         expenseCategories: const ['餐饮', '奶茶', '咖啡'],

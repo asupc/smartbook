@@ -315,4 +315,57 @@ class ScreenTextWatcherTest {
         assertTrue(watcher.hasAmount(text))
         assertTrue(watcher.hasBookableHint(text))
     }
+
+    @Test
+    fun `抖音月付订单详情页被识别`() {
+        // 2026-09-09 真机漏记:抖音月付订单详情宿主是 LiveDummyActivity/
+        // BulletContainerActivity 通用容器,状态「确认收货后付款」原先不命中
+        // 任何强锚点,预筛直接丢弃;月付订单不走支付宝/微信,只在此页可见。
+        // 文本取自真机截图(鲜铺子猕猴桃 -19.80,抖音支付立减 ¥5.00)。
+        val text = "鲜铺子猕猴桃\n-19.80\n确认收货后付款\n" +
+            "支付积分领取 22\n抖音支付立减 ¥ 5.00\n" +
+            "支付时间 2026-09-06 16:40:29\n支付方式 抖音月付\n商品订单 共1件\n" +
+            "【鲜铺子】陕西周至徐香猕猴桃奇异果当季水果礼盒装净重4.5-5斤 单果70-90g\n" +
+            "19.80 数量1"
+        assertFalse(watcher.shouldReject(text))
+        // 「立减」命中营销词,但页面有强锚点,营销闸让位
+        assertFalse(watcher.isMarketingPage(text))
+        assertTrue(watcher.hasAmount(text))
+        // 强:确认收货后付款;弱兜底:支付方式+支付时间+商品订单
+        assertTrue(watcher.hasBookableHint(text))
+        // 金额 3 次(-19.80/¥5.00/19.80)、日期 1 行(09-06),详情页规模
+        assertFalse(watcher.isListPage(text))
+        // 「确认收货后付款」不含「待付款/待确认」子串,不落不可入账闸
+        assertFalse(watcher.isNonBookableStatus(text))
+    }
+
+    @Test
+    fun `抖音订单详情状态行不可见时字段词弱锚点组合放行`() {
+        // 部分真机上订单详情的状态级强词不在无障碍文本树里,只剩字段行;
+        // 预筛组合词(支付方式+支付时间)与粗筛弱锚点(≥2)同口径放行
+        val text = "鲜铺子猕猴桃\n-19.80\n" +
+            "支付时间 2026-09-06 16:40:29\n支付方式 抖音月付\n商品订单 共1件"
+        assertTrue(watcher.hasAmount(text))
+        assertTrue(watcher.hasBookableHint(text))
+        assertFalse(watcher.isListPage(text))
+    }
+
+    @Test
+    fun `支付方式与支付时间只出现一个不构成弱锚点组合`() {
+        // 单独一个字段词太泛(支付设置页也有「支付方式」),不能放行
+        val text = "支付方式\n免密支付\n¥ 0.01"
+        assertTrue(watcher.hasAmount(text))
+        assertFalse(watcher.hasBookableHint(text))
+    }
+
+    @Test
+    fun `我的订单列表页标题一票判列表页`() {
+        // 单订单的列表页金额只有 1~2 个且无日期行,计数法失效;订单卡片的
+        // 状态词会通过锚点预筛,标题兜底防止随后进详情页同一单双发
+        val text = "我的订单\n全部 待付款 待收货 已完成\n鲜铺子猕猴桃\n" +
+            "确认收货后付款\n¥19.8 ×1\n查看物流 确认收货"
+        assertTrue(watcher.isListPage(text))
+        // 详情页不含列表标题,不受影响
+        assertFalse(watcher.isListPage("订单详情\n鲜铺子猕猴桃\n-19.80\n交易成功"))
+    }
 }

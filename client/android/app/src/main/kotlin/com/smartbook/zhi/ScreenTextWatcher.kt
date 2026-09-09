@@ -311,6 +311,12 @@ open class ScreenTextWatcher : AccessibilityService() {
      * 的「text+desc 拼接」口径一致;每次调用是单次进程间往返,树遍历由宿主
      * App 侧完成,比逐节点 getChild 的多轮往返便宜。任一强锚点命中即值得
      * 整树采集;全部落空则大概率不是账单页。API<33 的返回节点按惯例回收。
+     *
+     * 强词之外补一组**组合预筛**(2026-09-09 抖音订单页支持):抖音订单详情
+     * 宿主是 LiveDummyActivity/BulletContainerActivity 通用容器,部分真机上
+     * 状态级强词(「确认收货后付款」)不在文本树里,但「支付方式+支付时间」
+     * 两个详情字段词同时出现已足以证明值得采集 —— 单独一个词太泛(支付设置
+     * 页也有「支付方式」),组合条件不弱于弱锚点 ≥2 的粗筛门槛。
      */
     private fun hasAnchorNode(root: AccessibilityNodeInfo): Boolean {
         fun hit(word: String): Boolean {
@@ -321,7 +327,8 @@ open class ScreenTextWatcher : AccessibilityService() {
             }
             return exists
         }
-        return STRONG_TRADE_KEYWORDS.any { hit(it) }
+        if (STRONG_TRADE_KEYWORDS.any { hit(it) }) return true
+        return PRE_FILTER_COMBO.all { hit(it) }
     }
 
     // ------------------------------------------------------------
@@ -366,6 +373,10 @@ open class ScreenTextWatcher : AccessibilityService() {
     /**
      * 列表页判定(分级):单条账单详情页金额通常出现 1~3 次(实付/原价/优惠/
      * 退款),账单/流水列表页一条流水一个金额,整页几十个。
+     *  - 页面标题命中 [LIST_TITLE_KEYWORDS](抖音/京东订单列表「我的订单」):
+     *    一票判列表 —— 单订单的列表页金额只有 1~2 个且无日期行,计数法判不出
+     *    来,而订单卡片的状态词会通过锚点预筛,不拦就会与随后的详情页同一单
+     *    双发(2026-09-09 与抖音订单页支持同批收紧);
      *  - 金额数达到 [MAX_LIST_AMOUNTS_HARD]:无条件判列表页;
      *  - 金额数在 [MAX_DETAIL_AMOUNTS, MAX_LIST_AMOUNTS_HARD) 区间:按日期行数
      *    细分 —— 真列表页每行流水都带一个日期(「9-08」「9月8日」),详情页
@@ -376,6 +387,7 @@ open class ScreenTextWatcher : AccessibilityService() {
      * 列表页是几十个。避免把整页历史流水批量送 AI 的初衷不变。
      */
     fun isListPage(text: String): Boolean {
+        if (LIST_TITLE_KEYWORDS.any { text.contains(it) }) return true
         val amounts = AMOUNT_PATTERN.findAll(text).count()
         if (amounts < MAX_DETAIL_AMOUNTS) return false
         if (amounts >= MAX_LIST_AMOUNTS_HARD) return true
@@ -646,6 +658,14 @@ open class ScreenTextWatcher : AccessibilityService() {
             日期;详情页只有创建时间 1 个日期)。 */
         private const val LIST_MIN_DATE_ROWS = 3
 
+        /** 订单列表页标题词(抖音/京东「我的订单」):一票判列表页,见
+            [isListPage]。详情页不会出现该标题,误伤面为零。 */
+        private val LIST_TITLE_KEYWORDS = listOf("我的订单")
+
+        /** 预筛组合词:两个**同时**命中才值得整树采集(单独一个太泛);
+            必须保持 ⊆ [WEAK_TRADE_KEYWORDS],见 [hasAnchorNode]。 */
+        private val PRE_FILTER_COMBO = listOf("支付方式", "支付时间")
+
         /** 日期写法:「9-08」「2026-09-08」中的日期段、「9月8日」。时刻
             (18:53:41)、卡尾、无分隔的订单号都不命中;lookbehind 挡掉从
             「2026」中段起的错误切分,「2026-03-28」只命中 1 次。 */
@@ -678,8 +698,10 @@ open class ScreenTextWatcher : AccessibilityService() {
          *  - WxaLiteAppLiteUI / WxaLiteAppTransparentLiteUI:微信小程序支付结果
          *  - RemittanceDetailUI:微信收款详情(「已收款」页)
          * 微信 UIPageFragmentActivity 承载页面过多,支付宝账单详情是 H5 容器页,
-         * 都不适合按类名放行 —— 历史账单回看仍由内容启发式覆盖。此表只决定
-         * 防抖时长,是否入队仍走完整过滤链。
+         * 都不适合按类名放行 —— 历史账单回看仍由内容启发式覆盖。抖音订单页
+         * 同理:宿主是 LiveDummyActivity/BulletContainerActivity 等通用容器,
+         * 无法按类名锁定,由内容锚点覆盖(2026-09-09)。此表只决定防抖时长,
+         * 是否入队仍走完整过滤链。
          */
         private val FAST_PATH_PAGES = mapOf(
             "com.eg.android.AlipayGphone" to listOf(
@@ -703,7 +725,11 @@ open class ScreenTextWatcher : AccessibilityService() {
             "退款成功", "支付完成",
             // 收入状态(2026-09 补全:原词表只有支出视角,收款/转账存入
             // 零钱的详情页此前进不了粗筛)
-            "已收款", "收款成功", "已收钱", "已存入零钱"
+            "已收款", "收款成功", "已收钱", "已存入零钱",
+            // 信用支付成交状态(2026-09-09 抖音月付真机漏记:月付订单不走
+            // 支付宝/微信,只在抖音订单详情页可见;该页由通用容器承载、
+            // 无「订单详情」标题等其它强锚点,预筛与粗筛双双落空)
+            "确认收货后付款"
         )
 
         /**
@@ -715,7 +741,10 @@ open class ScreenTextWatcher : AccessibilityService() {
             "订单编号", "订单号", "交易单号", "转账单号", "商户单号",
             "商家订单", "交易流水", "实付款", "实付金额", "付款金额",
             "支付金额", "订单金额", "交易金额", "合计金额", "退款金额",
-            "返回商家"
+            "返回商家",
+            // 抖音订单详情字段行(2026-09-09):状态行文案不可见时的兜底,
+            // 弱锚点仍需 ≥2 个不同词同时命中才放行
+            "支付方式", "支付时间", "商品订单"
         )
 
         private val NON_BOOKABLE_KEYWORDS = listOf(
