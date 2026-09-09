@@ -44,6 +44,8 @@ def list_workspace_transactions(
     amount_max: float | None = Query(default=None, description="金额上限(含)"),
     date_from: datetime | None = Query(default=None, description="happened_at >= date_from"),
     date_to: datetime | None = Query(default=None, description="happened_at < date_to(独占,前端传当天 23:59:59 即可包含整天)"),
+    sort_by: str = Query(default="happened_at", pattern="^(happened_at|created_at)$", description="排序字段:happened_at=交易时间(默认),created_at=记录时间"),
+    sort_order: str = Query(default="desc", pattern="^(asc|desc)$", description="排序方向,默认倒序(最新在前)"),
     limit: int = Query(default=20, ge=1, le=2000),
     offset: int = Query(default=0, ge=0),
     _scopes: set[str] = Depends(_READ_SCOPE_DEP),
@@ -127,8 +129,16 @@ def list_workspace_transactions(
         select(func.count()).select_from(query.subquery())
     ) or 0)
 
+    # 排序:交易时间(happened_at,默认,兼容旧行为)/ 记录时间(created_at)。
+    # created_at 是 0024 盖章引入的可空列,老数据为 NULL —— 用 coalesce 兜底到
+    # happened_at,避免 PG DESC 默认 NULLS FIRST 把老数据顶到最前。
+    if sort_by == "created_at":
+        sort_key = func.coalesce(ReadTxProjection.created_at, ReadTxProjection.happened_at)
+    else:
+        sort_key = ReadTxProjection.happened_at
+    order_expr = sort_key.asc() if sort_order == "asc" else sort_key.desc()
     query = query.order_by(
-        ReadTxProjection.happened_at.desc(),
+        order_expr,
         ReadTxProjection.tx_index.desc(),
     ).offset(offset).limit(limit)
     rows = db.scalars(query).all()

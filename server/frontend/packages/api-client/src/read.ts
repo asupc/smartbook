@@ -143,6 +143,10 @@ export async function fetchWorkspaceTransactions(
     dateFrom?: string
     /** happened_at < dateTo (ISO 8601, 独占)。前端通常传"次日 00:00"包含整天。 */
     dateTo?: string
+    /** 排序字段:happened_at=交易时间(默认),created_at=记录时间(server 0024 盖章)。 */
+    sortBy?: 'happened_at' | 'created_at'
+    /** 排序方向,默认 desc(最新在前)。 */
+    sortOrder?: 'asc' | 'desc'
     limit?: number
     offset?: number
   }
@@ -161,6 +165,8 @@ export async function fetchWorkspaceTransactions(
   if (typeof options?.amountMax === 'number') query.set('amount_max', `${options.amountMax}`)
   if (options?.dateFrom) query.set('date_from', options.dateFrom)
   if (options?.dateTo) query.set('date_to', options.dateTo)
+  if (options?.sortBy) query.set('sort_by', options.sortBy)
+  if (options?.sortOrder) query.set('sort_order', options.sortOrder)
   if (typeof options?.limit === 'number') query.set('limit', `${options.limit}`)
   if (typeof options?.offset === 'number') query.set('offset', `${options.offset}`)
   const suffix = query.toString() ? `?${query.toString()}` : ''

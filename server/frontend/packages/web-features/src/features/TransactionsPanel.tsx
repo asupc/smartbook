@@ -64,6 +64,11 @@ type TransactionsPanelProps = {
   onWriteLedgerIdChange: (ledgerId: string) => void
   onPageChange: (page: number) => void
   onPageSizeChange: (pageSize: number) => void
+  /** 表头排序:当前排序字段(交易时间 happened_at / 记录时间 created_at)。
+   *  与 onSortChange 一起传才启用表头点击排序;不传保持纯静态表头(兼容)。 */
+  sortField?: 'happened_at' | 'created_at'
+  sortOrder?: 'asc' | 'desc'
+  onSortChange?: (field: 'happened_at' | 'created_at') => void
   canWrite: boolean
   dictionariesLoading?: boolean
   showCreatorColumn?: boolean
@@ -243,6 +248,132 @@ function AttachmentCarouselCell({
   )
 }
 
+/**
+ * 可点击排序的表头单元格。onClick 不传时退化为静态表头。
+ * 活跃列显示 ▲/▼ 指示当前方向,非活跃列显示浅色 ↕ 提示可点。
+ */
+function SortableTableHead({
+  children,
+  active,
+  dir,
+  hint,
+  onClick,
+}: {
+  children: React.ReactNode
+  active?: boolean
+  dir?: 'asc' | 'desc'
+  hint?: string
+  onClick?: () => void
+}) {
+  if (!onClick) {
+    return <TableHead className="bc-table-head">{children}</TableHead>
+  }
+  return (
+    <TableHead className="bc-table-head">
+      <button
+        type="button"
+        title={hint}
+        onClick={onClick}
+        className={`inline-flex items-center gap-1 transition-colors hover:text-foreground ${
+          active ? 'text-foreground' : ''
+        }`}
+      >
+        {children}
+        <span aria-hidden className={`text-[9px] leading-none ${active ? 'text-primary' : 'text-muted-foreground/50'}`}>
+          {active ? (dir === 'asc' ? '▲' : '▼') : '↕'}
+        </span>
+      </button>
+    </TableHead>
+  )
+}
+
+type FormAttachmentThumbProps = {
+  attachments: AttachmentRef[]
+  onPreviewAttachment: (
+    refs: AttachmentRef[],
+    startIndex: number
+  ) => Promise<void>
+  resolveAttachmentPreviewUrl: (ref: AttachmentRef) => Promise<string | null>
+}
+
+/**
+ * 编辑抽屉里的附件缩略图区 —— 打开一笔带图片附件的交易时直接展示缩略图,
+ * 不需要再点进详情才能看到。点击缩略图走全局大图预览(与列表行内 📎
+ * 同一通道)。无 cloudFileId(未上传完成)的附件显示占位灰块。
+ */
+function FormAttachmentThumbGrid({
+  attachments,
+  onPreviewAttachment,
+  resolveAttachmentPreviewUrl,
+}: FormAttachmentThumbProps) {
+  const t = useT()
+  // fileId → blob URL。'' 表示已解析但不可预览(非图片/下载失败),undefined
+  // 表示还在加载。用 ref 级去重没必要:resolveAttachmentPreviewUrl 内部已按
+  // fileId 缓存,重复调用零成本。
+  const [urlByIndex, setUrlByIndex] = useState<Record<number, string | null>>({})
+
+  useEffect(() => {
+    let cancelled = false
+    attachments.forEach((att, i) => {
+      const fileId = att.cloudFileId?.trim()
+      if (!fileId) return
+      void resolveAttachmentPreviewUrl(att).then((url) => {
+        if (!cancelled) {
+          setUrlByIndex((prev) => ({ ...prev, [i]: url ?? '' }))
+        }
+      })
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [attachments, resolveAttachmentPreviewUrl])
+
+  return (
+    <div className="grid grid-cols-4 gap-2 sm:grid-cols-5">
+      {attachments.map((att, i) => {
+        const url = urlByIndex[i]
+        const fileId = att.cloudFileId?.trim() || ''
+        const name = att.originalName || att.fileName || ''
+        return (
+          <button
+            key={`${fileId || att.fileName || 'pending'}-${i}`}
+            type="button"
+            disabled={!url}
+            title={name}
+            onClick={() => {
+              if (!url) return
+              void onPreviewAttachment(attachments, i)
+            }}
+            className={`relative aspect-square overflow-hidden rounded-md border border-border/60 bg-muted/40 transition ${
+              url
+                ? 'cursor-zoom-in hover:border-primary hover:shadow-md'
+                : 'cursor-default'
+            }`}
+          >
+            {url ? (
+              <img
+                alt={name}
+                src={url}
+                className="h-full w-full object-cover"
+                loading="lazy"
+              />
+            ) : url === '' ? (
+              <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-muted-foreground/60">
+                <span aria-hidden>📎</span>
+                <span className="line-clamp-1 px-1 text-[9px]">{name}</span>
+              </div>
+            ) : (
+              <div className="flex h-full w-full items-center justify-center">
+                <div className="h-5 w-5 animate-pulse rounded-full bg-muted-foreground/30" />
+              </div>
+            )}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 export function TransactionsPanel({
   form,
   baseCurrency = 'CNY',
@@ -259,6 +390,9 @@ export function TransactionsPanel({
   onWriteLedgerIdChange,
   onPageChange,
   onPageSizeChange,
+  sortField,
+  sortOrder,
+  onSortChange,
   canWrite,
   dictionariesLoading = false,
   showCreatorColumn = false,
@@ -380,13 +514,27 @@ export function TransactionsPanel({
             <TableHeader>
               <TableRow>
                 {selectionMode ? <TableHead className="bc-table-head w-[48px]"><input type="checkbox" aria-label="select" className="h-4 w-4 cursor-pointer accent-primary" /></TableHead> : null}
-                <TableHead className="bc-table-head">{t('transactions.table.time')}</TableHead>
+                <SortableTableHead
+                  active={sortField === 'happened_at'}
+                  dir={sortOrder}
+                  hint={t('transactions.table.sortHint')}
+                  onClick={onSortChange ? () => onSortChange('happened_at') : undefined}
+                >
+                  {t('transactions.table.time')}
+                </SortableTableHead>
                 <TableHead className="bc-table-head">{t('transactions.table.amount')}</TableHead>
                 <TableHead className="bc-table-head">{t('transactions.table.type')}</TableHead>
                 <TableHead className="bc-table-head">{t('transactions.table.category')}</TableHead>
                 <TableHead className="bc-table-head">{t('transactions.table.account')}</TableHead>
                 <TableHead className="bc-table-head">{t('transactions.table.tags')}</TableHead>
-                <TableHead className="bc-table-head">{t('transactions.table.createdAt')}</TableHead>
+                <SortableTableHead
+                  active={sortField === 'created_at'}
+                  dir={sortOrder}
+                  hint={t('transactions.table.sortHint')}
+                  onClick={onSortChange ? () => onSortChange('created_at') : undefined}
+                >
+                  {t('transactions.table.createdAt')}
+                </SortableTableHead>
                 <TableHead className="bc-table-head text-right pr-6">{t('transactions.table.ops')}</TableHead>
               </TableRow>
             </TableHeader>
@@ -432,7 +580,7 @@ export function TransactionsPanel({
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="flex max-h-[85vh] max-w-2xl flex-col gap-0 overflow-hidden p-0">
+        <DialogContent className="flex w-[560px] flex-col gap-0 overflow-hidden p-0">
           <DialogHeader className="border-b border-border/60 px-6 py-4">
             <DialogTitle>{form.editingId ? t('transactions.button.update') : t('transactions.button.create')}</DialogTitle>
           </DialogHeader>
@@ -699,6 +847,23 @@ export function TransactionsPanel({
                 onChange={(e) => onFormChange({ ...form, note: e.target.value })}
               />
             </div>
+            {/* 附件缩略图:编辑带附件的交易时直接展示(web 端暂不提供上传/
+                删改入口,只读展示 + 点击大图预览;管理走 mobile 端)。 */}
+            {form.attachments.length > 0 ? (
+              <div className="space-y-2 md:col-span-2">
+                <Label>
+                  {t('transactions.table.attachments')}
+                  <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                    {t('detail.transaction.attachmentsCount', { count: form.attachments.length })}
+                  </span>
+                </Label>
+                <FormAttachmentThumbGrid
+                  attachments={form.attachments}
+                  onPreviewAttachment={onPreviewAttachment}
+                  resolveAttachmentPreviewUrl={resolveAttachmentPreviewUrl}
+                />
+              </div>
+            ) : null}
             {/* §三 标记开关 — 按当前 type 条件显示:
                   不计入收支:income / expense(转账本就不进收支,隐藏)
                   不计入预算:仅 expense(预算只统计支出) */}

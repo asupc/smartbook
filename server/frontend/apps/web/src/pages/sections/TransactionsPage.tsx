@@ -21,7 +21,7 @@ import { bundleToReadResources } from '../../lib/shared-ledger-mappers'
 
 import { CheckSquare, Download, Filter, Plus, RotateCcw, Search } from 'lucide-react'
 
-import { Button, DatePicker, Input, Modal, Select, Tooltip } from 'antd'
+import { Button, DatePicker, Drawer, Input, Select, Tooltip } from 'antd'
 import dayjs from 'dayjs'
 
 const { RangePicker } = DatePicker
@@ -136,6 +136,10 @@ type TxFilter = {
   tagSyncId: string
   /** 标签显示名(同上,UI 维度)。 */
   tagName: string
+  /** 列表排序字段:交易时间(happened_at,默认)/ 记录时间(created_at)。 */
+  sortField: 'happened_at' | 'created_at'
+  /** 排序方向,默认 desc(最新在前)。 */
+  sortOrder: 'asc' | 'desc'
 }
 
 const TX_PAGE_SIZE_DEFAULT = 20
@@ -156,6 +160,8 @@ function defaultTxFilter(): TxFilter {
     categoryName: '',
     tagSyncId: '',
     tagName: '',
+    sortField: 'happened_at',
+    sortOrder: 'desc',
   }
 }
 
@@ -185,6 +191,8 @@ function parseStoredTxFilter(raw: string | null): TxFilter | null {
       categoryName: typeof parsed.categoryName === 'string' ? parsed.categoryName : '',
       tagSyncId: typeof parsed.tagSyncId === 'string' ? parsed.tagSyncId : '',
       tagName: typeof parsed.tagName === 'string' ? parsed.tagName : '',
+      sortField: parsed.sortField === 'created_at' ? 'created_at' : 'happened_at',
+      sortOrder: parsed.sortOrder === 'asc' ? 'asc' : 'desc',
     }
   } catch {
     return null
@@ -563,21 +571,22 @@ export function TransactionsPage() {
     [txWriteTags, txFilterApplied.tagName, txFilterApplied.tagSyncId]
   )
 
+  // 日期预设 label 走 i18n(依赖 t,en locale 下不再显示中文)
   const dateRangePresets = useMemo(
     () => [
-      { label: '今天', value: [dayjs().startOf('day'), dayjs().endOf('day')] as [dayjs.Dayjs, dayjs.Dayjs] },
-      { label: '本周', value: [dayjs().startOf('week'), dayjs().endOf('week')] as [dayjs.Dayjs, dayjs.Dayjs] },
-      { label: '本月', value: [dayjs().startOf('month'), dayjs().endOf('month')] as [dayjs.Dayjs, dayjs.Dayjs] },
+      { label: t('transactions.filter.preset.today'), value: [dayjs().startOf('day'), dayjs().endOf('day')] as [dayjs.Dayjs, dayjs.Dayjs] },
+      { label: t('transactions.filter.preset.thisWeek'), value: [dayjs().startOf('week'), dayjs().endOf('week')] as [dayjs.Dayjs, dayjs.Dayjs] },
+      { label: t('transactions.filter.preset.thisMonth'), value: [dayjs().startOf('month'), dayjs().endOf('month')] as [dayjs.Dayjs, dayjs.Dayjs] },
       {
-        label: '上月',
+        label: t('transactions.filter.preset.lastMonth'),
         value: [
           dayjs().subtract(1, 'month').startOf('month'),
           dayjs().subtract(1, 'month').endOf('month'),
         ] as [dayjs.Dayjs, dayjs.Dayjs],
       },
-      { label: '今年', value: [dayjs().startOf('year'), dayjs().endOf('year')] as [dayjs.Dayjs, dayjs.Dayjs] },
+      { label: t('transactions.filter.preset.thisYear'), value: [dayjs().startOf('year'), dayjs().endOf('year')] as [dayjs.Dayjs, dayjs.Dayjs] },
     ],
-    []
+    [t]
   )
 
   const hasActiveTxFilters = useMemo(() => {
@@ -611,6 +620,24 @@ export function TransactionsPage() {
     setTxFilterApplied(defaultTxFilter())
     setTxPage(1)
   }, [])
+
+  // 表头点击排序:同列反复点击在 升/降 之间切换,换列默认降序(最新在前)。
+  const handleTxSortChange = useCallback(
+    (field: 'happened_at' | 'created_at') => {
+      setTxFilterApplied((prev) => ({
+        ...prev,
+        sortField: field,
+        sortOrder:
+          prev.sortField === field
+            ? prev.sortOrder === 'desc'
+              ? 'asc'
+              : 'desc'
+            : 'desc',
+      }))
+      setTxPage(1)
+    },
+    [],
+  )
   // visibleNavGroups 已搬到 AppHeader。
   // headerCoreItems / headerMoreGroups / avatarMenuItems / moreMenuActive
   // 已搬到 AppHeader。visibleNavGroups 目前还没人用到,保留 —— 后续如有
@@ -727,6 +754,8 @@ export function TransactionsPage() {
           amountMax: Number.isFinite(maxNum) && txFilterApplied.amountMax ? maxNum : undefined,
           dateFrom: dateFromIso,
           dateTo: dateToIso,
+          sortBy: txFilterApplied.sortField,
+          sortOrder: txFilterApplied.sortOrder,
           limit: txPageSize,
           offset: (txPage - 1) * txPageSize
         }),
@@ -2096,6 +2125,9 @@ export function TransactionsPage() {
                   setTxPageSize(size)
                   setTxPage(1)
                 }}
+                sortField={txFilterApplied.sortField}
+                sortOrder={txFilterApplied.sortOrder}
+                onSortChange={handleTxSortChange}
                 canWrite={Boolean(canWriteTx)}
                 // §7 共享账本:tx 列表当前 ledger 若是共享账本,每行尾巴
                 // 显示"XX 创建 · YY 编辑"chip(server 已注入 created_by_* +
@@ -2209,7 +2241,7 @@ export function TransactionsPage() {
       {/* 查询条件已全部平铺在搜索区,不再用弹窗展示;分类/标签筛选直接内联
           antd Select(见搜索区)。两个 picker 弹窗已移除。 */}
 
-      <Modal
+      <Drawer
         open={attachmentPreview.open}
         title={
           <>
@@ -2221,9 +2253,9 @@ export function TransactionsPage() {
             ) : null}
           </>
         }
-        width={896}
+        width={720}
         footer={null}
-        onCancel={() => {
+        onClose={() => {
           // 关闭时不在这里 revokeObjectURL —— blob URL 存在
           // txAttachmentPreviewUrlByFileIdRef 里，组件 unmount 时统一清理；
           // 否则下次预览同一附件会拿到 revoked 的 URL 加载失败。
@@ -2271,7 +2303,7 @@ export function TransactionsPage() {
               </>
             ) : null}
           </div>
-      </Modal>
+      </Drawer>
 
       <ConfirmDialog
         open={Boolean(pendingDelete)}
