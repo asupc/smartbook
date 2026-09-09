@@ -35,7 +35,8 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   return (
     <Dialog open={open} onOpenChange={(next) => !next && !loading && onCancel()}>
-      <DialogContent>
+      {/* 确认框保留居中弹窗形态,不做右侧抽屉 */}
+      <DialogContent variant="centered">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>

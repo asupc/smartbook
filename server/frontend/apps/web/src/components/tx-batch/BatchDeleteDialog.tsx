@@ -1,4 +1,4 @@
-import { Button, Drawer } from 'antd'
+import { Modal } from 'antd'
 import { useT } from '@smartbook/ui'
 import { AlertTriangle } from 'lucide-react'
 
@@ -26,26 +26,22 @@ export function BatchDeleteDialog({
 }: Props) {
   const t = useT()
   return (
-    <Drawer
+    <Modal
       open={open}
       width={448}
-      onClose={() => !saving && onClose()}
+      onCancel={() => !saving && onClose()}
       title={
         <span className="flex items-center gap-2 text-base">
           <AlertTriangle className="h-4 w-4 text-destructive" />
           {t('txBatch.confirm.title')}
         </span>
       }
-      footer={
-        <div className="flex justify-end gap-2">
-          <Button disabled={saving} onClick={onClose}>
-            {t('common.cancel')}
-          </Button>
-          <Button danger loading={saving} type="primary" onClick={onConfirm}>
-            {t('txBatch.confirm.delete', { count })}
-          </Button>
-        </div>
-      }
+      okText={t('txBatch.confirm.delete', { count })}
+      cancelText={t('common.cancel')}
+      okButtonProps={{ danger: true }}
+      cancelButtonProps={{ disabled: saving }}
+      confirmLoading={saving}
+      onOk={onConfirm}
     >
       <div className="text-sm">
         <p className="text-foreground">
@@ -65,6 +61,6 @@ export function BatchDeleteDialog({
           {t('txBatch.confirm.cannotUndo')}
         </p>
       </div>
-    </Drawer>
+    </Modal>
   )
 }

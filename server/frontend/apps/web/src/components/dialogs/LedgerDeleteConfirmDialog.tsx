@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Button, Drawer } from 'antd'
+import { Modal } from 'antd'
 import type { ReadLedger } from '@smartbook/api-client'
 import { fetchReadLedgerStats, type ReadLedgerStats } from '@smartbook/api-client'
 import { useT } from '@smartbook/ui'
@@ -65,26 +65,21 @@ export function LedgerDeleteConfirmDialog({
   const otherMembers = ledger?.is_shared && memberCount > 1 ? memberCount - 1 : 0
 
   return (
-    <Drawer
+    <Modal
       open={Boolean(ledger)}
       width={448}
-      onClose={() => !loading && onCancel()}
+      onCancel={() => !loading && onCancel()}
       title={
         <span className="flex items-center gap-2 text-destructive">
           <AlertTriangle className="h-5 w-5" />
           {t('ledgers.delete.title').replace('{name}', ledger?.ledger_name || '')}
         </span>
       }
-      footer={
-        <div className="flex justify-end gap-2">
-          <Button disabled={loading} onClick={onCancel}>
-            {t('dialog.cancel')}
-          </Button>
-          <Button danger disabled={loading} loading={loading} type="primary" onClick={onConfirm}>
-            {t('ledgers.delete.confirm')}
-          </Button>
-        </div>
-      }
+      okText={t('ledgers.delete.confirm')}
+      cancelText={t('dialog.cancel')}
+      okButtonProps={{ danger: true, disabled: loading }}
+      cancelButtonProps={{ disabled: loading }}
+      onOk={onConfirm}
     >
       <p className="text-xs text-muted-foreground">{t('ledgers.delete.description')}</p>
 
@@ -130,6 +125,6 @@ export function LedgerDeleteConfirmDialog({
           </div>
         ) : null}
       </div>
-    </Drawer>
+    </Modal>
   )
 }
