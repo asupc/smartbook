@@ -1,0 +1,553 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>智记 Web 首页 · 今年/上月收支 布局方案预览</title>
+<style>
+  :root {
+    /* 与 apps/web/src/styles.css 亮色主题对齐 */
+    --bg: hsl(210 25% 97%);
+    --fg: hsl(220 20% 16%);
+    --card: hsl(0 0% 100%);
+    --primary: hsl(221 83% 53%);
+    --muted: hsl(220 20% 94%);
+    --muted-fg: hsl(220 9% 45%);
+    --border: hsl(220 16% 88%);
+    /* 收支配色:默认 income_is_red=true → 收入红/支出绿(用户设置可翻转) */
+    --income: #ef4444;
+    --expense: #10b981;
+    --amber: #f59e0b;
+    --sky: #0ea5e9;
+    --radius: 16px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: 'Sora', 'Avenir Next', 'SF Pro Text', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif;
+    font-size: 14px;
+    line-height: 1.55;
+    padding-bottom: 80px;
+  }
+  .topbar {
+    position: sticky; top: 0; z-index: 10;
+    background: hsl(0 0% 100% / .85);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 24px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .topbar .logo {
+    width: 26px; height: 26px; border-radius: 8px;
+    background: var(--primary); color: #fff;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700;
+  }
+  .topbar h1 { font-size: 14px; font-weight: 700; }
+  .topbar .sub { color: var(--muted-fg); font-size: 12px; }
+  main { max-width: 1120px; margin: 0 auto; padding: 28px 24px 0; }
+
+  .intro {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 18px 22px; margin-bottom: 34px;
+  }
+  .intro h2 { font-size: 15px; margin-bottom: 8px; }
+  .intro p, .intro li { color: var(--muted-fg); font-size: 13px; }
+  .intro ul { padding-left: 18px; margin-top: 6px; }
+  .intro b { color: var(--fg); }
+
+  .option { margin-bottom: 56px; }
+  .opt-head { margin-bottom: 14px; }
+  .opt-no {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: 12px; font-weight: 700; letter-spacing: .12em;
+    color: var(--primary); text-transform: uppercase;
+  }
+  .badge-rec {
+    background: linear-gradient(135deg, #f59e0b, #ef4444);
+    color: #fff; font-size: 10.5px; font-weight: 700;
+    border-radius: 999px; padding: 2px 9px; letter-spacing: .05em;
+  }
+  .opt-head h2 { font-size: 18px; font-weight: 800; margin: 4px 0 6px; letter-spacing: -.01em; }
+  .opt-head .desc { color: var(--muted-fg); font-size: 13px; max-width: 860px; }
+  .pc { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .pc span { font-size: 12px; border-radius: 999px; padding: 3px 11px; border: 1px solid var(--border); background: hsl(0 0% 100%); color: var(--muted-fg); }
+  .pc span.good { border-color: hsl(142 71% 45% / .35); background: hsl(142 71% 45% / .08); color: hsl(142 71% 30%); }
+  .pc span.bad { border-color: hsl(0 84% 60% / .3); background: hsl(0 84% 60% / .06); color: hsl(0 70% 42%); }
+
+  /* ====== 模拟页面画框 ====== */
+  .frame {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 22px;
+    box-shadow: 0 8px 30px hsl(220 20% 30% / .07);
+  }
+  .frame-title { font-size: 11.5px; color: var(--muted-fg); margin-bottom: 14px; letter-spacing: .06em; }
+
+  /* ====== Hero(还原 HomeHero 结构) ====== */
+  .hero {
+    position: relative;
+    border-radius: var(--radius);
+    border: 1px solid hsl(221 83% 53% / .25);
+    background: linear-gradient(135deg, hsl(221 83% 53% / .15) 0%, hsl(221 83% 53% / .03) 55%, transparent 100%);
+    overflow: hidden;
+  }
+  .hero::before {
+    content: ''; position: absolute; right: -80px; top: -80px; width: 280px; height: 280px;
+    border-radius: 999px; background: hsl(221 83% 53% / .3); filter: blur(60px); pointer-events: none;
+  }
+  .hero-in { position: relative; display: grid; gap: 18px; padding: 24px; grid-template-columns: 1.4fr 1fr; }
+  @media (max-width: 900px) { .hero-in { grid-template-columns: 1fr; } }
+  .hero-top { display: flex; justify-content: space-between; gap: 12px; }
+  .crumb {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 11px; font-weight: 600; letter-spacing: .2em; text-transform: uppercase;
+    color: var(--muted-fg);
+  }
+  .crumb .range { letter-spacing: normal; text-transform: none; font-weight: 400; color: hsl(220 9% 45% / .75); }
+  .ledger-line { display: flex; align-items: baseline; gap: 10px; margin-top: 4px; }
+  .ledger-name { font-size: 20px; font-weight: 700; }
+  .cur-chip {
+    font-size: 10px; font-weight: 500; color: var(--primary);
+    border: 1px solid hsl(221 83% 53% / .3); background: hsl(221 83% 53% / .1);
+    border-radius: 999px; padding: 1px 8px;
+  }
+  .switcher { display: inline-flex; gap: 4px; border: 1px solid var(--border); background: hsl(0 0% 100% / .8); border-radius: 12px; padding: 4px; flex-shrink: 0; height: fit-content; }
+  .switcher button {
+    border: 0; background: transparent; cursor: pointer;
+    font-size: 12px; font-weight: 600; color: var(--muted-fg);
+    padding: 6px 12px; border-radius: 9px; font-family: inherit;
+  }
+  .switcher button.on { background: var(--primary); color: #fff; box-shadow: 0 1px 3px hsl(221 83% 53% / .4); }
+  .hint-label { font-size: 10px; font-weight: 600; letter-spacing: .2em; text-transform: uppercase; color: var(--muted-fg); margin-top: 14px; }
+  .big-amount { font-size: 38px; font-weight: 900; letter-spacing: -.02em; color: var(--income); margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .big-amount .dec { font-size: 22px; }
+
+  .stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 16px; }
+  @media (max-width: 640px) { .stat-row { grid-template-columns: repeat(2, 1fr); } }
+  .stat {
+    border: 1px solid hsl(220 16% 88% / .8); background: hsl(0 0% 100% / .75);
+    border-radius: 12px; padding: 12px; backdrop-filter: blur(6px);
+  }
+  .stat .lbl { display: flex; align-items: center; gap: 6px; font-size: 10.5px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; color: var(--muted-fg); }
+  .stat .lbl .ic { width: 20px; height: 20px; border-radius: 6px; background: hsl(220 20% 94% / .6); display: inline-flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0; }
+  .stat .val { margin-top: 4px; font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .stat .val .unit { font-size: 11px; font-weight: 400; color: var(--muted-fg); margin-left: 3px; }
+  .c-income { color: var(--income); } .c-expense { color: var(--expense); }
+  .c-amber { color: var(--amber); } .c-sky { color: var(--sky); }
+  .bg-income { background: hsl(0 84% 60% / .12); } .bg-expense { background: hsl(160 84% 39% / .12); }
+  .bg-amber { background: hsl(38 92% 50% / .14); } .bg-sky { background: hsl(199 89% 48% / .12); }
+
+  .chips { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+  .chip { font-size: 11px; color: var(--muted-fg); border: 1px solid var(--border); background: hsl(0 0% 100% / .7); border-radius: 999px; padding: 3px 10px; }
+
+  .spark {
+    border: 1px solid hsl(220 16% 88% / .6); background: hsl(0 0% 100% / .75);
+    border-radius: var(--radius); padding: 16px; display: flex; flex-direction: column; min-height: 220px;
+  }
+  .spark .cap { display: flex; justify-content: space-between; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted-fg); }
+  .spark .cap b { color: var(--fg); font-weight: 500; }
+  .spark svg { flex: 1; width: 100%; margin-top: 8px; }
+
+  /* ====== 新增元素高亮 ====== */
+  .new-zone { position: relative; outline: 2px dashed var(--primary); outline-offset: 6px; border-radius: 4px; margin-top: 22px; }
+  .new-zone.hero-inner { margin-top: 16px; }
+  .new-badge {
+    position: absolute; top: -11px; right: 10px; z-index: 2;
+    background: var(--primary); color: #fff; font-size: 10px; font-weight: 700;
+    border-radius: 999px; padding: 2px 9px; letter-spacing: .08em;
+  }
+  .ghost {
+    margin-top: 22px; border: 1px dashed var(--border); border-radius: var(--radius);
+    padding: 20px; text-align: center; color: hsl(220 9% 45% / .65); font-size: 12px;
+    background: repeating-linear-gradient(45deg, transparent, transparent 8px, hsl(220 20% 94% / .5) 8px, hsl(220 20% 94% / .5) 16px);
+  }
+
+  /* ====== 方案一:双周期速览卡 ====== */
+  .period-row { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 22px; }
+  @media (max-width: 760px) { .period-row { grid-template-columns: 1fr; } }
+  .pcard {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 16px 18px; box-shadow: 0 1px 3px hsl(220 20% 30% / .05);
+    transition: box-shadow .2s;
+  }
+  .pcard:hover { box-shadow: 0 6px 18px hsl(220 20% 30% / .1); }
+  .pcard .head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .pcard .head .t { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; }
+  .pcard .head .t .ic { width: 26px; height: 26px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; }
+  .ic-prev { background: hsl(258 90% 66% / .12); color: hsl(258 90% 60%); }
+  .ic-year { background: hsl(199 89% 48% / .12); color: hsl(199 89% 40%); }
+  .period-chip { font-size: 10.5px; font-weight: 600; color: var(--muted-fg); background: var(--muted); border-radius: 999px; padding: 2px 9px; font-variant-numeric: tabular-nums; }
+  .ie-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+  .ie-grid .k { font-size: 11px; color: var(--muted-fg); display: flex; align-items: center; gap: 5px; }
+  .ie-grid .k i { width: 7px; height: 7px; border-radius: 2px; display: inline-block; }
+  .ie-grid .v { font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 1px; letter-spacing: -.01em; }
+  .pcard .balance-line {
+    display: flex; align-items: baseline; justify-content: space-between;
+    border-top: 1px dashed var(--border); margin-top: 12px; padding-top: 10px;
+  }
+  .pcard .balance-line .bk { font-size: 11px; color: var(--muted-fg); letter-spacing: .06em; }
+  .pcard .balance-line .bv { font-size: 16px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .ratio { margin-top: 10px; }
+  .ratio .track { height: 6px; border-radius: 999px; background: hsl(0 84% 60% / .16); overflow: hidden; }
+  .ratio .fill { height: 100%; border-radius: 999px; background: var(--expense); }
+  .ratio .cap2 { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--muted-fg); margin-top: 4px; }
+  .delta-chip { font-size: 10.5px; font-weight: 600; border-radius: 999px; padding: 1px 8px; }
+  .delta-up-exp { color: var(--expense); background: hsl(160 84% 39% / .1); }
+
+  /* ====== 方案二:hero 内嵌行 ====== */
+  .inline-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  @media (max-width: 760px) { .inline-row { grid-template-columns: 1fr; } }
+  .inline-card {
+    border: 1px solid hsl(220 16% 88% / .8); background: hsl(0 0% 100% / .75);
+    border-radius: 12px; padding: 10px 14px; backdrop-filter: blur(6px);
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  }
+  .inline-card .tag { font-size: 11px; font-weight: 700; color: var(--fg); display: flex; flex-direction: column; gap: 1px; min-width: 64px; }
+  .inline-card .tag .p { font-size: 9.5px; font-weight: 500; color: var(--muted-fg); font-variant-numeric: tabular-nums; }
+  .inline-card .item { display: flex; flex-direction: column; }
+  .inline-card .item .k { font-size: 9.5px; color: var(--muted-fg); letter-spacing: .06em; }
+  .inline-card .item .v { font-size: 14.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .inline-card .sep { width: 1px; align-self: stretch; background: var(--border); }
+
+  /* ====== 方案三:对比表 ====== */
+  .tbl-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); margin-top: 22px; overflow: hidden; box-shadow: 0 1px 3px hsl(220 20% 30% / .05); }
+  .tbl-card .thead { display: flex; align-items: center; justify-content: space-between; padding: 12px 18px; border-bottom: 1px solid var(--border); }
+  .tbl-card .thead .t { font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+  .tbl-card .thead .t .ic { width: 26px; height: 26px; border-radius: 8px; background: hsl(221 83% 53% / .1); color: var(--primary); display: inline-flex; align-items: center; justify-content: center; font-size: 13px; }
+  table.cmp { width: 100%; border-collapse: collapse; }
+  table.cmp th { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .1em; color: var(--muted-fg); text-align: right; padding: 9px 18px; border-bottom: 1px solid var(--border); }
+  table.cmp th:first-child { text-align: left; }
+  table.cmp td { padding: 12px 18px; border-bottom: 1px solid hsl(220 16% 88% / .5); font-variant-numeric: tabular-nums; text-align: right; font-size: 14.5px; font-weight: 700; }
+  table.cmp tr:last-child td { border-bottom: 0; }
+  table.cmd td:first-child, table.cmp td:first-child { text-align: left; font-weight: 400; }
+  table.cmp td:first-child .n { font-size: 13px; font-weight: 700; }
+  table.cmp td:first-child .p { font-size: 10.5px; color: var(--muted-fg); margin-left: 6px; font-weight: 400; font-variant-numeric: tabular-nums; }
+  table.cmp tr.opt-row td { color: hsl(220 9% 45% / .75); font-weight: 600; background: hsl(220 20% 94% / .3); }
+  table.cmp tr:hover td { background: hsl(221 83% 53% / .04); }
+
+  /* ====== 对比表 ====== */
+  .compare { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px 24px; }
+  .compare h2 { font-size: 15px; margin-bottom: 12px; }
+  .compare table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .compare th, .compare td { text-align: left; padding: 9px 12px; border-bottom: 1px solid hsl(220 16% 88% / .6); vertical-align: top; }
+  .compare th { color: var(--muted-fg); font-size: 12px; }
+  .compare td:first-child { font-weight: 700; white-space: nowrap; }
+  .compare .note { font-size: 12px; color: var(--muted-fg); margin-top: 12px; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <span class="logo">智</span>
+  <div>
+    <h1>Web 首页 · 新增「今年收入/支出」「上月收入/支出」— 布局方案预览</h1>
+    <div class="sub">智记 SmartBook · 2026-09-09 · 金额均为假数据 · 配色为默认「收入红/支出绿」(跟随用户收支配色设置)</div>
+  </div>
+</div>
+
+<main>
+
+  <section class="intro">
+    <h2>现状与数据说明</h2>
+    <p>当前首页 Hero 卡只显示<b>一个周期</b>的收支(默认本月,可切「今年/汇总」),<b>上月</b>收支在 Web 端完全看不到。以下三个方案都补齐「今年 + 上月」两组数字,差别只在摆放位置和信息密度。</p>
+    <ul>
+      <li><b>数据来源:</b>「今年」复用现有 year scope 请求,零新增;「上月」需新增 1 次 <code>analytics?scope=month&amp;period=上月</code> 请求(口径跟随账本记账起始日),失败静默降级,不影响其它卡片。</li>
+      <li><b>模拟范围:</b>每个方案都画出「Hero 卡 → 新增内容 → 习惯画像区」的位置关系;Hero 卡为简化还原,虚线框 = 新增部分。</li>
+      <li><b>交互预留:</b>卡片点击可跳转交易页按周期筛选(需交易页支持日期参数,本次可不做,先纯展示)。</li>
+    </ul>
+  </section>
+
+  <!-- ============ 方案一 ============ -->
+  <section class="option">
+    <div class="opt-head">
+      <div class="opt-no">方案 A <span class="badge-rec">推荐</span></div>
+      <h2>双周期速览卡 —— Hero 下方并排「上月收支」「今年收支」两张独立卡片</h2>
+      <p class="desc">紧跟 Hero 新增一排两张卡(桌面并排 / 手机竖排),每张卡展示该周期的收入、支出、结余和「支出占收入」比例条;上月卡带支出环比,今年卡带月均支出。信息完整、层次清晰,不动现有 Hero 结构。</p>
+      <div class="pc">
+        <span class="good">✓ 两个周期一屏同览,收支/结余/衍生指标都放得下</span>
+        <span class="good">✓ 独立卡片,后续可扩展点击跳转、图表</span>
+        <span class="bad">✕ 首页纵向长度 +1 排,与 Hero 的「今年」切换视角略有信息重合</span>
+      </div>
+    </div>
+    <div class="frame">
+      <div class="frame-title">▍模拟:首页顶部(桌面宽度)</div>
+
+      <div class="hero">
+        <div class="hero-in">
+          <div>
+            <div class="hero-top">
+              <div>
+                <div class="crumb">⌂ 当前账本 · 本月 <span class="range">(9.1-9.30)</span></div>
+                <div class="ledger-line">
+                  <span class="ledger-name">默认账本</span>
+                  <span class="cur-chip">CNY</span>
+                </div>
+              </div>
+              <div class="switcher"><button class="on">本月</button><button>今年</button><button>汇总</button></div>
+            </div>
+            <div class="hint-label">本月结余</div>
+            <div class="big-amount">¥6,061<span class="dec">.50</span></div>
+            <div class="stat-row">
+              <div class="stat"><div class="lbl"><span class="ic bg-income c-income">↙</span>本月收入</div><div class="val c-income">¥18,500.00</div></div>
+              <div class="stat"><div class="lbl"><span class="ic bg-expense c-expense">↗</span>本月支出</div><div class="val c-expense">¥12,438.50</div></div>
+              <div class="stat"><div class="lbl"><span class="ic bg-amber c-amber">≡</span>记账笔数</div><div class="val">186<span class="unit">笔</span></div></div>
+              <div class="stat"><div class="lbl"><span class="ic bg-sky c-sky">▦</span>记账天数</div><div class="val">428<span class="unit">天</span></div></div>
+            </div>
+            <div class="chips"><span class="chip">⚠ 预算 2/5 已超支</span><span class="chip">✓ 无异常月份</span></div>
+          </div>
+          <div class="spark">
+            <div class="cap"><b>本月结余走势</b><span>30 天</span></div>
+            <svg viewBox="0 0 300 120" preserveAspectRatio="none">
+              <defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stop-color="hsl(221,83%,53%)" stop-opacity=".45"/>
+                <stop offset="95%" stop-color="hsl(221,83%,53%)" stop-opacity="0"/>
+              </linearGradient></defs>
+              <path d="M0,95 L20,90 L40,92 L60,80 L80,72 L100,75 L120,60 L140,52 L160,55 L180,40 L200,35 L220,42 L240,28 L260,22 L280,25 L300,15 L300,120 L0,120 Z" fill="url(#g1)"/>
+              <path d="M0,95 L20,90 L40,92 L60,80 L80,72 L100,75 L120,60 L140,52 L160,55 L180,40 L200,35 L220,42 L240,28 L260,22 L280,25 L300,15" fill="none" stroke="hsl(221,83%,53%)" stroke-width="2.5"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <div class="new-zone">
+        <span class="new-badge">新增</span>
+        <div class="period-row" style="margin-top:0;">
+          <div class="pcard">
+            <div class="head">
+              <div class="t"><span class="ic ic-prev">◂</span>上月收支</div>
+              <span class="period-chip">2026-08</span>
+            </div>
+            <div class="ie-grid">
+              <div><div class="k"><i style="background:var(--income)"></i>收入</div><div class="v c-income">¥21,200.00</div></div>
+              <div>
+                <div class="k" style="justify-content:space-between;"><span style="display:flex;align-items:center;gap:5px;"><i style="background:var(--expense)"></i>支出</span>
+                <span class="delta-chip delta-up-exp">环比 +8.4%</span></div>
+                <div class="v c-expense">¥15,872.30</div>
+              </div>
+            </div>
+            <div class="balance-line">
+              <span class="bk">结余 · 203 笔</span>
+              <span class="bv c-income">+¥5,327.70</span>
+            </div>
+            <div class="ratio">
+              <div class="track"><div class="fill" style="width:74.9%"></div></div>
+              <div class="cap2"><span>支出占收入 74.9%</span><span>日均支出 ¥511.69</span></div>
+            </div>
+          </div>
+
+          <div class="pcard">
+            <div class="head">
+              <div class="t"><span class="ic ic-year">▦</span>今年收支</div>
+              <span class="period-chip">2026 · 已过 9 个月</span>
+            </div>
+            <div class="ie-grid">
+              <div><div class="k"><i style="background:var(--income)"></i>收入</div><div class="v c-income">¥172,640.00</div></div>
+              <div><div class="k"><i style="background:var(--expense)"></i>支出</div><div class="v c-expense">¥118,235.60</div></div>
+            </div>
+            <div class="balance-line">
+              <span class="bk">结余 · 月均支出 ¥13,137</span>
+              <span class="bv c-income">+¥54,404.40</span>
+            </div>
+            <div class="ratio">
+              <div class="track"><div class="fill" style="width:68.5%"></div></div>
+              <div class="cap2"><span>支出占收入 68.5%</span><span>储蓄率 31.5%</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ghost">… 习惯画像区(现状保留)…</div>
+    </div>
+  </section>
+
+  <!-- ============ 方案二 ============ -->
+  <section class="option">
+    <div class="opt-head">
+      <div class="opt-no">方案 B</div>
+      <h2>Hero 内嵌对比行 —— 收进 Hero 卡内部,大结余下方一行两枚横条</h2>
+      <p class="desc">不新增首页区块,在 Hero 卡内部(收支四宫格与预算 chip 之间)插入两枚横排内嵌卡:上月 / 今年各一条,横向排「收入 · 支出 · 结余」。所有关键收支收敛在首屏 Hero 内,视觉重心不散,但 Hero 变高、单卡信息密度低于方案 A。</p>
+      <div class="pc">
+        <span class="good">✓ 不增加首页区块数,首屏一卡看完</span>
+        <span class="good">✓ 与 Hero 现有毛玻璃小卡风格天然统一</span>
+        <span class="bad">✕ Hero 高度 +约 90px,移动端会更长</span>
+        <span class="bad">✕ 放不下比例条/环比等衍生指标(空间有限)</span>
+      </div>
+    </div>
+    <div class="frame">
+      <div class="frame-title">▍模拟:首页顶部(桌面宽度)</div>
+
+      <div class="hero">
+        <div class="hero-in">
+          <div>
+            <div class="hero-top">
+              <div>
+                <div class="crumb">⌂ 当前账本 · 本月 <span class="range">(9.1-9.30)</span></div>
+                <div class="ledger-line">
+                  <span class="ledger-name">默认账本</span>
+                  <span class="cur-chip">CNY</span>
+                </div>
+              </div>
+              <div class="switcher"><button class="on">本月</button><button>今年</button><button>汇总</button></div>
+            </div>
+            <div class="hint-label">本月结余</div>
+            <div class="big-amount">¥6,061<span class="dec">.50</span></div>
+            <div class="stat-row">
+              <div class="stat"><div class="lbl"><span class="ic bg-income c-income">↙</span>本月收入</div><div class="val c-income">¥18,500.00</div></div>
+              <div class="stat"><div class="lbl"><span class="ic bg-expense c-expense">↗</span>本月支出</div><div class="val c-expense">¥12,438.50</div></div>
+              <div class="stat"><div class="lbl"><span class="ic bg-amber c-amber">≡</span>记账笔数</div><div class="val">186<span class="unit">笔</span></div></div>
+              <div class="stat"><div class="lbl"><span class="ic bg-sky c-sky">▦</span>记账天数</div><div class="val">428<span class="unit">天</span></div></div>
+            </div>
+
+            <div class="new-zone hero-inner">
+              <span class="new-badge">新增</span>
+              <div class="inline-row" style="margin-top:8px;">
+                <div class="inline-card">
+                  <div class="tag">上月收支<span class="p">2026-08</span></div>
+                  <div class="sep"></div>
+                  <div class="item"><span class="k">收入</span><span class="v c-income">¥21,200.00</span></div>
+                  <div class="item"><span class="k">支出</span><span class="v c-expense">¥15,872.30</span></div>
+                  <div class="sep"></div>
+                  <div class="item"><span class="k">结余</span><span class="v c-income">+¥5,327.70</span></div>
+                </div>
+                <div class="inline-card">
+                  <div class="tag">今年收支<span class="p">2026</span></div>
+                  <div class="sep"></div>
+                  <div class="item"><span class="k">收入</span><span class="v c-income">¥172,640.00</span></div>
+                  <div class="item"><span class="k">支出</span><span class="v c-expense">¥118,235.60</span></div>
+                  <div class="sep"></div>
+                  <div class="item"><span class="k">结余</span><span class="v c-income">+¥54,404.40</span></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="chips"><span class="chip">⚠ 预算 2/5 已超支</span><span class="chip">✓ 无异常月份</span></div>
+          </div>
+          <div class="spark">
+            <div class="cap"><b>本月结余走势</b><span>30 天</span></div>
+            <svg viewBox="0 0 300 120" preserveAspectRatio="none">
+              <defs><linearGradient id="g2" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stop-color="hsl(221,83%,53%)" stop-opacity=".45"/>
+                <stop offset="95%" stop-color="hsl(221,83%,53%)" stop-opacity="0"/>
+              </linearGradient></defs>
+              <path d="M0,95 L20,90 L40,92 L60,80 L80,72 L100,75 L120,60 L140,52 L160,55 L180,40 L200,35 L220,42 L240,28 L260,22 L280,25 L300,15 L300,120 L0,120 Z" fill="url(#g2)"/>
+              <path d="M0,95 L20,90 L40,92 L60,80 L80,72 L100,75 L120,60 L140,52 L160,55 L180,40 L200,35 L220,42 L240,28 L260,22 L280,25 L300,15" fill="none" stroke="hsl(221,83%,53%)" stroke-width="2.5"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <div class="ghost">… 习惯画像区(现状保留)…</div>
+    </div>
+  </section>
+
+  <!-- ============ 方案三 ============ -->
+  <section class="option">
+    <div class="opt-head">
+      <div class="opt-no">方案 C</div>
+      <h2>周期对比表 —— Hero 下方一张紧凑表格卡(上月 / 今年 两行 × 收支三列)</h2>
+      <p class="desc">信息密度最高、占地最小的做法:一张「周期对比」表格卡,行=周期、列=收入/支出/结余,可顺带放一行灰色的「全部」(数据已有)做总览。适合喜欢清爽表格风的用户,但少了些「仪表盘氛围感」,衍生指标(环比/月均)只能以小字塞在行内。</p>
+      <div class="pc">
+        <span class="good">✓ 最省空间,一行一个周期,扩展「全部」行零成本</span>
+        <span class="good">✓ 数字纵向对齐,对比着看最直观</span>
+        <span class="bad">✕ 表格观感偏「报表」,与首页卡片风略有割裂</span>
+      </div>
+    </div>
+    <div class="frame">
+      <div class="frame-title">▍模拟:首页顶部(桌面宽度)</div>
+
+      <div class="hero">
+        <div class="hero-in">
+          <div>
+            <div class="hero-top">
+              <div>
+                <div class="crumb">⌂ 当前账本 · 本月 <span class="range">(9.1-9.30)</span></div>
+                <div class="ledger-line">
+                  <span class="ledger-name">默认账本</span>
+                  <span class="cur-chip">CNY</span>
+                </div>
+              </div>
+              <div class="switcher"><button class="on">本月</button><button>今年</button><button>汇总</button></div>
+            </div>
+            <div class="hint-label">本月结余</div>
+            <div class="big-amount">¥6,061<span class="dec">.50</span></div>
+            <div class="stat-row">
+              <div class="stat"><div class="lbl"><span class="ic bg-income c-income">↙</span>本月收入</div><div class="val c-income">¥18,500.00</div></div>
+              <div class="stat"><div class="lbl"><span class="ic bg-expense c-expense">↗</span>本月支出</div><div class="val c-expense">¥12,438.50</div></div>
+              <div class="stat"><div class="lbl"><span class="ic bg-amber c-amber">≡</span>记账笔数</div><div class="val">186<span class="unit">笔</span></div></div>
+              <div class="stat"><div class="lbl"><span class="ic bg-sky c-sky">▦</span>记账天数</div><div class="val">428<span class="unit">天</span></div></div>
+            </div>
+            <div class="chips"><span class="chip">⚠ 预算 2/5 已超支</span><span class="chip">✓ 无异常月份</span></div>
+          </div>
+          <div class="spark">
+            <div class="cap"><b>本月结余走势</b><span>30 天</span></div>
+            <svg viewBox="0 0 300 120" preserveAspectRatio="none">
+              <defs><linearGradient id="g3" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stop-color="hsl(221,83%,53%)" stop-opacity=".45"/>
+                <stop offset="95%" stop-color="hsl(221,83%,53%)" stop-opacity="0"/>
+              </linearGradient></defs>
+              <path d="M0,95 L20,90 L40,92 L60,80 L80,72 L100,75 L120,60 L140,52 L160,55 L180,40 L200,35 L220,42 L240,28 L260,22 L280,25 L300,15 L300,120 L0,120 Z" fill="url(#g3)"/>
+              <path d="M0,95 L20,90 L40,92 L60,80 L80,72 L100,75 L120,60 L140,52 L160,55 L180,40 L200,35 L220,42 L240,28 L260,22 L280,25 L300,15" fill="none" stroke="hsl(221,83%,53%)" stroke-width="2.5"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <div class="new-zone">
+        <span class="new-badge">新增</span>
+        <div class="tbl-card" style="margin-top:0;">
+          <div class="thead">
+            <div class="t"><span class="ic">⇄</span>周期对比</div>
+            <span class="period-chip">跟随账本记账起始日</span>
+          </div>
+          <table class="cmp">
+            <thead>
+              <tr><th>周期</th><th>收入</th><th>支出</th><th>结余</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="n">上月</span><span class="p">2026-08</span></td>
+                <td class="c-income">¥21,200.00</td>
+                <td class="c-expense">¥15,872.30</td>
+                <td class="c-income">+¥5,327.70</td>
+              </tr>
+              <tr>
+                <td><span class="n">今年</span><span class="p">2026 · 月均支出 ¥13,137</span></td>
+                <td class="c-income">¥172,640.00</td>
+                <td class="c-expense">¥118,235.60</td>
+                <td class="c-income">+¥54,404.40</td>
+              </tr>
+              <tr class="opt-row">
+                <td><span class="n">全部</span><span class="p">可选:复用现有汇总数据</span></td>
+                <td>¥512,806.00</td>
+                <td>¥356,914.20</td>
+                <td>+¥155,891.80</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="ghost">… 习惯画像区(现状保留)…</div>
+    </div>
+  </section>
+
+  <!-- ============ 对比 ============ -->
+  <section class="compare">
+    <h2>三方案对比与实现改动点</h2>
+    <table>
+      <tr><th></th><th>方案 A · 双周期速览卡</th><th>方案 B · Hero 内嵌对比行</th><th>方案 C · 周期对比表</th></tr>
+      <tr><td>新增位置</td><td>Hero 与习惯画像之间,独立一排两卡</td><td>Hero 卡内部,四宫格与预算 chip 之间</td><td>Hero 与习惯画像之间,单张表格卡</td></tr>
+      <tr><td>信息量</td><td>收支 + 结余 + 笔数 + 比例条 + 环比/月均</td><td>收支 + 结余(仅此三项)</td><td>收支 + 结余,行内可带小字注</td></tr>
+      <tr><td>纵向增量</td><td>约 +150px</td><td>Hero 内 +约 90px</td><td>约 +140px</td></tr>
+      <tr><td>移动端</td><td>两卡竖排,每卡完整</td><td>横条换行竖排,较拥挤</td><td>表格横向可滚动或压缩列</td></tr>
+      <tr><td>后续扩展</td><td>卡片可点击跳周期筛选、加迷你图</td><td>空间已满,基本不可扩展</td><td>加行容易(任意周期),加列难</td></tr>
+    </table>
+    <p class="note">共同改动点(与布局方案无关):① OverviewPage 新增「上月」analytics 请求(period=上月周期标签,跟随账本 month_start_day);② 新组件 PeriodBreakdownCards / 对比表放到 components/dashboard/;③ i18n zh-CN / zh-TW / en 三份文案;④ 今年数据复用现有 year scope 结果,无额外请求。收支颜色继续走 text-income / text-expense(随用户收支配色翻转)。</p>
+  </section>
+
+</main>
+</body>
+</html>

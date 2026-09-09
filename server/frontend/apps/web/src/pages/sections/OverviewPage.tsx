@@ -14,7 +14,7 @@ import {
   type WorkspaceLedgerCounts,
   type WorkspaceTag,
 } from '@smartbook/api-client'
-import { fetchBudgetsWithUsage, periodLabel, type BudgetUsage } from '@smartbook/web-features'
+import { fetchBudgetsWithUsage, periodLabel, previousPeriodLabel, type BudgetUsage } from '@smartbook/web-features'
 
 import { OverviewSection } from '../../components/sections/OverviewSection'
 import { useAuth } from '../../context/AuthContext'
@@ -67,6 +67,14 @@ export function OverviewPage() {
   const [currentMonthCategoryRanks, setCurrentMonthCategoryRanks] = usePageCache<
     WorkspaceAnalytics['category_ranks']
   >(`overview:${bucket}:monthCategoryRanks`, [])
+  // 上月(按账本记账周期口径)收支:hero「上月」视角专用,请求失败静默降级
+  const [lastMonthSummary, setLastMonthSummary] = usePageCache<
+    WorkspaceAnalytics['summary'] | null
+  >(`overview:${bucket}:lastMonthSummary`, null)
+  const [lastMonthSeries, setLastMonthSeries] = usePageCache<WorkspaceAnalytics['series']>(
+    `overview:${bucket}:lastMonthSeries`,
+    []
+  )
   const [currentYearSummary, setCurrentYearSummary] = usePageCache<
     WorkspaceAnalytics['summary'] | null
   >(`overview:${bucket}:yearSummary`, null)
@@ -154,6 +162,7 @@ export function OverviewPage() {
     const now = new Date()
     const msd = Math.max(1, Math.min(28, currentLedger?.month_start_day ?? 1))
     const currentPeriod = periodLabel(now, msd)
+    const prevPeriod = previousPeriodLabel(now, msd)
     const tzOffsetMinutes = -now.getTimezoneOffset()
     // allSettled:单个请求失败时其它请求的数据依然 set。
     const results = await Promise.allSettled([
@@ -177,6 +186,13 @@ export function OverviewPage() {
         tzOffsetMinutes,
       }),
       fetchWorkspaceAnalytics(token, {
+        scope: 'month',
+        metric: 'expense',
+        period: prevPeriod,
+        ledgerId: activeLedgerId || undefined,
+        tzOffsetMinutes,
+      }),
+      fetchWorkspaceAnalytics(token, {
         scope: 'all',
         metric: 'expense',
         ledgerId: activeLedgerId || undefined,
@@ -186,7 +202,7 @@ export function OverviewPage() {
         ledgerId: activeLedgerId || undefined,
       }),
     ])
-    const [rYearExpense, rYearIncome, rMonthly, rAll, rCounts] = results
+    const [rYearExpense, rYearIncome, rMonthly, rLastMonth, rAll, rCounts] = results
     if (rYearExpense.status === 'fulfilled') {
       setAnalyticsData(rYearExpense.value)
       setCurrentYearSummary(rYearExpense.value.summary)
@@ -199,6 +215,10 @@ export function OverviewPage() {
       setCurrentMonthSummary(rMonthly.value.summary)
       setCurrentMonthSeries(rMonthly.value.series || [])
       setCurrentMonthCategoryRanks(rMonthly.value.category_ranks || [])
+    }
+    if (rLastMonth.status === 'fulfilled') {
+      setLastMonthSummary(rLastMonth.value.summary)
+      setLastMonthSeries(rLastMonth.value.series || [])
     }
     if (rAll.status === 'fulfilled') {
       setAllTimeSummary(rAll.value.summary)
@@ -295,6 +315,8 @@ export function OverviewPage() {
       currentMonthSummary={currentMonthSummary}
       currentMonthSeries={currentMonthSeries}
       currentMonthCategoryRanks={currentMonthCategoryRanks}
+      lastMonthSummary={lastMonthSummary}
+      lastMonthSeries={lastMonthSeries}
       currentYearSummary={currentYearSummary}
       currentYearSeries={currentYearSeries}
       allTimeSummary={allTimeSummary}

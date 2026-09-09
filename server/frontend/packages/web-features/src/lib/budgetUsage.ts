@@ -41,13 +41,74 @@ export function periodLabel(date: Date, startDay: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
+/**
+ * 上一个记账周期的 [start, end):当前周期整体前移一个月。start/end 的日号
+ * 已被 currentMonthRange 收敛到 1..28,跨年/大小月移月都不会溢出。
+ */
+export function previousMonthRange(
+  startDay: number,
+  now = new Date(),
+): { start: Date; end: Date } {
+  const { start, end } = currentMonthRange(startDay, now)
+  return {
+    start: new Date(start.getFullYear(), start.getMonth() - 1, start.getDate()),
+    end: new Date(end.getFullYear(), end.getMonth() - 1, end.getDate()),
+  }
+}
+
+/** 上一个记账周期的标签 "YYYY-MM"。取当前周期 start 前一天,必落在上一周期。 */
+export function previousPeriodLabel(date: Date, startDay: number): string {
+  const day = Math.max(1, Math.min(28, Math.round(startDay || 1)))
+  const { start } = currentMonthRange(day, date)
+  return periodLabel(new Date(start.getFullYear(), start.getMonth(), start.getDate() - 1), day)
+}
+
+/** 周期范围短文案,如 "6.15-7.14"(含端)。 */
+function monthRangeShortText(range: { start: Date; end: Date }): string {
+  const endIncl = new Date(range.end.getFullYear(), range.end.getMonth(), range.end.getDate() - 1)
+  return `${range.start.getMonth() + 1}.${range.start.getDate()}-${endIncl.getMonth() + 1}.${endIncl.getDate()}`
+}
+
 /** 当前记账周期的范围短文案,如 "6.15-7.14"(含端);startDay=1 返回 null(自然月不标注)。 */
 export function periodRangeText(startDay: number, now = new Date()): string | null {
   const day = Math.max(1, Math.min(28, Math.round(startDay || 1)))
   if (day === 1) return null
-  const { start, end } = currentMonthRange(day, now)
-  const endIncl = new Date(end.getFullYear(), end.getMonth(), end.getDate() - 1)
-  return `${start.getMonth() + 1}.${start.getDate()}-${endIncl.getMonth() + 1}.${endIncl.getDate()}`
+  return monthRangeShortText(currentMonthRange(day, now))
+}
+
+/** 上一个记账周期的范围短文案;startDay=1 返回 null(自然月不标注)。 */
+export function previousPeriodRangeText(startDay: number, now = new Date()): string | null {
+  const day = Math.max(1, Math.min(28, Math.round(startDay || 1)))
+  if (day === 1) return null
+  return monthRangeShortText(previousMonthRange(day, now))
+}
+
+function utcMidnight(d: Date): number {
+  return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())
+}
+
+/** [from, to] 的含端天数,from 晚于 to 时收敛为 1。 */
+function daysInclusive(from: Date, to: Date): number {
+  return Math.max(1, Math.round((utcMidnight(to) - utcMidnight(from)) / 86400000) + 1)
+}
+
+/** 当前记账周期已过天数(含今天),作"日均支出/笔均"类滑动分母。 */
+export function periodDaysElapsed(startDay: number, now = new Date()): number {
+  const day = Math.max(1, Math.min(28, Math.round(startDay || 1)))
+  const { start } = currentMonthRange(day, now)
+  return daysInclusive(start, now)
+}
+
+/** 完整周期([start, end))的天数,如上月共 31 天。 */
+export function periodLengthDays(range: { start: Date; end: Date }): number {
+  return Math.max(1, Math.round((utcMidnight(range.end) - utcMidnight(range.start)) / 86400000))
+}
+
+/** 记账年已过天数(含今天):[今年 1 月周期起点, 今天];周期起点未到时收敛为 1。 */
+export function yearDaysElapsed(startDay: number, now = new Date()): number {
+  const day = Math.max(1, Math.min(28, Math.round(startDay || 1)))
+  const { start } = yearRange(now.getFullYear(), day)
+  return daysInclusive(start, now)
 }
 
 /** 「year 年」= [当年1月周期起点, 次年1月周期起点),12 个完整记账周期。 */

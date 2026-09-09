@@ -14,64 +14,78 @@ import type {
   ReadLedger,
   WorkspaceAnalyticsAnomalyMonth,
   WorkspaceAnalyticsSeriesItem,
-  WorkspaceAnalyticsSummary,
-  WorkspaceLedgerCounts
+  WorkspaceAnalyticsSummary
 } from '@smartbook/api-client'
-import { Amount, periodRangeText, type BudgetUsage } from '@smartbook/web-features'
+import { Amount, periodRangeText, previousPeriodRangeText, type BudgetUsage } from '@smartbook/web-features'
 import { useT } from '@smartbook/ui'
 
 import { HeroInsightsRow } from './HeroInsightsRow'
 
-type HeroScope = 'month' | 'year' | 'all'
+export type HeroScope = 'month' | 'lastMonth' | 'year' | 'all'
 
 interface Props {
   ledgers: ReadLedger[]
   currentLedgerId?: string
   monthSummary?: WorkspaceAnalyticsSummary
   monthSeries?: WorkspaceAnalyticsSeriesItem[]
+  /** 上月(记账周期口径)收支;拉取失败时缺省,视角内显示空态。 */
+  lastMonthSummary?: WorkspaceAnalyticsSummary
+  lastMonthSeries?: WorkspaceAnalyticsSeriesItem[]
   yearSummary?: WorkspaceAnalyticsSummary
   yearSeries?: WorkspaceAnalyticsSeriesItem[]
   allSummary?: WorkspaceAnalyticsSummary
   allSeries?: WorkspaceAnalyticsSeriesItem[]
-  ledgerCounts?: WorkspaceLedgerCounts
   /** 当前账本预算配置 + 当周期 used,空数组 → chip 不显示。 */
   budgets?: ReadBudget[]
   budgetUsageById?: Record<string, BudgetUsage>
   /** 异常月份(scope=year analytics 返回),空数组 + hasEnoughMonths=true 显示 ✓ */
   anomalyMonths?: WorkspaceAnalyticsAnomalyMonth[]
   hasEnoughMonthsForAnomaly?: boolean
+  /** 受控 scope:父级(OverviewSection)需要同一状态喂给 HomeHabitStats 等卡,
+   *  传入后切换器走 onScopeChange 上报;不传则组件内部自持(向后兼容)。 */
+  scope?: HeroScope
+  onScopeChange?: (scope: HeroScope) => void
   onOpenAnnualReport?: (year?: number) => void
 }
 
-// 三个 scope 的 label/hint 在组件里 t() 时动态查,这里只留 value 列表
-const SCOPE_VALUES: HeroScope[] = ['month', 'year', 'all']
+// 四个 scope 的 label/hint 在组件里 t() 时动态查,这里只留 value 列表
+const SCOPE_VALUES: HeroScope[] = ['month', 'lastMonth', 'year', 'all']
 
 /**
- * 首页 hero 卡。三视角切换（本月 / 今年 / 汇总）：
+ * 首页 hero 卡。四视角切换（本月 / 上月 / 今年 / 汇总）：
  * - 大号结余 = 对应 scope 的 income - expense（对齐 mobile `monthlyTotals` /
  *   `yearlyTotals` / 全量聚合）
- * - 本月/今年/全部 收入 + 支出 两个 HeroStat 跟随 scope 变
- * - 记账笔数 / 记账天数 从 ledgerCounts 来（账本全量，不随 scope 变）
- * - 右侧 sparkline: month 按日累计；year / all 按月累计
+ * - 本月/上月/今年/全部 收入 + 支出 两个 HeroStat 跟随 scope 变
+ * - 记账笔数 / 记账天数 同样跟随 scope:取对应周期 summary 的
+ *   transaction_count / distinct_days(周期内有记账的天数),与收支同源
+ * - 右侧 sparkline: month / lastMonth 按日累计；year / all 按月累计
  */
 export function HomeHero({
   ledgers,
   currentLedgerId,
   monthSummary,
   monthSeries,
+  lastMonthSummary,
+  lastMonthSeries,
   yearSummary,
   yearSeries,
   allSummary,
   allSeries,
-  ledgerCounts,
   budgets,
   budgetUsageById,
   anomalyMonths,
   hasEnoughMonthsForAnomaly,
+  scope: scopeProp,
+  onScopeChange,
   onOpenAnnualReport,
 }: Props) {
   const t = useT()
-  const [scope, setScope] = useState<HeroScope>('month')
+  const [fallbackScope, setFallbackScope] = useState<HeroScope>('month')
+  const scope = scopeProp ?? fallbackScope
+  const setScope = (next: HeroScope) => {
+    setFallbackScope(next)
+    onScopeChange?.(next)
+  }
 
   const activeLedger =
     ledgers.find((l) => l.ledger_id === currentLedgerId) || ledgers[0]
@@ -80,11 +94,13 @@ export function HomeHero({
 
   const summaryByScope: Record<HeroScope, WorkspaceAnalyticsSummary | undefined> = {
     month: monthSummary,
+    lastMonth: lastMonthSummary,
     year: yearSummary,
     all: allSummary
   }
   const seriesByScope: Record<HeroScope, WorkspaceAnalyticsSeriesItem[]> = {
     month: monthSeries || [],
+    lastMonth: lastMonthSeries || [],
     year: yearSeries || [],
     all: allSeries || []
   }
@@ -93,14 +109,21 @@ export function HomeHero({
   const activeSeries = seriesByScope[scope]
   const scopeLabel = t(`home.scope.${scope}`)
   const scopeBalanceHint = t(`home.scope.${scope}.hint`)
-  const monthRangeLabel = scope === 'month' ? periodRangeText(ledgerMonthStartDay) : null
+  const periodRangeLabel =
+    scope === 'month'
+      ? periodRangeText(ledgerMonthStartDay)
+      : scope === 'lastMonth'
+        ? previousPeriodRangeText(ledgerMonthStartDay)
+        : null
 
   const income = activeSummary?.income_total ?? 0
   const expense = activeSummary?.expense_total ?? 0
   const balance = activeSummary?.balance ?? income - expense
 
-  const txCount = ledgerCounts?.tx_count ?? 0
-  const days = ledgerCounts?.days_since_first_tx ?? 0
+  // 笔数 / 天数跟随 scope:取对应周期 summary 的 transaction_count /
+  // distinct_days(周期内有记账的天数),与收入/支出同口径滚动。
+  const txCount = activeSummary?.transaction_count ?? 0
+  const days = activeSummary?.distinct_days ?? 0
 
   // sparkline: 本月按日累计；年/全部按月累计。series 已按 bucket 分桶。
   const trendData = useMemo(() => {
@@ -147,9 +170,9 @@ export function HomeHero({
                 <span className="whitespace-nowrap">
                   {t('home.scope.current')} · {scopeLabel}
                 </span>
-                {monthRangeLabel && (
+                {periodRangeLabel && (
                   <span className="whitespace-nowrap font-normal normal-case tracking-normal text-muted-foreground/70">
-                    ({monthRangeLabel})
+                    ({periodRangeLabel})
                   </span>
                 )}
               </div>
@@ -220,7 +243,7 @@ export function HomeHero({
             </HeroStat>
             <HeroStat
               icon={<Receipt className="h-3.5 w-3.5 text-amber-500" />}
-              label={t('home.hero.count')}
+              label={t('home.hero.count').replace('{scope}', scopeLabel)}
               className="bee-rise-in"
               style={{ animationDelay: '220ms' }}
             >
@@ -233,7 +256,7 @@ export function HomeHero({
             </HeroStat>
             <HeroStat
               icon={<CalendarDays className="h-3.5 w-3.5 text-sky-500" />}
-              label={t('home.hero.days')}
+              label={t('home.hero.days').replace('{scope}', scopeLabel)}
               className="bee-rise-in"
               style={{ animationDelay: '330ms' }}
             >
@@ -278,7 +301,7 @@ export function HomeHero({
             {trendData.length > 0 ? (
               <span className="rounded-md bg-muted/60 px-1.5 py-0.5 font-mono text-[10px] font-semibold tabular-nums text-muted-foreground">
                 {trendData.length}
-                {scope === 'month'
+                {scope === 'month' || scope === 'lastMonth'
                   ? t('home.hero.trendUnit.day')
                   : scope === 'year'
                     ? t('home.hero.trendUnit.month')

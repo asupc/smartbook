@@ -11,12 +11,13 @@ import { useT } from '@smartbook/ui'
 import type { BudgetUsage } from '@smartbook/web-features'
 
 import { Layers, TrendingUp } from 'lucide-react'
+import { useState } from 'react'
 import { useLedgers } from '../../context/LedgersContext'
 import {
   dispatchOpenDetailAccount,
   dispatchOpenDetailTag,
 } from '../../lib/txDialogEvents'
-import { HomeHero } from '../dashboard/HomeHero'
+import { HomeHero, type HeroScope } from '../dashboard/HomeHero'
 import { HomeHabitStats } from '../dashboard/HomeHabitStats'
 import { HomeYearHeatmap } from '../dashboard/HomeYearHeatmap'
 import { HomeMonthCategoryDonut } from '../dashboard/HomeMonthCategoryDonut'
@@ -32,6 +33,9 @@ interface Props {
   currentMonthSummary: WorkspaceAnalyticsSummary | null
   currentMonthSeries: WorkspaceAnalyticsSeriesItem[]
   currentMonthCategoryRanks: WorkspaceAnalytics['category_ranks']
+  /** 上月(记账周期口径)收支 — hero「上月」视角,拉取失败时为 null。 */
+  lastMonthSummary: WorkspaceAnalyticsSummary | null
+  lastMonthSeries: WorkspaceAnalyticsSeriesItem[]
   currentYearSummary: WorkspaceAnalyticsSummary | null
   currentYearSeries: WorkspaceAnalyticsSeriesItem[]
   allTimeSummary: WorkspaceAnalyticsSummary | null
@@ -67,6 +71,8 @@ export function OverviewSection({
   currentMonthSummary,
   currentMonthSeries,
   currentMonthCategoryRanks,
+  lastMonthSummary,
+  lastMonthSeries,
   currentYearSummary,
   currentYearSeries,
   allTimeSummary,
@@ -83,6 +89,16 @@ export function OverviewSection({
   const t = useT()
   const { ledgers, activeLedgerId, currency } = useLedgers()
 
+  // hero 周期切换器状态提升:HomeHabitStats 三张小卡的数值/文案跟随同一 scope
+  const [heroScope, setHeroScope] = useState<HeroScope>('month')
+
+  const activeLedger =
+    ledgers.find((l) => l.ledger_id === activeLedgerId) || ledgers[0]
+  const ledgerMonthStartDay = Math.max(
+    1,
+    Math.min(28, activeLedger?.month_start_day ?? 1),
+  )
+
   // 预算 + 异常归因被合并进 HomeHero 顶部 chip(hover 出详情),不再独占
   // 卡片占首页空间。月份够算 baseline 的判定跟 server 算法一致(已发生月份 ≥ 3)。
   const yearOccurredMonths = (analyticsData?.series || []).filter(
@@ -96,21 +112,29 @@ export function OverviewSection({
         currentLedgerId={activeLedgerId || undefined}
         monthSummary={currentMonthSummary || undefined}
         monthSeries={currentMonthSeries}
+        lastMonthSummary={lastMonthSummary || undefined}
+        lastMonthSeries={lastMonthSeries}
         yearSummary={currentYearSummary || undefined}
         yearSeries={currentYearSeries}
         allSummary={allTimeSummary || undefined}
         allSeries={allTimeSeries}
-        ledgerCounts={ledgerCounts || undefined}
         budgets={budgets}
         budgetUsageById={budgetUsageById}
         anomalyMonths={analyticsData?.anomaly_months || []}
         hasEnoughMonthsForAnomaly={yearOccurredMonths >= 3}
+        scope={heroScope}
+        onScopeChange={setHeroScope}
         onOpenAnnualReport={onOpenAnnualReport}
       />
 
       <HomeHabitStats
+        scope={heroScope}
         monthSummary={currentMonthSummary || undefined}
+        lastMonthSummary={lastMonthSummary || undefined}
+        yearSummary={currentYearSummary || undefined}
+        allSummary={allTimeSummary || undefined}
         ledgerCounts={ledgerCounts || undefined}
+        ledgerMonthStartDay={ledgerMonthStartDay}
         currency={currency}
       />
 
