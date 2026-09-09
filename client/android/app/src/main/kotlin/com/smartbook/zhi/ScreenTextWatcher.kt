@@ -201,17 +201,23 @@ open class ScreenTextWatcher : AccessibilityService() {
                 return
             }
             val amountCount = AMOUNT_PATTERN.findAll(text).count()
+            val dateCount = countDates(text)
             if (!hasAmount(text) || !hasBookableHint(text)) {
                 val why = if (!hasAmount(text)) "无金额" else "无交易特征"
                 log("无金额或无交易特征,丢弃: $pkg len=$logLen")
                 recordDecision(this, pkg, "no_amount_or_hint", "$why amounts=$amountCount")
                 return
             }
-            // 列表页(整页几十条流水)金额会命中几十次,详情页单条账单只有 1~3 个
-            // 金额。不挡列表页会把历史流水批量送 AI,重复/错误入账。
+            // 列表页分级判定见 isListPage:金额数远超详情页规模直接判列表;
+            // 阈值区间内按日期行数区分(详情页只有创建时间 1 个日期)。
             if (isListPage(text)) {
-                log("命中列表页特征(金额出现 ${AMOUNT_PATTERN.findAll(text).count()} 次),丢弃: $pkg len=$logLen")
-                recordDecision(this, pkg, "list_page", "amounts=$amountCount(≥$MAX_DETAIL_AMOUNTS,整页流水/推荐流?)")
+                val sample = AMOUNT_PATTERN.findAll(text).take(6)
+                    .joinToString("|") { it.value }
+                log("命中列表页特征(金额 $amountCount 次/日期 $dateCount 行),丢弃: $pkg len=$logLen")
+                recordDecision(
+                    this, pkg, "list_page",
+                    "amounts=$amountCount dates=$dateCount 样本[$sample]"
+                )
                 return
             }
             val nonBookableHit = NON_BOOKABLE_KEYWORDS.firstOrNull { text.contains(it) }
@@ -358,13 +364,26 @@ open class ScreenTextWatcher : AccessibilityService() {
     }
 
     /**
-     * 列表页判定:单条账单详情页金额通常出现 1~3 次(实付/原价/优惠/退款),
-     * 账单/流水列表页则一条流水一个金额,整页几十个。金额命中次数达到阈值
-     * 即视为列表页,丢弃 —— 避免把整页历史流水批量送 AI 造成重复/错误入账。
+     * 列表页判定(分级):单条账单详情页金额通常出现 1~3 次(实付/原价/优惠/
+     * 退款),账单/流水列表页一条流水一个金额,整页几十个。
+     *  - 金额数达到 [MAX_LIST_AMOUNTS_HARD]:无条件判列表页;
+     *  - 金额数在 [MAX_DETAIL_AMOUNTS, MAX_LIST_AMOUNTS_HARD) 区间:按日期行数
+     *    细分 —— 真列表页每行流水都带一个日期(「9-08」「9月8日」),详情页
+     *    只有创建时间一个日期。
+     * 区间的由来(2026-09-09 真机漏记):支付宝转账详情可见金额仅 3 个
+     * (-4,997.00/5000.00/-3.00),H5 屏幕外节点(推荐流价格)把计数顶到 5,
+     * 旧的一刀切阈值把它当列表页整页丢弃;恰好 5 也反证抓的是详情页 —— 真
+     * 列表页是几十个。避免把整页历史流水批量送 AI 的初衷不变。
      */
     fun isListPage(text: String): Boolean {
-        return AMOUNT_PATTERN.findAll(text).count() >= MAX_DETAIL_AMOUNTS
+        val amounts = AMOUNT_PATTERN.findAll(text).count()
+        if (amounts < MAX_DETAIL_AMOUNTS) return false
+        if (amounts >= MAX_LIST_AMOUNTS_HARD) return true
+        return countDates(text) >= LIST_MIN_DATE_ROWS
     }
+
+    /** 页面文本中日期写法(「9-08」「2026-09-08」的段、「9月8日」)的出现次数。 */
+    fun countDates(text: String): Int = DATE_PATTERN.findAll(text).count()
 
     /** 明确不是已完成交易的状态，避免详情页把待付款/汇总页送入 AI。 */
     fun isNonBookableStatus(text: String): Boolean {
@@ -616,8 +635,24 @@ open class ScreenTextWatcher : AccessibilityService() {
         private const val MAX_CHARS = 2000
         private const val MIN_TEXT_LENGTH = 8
 
-        /** 详情页允许的最大金额出现次数;达到即判定为列表页(整页流水),丢弃。 */
+        /** 详情页允许的最大金额出现次数;达到即疑似列表页,再按日期行数细分。 */
         private const val MAX_DETAIL_AMOUNTS = 5
+
+        /** 金额数达到此值无条件判列表页:真详情页(叠加优惠行/屏幕外推荐流
+            价格)也到不了的量级,而流水列表页整页几十个。 */
+        private const val MAX_LIST_AMOUNTS_HARD = 10
+
+        /** 金额数在阈值区间内时,判列表页所需的最少日期行数(每行流水一个
+            日期;详情页只有创建时间 1 个日期)。 */
+        private const val LIST_MIN_DATE_ROWS = 3
+
+        /** 日期写法:「9-08」「2026-09-08」中的日期段、「9月8日」。时刻
+            (18:53:41)、卡尾、无分隔的订单号都不命中;lookbehind 挡掉从
+            「2026」中段起的错误切分,「2026-03-28」只命中 1 次。 */
+        private val DATE_PATTERN = Regex(
+            "(?<!\\d)\\d{1,2}-\\d{1,2}(?!\\d)" +
+                "|\\d{1,2}月\\d{1,2}日"
+        )
 
         private val REJECT_KEYWORDS = listOf(
             "验证码", "校验码", "动态码", "动态口令", "授权码", "识别码",

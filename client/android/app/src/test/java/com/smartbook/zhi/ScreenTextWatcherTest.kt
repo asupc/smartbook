@@ -137,6 +137,48 @@ class ScreenTextWatcherTest {
     }
 
     @Test
+    fun `转账详情页屏幕外金额顶过阈值不误判列表页`() {
+        // 2026-09-09 真机漏记根因:支付宝转账详情可见金额仅 3 个
+        // (-4,997.00/5000.00/-3.00),H5 屏幕外节点(推荐流价格)把计数顶到 5,
+        // 旧的一刀切阈值按列表页整页丢弃(真列表页是几十个金额)。阈值区间
+        // 内改按日期行数区分:详情页只有创建时间 1 个日期,列表页每行带日期。
+        val text = "账单详情\n杨靖(*靖)\n-4,997.00\n交易成功\n" +
+            "订单金额 5000.00\n中国银行立减金 -3.00\n" +
+            "创建时间 2026-03-28 18:53:41\n" +
+            "付款方式 中国银行储蓄卡(3822)\n" +
+            "转账备注 转账\n对方账户 杨靖(*靖) 186******80\n" +
+            "账单管理\n账单分类 转账红包\n计入收支\n再转一笔\n" +
+            "¥12.90\n¥29.90"
+        assertTrue(watcher.hasAmount(text))
+        assertTrue(watcher.hasBookableHint(text))
+        assertEquals(1, watcher.countDates(text))
+        assertFalse(watcher.isListPage(text))
+    }
+
+    @Test
+    fun `金额数达到硬阈值无条件判列表页`() {
+        // 整页几十条流水:详情页再叠优惠行/屏幕外推荐流也到不了的量级
+        val rows = (1..12).joinToString("\n") { "9-$it 商户消费 ${it * 11}.00" }
+        assertTrue(watcher.isListPage(rows))
+    }
+
+    @Test
+    fun `金额过阈值且日期行多仍判列表页`() {
+        // 阈值区间内:每行流水带一个日期 → 真列表页
+        val text = "账单\n9-01 商户消费 30.00\n9-02 早餐 12.00\n9-03 地铁 4.00\n" +
+            "9-05 外卖 28.50\n9-08 超市 96.40"
+        assertTrue(watcher.isListPage(text))
+    }
+
+    @Test
+    fun `日期正则不命中时刻卡尾与订单号`() {
+        // 「2026-03-28」只命中「03-28」一段;时刻/卡尾/手机号/无分隔订单号不命中
+        assertEquals(1, watcher.countDates("创建时间 2026-03-28 18:53:41"))
+        assertEquals(0, watcher.countDates("付款方式 中国银行储蓄卡(3822)\n对方账户 186******80"))
+        assertEquals(1, watcher.countDates("收款时间 9月8日 20:15"))
+    }
+
+    @Test
     fun `有交易特征的营销活动页不整页拒识由后续闸门兜底`() {
         // 京东订单详情常见「促销 -¥x」抵扣行:有强交易特征,营销词让位,
         // 是否入账交给列表页/状态闸与 AI 判定

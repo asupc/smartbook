@@ -1,7 +1,7 @@
 name: smartbook
 description: "A new Flutter project."
 publish_to: 'none'
-version: 1.0.42+1
+version: 1.0.43+1
 
 environment:
   sdk: ^3.6.0
