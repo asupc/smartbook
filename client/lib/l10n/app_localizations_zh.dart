@@ -3978,6 +3978,15 @@ class AppLocalizationsZh extends AppLocalizations {
   String get accountAdjustBalanceNote => '余额调整';
 
   @override
+  String get accountAdjustmentsTitle => '调整记录';
+
+  @override
+  String get accountAdjustmentsEmpty => '暂无余额调整记录';
+
+  @override
+  String get accountAdjustmentsViewAction => '调整记录';
+
+  @override
   String get accountBalanceAdjustedToast => '已记录余额调整，入账同步中';
 
   @override
@@ -4243,6 +4252,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get photosPermissionRequired => '需要照片权限才能监听截图';
+
+  @override
+  String get photosPermissionLimitedHint => '截图自动记账需要「允许所有照片」权限,请在系统设置中把智记的照片权限改为「允许所有照片」';
 
   @override
   String get enableSuccess => '自动记账已启用';
@@ -12047,6 +12059,15 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
   String get accountAdjustBalanceNote => '餘額調整';
 
   @override
+  String get accountAdjustmentsTitle => '調整記錄';
+
+  @override
+  String get accountAdjustmentsEmpty => '暫無餘額調整記錄';
+
+  @override
+  String get accountAdjustmentsViewAction => '調整記錄';
+
+  @override
   String get accountBalanceAdjustedToast => '已記錄餘額調整，同步中';
 
   @override
@@ -12312,6 +12333,9 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
 
   @override
   String get photosPermissionRequired => '需要相片權限才能監聽截圖';
+
+  @override
+  String get photosPermissionLimitedHint => '截圖自動記帳需要「允許所有照片」權限,請在系統設定中把智記的照片權限改為「允許所有照片」';
 
   @override
   String get enableSuccess => '自動記帳已啟用';

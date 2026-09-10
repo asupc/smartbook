@@ -13256,6 +13256,768 @@ class AutoBookEventItemsCompanion extends UpdateCompanion<AutoBookEventItem> {
   }
 }
 
+class $AccountAdjustmentsTable extends AccountAdjustments
+    with TableInfo<$AccountAdjustmentsTable, AccountAdjustment> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $AccountAdjustmentsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+      'id', aliasedName, false,
+      hasAutoIncrement: true,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('PRIMARY KEY AUTOINCREMENT'));
+  static const VerificationMeta _syncIdMeta = const VerificationMeta('syncId');
+  @override
+  late final GeneratedColumn<String> syncId = GeneratedColumn<String>(
+      'sync_id', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _ledgerIdMeta =
+      const VerificationMeta('ledgerId');
+  @override
+  late final GeneratedColumn<int> ledgerId = GeneratedColumn<int>(
+      'ledger_id', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _accountIdMeta =
+      const VerificationMeta('accountId');
+  @override
+  late final GeneratedColumn<int> accountId = GeneratedColumn<int>(
+      'account_id', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _accountSyncIdOverrideMeta =
+      const VerificationMeta('accountSyncIdOverride');
+  @override
+  late final GeneratedColumn<String> accountSyncIdOverride =
+      GeneratedColumn<String>('account_sync_id_override', aliasedName, true,
+          type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _amountMeta = const VerificationMeta('amount');
+  @override
+  late final GeneratedColumn<double> amount = GeneratedColumn<double>(
+      'amount', aliasedName, false,
+      type: DriftSqlType.double, requiredDuringInsert: true);
+  static const VerificationMeta _balanceBeforeMeta =
+      const VerificationMeta('balanceBefore');
+  @override
+  late final GeneratedColumn<double> balanceBefore = GeneratedColumn<double>(
+      'balance_before', aliasedName, true,
+      type: DriftSqlType.double, requiredDuringInsert: false);
+  static const VerificationMeta _balanceAfterMeta =
+      const VerificationMeta('balanceAfter');
+  @override
+  late final GeneratedColumn<double> balanceAfter = GeneratedColumn<double>(
+      'balance_after', aliasedName, true,
+      type: DriftSqlType.double, requiredDuringInsert: false);
+  static const VerificationMeta _happenedAtMeta =
+      const VerificationMeta('happenedAt');
+  @override
+  late final GeneratedColumn<DateTime> happenedAt = GeneratedColumn<DateTime>(
+      'happened_at', aliasedName, false,
+      type: DriftSqlType.dateTime,
+      requiredDuringInsert: false,
+      defaultValue: currentDateAndTime);
+  static const VerificationMeta _recordedAtMeta =
+      const VerificationMeta('recordedAt');
+  @override
+  late final GeneratedColumn<DateTime> recordedAt = GeneratedColumn<DateTime>(
+      'recorded_at', aliasedName, true,
+      type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  static const VerificationMeta _noteMeta = const VerificationMeta('note');
+  @override
+  late final GeneratedColumn<String> note = GeneratedColumn<String>(
+      'note', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _createdByUserIdMeta =
+      const VerificationMeta('createdByUserId');
+  @override
+  late final GeneratedColumn<String> createdByUserId = GeneratedColumn<String>(
+      'created_by_user_id', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _lastEditedByUserIdMeta =
+      const VerificationMeta('lastEditedByUserId');
+  @override
+  late final GeneratedColumn<String> lastEditedByUserId =
+      GeneratedColumn<String>('last_edited_by_user_id', aliasedName, true,
+          type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _createdAtMeta =
+      const VerificationMeta('createdAt');
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+      'created_at', aliasedName, false,
+      type: DriftSqlType.dateTime,
+      requiredDuringInsert: false,
+      defaultValue: currentDateAndTime);
+  static const VerificationMeta _updatedAtMeta =
+      const VerificationMeta('updatedAt');
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+      'updated_at', aliasedName, false,
+      type: DriftSqlType.dateTime,
+      requiredDuringInsert: false,
+      defaultValue: currentDateAndTime);
+  @override
+  List<GeneratedColumn> get $columns => [
+        id,
+        syncId,
+        ledgerId,
+        accountId,
+        accountSyncIdOverride,
+        amount,
+        balanceBefore,
+        balanceAfter,
+        happenedAt,
+        recordedAt,
+        note,
+        createdByUserId,
+        lastEditedByUserId,
+        createdAt,
+        updatedAt
+      ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'account_adjustments';
+  @override
+  VerificationContext validateIntegrity(Insertable<AccountAdjustment> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('sync_id')) {
+      context.handle(_syncIdMeta,
+          syncId.isAcceptableOrUnknown(data['sync_id']!, _syncIdMeta));
+    }
+    if (data.containsKey('ledger_id')) {
+      context.handle(_ledgerIdMeta,
+          ledgerId.isAcceptableOrUnknown(data['ledger_id']!, _ledgerIdMeta));
+    } else if (isInserting) {
+      context.missing(_ledgerIdMeta);
+    }
+    if (data.containsKey('account_id')) {
+      context.handle(_accountIdMeta,
+          accountId.isAcceptableOrUnknown(data['account_id']!, _accountIdMeta));
+    } else if (isInserting) {
+      context.missing(_accountIdMeta);
+    }
+    if (data.containsKey('account_sync_id_override')) {
+      context.handle(
+          _accountSyncIdOverrideMeta,
+          accountSyncIdOverride.isAcceptableOrUnknown(
+              data['account_sync_id_override']!, _accountSyncIdOverrideMeta));
+    }
+    if (data.containsKey('amount')) {
+      context.handle(_amountMeta,
+          amount.isAcceptableOrUnknown(data['amount']!, _amountMeta));
+    } else if (isInserting) {
+      context.missing(_amountMeta);
+    }
+    if (data.containsKey('balance_before')) {
+      context.handle(
+          _balanceBeforeMeta,
+          balanceBefore.isAcceptableOrUnknown(
+              data['balance_before']!, _balanceBeforeMeta));
+    }
+    if (data.containsKey('balance_after')) {
+      context.handle(
+          _balanceAfterMeta,
+          balanceAfter.isAcceptableOrUnknown(
+              data['balance_after']!, _balanceAfterMeta));
+    }
+    if (data.containsKey('happened_at')) {
+      context.handle(
+          _happenedAtMeta,
+          happenedAt.isAcceptableOrUnknown(
+              data['happened_at']!, _happenedAtMeta));
+    }
+    if (data.containsKey('recorded_at')) {
+      context.handle(
+          _recordedAtMeta,
+          recordedAt.isAcceptableOrUnknown(
+              data['recorded_at']!, _recordedAtMeta));
+    }
+    if (data.containsKey('note')) {
+      context.handle(
+          _noteMeta, note.isAcceptableOrUnknown(data['note']!, _noteMeta));
+    }
+    if (data.containsKey('created_by_user_id')) {
+      context.handle(
+          _createdByUserIdMeta,
+          createdByUserId.isAcceptableOrUnknown(
+              data['created_by_user_id']!, _createdByUserIdMeta));
+    }
+    if (data.containsKey('last_edited_by_user_id')) {
+      context.handle(
+          _lastEditedByUserIdMeta,
+          lastEditedByUserId.isAcceptableOrUnknown(
+              data['last_edited_by_user_id']!, _lastEditedByUserIdMeta));
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(_createdAtMeta,
+          createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(_updatedAtMeta,
+          updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  AccountAdjustment map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return AccountAdjustment(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
+      syncId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}sync_id']),
+      ledgerId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}ledger_id'])!,
+      accountId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}account_id'])!,
+      accountSyncIdOverride: attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}account_sync_id_override']),
+      amount: attachedDatabase.typeMapping
+          .read(DriftSqlType.double, data['${effectivePrefix}amount'])!,
+      balanceBefore: attachedDatabase.typeMapping
+          .read(DriftSqlType.double, data['${effectivePrefix}balance_before']),
+      balanceAfter: attachedDatabase.typeMapping
+          .read(DriftSqlType.double, data['${effectivePrefix}balance_after']),
+      happenedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}happened_at'])!,
+      recordedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}recorded_at']),
+      note: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}note']),
+      createdByUserId: attachedDatabase.typeMapping.read(
+          DriftSqlType.string, data['${effectivePrefix}created_by_user_id']),
+      lastEditedByUserId: attachedDatabase.typeMapping.read(DriftSqlType.string,
+          data['${effectivePrefix}last_edited_by_user_id']),
+      createdAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
+      updatedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
+    );
+  }
+
+  @override
+  $AccountAdjustmentsTable createAlias(String alias) {
+    return $AccountAdjustmentsTable(attachedDatabase, alias);
+  }
+}
+
+class AccountAdjustment extends DataClass
+    implements Insertable<AccountAdjustment> {
+  final int id;
+
+  /// 跨设备同步 syncId(UUID),server 端 entity_sync_id。
+  final String? syncId;
+
+  /// 关联账本ID
+  final int ledgerId;
+
+  /// 目标账户(本地 int id;共享账本 Editor 场景用 accountSyncIdOverride)
+  final int accountId;
+  final String? accountSyncIdOverride;
+
+  /// 带符号差额:正=调增,负=调减
+  final double amount;
+
+  /// 调整前余额快照(审计展示用,统计不读)
+  final double? balanceBefore;
+
+  /// 调整后余额快照
+  final double? balanceAfter;
+  final DateTime happenedAt;
+
+  /// 记录时间(server 首次落库盖章,pull payload.createdAt);本地新建为写入时刻
+  final DateTime? recordedAt;
+  final String? note;
+
+  /// 共享账本「谁调的」
+  final String? createdByUserId;
+  final String? lastEditedByUserId;
+
+  /// 创建时间
+  final DateTime createdAt;
+
+  /// 更新时间
+  final DateTime updatedAt;
+  const AccountAdjustment(
+      {required this.id,
+      this.syncId,
+      required this.ledgerId,
+      required this.accountId,
+      this.accountSyncIdOverride,
+      required this.amount,
+      this.balanceBefore,
+      this.balanceAfter,
+      required this.happenedAt,
+      this.recordedAt,
+      this.note,
+      this.createdByUserId,
+      this.lastEditedByUserId,
+      required this.createdAt,
+      required this.updatedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    if (!nullToAbsent || syncId != null) {
+      map['sync_id'] = Variable<String>(syncId);
+    }
+    map['ledger_id'] = Variable<int>(ledgerId);
+    map['account_id'] = Variable<int>(accountId);
+    if (!nullToAbsent || accountSyncIdOverride != null) {
+      map['account_sync_id_override'] = Variable<String>(accountSyncIdOverride);
+    }
+    map['amount'] = Variable<double>(amount);
+    if (!nullToAbsent || balanceBefore != null) {
+      map['balance_before'] = Variable<double>(balanceBefore);
+    }
+    if (!nullToAbsent || balanceAfter != null) {
+      map['balance_after'] = Variable<double>(balanceAfter);
+    }
+    map['happened_at'] = Variable<DateTime>(happenedAt);
+    if (!nullToAbsent || recordedAt != null) {
+      map['recorded_at'] = Variable<DateTime>(recordedAt);
+    }
+    if (!nullToAbsent || note != null) {
+      map['note'] = Variable<String>(note);
+    }
+    if (!nullToAbsent || createdByUserId != null) {
+      map['created_by_user_id'] = Variable<String>(createdByUserId);
+    }
+    if (!nullToAbsent || lastEditedByUserId != null) {
+      map['last_edited_by_user_id'] = Variable<String>(lastEditedByUserId);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  AccountAdjustmentsCompanion toCompanion(bool nullToAbsent) {
+    return AccountAdjustmentsCompanion(
+      id: Value(id),
+      syncId:
+          syncId == null && nullToAbsent ? const Value.absent() : Value(syncId),
+      ledgerId: Value(ledgerId),
+      accountId: Value(accountId),
+      accountSyncIdOverride: accountSyncIdOverride == null && nullToAbsent
+          ? const Value.absent()
+          : Value(accountSyncIdOverride),
+      amount: Value(amount),
+      balanceBefore: balanceBefore == null && nullToAbsent
+          ? const Value.absent()
+          : Value(balanceBefore),
+      balanceAfter: balanceAfter == null && nullToAbsent
+          ? const Value.absent()
+          : Value(balanceAfter),
+      happenedAt: Value(happenedAt),
+      recordedAt: recordedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(recordedAt),
+      note: note == null && nullToAbsent ? const Value.absent() : Value(note),
+      createdByUserId: createdByUserId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(createdByUserId),
+      lastEditedByUserId: lastEditedByUserId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastEditedByUserId),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory AccountAdjustment.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return AccountAdjustment(
+      id: serializer.fromJson<int>(json['id']),
+      syncId: serializer.fromJson<String?>(json['syncId']),
+      ledgerId: serializer.fromJson<int>(json['ledgerId']),
+      accountId: serializer.fromJson<int>(json['accountId']),
+      accountSyncIdOverride:
+          serializer.fromJson<String?>(json['accountSyncIdOverride']),
+      amount: serializer.fromJson<double>(json['amount']),
+      balanceBefore: serializer.fromJson<double?>(json['balanceBefore']),
+      balanceAfter: serializer.fromJson<double?>(json['balanceAfter']),
+      happenedAt: serializer.fromJson<DateTime>(json['happenedAt']),
+      recordedAt: serializer.fromJson<DateTime?>(json['recordedAt']),
+      note: serializer.fromJson<String?>(json['note']),
+      createdByUserId: serializer.fromJson<String?>(json['createdByUserId']),
+      lastEditedByUserId:
+          serializer.fromJson<String?>(json['lastEditedByUserId']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'syncId': serializer.toJson<String?>(syncId),
+      'ledgerId': serializer.toJson<int>(ledgerId),
+      'accountId': serializer.toJson<int>(accountId),
+      'accountSyncIdOverride':
+          serializer.toJson<String?>(accountSyncIdOverride),
+      'amount': serializer.toJson<double>(amount),
+      'balanceBefore': serializer.toJson<double?>(balanceBefore),
+      'balanceAfter': serializer.toJson<double?>(balanceAfter),
+      'happenedAt': serializer.toJson<DateTime>(happenedAt),
+      'recordedAt': serializer.toJson<DateTime?>(recordedAt),
+      'note': serializer.toJson<String?>(note),
+      'createdByUserId': serializer.toJson<String?>(createdByUserId),
+      'lastEditedByUserId': serializer.toJson<String?>(lastEditedByUserId),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  AccountAdjustment copyWith(
+          {int? id,
+          Value<String?> syncId = const Value.absent(),
+          int? ledgerId,
+          int? accountId,
+          Value<String?> accountSyncIdOverride = const Value.absent(),
+          double? amount,
+          Value<double?> balanceBefore = const Value.absent(),
+          Value<double?> balanceAfter = const Value.absent(),
+          DateTime? happenedAt,
+          Value<DateTime?> recordedAt = const Value.absent(),
+          Value<String?> note = const Value.absent(),
+          Value<String?> createdByUserId = const Value.absent(),
+          Value<String?> lastEditedByUserId = const Value.absent(),
+          DateTime? createdAt,
+          DateTime? updatedAt}) =>
+      AccountAdjustment(
+        id: id ?? this.id,
+        syncId: syncId.present ? syncId.value : this.syncId,
+        ledgerId: ledgerId ?? this.ledgerId,
+        accountId: accountId ?? this.accountId,
+        accountSyncIdOverride: accountSyncIdOverride.present
+            ? accountSyncIdOverride.value
+            : this.accountSyncIdOverride,
+        amount: amount ?? this.amount,
+        balanceBefore:
+            balanceBefore.present ? balanceBefore.value : this.balanceBefore,
+        balanceAfter:
+            balanceAfter.present ? balanceAfter.value : this.balanceAfter,
+        happenedAt: happenedAt ?? this.happenedAt,
+        recordedAt: recordedAt.present ? recordedAt.value : this.recordedAt,
+        note: note.present ? note.value : this.note,
+        createdByUserId: createdByUserId.present
+            ? createdByUserId.value
+            : this.createdByUserId,
+        lastEditedByUserId: lastEditedByUserId.present
+            ? lastEditedByUserId.value
+            : this.lastEditedByUserId,
+        createdAt: createdAt ?? this.createdAt,
+        updatedAt: updatedAt ?? this.updatedAt,
+      );
+  AccountAdjustment copyWithCompanion(AccountAdjustmentsCompanion data) {
+    return AccountAdjustment(
+      id: data.id.present ? data.id.value : this.id,
+      syncId: data.syncId.present ? data.syncId.value : this.syncId,
+      ledgerId: data.ledgerId.present ? data.ledgerId.value : this.ledgerId,
+      accountId: data.accountId.present ? data.accountId.value : this.accountId,
+      accountSyncIdOverride: data.accountSyncIdOverride.present
+          ? data.accountSyncIdOverride.value
+          : this.accountSyncIdOverride,
+      amount: data.amount.present ? data.amount.value : this.amount,
+      balanceBefore: data.balanceBefore.present
+          ? data.balanceBefore.value
+          : this.balanceBefore,
+      balanceAfter: data.balanceAfter.present
+          ? data.balanceAfter.value
+          : this.balanceAfter,
+      happenedAt:
+          data.happenedAt.present ? data.happenedAt.value : this.happenedAt,
+      recordedAt:
+          data.recordedAt.present ? data.recordedAt.value : this.recordedAt,
+      note: data.note.present ? data.note.value : this.note,
+      createdByUserId: data.createdByUserId.present
+          ? data.createdByUserId.value
+          : this.createdByUserId,
+      lastEditedByUserId: data.lastEditedByUserId.present
+          ? data.lastEditedByUserId.value
+          : this.lastEditedByUserId,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AccountAdjustment(')
+          ..write('id: $id, ')
+          ..write('syncId: $syncId, ')
+          ..write('ledgerId: $ledgerId, ')
+          ..write('accountId: $accountId, ')
+          ..write('accountSyncIdOverride: $accountSyncIdOverride, ')
+          ..write('amount: $amount, ')
+          ..write('balanceBefore: $balanceBefore, ')
+          ..write('balanceAfter: $balanceAfter, ')
+          ..write('happenedAt: $happenedAt, ')
+          ..write('recordedAt: $recordedAt, ')
+          ..write('note: $note, ')
+          ..write('createdByUserId: $createdByUserId, ')
+          ..write('lastEditedByUserId: $lastEditedByUserId, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+      id,
+      syncId,
+      ledgerId,
+      accountId,
+      accountSyncIdOverride,
+      amount,
+      balanceBefore,
+      balanceAfter,
+      happenedAt,
+      recordedAt,
+      note,
+      createdByUserId,
+      lastEditedByUserId,
+      createdAt,
+      updatedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is AccountAdjustment &&
+          other.id == this.id &&
+          other.syncId == this.syncId &&
+          other.ledgerId == this.ledgerId &&
+          other.accountId == this.accountId &&
+          other.accountSyncIdOverride == this.accountSyncIdOverride &&
+          other.amount == this.amount &&
+          other.balanceBefore == this.balanceBefore &&
+          other.balanceAfter == this.balanceAfter &&
+          other.happenedAt == this.happenedAt &&
+          other.recordedAt == this.recordedAt &&
+          other.note == this.note &&
+          other.createdByUserId == this.createdByUserId &&
+          other.lastEditedByUserId == this.lastEditedByUserId &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class AccountAdjustmentsCompanion extends UpdateCompanion<AccountAdjustment> {
+  final Value<int> id;
+  final Value<String?> syncId;
+  final Value<int> ledgerId;
+  final Value<int> accountId;
+  final Value<String?> accountSyncIdOverride;
+  final Value<double> amount;
+  final Value<double?> balanceBefore;
+  final Value<double?> balanceAfter;
+  final Value<DateTime> happenedAt;
+  final Value<DateTime?> recordedAt;
+  final Value<String?> note;
+  final Value<String?> createdByUserId;
+  final Value<String?> lastEditedByUserId;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  const AccountAdjustmentsCompanion({
+    this.id = const Value.absent(),
+    this.syncId = const Value.absent(),
+    this.ledgerId = const Value.absent(),
+    this.accountId = const Value.absent(),
+    this.accountSyncIdOverride = const Value.absent(),
+    this.amount = const Value.absent(),
+    this.balanceBefore = const Value.absent(),
+    this.balanceAfter = const Value.absent(),
+    this.happenedAt = const Value.absent(),
+    this.recordedAt = const Value.absent(),
+    this.note = const Value.absent(),
+    this.createdByUserId = const Value.absent(),
+    this.lastEditedByUserId = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+  });
+  AccountAdjustmentsCompanion.insert({
+    this.id = const Value.absent(),
+    this.syncId = const Value.absent(),
+    required int ledgerId,
+    required int accountId,
+    this.accountSyncIdOverride = const Value.absent(),
+    required double amount,
+    this.balanceBefore = const Value.absent(),
+    this.balanceAfter = const Value.absent(),
+    this.happenedAt = const Value.absent(),
+    this.recordedAt = const Value.absent(),
+    this.note = const Value.absent(),
+    this.createdByUserId = const Value.absent(),
+    this.lastEditedByUserId = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+  })  : ledgerId = Value(ledgerId),
+        accountId = Value(accountId),
+        amount = Value(amount);
+  static Insertable<AccountAdjustment> custom({
+    Expression<int>? id,
+    Expression<String>? syncId,
+    Expression<int>? ledgerId,
+    Expression<int>? accountId,
+    Expression<String>? accountSyncIdOverride,
+    Expression<double>? amount,
+    Expression<double>? balanceBefore,
+    Expression<double>? balanceAfter,
+    Expression<DateTime>? happenedAt,
+    Expression<DateTime>? recordedAt,
+    Expression<String>? note,
+    Expression<String>? createdByUserId,
+    Expression<String>? lastEditedByUserId,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (syncId != null) 'sync_id': syncId,
+      if (ledgerId != null) 'ledger_id': ledgerId,
+      if (accountId != null) 'account_id': accountId,
+      if (accountSyncIdOverride != null)
+        'account_sync_id_override': accountSyncIdOverride,
+      if (amount != null) 'amount': amount,
+      if (balanceBefore != null) 'balance_before': balanceBefore,
+      if (balanceAfter != null) 'balance_after': balanceAfter,
+      if (happenedAt != null) 'happened_at': happenedAt,
+      if (recordedAt != null) 'recorded_at': recordedAt,
+      if (note != null) 'note': note,
+      if (createdByUserId != null) 'created_by_user_id': createdByUserId,
+      if (lastEditedByUserId != null)
+        'last_edited_by_user_id': lastEditedByUserId,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+    });
+  }
+
+  AccountAdjustmentsCompanion copyWith(
+      {Value<int>? id,
+      Value<String?>? syncId,
+      Value<int>? ledgerId,
+      Value<int>? accountId,
+      Value<String?>? accountSyncIdOverride,
+      Value<double>? amount,
+      Value<double?>? balanceBefore,
+      Value<double?>? balanceAfter,
+      Value<DateTime>? happenedAt,
+      Value<DateTime?>? recordedAt,
+      Value<String?>? note,
+      Value<String?>? createdByUserId,
+      Value<String?>? lastEditedByUserId,
+      Value<DateTime>? createdAt,
+      Value<DateTime>? updatedAt}) {
+    return AccountAdjustmentsCompanion(
+      id: id ?? this.id,
+      syncId: syncId ?? this.syncId,
+      ledgerId: ledgerId ?? this.ledgerId,
+      accountId: accountId ?? this.accountId,
+      accountSyncIdOverride:
+          accountSyncIdOverride ?? this.accountSyncIdOverride,
+      amount: amount ?? this.amount,
+      balanceBefore: balanceBefore ?? this.balanceBefore,
+      balanceAfter: balanceAfter ?? this.balanceAfter,
+      happenedAt: happenedAt ?? this.happenedAt,
+      recordedAt: recordedAt ?? this.recordedAt,
+      note: note ?? this.note,
+      createdByUserId: createdByUserId ?? this.createdByUserId,
+      lastEditedByUserId: lastEditedByUserId ?? this.lastEditedByUserId,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (syncId.present) {
+      map['sync_id'] = Variable<String>(syncId.value);
+    }
+    if (ledgerId.present) {
+      map['ledger_id'] = Variable<int>(ledgerId.value);
+    }
+    if (accountId.present) {
+      map['account_id'] = Variable<int>(accountId.value);
+    }
+    if (accountSyncIdOverride.present) {
+      map['account_sync_id_override'] =
+          Variable<String>(accountSyncIdOverride.value);
+    }
+    if (amount.present) {
+      map['amount'] = Variable<double>(amount.value);
+    }
+    if (balanceBefore.present) {
+      map['balance_before'] = Variable<double>(balanceBefore.value);
+    }
+    if (balanceAfter.present) {
+      map['balance_after'] = Variable<double>(balanceAfter.value);
+    }
+    if (happenedAt.present) {
+      map['happened_at'] = Variable<DateTime>(happenedAt.value);
+    }
+    if (recordedAt.present) {
+      map['recorded_at'] = Variable<DateTime>(recordedAt.value);
+    }
+    if (note.present) {
+      map['note'] = Variable<String>(note.value);
+    }
+    if (createdByUserId.present) {
+      map['created_by_user_id'] = Variable<String>(createdByUserId.value);
+    }
+    if (lastEditedByUserId.present) {
+      map['last_edited_by_user_id'] =
+          Variable<String>(lastEditedByUserId.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AccountAdjustmentsCompanion(')
+          ..write('id: $id, ')
+          ..write('syncId: $syncId, ')
+          ..write('ledgerId: $ledgerId, ')
+          ..write('accountId: $accountId, ')
+          ..write('accountSyncIdOverride: $accountSyncIdOverride, ')
+          ..write('amount: $amount, ')
+          ..write('balanceBefore: $balanceBefore, ')
+          ..write('balanceAfter: $balanceAfter, ')
+          ..write('happenedAt: $happenedAt, ')
+          ..write('recordedAt: $recordedAt, ')
+          ..write('note: $note, ')
+          ..write('createdByUserId: $createdByUserId, ')
+          ..write('lastEditedByUserId: $lastEditedByUserId, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$BeeDatabase extends GeneratedDatabase {
   _$BeeDatabase(QueryExecutor e) : super(e);
   $BeeDatabaseManager get managers => $BeeDatabaseManager(this);
@@ -13291,6 +14053,8 @@ abstract class _$BeeDatabase extends GeneratedDatabase {
   late final $AutoBookEventsTable autoBookEvents = $AutoBookEventsTable(this);
   late final $AutoBookEventItemsTable autoBookEventItems =
       $AutoBookEventItemsTable(this);
+  late final $AccountAdjustmentsTable accountAdjustments =
+      $AccountAdjustmentsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -13318,7 +14082,8 @@ abstract class _$BeeDatabase extends GeneratedDatabase {
         exchangeRates,
         exchangeRateOverrides,
         autoBookEvents,
-        autoBookEventItems
+        autoBookEventItems,
+        accountAdjustments
       ];
 }
 
@@ -19448,6 +20213,333 @@ typedef $$AutoBookEventItemsTableProcessedTableManager = ProcessedTableManager<
     ),
     AutoBookEventItem,
     PrefetchHooks Function()>;
+typedef $$AccountAdjustmentsTableCreateCompanionBuilder
+    = AccountAdjustmentsCompanion Function({
+  Value<int> id,
+  Value<String?> syncId,
+  required int ledgerId,
+  required int accountId,
+  Value<String?> accountSyncIdOverride,
+  required double amount,
+  Value<double?> balanceBefore,
+  Value<double?> balanceAfter,
+  Value<DateTime> happenedAt,
+  Value<DateTime?> recordedAt,
+  Value<String?> note,
+  Value<String?> createdByUserId,
+  Value<String?> lastEditedByUserId,
+  Value<DateTime> createdAt,
+  Value<DateTime> updatedAt,
+});
+typedef $$AccountAdjustmentsTableUpdateCompanionBuilder
+    = AccountAdjustmentsCompanion Function({
+  Value<int> id,
+  Value<String?> syncId,
+  Value<int> ledgerId,
+  Value<int> accountId,
+  Value<String?> accountSyncIdOverride,
+  Value<double> amount,
+  Value<double?> balanceBefore,
+  Value<double?> balanceAfter,
+  Value<DateTime> happenedAt,
+  Value<DateTime?> recordedAt,
+  Value<String?> note,
+  Value<String?> createdByUserId,
+  Value<String?> lastEditedByUserId,
+  Value<DateTime> createdAt,
+  Value<DateTime> updatedAt,
+});
+
+class $$AccountAdjustmentsTableFilterComposer
+    extends Composer<_$BeeDatabase, $AccountAdjustmentsTable> {
+  $$AccountAdjustmentsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get syncId => $composableBuilder(
+      column: $table.syncId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get ledgerId => $composableBuilder(
+      column: $table.ledgerId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get accountId => $composableBuilder(
+      column: $table.accountId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get accountSyncIdOverride => $composableBuilder(
+      column: $table.accountSyncIdOverride,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<double> get amount => $composableBuilder(
+      column: $table.amount, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<double> get balanceBefore => $composableBuilder(
+      column: $table.balanceBefore, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<double> get balanceAfter => $composableBuilder(
+      column: $table.balanceAfter, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get happenedAt => $composableBuilder(
+      column: $table.happenedAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get recordedAt => $composableBuilder(
+      column: $table.recordedAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get note => $composableBuilder(
+      column: $table.note, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get createdByUserId => $composableBuilder(
+      column: $table.createdByUserId,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get lastEditedByUserId => $composableBuilder(
+      column: $table.lastEditedByUserId,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnFilters(column));
+}
+
+class $$AccountAdjustmentsTableOrderingComposer
+    extends Composer<_$BeeDatabase, $AccountAdjustmentsTable> {
+  $$AccountAdjustmentsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get syncId => $composableBuilder(
+      column: $table.syncId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get ledgerId => $composableBuilder(
+      column: $table.ledgerId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get accountId => $composableBuilder(
+      column: $table.accountId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get accountSyncIdOverride => $composableBuilder(
+      column: $table.accountSyncIdOverride,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<double> get amount => $composableBuilder(
+      column: $table.amount, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<double> get balanceBefore => $composableBuilder(
+      column: $table.balanceBefore,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<double> get balanceAfter => $composableBuilder(
+      column: $table.balanceAfter,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get happenedAt => $composableBuilder(
+      column: $table.happenedAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get recordedAt => $composableBuilder(
+      column: $table.recordedAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get note => $composableBuilder(
+      column: $table.note, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get createdByUserId => $composableBuilder(
+      column: $table.createdByUserId,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get lastEditedByUserId => $composableBuilder(
+      column: $table.lastEditedByUserId,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
+}
+
+class $$AccountAdjustmentsTableAnnotationComposer
+    extends Composer<_$BeeDatabase, $AccountAdjustmentsTable> {
+  $$AccountAdjustmentsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get syncId =>
+      $composableBuilder(column: $table.syncId, builder: (column) => column);
+
+  GeneratedColumn<int> get ledgerId =>
+      $composableBuilder(column: $table.ledgerId, builder: (column) => column);
+
+  GeneratedColumn<int> get accountId =>
+      $composableBuilder(column: $table.accountId, builder: (column) => column);
+
+  GeneratedColumn<String> get accountSyncIdOverride => $composableBuilder(
+      column: $table.accountSyncIdOverride, builder: (column) => column);
+
+  GeneratedColumn<double> get amount =>
+      $composableBuilder(column: $table.amount, builder: (column) => column);
+
+  GeneratedColumn<double> get balanceBefore => $composableBuilder(
+      column: $table.balanceBefore, builder: (column) => column);
+
+  GeneratedColumn<double> get balanceAfter => $composableBuilder(
+      column: $table.balanceAfter, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get happenedAt => $composableBuilder(
+      column: $table.happenedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get recordedAt => $composableBuilder(
+      column: $table.recordedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get note =>
+      $composableBuilder(column: $table.note, builder: (column) => column);
+
+  GeneratedColumn<String> get createdByUserId => $composableBuilder(
+      column: $table.createdByUserId, builder: (column) => column);
+
+  GeneratedColumn<String> get lastEditedByUserId => $composableBuilder(
+      column: $table.lastEditedByUserId, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$AccountAdjustmentsTableTableManager extends RootTableManager<
+    _$BeeDatabase,
+    $AccountAdjustmentsTable,
+    AccountAdjustment,
+    $$AccountAdjustmentsTableFilterComposer,
+    $$AccountAdjustmentsTableOrderingComposer,
+    $$AccountAdjustmentsTableAnnotationComposer,
+    $$AccountAdjustmentsTableCreateCompanionBuilder,
+    $$AccountAdjustmentsTableUpdateCompanionBuilder,
+    (
+      AccountAdjustment,
+      BaseReferences<_$BeeDatabase, $AccountAdjustmentsTable, AccountAdjustment>
+    ),
+    AccountAdjustment,
+    PrefetchHooks Function()> {
+  $$AccountAdjustmentsTableTableManager(
+      _$BeeDatabase db, $AccountAdjustmentsTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$AccountAdjustmentsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$AccountAdjustmentsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$AccountAdjustmentsTableAnnotationComposer(
+                  $db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            Value<String?> syncId = const Value.absent(),
+            Value<int> ledgerId = const Value.absent(),
+            Value<int> accountId = const Value.absent(),
+            Value<String?> accountSyncIdOverride = const Value.absent(),
+            Value<double> amount = const Value.absent(),
+            Value<double?> balanceBefore = const Value.absent(),
+            Value<double?> balanceAfter = const Value.absent(),
+            Value<DateTime> happenedAt = const Value.absent(),
+            Value<DateTime?> recordedAt = const Value.absent(),
+            Value<String?> note = const Value.absent(),
+            Value<String?> createdByUserId = const Value.absent(),
+            Value<String?> lastEditedByUserId = const Value.absent(),
+            Value<DateTime> createdAt = const Value.absent(),
+            Value<DateTime> updatedAt = const Value.absent(),
+          }) =>
+              AccountAdjustmentsCompanion(
+            id: id,
+            syncId: syncId,
+            ledgerId: ledgerId,
+            accountId: accountId,
+            accountSyncIdOverride: accountSyncIdOverride,
+            amount: amount,
+            balanceBefore: balanceBefore,
+            balanceAfter: balanceAfter,
+            happenedAt: happenedAt,
+            recordedAt: recordedAt,
+            note: note,
+            createdByUserId: createdByUserId,
+            lastEditedByUserId: lastEditedByUserId,
+            createdAt: createdAt,
+            updatedAt: updatedAt,
+          ),
+          createCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            Value<String?> syncId = const Value.absent(),
+            required int ledgerId,
+            required int accountId,
+            Value<String?> accountSyncIdOverride = const Value.absent(),
+            required double amount,
+            Value<double?> balanceBefore = const Value.absent(),
+            Value<double?> balanceAfter = const Value.absent(),
+            Value<DateTime> happenedAt = const Value.absent(),
+            Value<DateTime?> recordedAt = const Value.absent(),
+            Value<String?> note = const Value.absent(),
+            Value<String?> createdByUserId = const Value.absent(),
+            Value<String?> lastEditedByUserId = const Value.absent(),
+            Value<DateTime> createdAt = const Value.absent(),
+            Value<DateTime> updatedAt = const Value.absent(),
+          }) =>
+              AccountAdjustmentsCompanion.insert(
+            id: id,
+            syncId: syncId,
+            ledgerId: ledgerId,
+            accountId: accountId,
+            accountSyncIdOverride: accountSyncIdOverride,
+            amount: amount,
+            balanceBefore: balanceBefore,
+            balanceAfter: balanceAfter,
+            happenedAt: happenedAt,
+            recordedAt: recordedAt,
+            note: note,
+            createdByUserId: createdByUserId,
+            lastEditedByUserId: lastEditedByUserId,
+            createdAt: createdAt,
+            updatedAt: updatedAt,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$AccountAdjustmentsTableProcessedTableManager = ProcessedTableManager<
+    _$BeeDatabase,
+    $AccountAdjustmentsTable,
+    AccountAdjustment,
+    $$AccountAdjustmentsTableFilterComposer,
+    $$AccountAdjustmentsTableOrderingComposer,
+    $$AccountAdjustmentsTableAnnotationComposer,
+    $$AccountAdjustmentsTableCreateCompanionBuilder,
+    $$AccountAdjustmentsTableUpdateCompanionBuilder,
+    (
+      AccountAdjustment,
+      BaseReferences<_$BeeDatabase, $AccountAdjustmentsTable, AccountAdjustment>
+    ),
+    AccountAdjustment,
+    PrefetchHooks Function()>;
 
 class $BeeDatabaseManager {
   final _$BeeDatabase _db;
@@ -19500,4 +20592,6 @@ class $BeeDatabaseManager {
       $$AutoBookEventsTableTableManager(_db, _db.autoBookEvents);
   $$AutoBookEventItemsTableTableManager get autoBookEventItems =>
       $$AutoBookEventItemsTableTableManager(_db, _db.autoBookEventItems);
+  $$AccountAdjustmentsTableTableManager get accountAdjustments =>
+      $$AccountAdjustmentsTableTableManager(_db, _db.accountAdjustments);
 }

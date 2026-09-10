@@ -855,9 +855,9 @@ class _AccountEditPageState extends ConsumerState<AccountEditPage> {
     );
   }
 
-  /// 余额调整提交(页内直接编辑,无弹窗):输入"调整后的当前余额",差额 >0 记
-  /// 收入调整、<0 记支出调整(exclude_from_stats/budget = true,不污染收支统计
-  /// 与预算)。入账后刷新统计并把输入框回填为新余额。
+  /// 余额调整提交(页内直接编辑,无弹窗):输入"调整后的当前余额",差额落一条
+  /// **余额调整记录**(v42 起不再记 exclude 交易)——不进收支统计与预算,只
+  /// 改账户余额口径。入账后刷新统计并把输入框回填为新余额。
   Future<void> _submitAdjustBalance(double currentBalance) async {
     final l10n = AppLocalizations.of(context);
     final result = double.tryParse(_adjustBalanceController.text.trim());
@@ -876,18 +876,15 @@ class _AccountEditPageState extends ConsumerState<AccountEditPage> {
     setState(() => _adjusting = true);
     try {
       final repo = ref.read(repositoryProvider);
-      await repo.addTransaction(
+      // v42:独立调整记录(带符号差额),不产生交易 → 收支统计天然不受影响。
+      await repo.addAccountAdjustment(
         ledgerId: account.ledgerId,
-        type: diff > 0 ? 'income' : 'expense',
-        amount: diff.abs(),
         accountId: account.id,
+        amount: diff,
+        balanceBefore: currentBalance,
+        balanceAfter: result,
         happenedAt: DateTime.now(),
         note: l10n.accountAdjustBalanceNote,
-        excludeFromStats: true,
-        excludeFromBudget: true,
-        // 调整金额即账户币种本身,直接定值,不走汇率折算兜底
-        currencyCode: account.currency,
-        nativeAmount: diff.abs(),
       );
       // 触发账本同步(后台异步,不阻塞)
       PostProcessor.sync(ref, ledgerId: account.ledgerId);

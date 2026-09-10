@@ -320,15 +320,18 @@ SELECT aid,
   }
 
   /// 全部账户的当前余额(含 initialBalance、估值账户特殊口径),一次 SQL
-  /// 聚合替代逐账户 getAccountBalance(PERF-P0-04)。
+  /// 聚合替代逐账户 getAccountBalance(PERF-P0-04)。v42:并入调整记录。
   Future<Map<int, double>> _allAccountBalances() async {
     final accounts = await db.select(db.accounts).get();
     final aggs = await _bulkAccountAggregates();
+    final adjTotals = await _bulkAdjustmentTotals();
     return {
       for (final a in accounts)
         a.id: isValuationOnlyType(a.type)
             ? a.initialBalance
-            : a.initialBalance + (aggs[a.id]?.balanceDelta ?? 0.0),
+            : a.initialBalance +
+                (aggs[a.id]?.balanceDelta ?? 0.0) +
+                (adjTotals[a.id] ?? 0.0),
     };
   }
 
@@ -349,7 +352,9 @@ SELECT aid,
     // PERF-P0-04:一次 CASE 聚合(走 idx_transactions_account_time /
     // idx_transactions_to_account),替代此前两次全表物化 + Dart 累加。
     final aggs = await _bulkAccountAggregates(accountId: accountId);
-    return account.initialBalance + (aggs[accountId]?.balanceDelta ?? 0.0);
+    // v42:余额口径并入调整记录(带符号差额)。
+    final adj = (await _bulkAdjustmentTotals(accountId: accountId))[accountId] ?? 0.0;
+    return account.initialBalance + (aggs[accountId]?.balanceDelta ?? 0.0) + adj;
   }
 
   @override
@@ -379,7 +384,10 @@ SELECT aid,
       variables: [d.Variable.withInt(accountId)],
       readsFrom: {db.transactions},
     ).getSingle();
-    return account.initialBalance + ((row.data['bal_delta'] ?? 0) as num).toDouble();
+    final adj = (await _bulkAdjustmentTotals(accountId: accountId))[accountId] ?? 0.0;
+    return account.initialBalance +
+        ((row.data['bal_delta'] ?? 0) as num).toDouble() +
+        adj;
   }
 
   @override
@@ -400,7 +408,8 @@ SELECT aid,
       variables: [d.Variable.withInt(accountId), d.Variable.withInt(ledgerId)],
       readsFrom: {db.transactions},
     ).getSingle();
-    return ((row.data['bal_delta'] ?? 0) as num).toDouble();
+    final adj = (await _bulkAdjustmentTotals(accountId: accountId, ledgerId: ledgerId))[accountId] ?? 0.0;
+    return ((row.data['bal_delta'] ?? 0) as num).toDouble() + adj;
   }
 
   @override
@@ -409,14 +418,17 @@ SELECT aid,
           ..where((a) => a.ledgerId.equals(ledgerId)))
         .get();
 
-    // PERF-P0-04:A×2 次全表扫描 → 1 次聚合。
+    // PERF-P0-04:A×2 次全表扫描 → 1 次聚合。v42:并入调整(单账本维度)。
     final aggs = await _bulkAccountAggregates();
+    final adjTotals = await _bulkAdjustmentTotals(ledgerId: ledgerId);
 
     final Map<int, double> balances = {};
     for (final account in accounts) {
       balances[account.id] = isValuationOnlyType(account.type)
           ? account.initialBalance
-          : account.initialBalance + (aggs[account.id]?.balanceDelta ?? 0.0);
+          : account.initialBalance +
+              (aggs[account.id]?.balanceDelta ?? 0.0) +
+              (adjTotals[account.id] ?? 0.0);
     }
 
     return balances;
@@ -493,7 +505,7 @@ SELECT aid,
 
   @override
   Future<({double balance, double expense, double income})> getAccountStats(int accountId) async {
-    // PERF-P0-04:3 次全表扫描 → 1 次聚合。
+    // PERF-P0-04:3 次全表扫描 → 1 次聚合。v42:balance 并入调整记录。
     final account = await getAccount(accountId);
     final aggs = await _bulkAccountAggregates(accountId: accountId);
     final a = aggs[accountId];
@@ -504,7 +516,9 @@ SELECT aid,
     } else if (isValuationOnlyType(account.type)) {
       balance = account.initialBalance;
     } else {
-      balance = account.initialBalance + (a?.balanceDelta ?? 0.0);
+      final adj =
+          (await _bulkAdjustmentTotals(accountId: accountId))[accountId] ?? 0.0;
+      balance = account.initialBalance + (a?.balanceDelta ?? 0.0) + adj;
     }
     return (balance: balance, expense: a?.expense ?? 0.0, income: a?.income ?? 0.0);
   }
@@ -514,13 +528,16 @@ SELECT aid,
     // PERF-P0-04:A×3 次全表扫描(A×5 次查询)→ 2 次查询(账户表 + 1 条聚合)。
     final accounts = await db.select(db.accounts).get();
     final aggs = await _bulkAccountAggregates();
+    final adjTotals = await _bulkAdjustmentTotals();
 
     final Map<int, ({double balance, double expense, double income})> stats = {};
     for (final account in accounts) {
       final a = aggs[account.id];
       final balance = isValuationOnlyType(account.type)
           ? account.initialBalance
-          : account.initialBalance + (a?.balanceDelta ?? 0.0);
+          : account.initialBalance +
+              (a?.balanceDelta ?? 0.0) +
+              (adjTotals[account.id] ?? 0.0);
       stats[account.id] = (
         balance: balance,
         expense: a?.expense ?? 0.0,
@@ -767,13 +784,30 @@ SELECT aid,
           ..orderBy([(t) => d.OrderingTerm(expression: t.happenedAt)]))
         .get();
 
-    // 计算 startDate 之前的余额
-    double runningBalance = account.initialBalance;
-    int txIndex = 0;
+    // v42:调整记录并入回放(排除共享账本,与交易同口径)。
+    final adjRows = await (db.select(db.accountAdjustments)
+          ..where((a) => a.accountId.equals(accountId))
+          ..where((a) => a.happenedAt.isSmallerThanValue(endExclusive))
+          ..where((a) => a.ledgerId.isNotIn(sharedIds))
+          ..orderBy([(a) => d.OrderingTerm(expression: a.happenedAt)]))
+        .get();
+    // (happenedAt, 交易|null, 带符号值):null = 调整事件,直接叠加;
+    // 交易事件按 type 分支处理。按时间排序回放。
+    final merged = <(DateTime, Transaction?, double)>[
+      for (final tx in allTxs) (tx.happenedAt, tx, 0.0),
+      for (final adj in adjRows) (adj.happenedAt, null, adj.amount),
+    ]..sort((a, b) => a.$1.compareTo(b.$1));
 
-    // 先累加 startDate 之前的交易
-    while (txIndex < allTxs.length && allTxs[txIndex].happenedAt.isBefore(startDate)) {
-      final tx = allTxs[txIndex];
+    // 计算 startDate 之前的余额
+    var runningBalance = account.initialBalance;
+    int ei = 0;
+
+    void applyEvent((DateTime, Transaction?, double) e) {
+      final (_, tx, value) = e;
+      if (tx == null) {
+        runningBalance += value;
+        return;
+      }
       if (tx.accountId == accountId) {
         if (tx.type == 'income') {
           runningBalance += tx.amount;
@@ -788,7 +822,12 @@ SELECT aid,
       if (tx.toAccountId == accountId && tx.type == 'transfer') {
         runningBalance += tx.amount;
       }
-      txIndex++;
+    }
+
+    // 先累加 startDate 之前的事件
+    while (ei < merged.length && merged[ei].$1.isBefore(startDate)) {
+      applyEvent(merged[ei]);
+      ei++;
     }
 
     // 按天填充
@@ -799,24 +838,10 @@ SELECT aid,
     while (!currentDate.isAfter(end)) {
       final nextDate = currentDate.add(const Duration(days: 1));
 
-      // 累加当天的交易
-      while (txIndex < allTxs.length && allTxs[txIndex].happenedAt.isBefore(nextDate)) {
-        final tx = allTxs[txIndex];
-        if (tx.accountId == accountId) {
-          if (tx.type == 'income') {
-            runningBalance += tx.amount;
-          } else if (tx.type == 'expense') {
-            runningBalance -= tx.amount;
-          } else if (tx.type == 'transfer') {
-            runningBalance -= tx.amount;
-          } else if (tx.type == 'adjustment') {
-            runningBalance += tx.amount;
-          }
-        }
-        if (tx.toAccountId == accountId && tx.type == 'transfer') {
-          runningBalance += tx.amount;
-        }
-        txIndex++;
+      // 累加当天的事件
+      while (ei < merged.length && merged[ei].$1.isBefore(nextDate)) {
+        applyEvent(merged[ei]);
+        ei++;
       }
 
       result.add((date: currentDate, balance: runningBalance));
@@ -1039,6 +1064,84 @@ SELECT aid,
         updatedAt: d.Value(DateTime.now()),
       ),
     );
+  }
+
+  // ============================================
+  // 余额调整记录(v42)— 独立实体,不进收支统计
+  // ============================================
+
+  @override
+  Future<int> addAccountAdjustment({
+    required int ledgerId,
+    required int accountId,
+    required double amount,
+    double? balanceBefore,
+    double? balanceAfter,
+    DateTime? happenedAt,
+    String? note,
+  }) async {
+    final now = DateTime.now();
+    return await db.into(db.accountAdjustments).insert(
+          AccountAdjustmentsCompanion.insert(
+            syncId: d.Value(_uuid.v4()),
+            ledgerId: ledgerId,
+            accountId: accountId,
+            amount: amount,
+            balanceBefore: d.Value(balanceBefore),
+            balanceAfter: d.Value(balanceAfter),
+            happenedAt: d.Value(happenedAt ?? now),
+            recordedAt: d.Value(now),
+            note: d.Value(note),
+            createdAt: d.Value(now),
+            updatedAt: d.Value(now),
+          ),
+        );
+  }
+
+  @override
+  Future<List<AccountAdjustment>> getAccountAdjustments(int accountId,
+      {int limit = 200}) async {
+    return await (db.select(db.accountAdjustments)
+          ..where((a) => a.accountId.equals(accountId))
+          ..orderBy([
+            (a) => d.OrderingTerm(
+                expression: a.happenedAt, mode: d.OrderingMode.desc),
+            (a) => d.OrderingTerm(
+                expression: a.id, mode: d.OrderingMode.desc),
+          ])
+          ..limit(limit))
+        .get();
+  }
+
+  /// 全部账户的调整总额(带符号),按账户 id 索引。余额口径 =
+  /// initial + Σ交易 + Σ调整(v42)。ledgerId 非空时按账本过滤(单账本维度),
+  /// 否则跨账本(共享账本排除条件与交易侧一致)。
+  Future<Map<int, double>> _bulkAdjustmentTotals(
+      {int? accountId, int? ledgerId}) async {
+    final conditions = <String>[];
+    final variables = <d.Variable>[];
+    if (accountId != null) {
+      conditions.add('account_id = ?${variables.length + 1}');
+      variables.add(d.Variable.withInt(accountId));
+    }
+    if (ledgerId != null) {
+      conditions.add('ledger_id = ?${variables.length + 1}');
+      variables.add(d.Variable.withInt(ledgerId));
+    } else {
+      // 与 _kAccountSidesCte 同口径:排除以成员身份加入的共享账本。
+      conditions.add(_kExcludeJoinedSharedLedgerSql);
+    }
+    final rows = await db.customSelect(
+      'SELECT account_id AS aid, COALESCE(SUM(amount), 0) AS adj '
+      'FROM account_adjustments '
+      'WHERE ${conditions.join(' AND ')} GROUP BY account_id',
+      variables: variables,
+      readsFrom: {db.accountAdjustments},
+    ).get();
+    return {
+      for (final row in rows)
+        row.data['aid'] as int: (row.data['adj'] as num).toDouble(),
+    };
   }
 
   @override

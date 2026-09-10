@@ -437,6 +437,50 @@ class Budgets extends Table {
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
 }
 
+/// 余额调整记录(v42,0028 对齐)。「调整余额」不再落一笔 exclude_from_stats
+/// 交易,而是独立 ledger-scope 同步实体:**不进任何收支统计/预算/分类排行**,
+/// 只参与账户余额与净资产口径(初始值 + Σ交易 + Σ调整)。
+/// amount 带符号(正=调增,负=调减);balanceBefore/After 为审计快照。
+class AccountAdjustments extends Table {
+  IntColumn get id => integer().autoIncrement()();
+
+  /// 跨设备同步 syncId(UUID),server 端 entity_sync_id。
+  TextColumn get syncId => text().nullable()();
+
+  /// 关联账本ID
+  IntColumn get ledgerId => integer()();
+
+  /// 目标账户(本地 int id;共享账本 Editor 场景用 accountSyncIdOverride)
+  IntColumn get accountId => integer()();
+  TextColumn get accountSyncIdOverride => text().nullable()();
+
+  /// 带符号差额:正=调增,负=调减
+  RealColumn get amount => real()();
+
+  /// 调整前余额快照(审计展示用,统计不读)
+  RealColumn get balanceBefore => real().nullable()();
+
+  /// 调整后余额快照
+  RealColumn get balanceAfter => real().nullable()();
+
+  DateTimeColumn get happenedAt => dateTime().withDefault(currentDateAndTime)();
+
+  /// 记录时间(server 首次落库盖章,pull payload.createdAt);本地新建为写入时刻
+  DateTimeColumn get recordedAt => dateTime().nullable()();
+
+  TextColumn get note => text().nullable()();
+
+  /// 共享账本「谁调的」
+  TextColumn get createdByUserId => text().nullable()();
+  TextColumn get lastEditedByUserId => text().nullable()();
+
+  /// 创建时间
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+
+  /// 更新时间
+  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+}
+
 // ============================================================================
 // 共享账本(v24)
 // ============================================================================
@@ -541,6 +585,7 @@ class SharedLedgerTags extends Table {
   ExchangeRateOverrides,
   AutoBookEvents,
   AutoBookEventItems,
+  AccountAdjustments,
 ])
 class BeeDatabase extends _$BeeDatabase {
   BeeDatabase() : super(_openConnection());
@@ -551,7 +596,7 @@ class BeeDatabase extends _$BeeDatabase {
   BeeDatabase.forTesting(QueryExecutor executor) : super(executor);
 
   @override
-  int get schemaVersion => 41; // v40: 交易记录时间 recorded_at(server 盖章);v41: keyset 分页索引 (ledger_id, happened_at DESC, id DESC)
+  int get schemaVersion => 42; // v42: 余额调整记录表(调整余额不再落交易);v41: keyset 分页索引 (ledger_id, happened_at DESC, id DESC)
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -1368,6 +1413,11 @@ class BeeDatabase extends _$BeeDatabase {
             await _addColumnIfMissing('transactions', 'recorded_at',
                 'ALTER TABLE transactions ADD COLUMN recorded_at INTEGER;');
           }
+          if (from < 42) {
+            // v42 余额调整记录表:调整余额不再落一笔 exclude_from_stats 交易,
+            // 独立实体只参与余额口径。存量调整交易不迁移(exclude 标记继续生效)。
+            await migrator.createTable(accountAdjustments);
+          }
           // v39(M3-1):索引统一到 _ensureIndexes(),无条件跑一遍。
           await _ensureIndexes();
         },
@@ -1422,6 +1472,15 @@ class BeeDatabase extends _$BeeDatabase {
         'CREATE INDEX IF NOT EXISTS idx_transactions_category_sync_override '
             'ON transactions (category_sync_id_override) '
             'WHERE category_sync_id_override IS NOT NULL;',
+      ],
+      'account_adjustments': [
+        // 余额聚合按账户扫调整记录;列表按时间倒序。
+        'CREATE INDEX IF NOT EXISTS idx_account_adjustments_account_time '
+            'ON account_adjustments (account_id, happened_at DESC);',
+        'CREATE INDEX IF NOT EXISTS idx_account_adjustments_ledger_time '
+            'ON account_adjustments (ledger_id, happened_at DESC);',
+        'CREATE INDEX IF NOT EXISTS idx_account_adjustments_sync_id '
+            'ON account_adjustments (sync_id);',
       ],
       'local_changes': [
         // PERF-P1-12:push 前未推送变更按 (账本, pushed_at, id) 范围扫描;

@@ -7580,6 +7580,24 @@ abstract class AppLocalizations {
   /// **'Balance adjustment'**
   String get accountAdjustBalanceNote;
 
+  /// No description provided for @accountAdjustmentsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Adjustment History'**
+  String get accountAdjustmentsTitle;
+
+  /// No description provided for @accountAdjustmentsEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No balance adjustments yet'**
+  String get accountAdjustmentsEmpty;
+
+  /// No description provided for @accountAdjustmentsViewAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Adjustment history'**
+  String get accountAdjustmentsViewAction;
+
   /// No description provided for @accountBalanceAdjustedToast.
   ///
   /// In en, this message translates to:
@@ -8101,6 +8119,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Photos permission required for screenshot monitoring'**
   String get photosPermissionRequired;
+
+  /// No description provided for @photosPermissionLimitedHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Screenshot auto-bookkeeping requires access to ALL photos. In system settings choose \"Allow all photos\" for SmartBook'**
+  String get photosPermissionLimitedHint;
 
   /// No description provided for @enableSuccess.
   ///

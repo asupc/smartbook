@@ -3978,6 +3978,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get accountAdjustBalanceNote => 'Balance adjustment';
 
   @override
+  String get accountAdjustmentsTitle => 'Adjustment History';
+
+  @override
+  String get accountAdjustmentsEmpty => 'No balance adjustments yet';
+
+  @override
+  String get accountAdjustmentsViewAction => 'Adjustment history';
+
+  @override
   String get accountBalanceAdjustedToast => 'Balance adjustment recorded, syncing…';
 
   @override
@@ -4243,6 +4252,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get photosPermissionRequired => 'Photos permission required for screenshot monitoring';
+
+  @override
+  String get photosPermissionLimitedHint => 'Screenshot auto-bookkeeping requires access to ALL photos. In system settings choose \"Allow all photos\" for SmartBook';
 
   @override
   String get enableSuccess => 'Auto billing enabled';

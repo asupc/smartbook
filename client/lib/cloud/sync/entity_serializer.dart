@@ -193,6 +193,32 @@ class EntitySerializer {
     };
   }
 
+  // ==================== AccountAdjustment ====================
+
+  /// 余额调整记录(v42)的跨设备同步 payload。camelCase 键与 server 端
+  /// _LEDGER_MERGE_SPECS['account_adjustment'] / projection.upsert_account_adjustment
+  /// 对齐。amount 带符号(正=调增,负=调减);balanceBefore/After 审计快照,
+  /// 有值才发。accountId 传账户 syncId(空串语义同 tx:显式无账户)。
+  static Map<String, dynamic> serializeAccountAdjustment(
+    AccountAdjustment adj, {
+    String? accountSyncId,
+    String? accountName,
+    String? ledgerSyncId,
+  }) {
+    return {
+      'syncId': adj.syncId,
+      'accountId': accountSyncId ?? '',
+      if (accountName != null) 'accountName': accountName,
+      'amount': adj.amount,
+      if (adj.balanceBefore != null) 'balanceBefore': adj.balanceBefore,
+      if (adj.balanceAfter != null) 'balanceAfter': adj.balanceAfter,
+      'happenedAt': adj.happenedAt.toUtc().toIso8601String(),
+      if (ledgerSyncId != null && ledgerSyncId.isNotEmpty)
+        'ledgerSyncId': ledgerSyncId,
+      if (adj.note != null) 'note': adj.note,
+    };
+  }
+
   // ==================== JSON Encode ====================
 
   static String toJsonString(Map<String, dynamic> payload) {

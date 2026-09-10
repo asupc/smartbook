@@ -3978,6 +3978,15 @@ class AppLocalizationsKo extends AppLocalizations {
   String get accountAdjustBalanceNote => '잔액 조정';
 
   @override
+  String get accountAdjustmentsTitle => '조정 기록';
+
+  @override
+  String get accountAdjustmentsEmpty => '잔액 조정 기록이 없습니다';
+
+  @override
+  String get accountAdjustmentsViewAction => '조정 기록';
+
+  @override
   String get accountBalanceAdjustedToast => '잔액 조정 기록됨, 동기화 중';
 
   @override
@@ -4243,6 +4252,9 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get photosPermissionRequired => '스크린샷 모니터링을 위해 사진 접근 권한이 필요합니다';
+
+  @override
+  String get photosPermissionLimitedHint => '스크린샷 자동 기록에는 \"모든 사진 허용\" 권한이 필요합니다. 시스템 설정에서 지지(SmartBook)의 사진 권한을 변경해 주세요';
 
   @override
   String get enableSuccess => '자동 기록이 활성화되었습니다';

@@ -1417,14 +1417,18 @@ class SyncEngine implements app.SyncService {
       await (db.delete(db.budgets)
             ..where((b) => b.ledgerId.equals(ledgerId)))
           .go();
+      // v42:调整记录随交易一起清(重建从快照来)。
+      await (db.delete(db.accountAdjustments)
+            ..where((a) => a.ledgerId.equals(ledgerId)))
+          .go();
 
-      // 2. 清掉该账本未推送的 transaction/budget change，防止恢复后残留
+      // 2. 清掉该账本未推送的 transaction/budget/account_adjustment change，防止恢复后残留
       //    delete/upsert change 反向推服务端覆盖权威数据。
       await (db.delete(db.localChanges)
             ..where((c) =>
                 c.ledgerId.equals(ledgerId) &
                 c.pushedAt.isNull() &
-                c.entityType.isIn(['transaction', 'budget'])))
+                c.entityType.isIn(['transaction', 'budget', 'account_adjustment'])))
           .go();
     });
 
@@ -1467,6 +1471,11 @@ class SyncEngine implements app.SyncService {
     //    在分类重建之后执行，分类预算的 syncId 才解析得到。
     final restoredBudgets = await _restoreBudgetsFromSnapshot(ledgerId, content);
 
+    // 5b. 从权威快照重建余额调整记录(v42,db 直写不记 change)。在账户重建
+    //     之后执行,accountId 的 syncId 才解析得到。
+    final restoredAdjustments =
+        await _restoreAccountAdjustmentsFromSnapshot(ledgerId, content);
+
     // 6. 推进 cursor 到服务端 latest_cursor，跳过卡住的历史坏 change。
     if (snap.latestCursor > 0) {
       await appCursor.commit(snap.latestCursor);
@@ -1483,6 +1492,7 @@ class SyncEngine implements app.SyncService {
 
     logger.info('SyncEngine',
         'forceRestoreFromServer 完成: 交易 ${result.inserted} 笔, 预算 $restoredBudgets 笔, '
+        '余额调整 $restoredAdjustments 条, '
         '账户 ${restored.accounts}(删${restored.deletedAccounts}) '
         '分类 ${restored.categories}(删${restored.deletedCategories}) '
         '标签 ${restored.tags}(删${restored.deletedTags})');
@@ -2016,6 +2026,61 @@ class SyncEngine implements app.SyncService {
       }
     } catch (e, st) {
       logger.error('SyncEngine', 'forceRestoreFromServer: 预算重建失败', e, st);
+    }
+    return restored;
+  }
+
+  /// 从 /sync/full 快照 JSON 的 `accountAdjustments` 数组重建余额调整记录
+  /// (db 直写,不记 change;v42)。字段见 server snapshot_builder.py:
+  /// syncId / accountId(账户 syncId) / amount(带符号) / balanceBefore /
+  /// balanceAfter / happenedAt / createdAt / note。
+  /// 账户 syncId 解析不到本地 int id 时落 accountSyncIdOverride(与增量
+  /// apply 同语义),不跳过 —— 调整记录丢一条余额就永久错位。
+  Future<int> _restoreAccountAdjustmentsFromSnapshot(
+      int ledgerId, String content) async {
+    int restored = 0;
+    try {
+      final decoded = jsonDecode(content);
+      if (decoded is! Map<String, dynamic>) return 0;
+      final adjRaw = decoded['accountAdjustments'];
+      if (adjRaw is! List) return 0;
+
+      for (final raw in adjRaw) {
+        if (raw is! Map<String, dynamic>) continue;
+        final syncId = (raw['syncId'] as String?)?.trim();
+        final amount = (raw['amount'] as num?)?.toDouble();
+        if (syncId == null || syncId.isEmpty || amount == null) continue;
+
+        final accountSyncId = (raw['accountId'] as String?)?.trim();
+        final localAccountId =
+            await _resolveAccountIdBySyncId(accountSyncId);
+        final happenedAt =
+            DateTime.tryParse(raw['happenedAt']?.toString() ?? '');
+        final recordedAt =
+            DateTime.tryParse(raw['createdAt']?.toString() ?? '');
+
+        await db.into(db.accountAdjustments).insert(
+              AccountAdjustmentsCompanion.insert(
+                syncId: d.Value(syncId),
+                ledgerId: ledgerId,
+                accountId: localAccountId ?? 0,
+                accountSyncIdOverride:
+                    d.Value(localAccountId == null ? accountSyncId : null),
+                amount: amount,
+                balanceBefore:
+                    d.Value((raw['balanceBefore'] as num?)?.toDouble()),
+                balanceAfter:
+                    d.Value((raw['balanceAfter'] as num?)?.toDouble()),
+                happenedAt:
+                    d.Value(happenedAt ?? DateTime.now()),
+                recordedAt: d.Value(recordedAt),
+                note: d.Value(raw['note'] as String?),
+              ),
+            );
+        restored++;
+      }
+    } catch (e, st) {
+      logger.error('SyncEngine', 'forceRestoreFromServer: 余额调整重建失败', e, st);
     }
     return restored;
   }

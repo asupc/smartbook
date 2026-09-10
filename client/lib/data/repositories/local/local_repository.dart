@@ -2167,6 +2167,51 @@ class LocalRepository extends BaseRepository {
   Future<void> updateAccountValuation(int accountId, double newValue) =>
       _accountRepo.updateAccountValuation(accountId, newValue);
 
+  // ============================================
+  // 余额调整记录(v42)— 独立同步实体 account_adjustment
+  // ============================================
+
+  @override
+  Future<int> addAccountAdjustment({
+    required int ledgerId,
+    required int accountId,
+    required double amount,
+    double? balanceBefore,
+    double? balanceAfter,
+    DateTime? happenedAt,
+    String? note,
+  }) async {
+    final id = await _accountRepo.addAccountAdjustment(
+      ledgerId: ledgerId,
+      accountId: accountId,
+      amount: amount,
+      balanceBefore: balanceBefore,
+      balanceAfter: balanceAfter,
+      happenedAt: happenedAt,
+      note: note,
+    );
+    if (changeTracker != null) {
+      final rows = await (db.select(db.accountAdjustments)
+            ..where((a) => a.id.equals(id)))
+          .getSingleOrNull();
+      if (rows != null && rows.syncId != null) {
+        await changeTracker!.recordLedgerChange(
+          entityType: 'account_adjustment',
+          entityId: id,
+          entitySyncId: rows.syncId!,
+          ledgerId: ledgerId,
+          action: 'create',
+        );
+      }
+    }
+    return id;
+  }
+
+  @override
+  Future<List<AccountAdjustment>> getAccountAdjustments(int accountId,
+          {int limit = 200}) =>
+      _accountRepo.getAccountAdjustments(accountId, limit: limit);
+
   @override
   Future<SharedLedgerAccount?> getSharedAccountBySyncId(String syncId) =>
       _accountRepo.getSharedAccountBySyncId(syncId);

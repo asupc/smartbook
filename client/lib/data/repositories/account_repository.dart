@@ -198,6 +198,25 @@ abstract class AccountRepository {
   Future<void> updateAccountValuation(int accountId, double newValue);
 
   // ============================================
+  // 余额调整记录(v42)— 独立实体,不落交易、不进收支统计
+  // ============================================
+
+  /// 记一条余额调整(带符号差额)。返回本地行 id。
+  Future<int> addAccountAdjustment({
+    required int ledgerId,
+    required int accountId,
+    required double amount,
+    double? balanceBefore,
+    double? balanceAfter,
+    DateTime? happenedAt,
+    String? note,
+  });
+
+  /// 指定账户的调整记录(时间倒序),调整历史查看用。
+  Future<List<AccountAdjustment>> getAccountAdjustments(int accountId,
+      {int limit = 200});
+
+  // ============================================
   // 共享账本(§7 / v25)— 跨设备共享的 SharedLedgerAccounts 表
   // ============================================
 

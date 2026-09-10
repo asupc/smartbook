@@ -267,6 +267,34 @@ extension SyncEngineSerializationExt on SyncEngine {
           categorySyncId: categorySyncId,
         );
 
+      case 'account_adjustment':
+        // v42 余额调整记录:独立 ledger-scope 实体,不落交易。
+        final adj = await (db.select(db.accountAdjustments)
+              ..where((a) => a.id.equals(entityId)))
+            .getSingleOrNull();
+        if (adj == null) return <String, dynamic>{};
+        // 账户 syncId:Editor 共享账本 override 优先,其次本地账户表。
+        String? accSyncId = adj.accountSyncIdOverride;
+        String? accName;
+        if (accSyncId != null && accSyncId.isNotEmpty) {
+          final shared = await (db.select(db.sharedLedgerAccounts)
+                ..where((t) => t.syncId.equals(accSyncId!)))
+              .getSingleOrNull();
+          accName = shared?.name;
+        } else {
+          final acc = await (db.select(db.accounts)
+                ..where((a) => a.id.equals(adj.accountId)))
+              .getSingleOrNull();
+          accSyncId = acc?.syncId;
+          accName = acc?.name;
+        }
+        return EntitySerializer.serializeAccountAdjustment(
+          adj,
+          accountSyncId: accSyncId,
+          accountName: accName,
+          ledgerSyncId: parentLedgerSyncId,
+        );
+
       case 'ledger':
         // 账本元数据(名字 / 币种)。entityId 是本地 int id,取出后按 syncId
         // 推送,server materialize 时更新 `ledger_snapshot.ledgerName/currency`
@@ -472,6 +500,49 @@ extension SyncEngineSerializationExt on SyncEngine {
       });
     }
 
+    // v42 余额调整记录:按账本过滤推。账户 syncId 走本地表(共享账本
+    // override 场景在增量 push 分支处理,fullPush 从 accounts 表兜底)。
+    final adjustments = await (db.select(db.accountAdjustments)
+          ..where((a) => a.ledgerId.equals(ledger.id)))
+        .get();
+    var adjCount = 0;
+    for (final adj in adjustments) {
+      final syncId = adj.syncId ?? _uuid.v4();
+      if (adj.syncId == null) {
+        await (db.update(db.accountAdjustments)
+              ..where((a) => a.id.equals(adj.id)))
+            .write(AccountAdjustmentsCompanion(syncId: d.Value(syncId)));
+      }
+      String? accSyncId = adj.accountSyncIdOverride;
+      String? accName;
+      if (accSyncId != null && accSyncId.isNotEmpty) {
+        final shared = await (db.select(db.sharedLedgerAccounts)
+              ..where((t) => t.syncId.equals(accSyncId!)))
+            .getSingleOrNull();
+        accName = shared?.name;
+      } else {
+        final acc = accounts
+            .cast<Account?>()
+            .firstWhere((a) => a?.id == adj.accountId, orElse: () => null);
+        accSyncId = acc?.syncId;
+        accName = acc?.name;
+      }
+      syncChanges.add({
+        'ledger_id': ledgerId,
+        'entity_type': 'account_adjustment',
+        'entity_sync_id': syncId,
+        'action': 'upsert',
+        'payload': EntitySerializer.serializeAccountAdjustment(
+          adj,
+          accountSyncId: accSyncId,
+          accountName: accName,
+          ledgerSyncId: ledger.syncId,
+        ),
+        'updated_at': now,
+      });
+      adjCount++;
+    }
+
     // 交易
     final transactions = await (db.select(db.transactions)
           ..where((t) => t.ledgerId.equals(ledger.id)))
@@ -575,7 +646,7 @@ extension SyncEngineSerializationExt on SyncEngine {
     logger.info(
         'SyncEngine',
         '开始推送个体变更 共${syncChanges.length}条 '
-            '(accounts=$accountCount, categories=$categoryCount, tags=$tagCount, transactions=$txCount)');
+            '(accounts=$accountCount, categories=$categoryCount, tags=$tagCount, transactions=$txCount, adjustments=$adjCount)');
 
     // 分批推送:每条 change 平均 ~500 字节,500 条 ≈ 250KB,远低于网关限制,
     // 但单次请求内 server 事务处理时间 ~100ms 可接受。

@@ -15,6 +15,7 @@ import '../../utils/account_type_utils.dart';
 import '../../widgets/charts/account_category_pie_chart.dart';
 import '../transaction/transaction_editor_page.dart';
 import 'account_edit_page.dart';
+import 'account_adjustments_page.dart';
 
 // ============================================
 // Providers
@@ -275,6 +276,9 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
 
                   SizedBox(height: 12.0.scaled(context, ref)),
 
+                  // 调整记录入口(v42):调整余额不再落交易,历史在这里看。
+                  _buildAdjustmentsEntry(context, ref, account, l10n),
+
                   // 交易列表（分页）
                   _buildTransactionList(
                     context,
@@ -348,6 +352,47 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
           child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
         ),
         error: (_, __) => const SizedBox.shrink(),
+      ),
+    );
+  }
+
+  /// 调整记录入口(v42):「调整余额」不再落交易,历史在独立页面查看。
+  Widget _buildAdjustmentsEntry(
+    BuildContext context,
+    WidgetRef ref,
+    db.Account account,
+    AppLocalizations l10n,
+  ) {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 12.0.scaled(context, ref)),
+      child: SectionCard(
+        margin: EdgeInsets.only(bottom: 12.0.scaled(context, ref)),
+        child: ListTile(
+          dense: true,
+          contentPadding: EdgeInsets.symmetric(
+            horizontal: 12.0.scaled(context, ref),
+          ),
+          leading: Icon(
+            Icons.tune_rounded,
+            color: BeeTokens.iconSecondary(context),
+          ),
+          title: Text(
+            l10n.accountAdjustmentsViewAction,
+            style: TextStyle(color: BeeTokens.textPrimary(context)),
+          ),
+          trailing: Icon(
+            Icons.chevron_right,
+            color: BeeTokens.iconTertiary(context),
+          ),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => AccountAdjustmentsPage(account: account),
+              ),
+            );
+          },
+        ),
       ),
     );
   }

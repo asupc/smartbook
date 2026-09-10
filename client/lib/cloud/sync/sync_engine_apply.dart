@@ -36,6 +36,9 @@ extension SyncEngineApplyExt on SyncEngine {
       case 'budget':
         await _applyBudgetChange(change);
         return true;
+      case 'account_adjustment':
+        await _applyAccountAdjustmentChange(change);
+        return true;
       case 'exchange_rate_override':
         await _applyExchangeRateOverrideChange(change);
         return true;
@@ -729,6 +732,91 @@ extension SyncEngineApplyExt on SyncEngine {
             syncId: d.Value(syncId),
           ));
       logger.debug('SyncEngine', 'pull: 新增预算 $syncId');
+    }
+  }
+
+  /// 应用余额调整记录变更(v42)。按 syncId upsert;delete 同路径。
+  /// ledger/account 外键以 syncId 形式带来,用 _resolveLedgerIdBySyncId /
+  /// _resolveAccountIdBySyncId 换本地 int id。账户未就绪(调整先于账户 change
+  /// 到达)时先落 override 字段,accountId 兜底后续修复——与 tx 的 v25 override
+  /// 语义一致。
+  Future<void> _applyAccountAdjustmentChange(
+      SmartBookCloudSyncChange change) async {
+    final syncId = change.entitySyncId;
+
+    if (change.action == 'delete') {
+      await (db.delete(db.accountAdjustments)
+            ..where((a) => a.syncId.equals(syncId)))
+          .go();
+      logger.debug('SyncEngine', 'pull: 删除余额调整 $syncId');
+      return;
+    }
+
+    final payload = change.payload!;
+    final ledgerSyncId =
+        payload['ledgerSyncId'] as String? ?? change.ledgerId; // server external_id
+    final accountSyncId = payload['accountId'] as String?;
+    final amount = (payload['amount'] as num?)?.toDouble() ?? 0.0;
+    final balanceBefore = (payload['balanceBefore'] as num?)?.toDouble();
+    final balanceAfter = (payload['balanceAfter'] as num?)?.toDouble();
+    final happenedAtStr = payload['happenedAt'] as String?;
+    final happenedAt = happenedAtStr != null
+        ? DateTime.tryParse(happenedAtStr)?.toLocal() ?? DateTime.now()
+        : DateTime.now();
+    final note = payload['note'] as String?;
+    final recordedAt =
+        DateTime.tryParse(payload['createdAt']?.toString() ?? '');
+
+    final localLedgerId = await _resolveLedgerIdBySyncId(ledgerSyncId) ??
+        int.tryParse(change.ledgerId);
+    if (localLedgerId == null) {
+      logger.info('SyncEngine',
+          'pull: 余额调整 $syncId 的 ledgerSyncId=$ledgerSyncId 本地未就绪,跳过');
+      return;
+    }
+
+    // 账户解析:本地表有 → int id;没有(Editor 共享账本 / 账户 change 未到)
+    // → 落 accountSyncIdOverride,accountId 兜 0。
+    final localAccountId = await _resolveAccountIdBySyncId(accountSyncId);
+
+    final existing = await (db.select(db.accountAdjustments)
+          ..where((a) => a.syncId.equals(syncId)))
+        .getSingleOrNull();
+
+    if (existing != null) {
+      await (db.update(db.accountAdjustments)
+            ..where((a) => a.id.equals(existing.id)))
+          .write(AccountAdjustmentsCompanion(
+        ledgerId: d.Value(localLedgerId),
+        accountId: d.Value(localAccountId ?? existing.accountId),
+        accountSyncIdOverride: d.Value(
+            localAccountId == null ? accountSyncId : null),
+        amount: d.Value(amount),
+        balanceBefore: d.Value(balanceBefore),
+        balanceAfter: d.Value(balanceAfter),
+        happenedAt: d.Value(happenedAt),
+        recordedAt: d.Value(recordedAt ?? existing.recordedAt),
+        note: d.Value(note),
+        updatedAt: d.Value(DateTime.now()),
+      ));
+      logger.debug('SyncEngine', 'pull: 更新余额调整 $syncId');
+    } else {
+      await db.into(db.accountAdjustments).insert(
+            AccountAdjustmentsCompanion.insert(
+              syncId: d.Value(syncId),
+              ledgerId: localLedgerId,
+              accountId: localAccountId ?? 0,
+              accountSyncIdOverride:
+                  d.Value(localAccountId == null ? accountSyncId : null),
+              amount: amount,
+              balanceBefore: d.Value(balanceBefore),
+              balanceAfter: d.Value(balanceAfter),
+              happenedAt: d.Value(happenedAt),
+              recordedAt: d.Value(recordedAt),
+              note: d.Value(note),
+            ),
+          );
+      logger.debug('SyncEngine', 'pull: 新增余额调整 $syncId');
     }
   }
 
