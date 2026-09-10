@@ -618,6 +618,20 @@ def list_workspace_accounts(
         ).group_by(ReadTxProjection.to_account_sync_id)
     ).all()
 
+    # 余额调整记录(0028):带符号差额直接并入 balance,不计 income/expense/
+    # tx_count —— 调整不是交易。
+    from ...models import ReadAccountAdjustmentProjection as _AdjProj
+
+    adjustment_stats = db.execute(
+        select(
+            _AdjProj.account_sync_id,
+            func.coalesce(func.sum(_AdjProj.amount), 0.0).label("amt"),
+        ).where(
+            _AdjProj.ledger_id.in_(ledger_internal_ids),
+            _AdjProj.account_sync_id.is_not(None),
+        ).group_by(_AdjProj.account_sync_id)
+    ).all()
+
     # 合并成 per-account 的 dict(跨 ledger,key 只是 sync_id)
     stats: dict[str, dict[str, float | int]] = {}
     for acc, cnt, inc, exp in main_stats:
@@ -632,6 +646,10 @@ def list_workspace_accounts(
         bucket = stats.setdefault(acc,
                                    {"count": 0, "income": 0.0, "expense": 0.0, "balance": 0.0})
         bucket["count"] = int(bucket["count"]) + int(cnt)
+        bucket["balance"] = float(bucket["balance"]) + float(amt)
+    for acc, amt in adjustment_stats:
+        bucket = stats.setdefault(acc,
+                                   {"count": 0, "income": 0.0, "expense": 0.0, "balance": 0.0})
         bucket["balance"] = float(bucket["balance"]) + float(amt)
 
     # user-global 重构:account 是 per-user 表,直接按 user_id 拉,不再 per-ledger
@@ -1332,6 +1350,24 @@ def workspace_net_worth_history(
         .order_by(ReadTxProjection.happened_at.asc())
     ).all()
 
+    # 余额调整记录(0028):跟 tx 一起按时间回放。类型用 "adjustment" 复用
+    # _apply 的既有分支(bal[acc] += amt,带符号)。
+    from ...models import ReadAccountAdjustmentProjection as _AdjProj
+
+    adj_rows = db.execute(
+        select(
+            _AdjProj.amount,
+            _AdjProj.happened_at,
+            _AdjProj.account_sync_id,
+        )
+        .where(_AdjProj.ledger_id.in_(ledger_internal_ids))
+        .order_by(_AdjProj.happened_at.asc())
+    ).all()
+    events = [(t.happened_at, "tx", t) for t in txs] + [
+        (a.happened_at, "adj", a) for a in adj_rows
+    ]
+    events.sort(key=lambda e: e[0])
+
     bal = dict(init_by_acc)
 
     def _apply(tx_type, amt, acc, from_acc, to_acc):
@@ -1366,20 +1402,25 @@ def workspace_net_worth_history(
 
     series: list[NetWorthHistorySeriesItemOut] = []
     last_bucket: str | None = None
-    for tx in txs:
-        if tx.happened_at is None:
+    for happened_at, _kind, ev in events:
+        if happened_at is None:
             continue
-        ha = _to_utc(tx.happened_at)
+        ha = _to_utc(happened_at)
         bucket = (ha + timedelta(minutes=tz_offset_minutes)).strftime("%Y-%m")
         if last_bucket is not None and bucket != last_bucket:
             a, l = _net()
             series.append(NetWorthHistorySeriesItemOut(
                 bucket=last_bucket, net_worth=a + l, assets=a, liabilities=l,
             ))
-        _apply(
-            tx.tx_type, float(tx.amount or 0.0),
-            tx.account_sync_id, tx.from_account_sync_id, tx.to_account_sync_id,
-        )
+        if _kind == "adj":
+            # 调整记录:amount 带符号,直接叠加到目标账户。
+            if ev.account_sync_id in bal:
+                bal[ev.account_sync_id] += float(ev.amount or 0.0)
+        else:
+            _apply(
+                ev.tx_type, float(ev.amount or 0.0),
+                ev.account_sync_id, ev.from_account_sync_id, ev.to_account_sync_id,
+            )
         last_bucket = bucket
     if last_bucket is not None:
         a, l = _net()

@@ -158,6 +158,8 @@ def ensure_snapshot_v2(snapshot: dict | None) -> dict:
     accounts = _ensure_list(target, "accounts")
     categories = _ensure_list(target, "categories")
     tags = _ensure_list(target, "tags")
+    _ensure_list(target, "budgets")
+    _ensure_list(target, "accountAdjustments")
 
     _ensure_sync_id(items, "tx")
     _ensure_sync_id(accounts, "acc")
@@ -546,6 +548,11 @@ def update_account(snapshot: dict, account_id: str, payload: dict) -> dict:
                 tx["fromAccountName"] = new_name
             if tx.get("toAccountName") == old_name:
                 tx["toAccountName"] = new_name
+        # 余额调整记录的 accountName 冗余列同步刷(projection 侧走
+        # rename_cascade_account 的 SQL UPDATE,见 projection.py)。
+        for adj in _ensure_list(target, "accountAdjustments"):
+            if adj.get("accountName") == old_name:
+                adj["accountName"] = new_name
     _mark_entity_actor(account, payload, create=False)
     return target
 
@@ -947,3 +954,41 @@ def delete_budget(snapshot: dict, budget_id: str, payload: dict | None = None) -
     _assert_actor_can_modify(budget, payload or {})
     budgets.pop(idx)
     return target
+
+
+# ============================================================================
+# Account adjustments —— 余额调整记录(0028)。「调整余额」不再落一笔
+# exclude_from_stats 交易,而是独立实体 accountAdjustments[]。不进收支统计/
+# 预算/分类排行,只参与账户余额与净资产口径(初始值 + Σ交易 + Σ调整)。
+# ============================================================================
+
+
+def create_account_adjustment(snapshot: dict, payload: dict) -> tuple[dict, str]:
+    target = ensure_snapshot_v2(snapshot)
+    adjustments = _ensure_list(target, "accountAdjustments")
+    account_id = _to_optional_str(payload.get("account_id"))
+    if not account_id:
+        raise ValueError("write validation failed: account_id is required")
+    amount = _to_optional_float(payload.get("amount"))
+    if amount is None or abs(amount) < 0.005:
+        raise ValueError("write validation failed: adjustment amount must be >= 0.005")
+    sync_id = _new_sync_id("adj")
+    item: dict[str, object] = {
+        "syncId": sync_id,
+        "accountId": account_id,
+        "amount": amount,
+        "happenedAt": _to_iso8601(payload.get("happened_at")),
+    }
+    # 审计快照:前端传入才写(两端都在本地算好 current balance)。
+    if payload.get("balance_before") is not None:
+        item["balanceBefore"] = _to_float(payload.get("balance_before"))
+    if payload.get("balance_after") is not None:
+        item["balanceAfter"] = _to_float(payload.get("balance_after"))
+    if payload.get("note") is not None:
+        item["note"] = str(payload.get("note"))
+    # 账户名冗余:rename 时 cascade(read_tx_projection 的同款处理)。
+    if payload.get("account_name") is not None:
+        item["accountName"] = str(payload.get("account_name"))
+    _mark_entity_actor(item, payload, create=True)
+    adjustments.append(item)
+    return target, sync_id

@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from .models import (
     Ledger,
+    ReadAccountAdjustmentProjection,
     ReadBudgetProjection,
     ReadTxProjection,
     SyncChange,
@@ -282,6 +283,43 @@ def build(db: Session, ledger: Ledger) -> dict[str, Any]:
         b["enabled"] = bool(enabled)
         budgets.append(b)
 
+    # Account adjustments —— 余额调整记录(0028)。amount 带符号;
+    # balance_before/after 审计快照,NULL 不产生 key。
+    adjustments: list[dict[str, Any]] = []
+    adj_stmt = select(
+        ReadAccountAdjustmentProjection.sync_id,
+        ReadAccountAdjustmentProjection.account_sync_id,
+        ReadAccountAdjustmentProjection.account_name,
+        ReadAccountAdjustmentProjection.amount,
+        ReadAccountAdjustmentProjection.balance_before,
+        ReadAccountAdjustmentProjection.balance_after,
+        ReadAccountAdjustmentProjection.happened_at,
+        ReadAccountAdjustmentProjection.created_at,
+        ReadAccountAdjustmentProjection.note,
+        ReadAccountAdjustmentProjection.created_by_user_id,
+    ).where(ReadAccountAdjustmentProjection.ledger_id == ledger_id)
+    for (sid, acc_sid, acc_name, amt, bal_before, bal_after,
+         happened_at, created_at, note, created_by) in db.execute(adj_stmt).all():
+        adj: dict[str, Any] = {
+            "syncId": sid,
+            "accountId": acc_sid,
+            "amount": amt,
+            "happenedAt": _to_iso_utc(happened_at),
+        }
+        if acc_name:
+            adj["accountName"] = acc_name
+        if bal_before is not None:
+            adj["balanceBefore"] = bal_before
+        if bal_after is not None:
+            adj["balanceAfter"] = bal_after
+        if created_at is not None:
+            adj["createdAt"] = _to_iso_utc(created_at)
+        if note:
+            adj["note"] = note
+        if created_by:
+            adj["createdByUserId"] = created_by
+        adjustments.append(adj)
+
     return {
         # ledgerSyncId 给 mutator 用 —— 新建预算时要把它写进 budget payload,
         # 让 mobile sync_engine._applyBudgetChange 能解析本地 ledger int id。
@@ -295,6 +333,7 @@ def build(db: Session, ledger: Ledger) -> dict[str, Any]:
         "categories": categories,
         "tags": tags,
         "budgets": budgets,
+        "accountAdjustments": adjustments,
     }
 
 

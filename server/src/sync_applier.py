@@ -48,6 +48,7 @@ from sqlalchemy.orm import Session
 from . import projection
 from .models import (
     Ledger,
+    ReadAccountAdjustmentProjection,
     ReadBudgetProjection,
     ReadTxProjection,
     SyncChange,
@@ -63,7 +64,7 @@ logger = logging.getLogger(__name__)
 
 # 哪些 entity_type 可以走单条 change 的 projection 应用(其它 entity
 # 比如 ``ledger_snapshot`` 是 sync_changes 里的元数据行,不走这条路径)。
-INDIVIDUAL_ENTITY_TYPES = {"transaction", "account", "category", "tag", "budget", "ledger", "exchange_rate_override"}
+INDIVIDUAL_ENTITY_TYPES = {"transaction", "account", "category", "tag", "budget", "ledger", "exchange_rate_override", "account_adjustment"}
 
 # user-global entity 类型白名单 —— 跟 mobile lib/cloud/sync/change_tracker.dart
 # 的 userGlobalEntityTypes 保持一致。push 路径按这个集合分流到 user-scope 应用。
@@ -211,6 +212,20 @@ _LEDGER_MERGE_SPECS: dict[str, _MergeSpec] = {
         ("currencyCode", "currency_code"),
         ("nativeAmount", "native_amount"),
     ]),
+    # 余额调整记录(0028):「调整余额」不再落交易,独立 ledger-scope 实体。
+    # amount 带符号;balance_before/after 是审计快照;actor 字段语义同 tx。
+    "account_adjustment": _MergeSpec(ReadAccountAdjustmentProjection, [
+        ("syncId", "sync_id"),
+        ("accountId", "account_sync_id"),
+        ("accountName", "account_name"),
+        ("amount", "amount"),
+        ("balanceBefore", "balance_before"),
+        ("balanceAfter", "balance_after"),
+        ("happenedAt", "happened_at", _isoformat_or_none),
+        ("note", "note"),
+        ("createdByUserId", "created_by_user_id"),
+        ("updatedByUserId", "last_edited_by_user_id"),
+    ]),
 }
 
 
@@ -227,6 +242,7 @@ _USER_UPSERT_DISPATCH: dict[str, Callable] = {
 _LEDGER_UPSERT_DISPATCH: dict[str, Callable] = {
     "budget": projection.upsert_budget,
     "transaction": projection.upsert_tx,
+    "account_adjustment": projection.upsert_account_adjustment,
 }
 
 
@@ -403,6 +419,15 @@ def _delete_budget(db: Session, ledger_id: str, sync_id: str, user_id: str) -> N
     )
 
 
+def _delete_account_adjustment(
+    db: Session, ledger_id: str, sync_id: str, user_id: str
+) -> None:
+    projection.delete_account_adjustment(db, ledger_id=ledger_id, sync_id=sync_id)
+    _compact_entity_upsert_events(
+        db, user_id=user_id, entity_type="account_adjustment", entity_sync_id=sync_id,
+    )
+
+
 def _delete_user_account(db: Session, user_id: str, sync_id: str) -> None:
     projection.delete_account(db, user_id=user_id, sync_id=sync_id)
     _compact_entity_upsert_events(
@@ -427,6 +452,7 @@ def _delete_user_exchange_rate_override(db: Session, user_id: str, sync_id: str)
 _LEDGER_DELETE_DISPATCH: dict[str, Callable[[Session, str, str, str], None]] = {
     "transaction": _delete_tx,
     "budget": _delete_budget,
+    "account_adjustment": _delete_account_adjustment,
 }
 
 

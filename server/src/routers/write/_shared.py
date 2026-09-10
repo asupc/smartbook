@@ -148,6 +148,7 @@ _USER_PROJECTION_DELETERS: dict[str, Any] = {
 _LEDGER_PROJECTION_UPSERTERS: dict[str, Any] = {
     "transaction": projection.upsert_tx,
     "budget": projection.upsert_budget,
+    "account_adjustment": projection.upsert_account_adjustment,
 }
 _LEDGER_PROJECTION_DELETERS: dict[str, Any] = {
     "transaction": projection.delete_tx,
@@ -418,6 +419,11 @@ def _emit_entity_diffs(
     _diff_entity_list(db, ledger, current_user, device_id, now,
                       prev.get("budgets") or [], next_snapshot.get("budgets") or [],
                       "budget", emitted_ids)
+    # 余额调整记录(0028):调整余额不再落交易,独立实体 diff。
+    _diff_entity_list(db, ledger, current_user, device_id, now,
+                      prev.get("accountAdjustments") or [],
+                      next_snapshot.get("accountAdjustments") or [],
+                      "account_adjustment", emitted_ids)
     logger.info("_emit_entity_diffs: emitted %d entity changes for ledger %s", len(emitted_ids), ledger.external_id)
     return emitted_ids
 
@@ -943,7 +949,7 @@ async def _commit_write(
         snapshot = snapshot_builder.build(db, ledger)
         # Shallow-per-entity copy for diffing(mutator 会原地改 items[i] 等)
         prev_snapshot = {**snapshot}
-        for _k in ("items", "accounts", "categories", "tags", "budgets"):
+        for _k in ("items", "accounts", "categories", "tags", "budgets", "accountAdjustments"):
             arr = snapshot.get(_k)
             if isinstance(arr, list):
                 prev_snapshot[_k] = [dict(e) if isinstance(e, dict) else e for e in arr]

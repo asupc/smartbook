@@ -869,6 +869,55 @@ Index(
 )
 
 
+class ReadAccountAdjustmentProjection(Base):
+    """余额调整记录(ledger-scope,0028)。
+
+    「调整余额」不再落一笔 exclude_from_stats 交易,而是独立的调整记录:
+    不进任何收支统计 / 预算 / 分类排行,只参与账户余额与净资产口径。
+
+    - amount:**带符号差额**(正=调增,负=调减),叠加进账户余额。
+    - balance_before / balance_after:调整前后的账户余额快照,纯审计展示用,
+      统计不读(口径 = initial + Σ交易 + Σ调整,快照只是当时现场)。
+    - payload 键(camelCase)与 mobile / Web 两端 serializer 对齐:
+      accountId / amount / balanceBefore / balanceAfter / happenedAt / note。
+    """
+
+    __tablename__ = "read_account_adjustment_projection"
+
+    ledger_id: Mapped[str] = mapped_column(
+        ForeignKey("ledgers.id", ondelete="CASCADE"), primary_key=True
+    )
+    sync_id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    account_sync_id: Mapped[str] = mapped_column(String(255), index=True)
+    account_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    amount: Mapped[float] = mapped_column(Float, default=0.0)
+    balance_before: Mapped[float | None] = mapped_column(Float, nullable=True)
+    balance_after: Mapped[float | None] = mapped_column(Float, nullable=True)
+    happened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_user_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    last_edited_by_user_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    source_change_id: Mapped[int] = mapped_column(BigInteger, default=0)
+
+
+Index(
+    "ix_read_adj_ledger_time",
+    ReadAccountAdjustmentProjection.ledger_id,
+    ReadAccountAdjustmentProjection.happened_at.desc(),
+)
+Index(
+    "ix_read_adj_ledger_account",
+    ReadAccountAdjustmentProjection.ledger_id,
+    ReadAccountAdjustmentProjection.account_sync_id,
+)
+
+
 class ExchangeRateCache(Base):
     """汇率代理的服务端缓存:每个 base 一行,payload 整存。
 

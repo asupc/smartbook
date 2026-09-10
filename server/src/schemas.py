@@ -784,6 +784,21 @@ class WorkspaceAccountOut(ReadAccountOut):
     balance: float | None = None
 
 
+class AccountAdjustmentOut(BaseModel):
+    """余额调整记录(0028)。amount 带符号:正=调增,负=调减。"""
+
+    id: str
+    account_id: str
+    account_name: str | None = None
+    amount: float
+    balance_before: float | None = None
+    balance_after: float | None = None
+    happened_at: datetime
+    created_at: datetime | None = None
+    note: str | None = None
+    created_by_user_id: str | None = None
+
+
 class WorkspaceCategoryOut(ReadCategoryOut):
     # 跨账本按该分类聚合的笔数。Web 列表展示用,跟 tags 的 tx_count 对齐。
     # 不带 expense/income total — 分类本身已经按 kind 区分(支出/收入),
@@ -977,6 +992,22 @@ class WriteTransactionUpdateRequest(WriteBaseRequest):
 
 class WriteEntityDeleteRequest(WriteBaseRequest):
     pass
+
+
+class WriteAccountAdjustmentCreateRequest(WriteBaseRequest):
+    """余额调整记录(0028):不落交易、不进收支统计,只改账户余额口径。
+
+    amount 带符号差额(正=调增,负=调减);balance_before/after 审计快照,
+    由前端本地算好传入(可空)。
+    """
+
+    account_id: str = Field(min_length=1, max_length=255)
+    amount: float
+    happened_at: datetime
+    account_name: str | None = None
+    balance_before: float | None = None
+    balance_after: float | None = None
+    note: str | None = None
 
 
 class WriteAccountCreateRequest(WriteBaseRequest):

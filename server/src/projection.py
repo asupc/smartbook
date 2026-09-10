@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 from .models import (
     AttachmentFile,
     Ledger,
+    ReadAccountAdjustmentProjection,
     ReadBudgetProjection,
     ReadTxProjection,
     UserAccountProjection,
@@ -523,6 +524,75 @@ def delete_budget(db: Session, *, ledger_id: str, sync_id: str) -> None:
     delete_entity(db, ReadBudgetProjection, ledger_id=ledger_id, sync_id=sync_id)
 
 
+def upsert_account_adjustment(
+    db: Session,
+    *,
+    ledger_id: str,
+    user_id: str,
+    source_change_id: int,
+    payload: dict[str, Any],
+) -> None:
+    """余额调整记录 upsert(0028)。amount 带符号,正=调增负=调减。
+
+    balance_before/after 是审计快照,统计不读;缺键时落 NULL(旧 payload /
+    partial update 由上游 merge 补齐,这里只兜首次插入)。
+    created_at 同 tx 的 0024 契约:首次插入服务端盖章,update 保留。
+    """
+    sync_id = _as_str(payload.get("syncId"))
+    if sync_id is None:
+        return
+
+    existing = db.scalar(
+        select(ReadAccountAdjustmentProjection.created_at).where(
+            ReadAccountAdjustmentProjection.ledger_id == ledger_id,
+            ReadAccountAdjustmentProjection.sync_id == sync_id,
+        )
+    )
+    existing_creator = db.scalar(
+        select(ReadAccountAdjustmentProjection.created_by_user_id).where(
+            ReadAccountAdjustmentProjection.ledger_id == ledger_id,
+            ReadAccountAdjustmentProjection.sync_id == sync_id,
+        )
+    )
+
+    def _opt_float(raw: Any) -> float | None:
+        if raw is None:
+            return None
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            return None
+
+    values = {
+        "ledger_id": ledger_id,
+        "sync_id": sync_id,
+        "user_id": user_id,
+        "account_sync_id": _as_str(payload.get("accountId")) or "",
+        "account_name": _as_str(payload.get("accountName")),
+        "amount": _as_float(payload.get("amount")),
+        "balance_before": _opt_float(payload.get("balanceBefore")),
+        "balance_after": _opt_float(payload.get("balanceAfter")),
+        "happened_at": _parse_happened_at(payload.get("happenedAt")),
+        "created_at": existing or utcnow(),
+        "note": _as_str(payload.get("note")),
+        "created_by_user_id": existing_creator
+        or _as_str(payload.get("createdByUserId"))
+        or _as_str(payload.get("updatedByUserId")),
+        "last_edited_by_user_id": _as_str(payload.get("updatedByUserId"))
+        or _as_str(payload.get("createdByUserId")),
+        "source_change_id": source_change_id,
+    }
+    _upsert(db, ReadAccountAdjustmentProjection, ("ledger_id", "sync_id"), values)
+
+
+def delete_account_adjustment(
+    db: Session, *, ledger_id: str, sync_id: str
+) -> None:
+    delete_entity(
+        db, ReadAccountAdjustmentProjection, ledger_id=ledger_id, sync_id=sync_id
+    )
+
+
 # --------------------------------------------------------------------------- #
 # Rename cascade                                                               #
 # --------------------------------------------------------------------------- #
@@ -564,6 +634,15 @@ def rename_cascade_account(
             ReadTxProjection.to_account_sync_id == account_sync_id,
         )
         .values(to_account_name=new_name)
+    )
+    # 余额调整记录(0028)的 account_name 冗余列一起刷。
+    db.execute(
+        update(ReadAccountAdjustmentProjection)
+        .where(
+            ReadAccountAdjustmentProjection.user_id == user_id,
+            ReadAccountAdjustmentProjection.account_sync_id == account_sync_id,
+        )
+        .values(account_name=new_name)
     )
 
 
@@ -651,7 +730,11 @@ def rename_cascade_tag(
 def _truncate_ledger(db: Session, ledger_id: str) -> None:
     """清掉该 ledger 的 ledger-scoped projection。user-global(account/
     category/tag)是 per-user 表,不按 ledger 清,**不在此处处理**。"""
-    for model in (ReadTxProjection, ReadBudgetProjection):
+    for model in (
+        ReadTxProjection,
+        ReadBudgetProjection,
+        ReadAccountAdjustmentProjection,
+    ):
         db.execute(delete(model).where(model.ledger_id == ledger_id))
 
 
@@ -707,6 +790,15 @@ def rebuild_from_snapshot(
     for item in snapshot.get("budgets") or []:
         if isinstance(item, dict):
             upsert_budget(
+                db,
+                ledger_id=ledger_id,
+                user_id=user_id,
+                source_change_id=source_change_id,
+                payload=item,
+            )
+    for item in snapshot.get("accountAdjustments") or []:
+        if isinstance(item, dict):
+            upsert_account_adjustment(
                 db,
                 ledger_id=ledger_id,
                 user_id=user_id,

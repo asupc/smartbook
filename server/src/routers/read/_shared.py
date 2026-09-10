@@ -442,9 +442,13 @@ def _projection_totals(
 
     返回 (count, income_ex, expense_ex, balance_all, latest):balance_all 是
     **不排除**标记笔的收支差 —— 「余额=钱的位置」必须含标记笔(D5,与 App
-    getLedgerStats 口径一致),否则跨端余额对不上。"""
+    getLedgerStats 口径一致),否则跨端余额对不上。0028 起 balance_all 额外并入
+    余额调整记录(read_account_adjustment_projection.amount 带符号求和)—— 调整
+    不再落交易,但余额口径必须吃它。"""
     from sqlalchemy import case as sa_case
     from sqlalchemy import false as sa_false
+
+    from ...models import ReadAccountAdjustmentProjection
 
     _native = func.coalesce(ReadTxProjection.native_amount, ReadTxProjection.amount)
     _counted = ReadTxProjection.exclude_from_stats == sa_false()
@@ -471,11 +475,18 @@ def _projection_totals(
         ).where(ReadTxProjection.ledger_id == ledger_internal_id)
     ).one()
     tx_count, income_total, expense_total, balance_all, latest_raw = row
+    # 0028:并入余额调整记录(带符号差额)。调整不进收支(income/expense 不动),
+    # 只进余额口径。
+    adjustment_total = db.scalar(
+        select(func.coalesce(func.sum(ReadAccountAdjustmentProjection.amount), 0.0)).where(
+            ReadAccountAdjustmentProjection.ledger_id == ledger_internal_id
+        )
+    )
     return (
         int(tx_count or 0),
         float(income_total or 0),
         float(expense_total or 0),
-        float(balance_all or 0),
+        float(balance_all or 0) + float(adjustment_total or 0),
         _to_utc(latest_raw) if latest_raw else None,
     )
 

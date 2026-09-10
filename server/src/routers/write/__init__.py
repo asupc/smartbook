@@ -14,6 +14,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from . import (
+    account_adjustments,
     accounts,
     budgets,
     categories,
@@ -32,6 +33,7 @@ router.include_router(transactions.router)
 router.include_router(transactions_batch.router)
 router.include_router(transactions_batch_delete.router)
 router.include_router(transactions_batch_move.router)
+router.include_router(account_adjustments.router)
 router.include_router(accounts.router)
 router.include_router(budgets.router)
 router.include_router(categories.router)
