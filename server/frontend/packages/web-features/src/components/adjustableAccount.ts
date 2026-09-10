@@ -1,9 +1,10 @@
 import type { ReadAccount } from '@smartbook/api-client'
 
-/** 可调整余额的日常账户类型(对齐 mobile account_type_utils:估值账户走「更新估值」
- *  直接改值,不出调整入口)。信用卡刻意不在列 —— 它走专属的「更新可用额度」:
- *  欠款 = 额度 − 可用,换算成目标余额后复用同一条调整交易通道。 */
-export const ADJUSTABLE_ACCOUNT_TYPES = ['cash', 'bank_card', 'alipay', 'wechat', 'other']
+/** 所有类型账户都允许「调整余额」(无类型白名单;v2 起落独立「余额调整
+ *  记录」,不进收支统计)。信用卡另有专属「更新可用额度」快捷入口(欠款 =
+ *  额度 − 可用,换算成目标余额后复用同一条调整通道),与调整余额并存。
+ *  负债类型(credit_card/loan)余额存负数,调整输入按「当前欠款」正数口径,
+ *  提交时取负对齐(LIABILITY_TYPES)。 */
 
 /**
  * 信用卡「按可用额度记账」的换算:银行 App 只直接给可用额度,欠款 = 信用额度 −

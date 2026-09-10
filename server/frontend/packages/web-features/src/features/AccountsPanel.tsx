@@ -22,7 +22,7 @@ import {
 import type { ReadAccount } from '@smartbook/api-client'
 
 import { Amount } from '../components/Amount'
-import { ADJUSTABLE_ACCOUNT_TYPES, creditAvailableToBalance, type AdjustableAccount } from '../components/adjustableAccount'
+import { creditAvailableToBalance, type AdjustableAccount } from '../components/adjustableAccount'
 import { CurrencySelectorTrigger } from '../components/CurrencySelector'
 import type { AccountForm } from '../forms'
 import { accountDefaults } from '../forms'
@@ -1094,8 +1094,11 @@ export function AccountsPanel({
     if (!form.editingId) return undefined
     return rows.find((r) => r.id === form.editingId)
   }, [form.editingId, rows])
-  const canAdjustBalance = !!editingAccount && onAdjustBalance !== undefined &&
-    ADJUSTABLE_ACCOUNT_TYPES.includes(editingAccount.account_type || '')
+  const canAdjustBalance = !!editingAccount && onAdjustBalance !== undefined
+  // 负债类型(loan)余额存负数:输入框按「当前欠款」正数口径展示/提交,
+  // 提交时取负对齐(与卡片显示、mobile 更新估值一致;溢缴罕见,输负仍可表达)。
+  const editingIsLiability =
+    !!editingAccount && LIABILITY_TYPES.has(editingAccount.account_type || '')
   // 余额口径与账户卡一致(balance 优先,缺失兜底 initial_balance,全空为 0)。
   const currentBalance =
     typeof editingAccount?.balance === 'number'
@@ -1106,9 +1109,10 @@ export function AccountsPanel({
 
   // 打开编辑弹窗或余额变化(server 刷新)时,把输入框预填为当前余额 —— 与
   // mobile account_edit_page 页内调整一致:直接展示,改完点「确认更新」。
+  // 负债类型按「当前欠款」正数口径预填。
   useEffect(() => {
     if (open && canAdjustBalance) {
-      setAdjustValue(currentBalance.toFixed(2))
+      setAdjustValue((editingIsLiability ? Math.abs(currentBalance) : currentBalance).toFixed(2))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editingAccount?.id, currentBalance])
@@ -1191,13 +1195,20 @@ export function AccountsPanel({
       toast.error(t('accounts.error.balanceInvalid'), t('notice.error'))
       return
     }
-    if (Math.abs(parsed - currentBalance) < 0.005) {
+    // 负债类型输入「欠款」正数,换回带符号余额:当前为欠款(负)时取负;
+    // 已是正余额(溢缴/清零)时输入即原值,保证预填值原样提交 = 无调整。
+    const target = editingIsLiability
+      ? currentBalance >= 0
+        ? parsed
+        : -Math.abs(parsed)
+      : parsed
+    if (Math.abs(target - currentBalance) < 0.005) {
       toast.success(t('detail.account.adjustBalanceSame'))
       return
     }
     setAdjustSubmitting(true)
     try {
-      const ok = await onAdjustBalance(editingAccount, parsed)
+      const ok = await onAdjustBalance(editingAccount, target)
       if (ok) setAdjustValue(parsed.toFixed(2))
     } finally {
       setAdjustSubmitting(false)
@@ -1557,17 +1568,24 @@ export function AccountsPanel({
               </div>
             ) : null}
 
-            {/* 余额调整(仅编辑已有账户,且为日常账户):把账面余额手工对齐
-                实际余额(对账差额)。v2 起落独立「余额调整记录」——不进收支
-                统计/预算,只改余额口径,历史经「调整记录」入口查看。
+            {/* 余额调整(仅编辑已有账户):把账面余额手工对齐实际余额(对账
+                差额)。v2 起落独立「余额调整记录」——不进收支统计/预算,
+                只改余额口径,历史经「调整记录」入口查看。所有类型账户均可
+                调整;负债(loan)按「欠款」正数口径输入,估值类即当前估值;
+                信用卡有额度时走上方专属「更新可用额度」,此块不重复出现。
                 页内直接展示当前余额 + 输入框,改完点「确认更新」即入账 ——
                 与 mobile account_edit_page 同交互。 */}
-            {canAdjustBalance ? (
+            {canAdjustBalance && !(editingIsCreditCard && ccLimit !== null) ? (
               <div className="space-y-2 rounded-lg border border-border/60 bg-muted/20 p-3">
                 <div className="text-sm text-muted-foreground">
-                  {t('detail.stats.currentBalance')}:{' '}
+                  {editingIsLiability
+                    ? t('accounts.bankcard.currentOwed')
+                    : VALUATION_TYPES_SET.has(editingAccount?.account_type || '')
+                      ? t('accounts.bankcard.currentValue')
+                      : t('detail.stats.currentBalance')}
+                  :{' '}
                   <span className="font-medium text-foreground">
-                    {fmt(currentBalance)}
+                    {fmt(editingIsLiability ? Math.abs(currentBalance) : currentBalance)}
                   </span>
                 </div>
                 <Input
@@ -1585,16 +1603,19 @@ export function AccountsPanel({
                 >
                   {adjustSubmitting ? t('common.loading') : t('detail.account.adjustBalanceUpdate')}
                 </Button>
-                {onViewAdjustments && editingAccount ? (
-                  <Button
-                    variant="ghost"
-                    className="h-auto w-full px-0 text-xs text-muted-foreground underline-offset-2 hover:underline"
-                    onClick={() => onViewAdjustments(editingAccount)}
-                  >
-                    {t('detail.account.adjustHistoryAction')}
-                  </Button>
-                ) : null}
               </div>
+            ) : null}
+
+            {/* 调整记录历史入口:与上方调整块解耦 —— 信用卡走「更新可用额度」
+                时调整块隐藏,历史入口仍保留。 */}
+            {canAdjustBalance && onViewAdjustments && editingAccount ? (
+              <Button
+                variant="ghost"
+                className="h-auto w-full px-0 text-xs text-muted-foreground underline-offset-2 hover:underline"
+                onClick={() => onViewAdjustments(editingAccount)}
+              >
+                {t('detail.account.adjustHistoryAction')}
+              </Button>
             ) : null}
           </div>
           <DialogFooter>
