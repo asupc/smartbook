@@ -102,6 +102,10 @@ type TransactionsPanelProps = {
   selectionMode?: boolean
   selectedIds?: Set<string>
   onToggleSelect?: (row: ReadTransaction, event: React.MouseEvent) => void
+  /** 表头全选 checkbox:当前可见行是否全选 / 点击切换。不传则表头
+   *  checkbox 只读展示(旧行为,实际全选功能失效)。 */
+  allVisibleSelected?: boolean
+  onToggleSelectAll?: () => void
   /** §7 共享账本:开启后 tx 列表行末显示"谁记的"chip。 */
   showCreator?: boolean
   /** §7 共享账本:当前 caller user_id,自己创建+编辑的 tx 不显示 chip。 */
@@ -413,6 +417,8 @@ export function TransactionsPanel({
   selectionMode = false,
   selectedIds,
   onToggleSelect,
+  allVisibleSelected = false,
+  onToggleSelectAll,
   showCreator = false,
   currentUserId,
   noteDisplayMode = 'category'
@@ -513,7 +519,20 @@ export function TransactionsPanel({
           <Table>
             <TableHeader>
               <TableRow>
-                {selectionMode ? <TableHead className="bc-table-head w-[48px]"><input type="checkbox" aria-label="select" className="h-4 w-4 cursor-pointer accent-primary" /></TableHead> : null}
+                {selectionMode ? (
+                  <TableHead className="bc-table-head w-[48px]">
+                    <input
+                      type="checkbox"
+                      aria-label="select all"
+                      className="h-4 w-4 cursor-pointer accent-primary"
+                      checked={allVisibleSelected}
+                      onChange={onToggleSelectAll}
+                      // 没接全选回调时保留只读(不可点的假 checkbox 比可点但
+                      // 无效果更误导,干脆禁用)。
+                      disabled={!onToggleSelectAll}
+                    />
+                  </TableHead>
+                ) : null}
                 <SortableTableHead
                   active={sortField === 'happened_at'}
                   dir={sortOrder}

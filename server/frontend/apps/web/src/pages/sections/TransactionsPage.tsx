@@ -2108,6 +2108,8 @@ export function TransactionsPage() {
                 selectionMode={selectionMode}
                 selectedIds={selectedTxIds}
                 onToggleSelect={handleToggleSelect}
+                allVisibleSelected={allVisibleSelected}
+                onToggleSelectAll={toggleSelectAllVisible}
                 form={txForm}
                 rows={transactions}
                 total={txTotal}

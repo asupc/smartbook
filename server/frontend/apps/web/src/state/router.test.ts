@@ -29,6 +29,13 @@ expect(parseRoute('/app/workspace/transactions')).toEqual({
       ledgerId: '',
       section: 'annual-report'
     })
+    // 回归:ledgers 曾漏出根级 section 守卫,被当成 legacy ledgerId 解析成
+    // overview,侧栏高亮错误地落在「首页」。
+    expect(parseRoute('/app/ledgers')).toEqual({
+      kind: 'app',
+      ledgerId: '',
+      section: 'ledgers'
+    })
     expect(parseRoute('/app/settings/health')).toEqual({
       kind: 'app',
       ledgerId: '',
