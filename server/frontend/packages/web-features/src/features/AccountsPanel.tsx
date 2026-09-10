@@ -1054,6 +1054,9 @@ type AccountsPanelProps = {
   ) => Promise<boolean>
   /** 当前账本不可写时禁用调整按钮 */
   adjustBalanceDisabled?: boolean
+  /** 「调整记录」查看入口(v2:调整余额不再落交易,历史独立查看)。
+   *  不传则入口按钮不渲染。 */
+  onViewAdjustments?: (account: ReadAccount) => void
   /** 见 {@link AccountListRenderArgs}:上层接管账户列表渲染(方案 A 表格)。 */
   renderList?: (args: AccountListRenderArgs) => ReactNode
 }
@@ -1073,6 +1076,7 @@ export function AccountsPanel({
   onRestore,
   onAdjustBalance,
   adjustBalanceDisabled = false,
+  onViewAdjustments,
   renderList
 }: AccountsPanelProps) {
   const t = useT()
@@ -1554,7 +1558,8 @@ export function AccountsPanel({
             ) : null}
 
             {/* 余额调整(仅编辑已有账户,且为日常账户):把账面余额手工对齐
-                实际余额(对账差额),记一笔排除统计的调整交易,保留审计。
+                实际余额(对账差额)。v2 起落独立「余额调整记录」——不进收支
+                统计/预算,只改余额口径,历史经「调整记录」入口查看。
                 页内直接展示当前余额 + 输入框,改完点「确认更新」即入账 ——
                 与 mobile account_edit_page 同交互。 */}
             {canAdjustBalance ? (
@@ -1580,6 +1585,15 @@ export function AccountsPanel({
                 >
                   {adjustSubmitting ? t('common.loading') : t('detail.account.adjustBalanceUpdate')}
                 </Button>
+                {onViewAdjustments && editingAccount ? (
+                  <Button
+                    variant="ghost"
+                    className="h-auto w-full px-0 text-xs text-muted-foreground underline-offset-2 hover:underline"
+                    onClick={() => onViewAdjustments(editingAccount)}
+                  >
+                    {t('detail.account.adjustHistoryAction')}
+                  </Button>
+                ) : null}
               </div>
             ) : null}
           </div>

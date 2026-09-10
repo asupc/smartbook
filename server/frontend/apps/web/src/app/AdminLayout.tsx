@@ -4,6 +4,7 @@ import { Button, Layout, Menu, Select, theme } from 'antd'
 import {
   Activity,
   Archive,
+  ArrowUpDown,
   BookOpen,
   Bot,
   Brush,
@@ -13,11 +14,13 @@ import {
   Home,
   Key,
   LayoutGrid,
+  LucideIcon,
   PiggyBank,
   Plus,
   Receipt,
   Search,
   ScrollText,
+  ShieldCheck,
   Smartphone,
   Sparkles,
   Tag,
@@ -25,7 +28,7 @@ import {
   User,
   Users,
   Wallet,
-  type LucideIcon,
+  Wrench,
 } from 'lucide-react'
 
 import { useT } from '@smartbook/ui'
@@ -49,6 +52,7 @@ const SECTION_ICONS: Record<string, LucideIcon> = {
   transactions: Receipt,
   calendar: CalendarDays,
   accounts: Wallet,
+  adjustments: ArrowUpDown,
   categories: LayoutGrid,
   tags: Tag,
   budgets: PiggyBank,
@@ -66,6 +70,15 @@ const SECTION_ICONS: Record<string, LucideIcon> = {
   'admin-backup': Archive,
   'admin-data-cleanup': Brush,
   'admin-duplicate-transactions': Copy,
+}
+
+// 分组(SubMenu 标题)图标 —— 跟 SECTION_ICONS 同风格,14px。折叠态下 antd
+// 只显示分组图标,这组图标承担全部导航语义。
+const GROUP_ICONS: Record<string, LucideIcon> = {
+  bookkeeping: Receipt,
+  tools: Wrench,
+  settings: User,
+  admin: ShieldCheck,
 }
 
 interface Props {
@@ -134,18 +147,22 @@ export function AdminLayout({ onOpenLogs, onOpenAbout }: Props) {
 
   const menuItems = useMemo(() => {
     const groups = NAV_GROUPS.filter((group) => (group.key === 'admin' ? isAdmin : true))
-    return groups.map((group) => ({
-      key: group.key,
-      label: t(group.titleKey),
-      children: group.items.map((item) => {
-        const Icon = SECTION_ICONS[item.key]
-        return {
-          key: item.key,
-          label: t(item.labelKey),
-          icon: Icon ? <Icon size={14} /> : undefined,
-        }
-      }),
-    }))
+    return groups.map((group) => {
+      const GroupIcon = GROUP_ICONS[group.key]
+      return {
+        key: group.key,
+        label: t(group.titleKey),
+        icon: GroupIcon ? <GroupIcon size={14} /> : undefined,
+        children: group.items.map((item) => {
+          const Icon = SECTION_ICONS[item.key]
+          return {
+            key: item.key,
+            label: t(item.labelKey),
+            icon: Icon ? <Icon size={14} /> : undefined,
+          }
+        }),
+      }
+    })
   }, [isAdmin, t])
 
   const ledgerOptions = useMemo(

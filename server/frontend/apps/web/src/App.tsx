@@ -18,6 +18,9 @@ const TransactionsPage = lazy(() =>
 const AccountsPage = lazy(() =>
   import('./pages/sections/AccountsPage').then((m) => ({ default: m.AccountsPage })),
 )
+const AccountAdjustmentsPage = lazy(() =>
+  import('./pages/sections/AccountAdjustmentsPage').then((m) => ({ default: m.AccountAdjustmentsPage })),
+)
 const AdminBackupPage = lazy(() =>
   import('./pages/sections/AdminBackupPage').then((m) => ({ default: m.AdminBackupPage })),
 )
@@ -267,6 +270,14 @@ function AppRoutes() {
           element={
             <Suspense fallback={<RouteFallback />}>
               <AccountsPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="adjustments"
+          element={
+            <Suspense fallback={<RouteFallback />}>
+              <AccountAdjustmentsPage />
             </Suspense>
           }
         />

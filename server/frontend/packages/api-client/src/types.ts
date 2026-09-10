@@ -309,6 +309,20 @@ export type WorkspaceTransactionPage = {
   offset: number
 }
 
+/** v2 balance adjustment record (server 0028). Signed amount: + increase, - decrease. */
+export interface AccountAdjustment {
+  id: string
+  account_id: string
+  account_name?: string | null
+  amount: number
+  balance_before?: number | null
+  balance_after?: number | null
+  happened_at: string
+  created_at?: string | null
+  note?: string | null
+  created_by_user_id?: string | null
+}
+
 export type WorkspaceAccount = ReadAccount & {
   ledger_id: string | null
   ledger_name: string | null

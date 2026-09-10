@@ -1,6 +1,7 @@
 import { API_BASE, authedGet, resolveApiUrl } from './http'
 import { extractApiError } from './errors'
 import type {
+  AccountAdjustment,
   AnalyticsMetric,
   AnalyticsScope,
   NetWorthHistory,
@@ -27,6 +28,18 @@ export async function fetchReadLedgers(token: string): Promise<ReadLedger[]> {
 
 export async function fetchReadLedgerDetail(token: string, ledgerId: string): Promise<ReadLedgerDetail> {
   return authedGet<ReadLedgerDetail>(`/read/ledgers/${encodeURIComponent(ledgerId)}`, token)
+}
+
+export async function fetchAccountAdjustments(
+  token: string,
+  ledgerId: string,
+  accountId?: string
+): Promise<AccountAdjustment[]> {
+  const q = accountId ? `?account_id=${encodeURIComponent(accountId)}` : ''
+  return authedGet<AccountAdjustment[]>(
+    `/read/ledgers/${encodeURIComponent(ledgerId)}/account-adjustments${q}`,
+    token
+  )
 }
 
 export async function fetchReadTransactions(

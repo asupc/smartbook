@@ -3,8 +3,9 @@ import { useNavigate } from 'react-router-dom'
 
 import {
   createAccount,
-  createTransaction,
+  createAccountAdjustment,
   deleteAccount,
+  fetchAccountAdjustments,
   fetchExchangeRateOverrides,
   fetchExchangeRates,
   fetchNetWorthHistory,
@@ -13,6 +14,7 @@ import {
   fetchWorkspaceTags,
   fetchWorkspaceTransactions,
   updateAccount,
+  type AccountAdjustment,
   type ExchangeRateOverride,
   type ExchangeRatesResponse,
   type NetWorthHistory,
@@ -35,7 +37,6 @@ import {
   effectiveRateToBase,
   mergeGroupsToBase,
   periodLabel,
-  resolveCurrencyFields,
   splitByCurrency,
   type AccountForm,
   type AdjustableAccount,
@@ -89,6 +90,28 @@ export function AccountsPage() {
 
   // 分币种明细 dialog(折算汇总卡的「详情」入口;单币种时该卡不出详情按钮)。
   const [detailOpen, setDetailOpen] = useState(false)
+
+  // 调整记录查看(v2:调整余额不再落交易,历史在独立抽屉里看)。非 null =
+  // 打开该账户的调整记录;records 加载中为 null 列表。只读 —— 调整是
+  // append-only 审计数据,不提供删除(记错反向再调一笔)。
+  const [adjustmentsFor, setAdjustmentsFor] = useState<AdjustableAccount | null>(null)
+  const [adjustmentRecords, setAdjustmentRecords] = useState<AccountAdjustment[] | null>(null)
+
+  const openAdjustments = useCallback(
+    async (acc: AdjustableAccount) => {
+      setAdjustmentsFor(acc)
+      setAdjustmentRecords(null)
+      const ledgerId = (activeLedgerId || '').trim()
+      if (!ledgerId) return
+      try {
+        const rows = await fetchAccountAdjustments(token, ledgerId, acc.id)
+        setAdjustmentRecords(rows)
+      } catch {
+        setAdjustmentRecords([])
+      }
+    },
+    [token, activeLedgerId],
+  )
 
   // 多币种折算(只读卡)。主币种存在且账户币种 ≥2 种时,并行拉汇率 + 手动 override,
   // 任一失败置 null 不阻塞账户列表。单币种 / 无主币种则不渲染卡(零变化)。
@@ -321,11 +344,11 @@ export function AccountsPage() {
 
   /**
    * 「调整余额」提交(编辑账户弹窗入口,原在账户详情弹窗):输入调整后余额
-   * → 差额记一笔排除统计/预算的调整交易(income 调整或 expense 调整),
-   * 与 mobile account_edit_page 同逻辑。
+   * → 差额落一条**余额调整记录**(v2 起不再记 exclude 交易),与 mobile
+   * account_edit_page 同逻辑 — 不进收支统计/预算,只影响余额口径。
    *
-   * 账本归属:账户是 user-global(ledger_id 为空),调整交易落进「当前激活
-   * 账本」— 与记账/新建交易默认账本一致。
+   * 账本归属:账户是 user-global(ledger_id 为空),调整记录落进「当前激活
+   * 账本」— 与记账/新建交易默认账本一致。调整金额即账户币种本身,无需折算。
    */
   const handleAdjustBalance = useCallback(
     async (acc: AdjustableAccount, targetBalance: number, note?: string): Promise<boolean> => {
@@ -338,47 +361,17 @@ export function AccountsPage() {
       const current =
         typeof acc.balance === 'number' ? acc.balance! : (acc.initial_balance ?? 0)
       const diff = targetBalance - current
-      const amount = Math.abs(diff)
-      const isIncome = diff > 0
-
-      // 多币种:账户币种 ≠ 账本主币种时按 server 汇率折算(与 TransactionsPage
-      // 提交同一 helper)。币种相同时不发字段(默认本位币)。
-      const ledgerBase = (
-        ledgers.find((l) => l.ledger_id === ledgerId)?.currency || 'CNY'
-      )
-        .trim()
-        .toUpperCase()
-      const accCurrency = (acc.currency || '').trim().toUpperCase()
-      let currencyFields: { currency_code?: string; native_amount?: number } = {}
-      if (accCurrency && accCurrency !== ledgerBase) {
-        try {
-          const resolved = await resolveCurrencyFields({
-            token,
-            ledgerBase,
-            currency: accCurrency,
-            amount,
-          })
-          if (resolved) currencyFields = resolved
-        } catch {
-          toast.error(t('transactions.error.rateMissing'), t('notice.error'))
-          return false
-        }
-      }
 
       try {
         await retryOnConflict(ledgerId, (base) =>
-          createTransaction(token, ledgerId, base, {
-            tx_type: isIncome ? 'income' : 'expense',
-            amount,
-            happened_at: new Date().toISOString(),
-            note: note ?? t('detail.account.adjustBalanceNote'),
-            account_name: acc.name,
+          createAccountAdjustment(token, ledgerId, base, {
             account_id: acc.id,
-            // 对齐 mobile:调整账不计入统计/预算,只影响余额(审计留痕);
-            // budget 标记仅支出有意义(服务端规则,收入不发)。
-            exclude_from_stats: true,
-            exclude_from_budget: !isIncome,
-            ...currencyFields,
+            account_name: acc.name,
+            amount: diff,
+            happened_at: new Date().toISOString(),
+            balance_before: current,
+            balance_after: targetBalance,
+            note: note ?? t('detail.account.adjustBalanceNote'),
           }),
         )
       } catch (err) {
@@ -598,6 +591,7 @@ export function AccountsPage() {
         onRestore={(row) => void onRestore(row)}
         onAdjustBalance={handleAdjustBalance}
         adjustBalanceDisabled={!activeLedgerWritable}
+        onViewAdjustments={(row) => void openAdjustments(row)}
         onClickAccount={(row) =>
           dispatchOpenDetailAccount(row as WorkspaceAccount, { defaultScope: 'all' })
         }
@@ -656,6 +650,56 @@ export function AccountsPage() {
               ))}
             </div>
           ) : null}
+      </Drawer>
+
+      {/* 调整记录查看(v2:调整余额不再落交易,历史在这里看)。每条显示带符号
+          差额 + 调整前后余额快照。只读 —— 调整是 append-only 审计数据,
+          不提供删除(记错反向再调一笔)。 */}
+      <Drawer
+        open={adjustmentsFor !== null}
+        onClose={() => setAdjustmentsFor(null)}
+        title={t('detail.account.adjustHistoryTitle', { name: adjustmentsFor?.name || '' })}
+        width={520}
+        footer={null}
+        styles={{ body: { overflowY: 'auto' } }}
+      >
+        {adjustmentRecords === null ? (
+          <div className="py-8 text-center text-sm text-muted-foreground">
+            {t('common.loading')}
+          </div>
+        ) : adjustmentRecords.length === 0 ? (
+          <div className="py-8 text-center text-sm text-muted-foreground">
+            {t('detail.account.adjustHistoryEmpty')}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {adjustmentRecords.map((rec) => {
+              const positive = rec.amount >= 0
+              return (
+                <div
+                  key={rec.id}
+                  className="rounded-lg border px-3 py-2"
+                >
+                  <div
+                    className={`text-sm font-semibold ${
+                      positive ? 'text-emerald-600' : 'text-red-600'
+                    }`}
+                  >
+                    {positive ? '+' : ''}
+                    {rec.amount.toFixed(2)}
+                  </div>
+                  <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                    {new Date(rec.happened_at).toLocaleString()}
+                    {rec.balance_before != null && rec.balance_after != null
+                      ? ` · ${rec.balance_before.toFixed(2)} → ${rec.balance_after.toFixed(2)}`
+                      : ''}
+                    {rec.note ? ` · ${rec.note}` : ''}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </Drawer>
     </>
   )

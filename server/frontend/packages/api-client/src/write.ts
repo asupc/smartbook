@@ -47,6 +47,37 @@ export async function createTransaction(
   })
 }
 
+export interface AccountAdjustmentPayload {
+  account_id: string
+  amount: number
+  happened_at: string
+  account_name?: string
+  balance_before?: number | null
+  balance_after?: number | null
+  note?: string | null
+}
+
+/**
+ * v2 balance adjustment record: NOT a transaction anymore. The server stores
+ * it in read_account_adjustment_projection and only account balances /
+ * net-worth consume it (never income/expense stats).
+ */
+export async function createAccountAdjustment(
+  token: string,
+  ledgerId: string,
+  baseChangeId: number,
+  payload: AccountAdjustmentPayload
+): Promise<WriteCommitMeta> {
+  return authedPost<WriteCommitMeta>(
+    `/write/ledgers/${encodeURIComponent(ledgerId)}/account-adjustments`,
+    token,
+    {
+      base_change_id: baseChangeId,
+      ...payload,
+    }
+  )
+}
+
 export async function updateTransaction(
   token: string,
   ledgerId: string,

@@ -7,6 +7,7 @@ export type AppSection =
   | 'tags'
   | 'budgets'
   | 'ledgers'
+  | 'adjustments'
   | 'settings-profile'
   | 'settings-appearance'
   | 'settings-health'
@@ -51,6 +52,7 @@ export const NAV_GROUPS: NavGroup[] = [
       // calendar 不进主导航(高频但不是"主视图"等级,跟 transactions 重复语义);
       // 入口走 AppHeader 右上角图标 + ⌘K 即可。
       { key: 'accounts', labelKey: 'nav.accounts' },
+      { key: 'adjustments', labelKey: 'nav.adjustments' },
       { key: 'categories', labelKey: 'nav.categories' },
       { key: 'tags', labelKey: 'nav.tags' }
     ]
