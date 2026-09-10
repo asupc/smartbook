@@ -1,11 +1,20 @@
 import { useEffect, useState, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-import { BarChart3, Pencil, Trash2, TrendingDown, TrendingUp, Upload, UserPlus, Users } from 'lucide-react'
+import {
+  BarChart3,
+  Clock,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+  Upload,
+  UserPlus,
+  Users,
+} from 'lucide-react'
 
 import type { ReadLedger } from '@smartbook/api-client'
-import { Button, Card, Drawer, Input } from 'antd'
-import { useT } from '@smartbook/ui'
+import { Button, Card, Drawer, Dropdown, Input, type MenuProps } from 'antd'
+import { useT, useToast } from '@smartbook/ui'
 import {
   Amount,
   CurrencySelectorTrigger,
@@ -22,8 +31,7 @@ import { SharedLedgerStatsDialog } from '../SharedLedgerStatsDialog'
 const fieldLabelStyle: CSSProperties = { fontWeight: 500, marginBottom: 4, display: 'block' }
 
 interface Props {
-  /** 点击账本卡片(整张卡)的回调。当前实现里:打开编辑 dialog,不切换
-   *  active ledger 也不跳转 —— 切账本仍走顶部 ledger picker / 其它入口。 */
+  /** 点击账本卡片编辑入口的回调 */
   onEdit: (ledger: ReadLedger) => void
   onCreate: () => void
   /** 点删除按钮的回调 — page 端弹独立确认弹窗 + 调 deleteLedger。
@@ -34,40 +42,47 @@ interface Props {
 /**
  * 账本列表 section。
  *
- * 信息密度分三层:
- *   - 头部:首字母色块 avatar(名字哈希稳定色) + 大号账本名 + 徽章
- *   - 统计:tx 数 / 收入 / 支出 三栏
- *   - 底部:净值 + 最近更新时间
- *
- * 顶部右侧 "新建账本" 按钮。点击账本卡片 → 编辑 dialog。
+ * 现代化金融极简卡片：
+ *   - 头部: 柔和渐变图标 + 账本名称 + 币种/角色/共享徽章 + 激活状态/操作菜单
+ *   - 核心: 结余大字号展示 + 交易笔数 + 收入/支出动态双色比例进度条
+ *   - 底部: 最近更新时间 + 快捷动作
  */
 export function LedgersSection({ onEdit, onCreate, onDelete }: Props) {
   const t = useT()
-  const { ledgers, activeLedgerId } = useLedgers()
+  const toast = useToast()
+  const { ledgers, activeLedgerId, setActiveLedgerId } = useLedgers()
   const [joinOpen, setJoinOpen] = useState(false)
   const [manageLedger, setManageLedger] = useState<ReadLedger | null>(null)
   const [statsLedger, setStatsLedger] = useState<ReadLedger | null>(null)
+
+  const handleSelectActive = (ledger: ReadLedger) => {
+    setActiveLedgerId(ledger.ledger_id)
+    toast.success(
+      t('shell.ledgerSwitched') || `已切换至「${ledger.ledger_name}」`,
+      t('notice.success') || '成功',
+    )
+  }
 
   return (
     <div className="space-y-4">
       <Card
         size="small"
         className="bc-panel"
-        title={<span className="text-base">{t('ledgers.title')}</span>}
+        title={<span className="text-base font-semibold">{t('ledgers.title')}</span>}
         extra={
           <div className="flex gap-2">
             {/* §7 共享账本:全局"加入共享账本"入口 — 跟 mobile 设置页一致 */}
             <Button size="small" variant="outlined" icon={<UserPlus className="h-3.5 w-3.5" />} onClick={() => setJoinOpen(true)}>
               {t('sharedLedger.joinAction')}
             </Button>
-            <Button size="small" onClick={onCreate}>
+            <Button size="small" type="primary" onClick={onCreate}>
               {t('ledgers.button.create')}
             </Button>
           </div>
         }
-        styles={{ body: { padding: '12px 16px 16px' } }}
+        styles={{ body: { padding: '16px 20px 20px' } }}
       >
-        <p className="mb-4 text-xs text-muted-foreground">
+        <p className="mb-5 text-xs text-muted-foreground">
           {t('ledgers.subtitle')}
         </p>
         {ledgers.length === 0 ? (
@@ -80,6 +95,7 @@ export function LedgersSection({ onEdit, onCreate, onDelete }: Props) {
             onDelete={onDelete}
             onManageMembers={(l) => setManageLedger(l)}
             onOpenStats={(l) => setStatsLedger(l)}
+            onSelectActive={handleSelectActive}
           />
         )}
       </Card>
@@ -108,6 +124,7 @@ function LedgerGrid({
   onDelete,
   onManageMembers,
   onOpenStats,
+  onSelectActive,
 }: {
   ledgers: ReadLedger[]
   activeLedgerId: string | null
@@ -115,11 +132,12 @@ function LedgerGrid({
   onDelete?: (ledger: ReadLedger) => void
   onManageMembers: (ledger: ReadLedger) => void
   onOpenStats: (ledger: ReadLedger) => void
+  onSelectActive: (ledger: ReadLedger) => void
 }) {
   const t = useT()
   const navigate = useNavigate()
   return (
-    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
       {ledgers.map((ledger) => (
         <LedgerCard
           key={ledger.ledger_id}
@@ -132,6 +150,7 @@ function LedgerGrid({
           }
           onManageMembers={() => onManageMembers(ledger)}
           onOpenStats={() => onOpenStats(ledger)}
+          onSelectActive={() => onSelectActive(ledger)}
           roleLabel={roleLabelOf(ledger.role, t)}
         />
       ))}
@@ -146,15 +165,36 @@ function roleLabelOf(role: ReadLedger['role'], t: (key: string) => string): stri
 }
 
 const ACCENT_PALETTE = [
-  { bg: 'from-amber-400/20 to-amber-500/5', solid: 'bg-amber-500', text: 'text-amber-600 dark:text-amber-400' },
-  { bg: 'from-sky-400/20 to-sky-500/5', solid: 'bg-sky-500', text: 'text-sky-600 dark:text-sky-400' },
-  { bg: 'from-violet-400/20 to-violet-500/5', solid: 'bg-violet-500', text: 'text-violet-600 dark:text-violet-400' },
-  { bg: 'from-emerald-400/20 to-emerald-500/5', solid: 'bg-emerald-500', text: 'text-emerald-600 dark:text-emerald-400' },
-  { bg: 'from-rose-400/20 to-rose-500/5', solid: 'bg-rose-500', text: 'text-rose-600 dark:text-rose-400' },
-  { bg: 'from-cyan-400/20 to-cyan-500/5', solid: 'bg-cyan-500', text: 'text-cyan-600 dark:text-cyan-400' },
-  { bg: 'from-fuchsia-400/20 to-fuchsia-500/5', solid: 'bg-fuchsia-500', text: 'text-fuchsia-600 dark:text-fuchsia-400' },
-  { bg: 'from-teal-400/20 to-teal-500/5', solid: 'bg-teal-500', text: 'text-teal-600 dark:text-teal-400' },
-  { bg: 'from-indigo-400/20 to-indigo-500/5', solid: 'bg-indigo-500', text: 'text-indigo-600 dark:text-indigo-400' }
+  {
+    iconBg: 'bg-gradient-to-tr from-blue-600 to-indigo-500 text-white shadow-blue-500/25',
+    glow: 'from-blue-500/10',
+    accentText: 'text-blue-600 dark:text-blue-400',
+  },
+  {
+    iconBg: 'bg-gradient-to-tr from-violet-600 to-purple-500 text-white shadow-purple-500/25',
+    glow: 'from-purple-500/10',
+    accentText: 'text-violet-600 dark:text-violet-400',
+  },
+  {
+    iconBg: 'bg-gradient-to-tr from-emerald-600 to-teal-500 text-white shadow-emerald-500/25',
+    glow: 'from-emerald-500/10',
+    accentText: 'text-emerald-600 dark:text-emerald-400',
+  },
+  {
+    iconBg: 'bg-gradient-to-tr from-amber-500 to-orange-500 text-white shadow-amber-500/25',
+    glow: 'from-amber-500/10',
+    accentText: 'text-amber-600 dark:text-amber-400',
+  },
+  {
+    iconBg: 'bg-gradient-to-tr from-rose-500 to-pink-500 text-white shadow-rose-500/25',
+    glow: 'from-rose-500/10',
+    accentText: 'text-rose-600 dark:text-rose-400',
+  },
+  {
+    iconBg: 'bg-gradient-to-tr from-cyan-600 to-blue-500 text-white shadow-cyan-500/25',
+    glow: 'from-cyan-500/10',
+    accentText: 'text-cyan-600 dark:text-cyan-400',
+  },
 ]
 
 function accentFor(name: string) {
@@ -175,204 +215,300 @@ interface LedgerCardProps {
   onImport: () => void
   onManageMembers: () => void
   onOpenStats: () => void
+  onSelectActive: () => void
 }
 
-function LedgerCard({ ledger, isActive, roleLabel, onEdit, onDelete, onImport, onManageMembers, onOpenStats }: LedgerCardProps) {
+function LedgerCard({
+  ledger,
+  isActive,
+  roleLabel,
+  onEdit,
+  onDelete,
+  onImport,
+  onManageMembers,
+  onOpenStats,
+  onSelectActive,
+}: LedgerCardProps) {
   const t = useT()
   const accent = accentFor(ledger.ledger_name || '?')
   const initial = (ledger.ledger_name || '?').trim().slice(0, 1).toUpperCase()
-  // §7 共享账本:Owner 保留导入/编辑入口(他对自己创建的共享账本拥有所有
-  // 权限);非 Owner 成员(Editor)的共享账本卡片才禁用编辑 — Editor 不能
-  // 改账本元数据(name / currency),server 也会拦截。
+
+  // §7 共享账本: Owner 保留导入/编辑入口; 非 Owner 成员(Editor)卡片禁用编辑
   const editDisabled = !!ledger.is_shared && ledger.role !== 'owner'
-  const handleClick = editDisabled ? undefined : onEdit
+
+  // 计算收支双色比例条
+  const incomeVal = Math.max(0, ledger.income_total || 0)
+  const expenseVal = Math.max(0, ledger.expense_total || 0)
+  const totalFlow = incomeVal + expenseVal
+  const incomePercent = totalFlow > 0 ? Math.round((incomeVal / totalFlow) * 100) : 50
+  const expensePercent = 100 - incomePercent
+
+  // 下拉菜单项收拢
+  const menuItems: MenuProps['items'] = [
+    ...(!editDisabled
+      ? [
+          {
+            key: 'edit',
+            icon: <Pencil className="h-3.5 w-3.5" />,
+            label: t('common.edit'),
+            onClick: onEdit,
+          },
+        ]
+      : []),
+    {
+      key: 'members',
+      icon: <Users className="h-3.5 w-3.5" />,
+      label: t('sharedLedger.openManage') as string,
+      onClick: onManageMembers,
+    },
+    ...(ledger.is_shared
+      ? [
+          {
+            key: 'stats',
+            icon: <BarChart3 className="h-3.5 w-3.5" />,
+            label: t('sharedLedger.statsOpen') as string,
+            onClick: onOpenStats,
+          },
+        ]
+      : []),
+    ...(!ledger.is_shared || ledger.role === 'owner'
+      ? [
+          {
+            key: 'import',
+            icon: <Upload className="h-3.5 w-3.5" />,
+            label: t('ledgers.action.import') as string,
+            onClick: onImport,
+          },
+        ]
+      : []),
+    ...(onDelete && (!ledger.is_shared || ledger.role === 'owner')
+      ? [
+          { type: 'divider' as const },
+          {
+            key: 'delete',
+            danger: true,
+            icon: <Trash2 className="h-3.5 w-3.5" />,
+            label: t('ledgers.action.delete') as string,
+            onClick: onDelete,
+          },
+        ]
+      : []),
+  ]
+
+  const handleCardClick = () => {
+    if (!isActive) {
+      onSelectActive()
+      return
+    }
+    if (!editDisabled) {
+      onEdit()
+    }
+  }
 
   return (
     <div
-      role={editDisabled ? undefined : 'button'}
-      tabIndex={editDisabled ? undefined : 0}
-      onClick={handleClick}
-      onKeyDown={
-        editDisabled
-          ? undefined
-          : (e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault()
-                onEdit()
-              }
-            }
-      }
-      className={`group relative overflow-hidden rounded-2xl border text-left transition ${
-        editDisabled ? '' : 'cursor-pointer hover:-translate-y-0.5 hover:shadow-lg'
-      } ${
+      role="button"
+      tabIndex={0}
+      onClick={handleCardClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          handleCardClick()
+        }
+      }}
+      className={`group relative flex flex-col justify-between overflow-hidden rounded-2xl border bg-card p-4 text-left transition-all duration-200 cursor-pointer ${
         isActive
-          ? 'border-primary/60 shadow-md ring-1 ring-primary/20'
-          : 'border-border/60'
+          ? 'border-primary/80 shadow-md shadow-primary/5 ring-2 ring-primary/20 bg-gradient-to-b from-primary/[0.03] to-transparent'
+          : 'border-border/70 hover:-translate-y-0.5 hover:border-border hover:shadow-md'
       }`}
     >
-      <div className={`absolute inset-x-0 top-0 h-1 ${accent.solid}`} />
-
-      <div
-        className={`flex items-start gap-3 bg-gradient-to-br px-4 pb-3 pt-4 ${accent.bg}`}
-      >
+      {/* 活跃账本右上角微光氛围 */}
+      {isActive ? (
         <div
-          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-lg font-bold text-white shadow-sm ${accent.solid}`}
-          aria-hidden
-        >
-          {initial}
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-2">
+          className={`pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-gradient-to-br ${accent.glow} to-transparent blur-2xl transition-all group-hover:scale-110`}
+        />
+      ) : null}
+
+      <div>
+        {/* 顶部 Header：图标 + 账本名/徽章 + 激活状态/操作 */}
+        <div className="flex items-start justify-between gap-2.5">
+          <div className="flex min-w-0 items-center gap-3">
+            <div
+              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-base font-bold shadow-sm ${accent.iconBg}`}
+              aria-hidden
+            >
+              {ledger.is_shared ? (
+                <Users className="h-5 w-5" />
+              ) : (
+                <span>{initial}</span>
+              )}
+            </div>
+
             <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-semibold">
-                {ledger.ledger_name || '—'}
+              <div className="flex items-center gap-1.5">
+                <h3 className="truncate text-sm sm:text-base font-bold text-foreground leading-snug group-hover:text-primary transition-colors">
+                  {ledger.ledger_name || '—'}
+                </h3>
               </div>
-              <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px]">
-                <span className="rounded bg-background/80 px-1.5 py-0.5 font-mono text-muted-foreground">
+              <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+                <span className="rounded bg-muted/70 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground font-medium">
                   {ledger.currency}
                 </span>
-                <span className="text-muted-foreground">·</span>
-                <span className={`font-medium ${accent.text}`}>{roleLabel}</span>
+                <span className="text-muted-foreground/50">·</span>
+                <span className={`font-medium ${accent.accentText}`}>
+                  {roleLabel}
+                </span>
                 {ledger.is_shared ? (
-                  <span className="inline-flex items-center gap-0.5 rounded bg-primary/15 px-1.5 py-0.5 text-primary">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.2 text-[10px] font-medium text-primary">
                     <Users className="h-2.5 w-2.5" />
-                    {ledger.member_count || 1}
+                    {ledger.member_count || 1} 人
                   </span>
                 ) : null}
               </div>
             </div>
-            <div className="flex shrink-0 items-center gap-1">
-              {/* §7 共享账本:成员/邀请管理入口。任何账本(单人/共享)都
-                  显示 — 单人账本 Owner 通过它生成邀请码邀请他人加入。 */}
+          </div>
+
+          {/* 右侧：激活标识与操作按钮 */}
+          <div className="flex shrink-0 items-center gap-1.5">
+            {isActive ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/10 px-2.5 py-0.5 text-[11px] font-semibold text-primary shadow-xs">
+                <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
+                当前使用
+              </span>
+            ) : (
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation()
-                  onManageMembers()
+                  onSelectActive()
                 }}
-                title={t('sharedLedger.openManage') as string}
-                aria-label={t('sharedLedger.openManage') as string}
-                className="rounded bg-background/80 p-1 text-muted-foreground transition hover:bg-primary/15 hover:text-primary"
+                className="rounded-full border border-border/80 bg-background/80 px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground transition hover:border-primary/40 hover:bg-primary/10 hover:text-primary"
               >
-                <Users className="h-3 w-3" />
+                设为当前
               </button>
-              {/* §7 成员收支统计 — 仅共享账本有意义。单人账本就一个成员,
-                  跟普通 analytics 页重复,不展示入口。 */}
-              {ledger.is_shared ? (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onOpenStats()
-                  }}
-                  title={t('sharedLedger.statsOpen') as string}
-                  aria-label={t('sharedLedger.statsOpen') as string}
-                  className="rounded bg-background/80 p-1 text-muted-foreground transition hover:bg-primary/15 hover:text-primary"
-                >
-                  <BarChart3 className="h-3 w-3" />
-                </button>
-              ) : null}
-              {/* §7 共享账本:Owner 保留导入/编辑入口(他对自己创建的共享账本
-                  拥有所有权限);Editor(非 Owner 成员)不展示 — Editor 没有
-                  账本元数据写权限,导入数据也会污染 Owner 全局资源。 */}
-              {!ledger.is_shared || ledger.role === 'owner' ? (
+            )}
+
+            {/* 更多操作 Dropdown */}
+            <Dropdown
+              menu={{ items: menuItems }}
+              trigger={['click']}
+              placement="bottomRight"
+            >
+              <button
+                type="button"
+                onClick={(e) => e.stopPropagation()}
+                title="账本选项"
+                aria-label="账本选项"
+                className="rounded-lg p-1 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </button>
+            </Dropdown>
+          </div>
+        </div>
+
+        {/* 核心资产大数字区域 */}
+        <div className="my-3 rounded-xl border border-border/50 bg-muted/25 p-3.5 dark:bg-muted/15">
+          <div className="flex items-baseline justify-between">
+            <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              {t('ledgers.col.balance')}
+            </span>
+            <span className="font-mono text-xs text-muted-foreground">
+              {ledger.transaction_count.toLocaleString()} {t('ledgers.col.tx')}
+            </span>
+          </div>
+          <div className="mt-1">
+            <Amount
+              value={ledger.balance}
+              currency={ledger.currency}
+              size="lg"
+              bold
+              tone={ledger.balance < 0 ? 'negative' : 'default'}
+              className="text-2xl font-bold tracking-tight"
+            />
+          </div>
+
+          {/* 收支双色动态比例条 */}
+          <div className="mt-3">
+            <div className="mb-1 flex justify-between text-[11px] font-mono">
+              <div className="flex items-center gap-1 text-income font-medium">
+                <span className="h-1.5 w-1.5 rounded-full bg-income" />
+                <span>{t('ledgers.col.income')}</span>
+                <Amount value={ledger.income_total} currency={ledger.currency} size="xs" />
+              </div>
+              <div className="flex items-center gap-1 text-expense font-medium">
+                <span>{t('ledgers.col.expense')}</span>
+                <Amount value={ledger.expense_total} currency={ledger.currency} size="xs" />
+                <span className="h-1.5 w-1.5 rounded-full bg-expense" />
+              </div>
+            </div>
+            <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-muted/70">
+              {totalFlow > 0 ? (
                 <>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onImport()
-                    }}
-                    title={t('ledgers.action.import') as string}
-                    aria-label={t('ledgers.action.import') as string}
-                    className="rounded bg-background/80 p-1 text-muted-foreground transition hover:bg-primary/15 hover:text-primary"
-                  >
-                    <Upload className="h-3 w-3" />
-                  </button>
-                  <span className="rounded bg-background/80 px-1.5 py-0.5 text-[10px] text-muted-foreground transition group-hover:bg-primary/15 group-hover:text-primary">
-                    <Pencil className="mr-0.5 inline h-2.5 w-2.5" />
-                    {t('common.edit')}
-                  </span>
-                  {/* 删除按钮 — owner-only(server _OWNER_ONLY_ROLES 兜底拦截),
-                      stopPropagation 防卡片整张的 onEdit 同时触发。视觉上跟其它
-                      action 按钮排在一起 — 不再塞编辑弹窗里(per #13 review)。 */}
-                  {onDelete ? (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onDelete()
-                      }}
-                      title={t('ledgers.action.delete') as string}
-                      aria-label={t('ledgers.action.delete') as string}
-                      className="rounded bg-background/80 p-1 text-muted-foreground transition hover:bg-destructive/15 hover:text-destructive"
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </button>
-                  ) : null}
+                  <div
+                    className="h-full bg-income transition-all duration-300"
+                    style={{ width: `${incomePercent}%` }}
+                  />
+                  <div
+                    className="h-full bg-expense transition-all duration-300"
+                    style={{ width: `${expensePercent}%` }}
+                  />
                 </>
-              ) : null}
+              ) : (
+                <div className="h-full w-full bg-border/40" />
+              )}
             </div>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-2 border-t border-border/40 bg-card px-4 py-3">
-        <div>
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-            {t('ledgers.col.tx')}
-          </div>
-          <div className="mt-0.5 font-mono text-sm font-semibold tabular-nums">
-            {ledger.transaction_count.toLocaleString()}
-          </div>
+      {/* 底部元信息行：更新时间与快捷入口 */}
+      <div className="flex items-center justify-between pt-0.5 text-xs text-muted-foreground">
+        <div className="flex items-center gap-1 text-[11px]">
+          <Clock className="h-3 w-3 text-muted-foreground/70" />
+          <span className="font-mono">{formatIsoDateTime(ledger.updated_at)}</span>
         </div>
-        <div>
-          <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-muted-foreground">
-            <TrendingUp className="h-2.5 w-2.5 text-income" />
-            {t('ledgers.col.income')}
-          </div>
-          <Amount
-            value={ledger.income_total}
-            currency={ledger.currency}
-            size="xs"
-            bold
-            className="mt-0.5 text-income"
-          />
-        </div>
-        <div>
-          <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-muted-foreground">
-            <TrendingDown className="h-2.5 w-2.5 text-expense" />
-            {t('ledgers.col.expense')}
-          </div>
-          <Amount
-            value={ledger.expense_total}
-            currency={ledger.currency}
-            size="xs"
-            bold
-            className="mt-0.5 text-expense"
-          />
-        </div>
-      </div>
 
-      <div className="flex items-end justify-between border-t border-border/40 bg-muted/20 px-4 py-2.5">
-        <div>
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-            {t('ledgers.col.balance')}
-          </div>
-          <Amount
-            value={ledger.balance}
-            currency={ledger.currency}
-            size="md"
-            bold
-            tone={ledger.balance < 0 ? 'negative' : 'default'}
-            className="mt-0.5"
-          />
-        </div>
-        <div className="text-right text-[10px] text-muted-foreground">
-          <div>{t('ledgers.col.updatedAt')}</div>
-          <div className="mt-0.5 font-mono">
-            {formatIsoDateTime(ledger.updated_at)}
-          </div>
+        <div className="flex items-center gap-2">
+          {ledger.is_shared ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onOpenStats()
+              }}
+              className="text-[11px] font-medium text-primary hover:underline flex items-center gap-0.5"
+            >
+              <BarChart3 className="h-3 w-3" />
+              分摊
+            </button>
+          ) : null}
+
+          {!ledger.is_shared || ledger.role === 'owner' ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onImport()
+              }}
+              className="text-[11px] font-medium text-muted-foreground hover:text-primary transition"
+            >
+              {t('ledgers.action.import')}
+            </button>
+          ) : null}
+
+          {!editDisabled ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onEdit()
+              }}
+              className="text-[11px] font-medium text-muted-foreground hover:text-primary transition"
+            >
+              {t('common.edit')}
+            </button>
+          ) : null}
         </div>
       </div>
     </div>

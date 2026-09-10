@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- Required for Supabase network requests -->
     <uses-permission android:name="android.permission.INTERNET" />
 
@@ -10,9 +11,17 @@
         android:maxSdkVersion="29" />
     <!-- Required for reading screenshots (Android 13+) -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <!-- Required for reading screenshots (Android 10-12) -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
+    <!-- Required for reading screenshots (Android 10-12)。
+         不设 maxSdkVersion:本 App targetSdk 恒为 32(vivo 无障碍兼容),
+         Android 13/14 设备上 MediaProvider 对 legacy App 恰好按这条权限
+         把门 —— 加了上限等于在 13+ 上裸奔,截图全被可见性过滤(2026-09-10
+         vivo 真机:权限"已授"但查询恒 0 行)。
+         tools:replace:open_filex 插件清单里同权限带 maxSdkVersion=32,
+         合并器做属性并集会把上限带回来,这里强制以主清单为准。 -->
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="1000000"
+        tools:replace="android:maxSdkVersion" />
     <!-- Required for installing APK files -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- Required for showing notifications -->

@@ -24,16 +24,19 @@ import java.security.MessageDigest
  * NotificationWatcher 完全同构:
  *   1. 白名单包名(支付宝/抖音/京东/微信/招商银行) + 事件防抖(支付结果页
  *      类名命中快速通道时防抖缩短,见 FAST_PATH_PAGES);
- *   2. 聊天页类名拒识 → fastQuery 式锚点预筛(不展开整树) → 垃圾特征剔除 +
- *      强/弱锚点分级与金额粗筛(宁缺勿滥);
+ *   2. 聊天页类名拒识 → 有界整树采集(候选窗口见 candidateRoots) →
+ *      垃圾特征剔除 + 强/弱锚点分级与金额粗筛(宁缺勿滥);
  *   3. 指纹去重 + 持久化队列与短信/通知队列相互独立;
  *   4. Flutter 进程存活时经桥接广播即时取走,否则下次启动 drain。
  *
  * 页面识别思路(2026-09 参考 GKD 广告跳过订阅的支付类规则规律并适配,非照搬):
  * GKD 对支付规则一律「activityIds 锁页面 + 文本锚点组合确认」,本服务借鉴为
- * 三点 —— 已知结果页类名走快速通道(缩短防抖抢抓取)、交易特征词分强/弱两级
- * (弱词需 ≥2 个同时命中)、整树采集前先做廉价锚点探测。类名表只收录短时
- * 停留的支付结果页,历史账单回看(H5 容器页等)仍由内容启发式覆盖。
+ * 两点 —— 已知结果页类名走快速通道(缩短防抖抢抓取)、交易特征词分强/弱两级
+ * (弱词需 ≥2 个同时命中)。曾按其 fastQuery 思路在整树采集前做廉价文本查找
+ * 预筛,但 2026-09-10 真机证明 findAccessibilityNodeInfosByText 在 vivo+抖音
+ * (WebView/Lynx 容器页)上失明、把真账单页整页拦下,已废弃(见 grabAndProcess)。
+ * 类名表只收录短时停留的支付结果页,历史账单回看(H5 容器页等)仍由内容
+ * 启发式覆盖。
  *
  * 隐私:抓取文本**不入日志**(只打长度摘要)、不落盘,队列项处理完即删;
  * 与短信/通知一致,文本仅在 AI 已配置时发送到用户配置的 AI 服务商做记账。
@@ -152,40 +155,53 @@ open class ScreenTextWatcher : AccessibilityService() {
                 return
             }
 
-            val root = rootInActiveWindow
-            if (root == null) {
+            // 窗口归属校验(按「活动窗口」单点):防抖结束的瞬间窗口可能已切换
+            // (快速通道 300ms 更明显),活动窗口包名与事件包名对不上说明读到的
+            // 不是来源 App 的页面,丢弃本次抓取,等后续事件重新触发。contains
+            // 双向是覆盖微信「com.tencent.mm:appbrand0」这类子进程包名。空包名
+            // 的窗口(vivo+抖音 Lynx 页的活动窗口是无文本 TYPE_SYSTEM 系统窗,
+            // 2026-09-10 dumpsys 定位)按旧语义继续走,由 candidateRoots 补齐
+            // 真正承载内容的应用窗口。
+            val activeRoot = rootInActiveWindow
+            if (activeRoot == null) {
                 recordDecision(this, pkg, "no_anchor", "rootInActiveWindow=null(窗口未就绪)")
                 return
             }
-
-            // 窗口归属校验:防抖结束的瞬间窗口可能已切换(快速通道 300ms 更
-            // 明显),根节点包名与事件包名对不上说明读到的不是来源 App 的页面,
-            // 丢弃本次抓取,等后续事件重新触发。contains 双向是覆盖微信
-            // 「com.tencent.mm:appbrand0」这类子进程包名。
-            val rootPkg = root.packageName?.toString() ?: ""
-            if (rootPkg.isNotEmpty() && !pkg.contains(rootPkg) && !rootPkg.contains(pkg)) {
-                log("窗口归属不符,丢弃: 事件=$pkg 根=$rootPkg")
-                recordDecision(this, pkg, "pkg_mismatch", "root包名=$rootPkg cls=$lastPageClass")
+            val activePkgName = activeRoot.packageName?.toString() ?: ""
+            if (activePkgName.isNotEmpty() &&
+                !pkg.contains(activePkgName) && !activePkgName.contains(pkg)
+            ) {
+                log("窗口归属不符,丢弃: 事件=$pkg 根=$activePkgName")
+                recordDecision(this, pkg, "pkg_mismatch", "root包名=$activePkgName cls=$lastPageClass")
                 return
             }
 
-            // fastQuery 式锚点预筛(GKD fastQuery 规律适配):先用框架原生的
-            // 文本查找探测强锚点,全部落空就不展开整树 —— 白名单 App 的绝大
-            // 多数页面(聊天流/商品流/信息流)没有强锚点,整树采集的逐节点
-            // binder 往返与字符串拼接都省下,页面文本也不进入本进程(隐私同
-            // 向)。探测词表 ⊆ 强锚点表,只会提前放弃、不会漏掉本应入队的页
-            // 面:弱锚点 ≥2 的页面仍会走完整采集与判定。
-            if (!hasAnchorNode(root)) {
-                log("锚点预筛未命中,跳过整树采集: $pkg/$lastPageClass")
-                recordDecision(this, pkg, "no_anchor", "预筛未命中锚点(cls=$lastPageClass)")
-                return
+            // 有界整树采集(2026-09-10 重构,替代 fastQuery 式预筛):逐候选窗口
+            // 采集,取第一个文本量达标的;都太短则取最长的,交给下方 too_short 闸。
+            // 为什么放弃 findAccessibilityNodeInfosByText 预筛:1.0.45 真机证明
+            // vivo+抖音账单页(WebView/Lynx 容器)上框架文本查找对页面文本树
+            // 失明 —— 预筛未命中,而手动遍历(uiautomator dump)同树可见全文
+            // (确认收货后付款/-19.80/支付方式抖音月付),按探测放行会整页漏。
+            // 采集本身有 MAX_NODES/MAX_CHARS 硬上限,代价可控;非账单页文本
+            // 仍由下方垃圾词/营销/金额+交易特征/列表页/不可入账各闸拦下,
+            // 「文本不离开设备,除非判为账单且 AI 已配置」的隐私边界不变。
+            val roots = candidateRoots(pkg, activeRoot)
+            var text = ""
+            for (root in roots) {
+                val candidate = collectWindowText(root)
+                if (candidate.length >= MIN_TEXT_LENGTH) {
+                    text = candidate
+                    break
+                }
+                if (candidate.length > text.length) text = candidate
             }
-
-            val text = collectWindowText()
             val logLen = text.length
             if (text.length < MIN_TEXT_LENGTH) {
                 log("页面文本 < $MIN_TEXT_LENGTH 字符,丢弃过短页面: $pkg len=$logLen")
-                recordDecision(this, pkg, "too_short", "len=$logLen(<$MIN_TEXT_LENGTH,页面可能未加载完/无障碍树为空)")
+                recordDecision(
+                    this, pkg, "too_short",
+                    "len=$logLen(<$MIN_TEXT_LENGTH,页面可能未加载完/无障碍树为空 wins=${roots.size})"
+                )
                 return
             }
             val rejectHit = REJECT_KEYWORDS.firstOrNull { text.contains(it) }
@@ -258,9 +274,38 @@ open class ScreenTextWatcher : AccessibilityService() {
     // 文本树收集
     // ------------------------------------------------------------
 
-    /** 递归收集当前窗口可见文本(text + contentDescription),限深限量限字数。 */
-    private fun collectWindowText(): String {
-        val root = rootInActiveWindow ?: return ""
+    /**
+     * 锚点探测/文本采集的候选窗口根列表:活动窗口在前,再从 [windows] 补齐
+     * 包名与事件匹配的应用窗口(按 windowId 去重)。
+     *
+     * 为什么需要多窗口(2026-09-10 vivo+抖音 Lynx 真机定位):抖音账单/订单页
+     * 上 rootInActiveWindow 返回的是无文本的 TYPE_SYSTEM 空窗口(dumpsys
+     * accessibility 可见 Active Window 是全屏系统窗、包名空,真正的账单文本
+     * 在另一个抖音应用窗口里),单窗口探测/采集整页落空 → 预筛全部未命中。
+     * 开启 flagRetrieveInteractiveWindows 后 getWindows() 能枚举到内容窗口,
+     * 逐窗口探测直到命中。其余 App(支付宝/微信/京东)活动窗口即内容窗口,
+     * 行为与原先完全一致(候选列表第一个就是活动窗口)。
+     */
+    private fun candidateRoots(pkg: String, activeRoot: AccessibilityNodeInfo): List<AccessibilityNodeInfo> {
+        val result = mutableListOf(activeRoot)
+        val seenWindowIds = mutableSetOf(activeRoot.windowId)
+        try {
+            val ws = windows ?: return result
+            for (w in ws) {
+                val root = w.root ?: continue
+                if (!seenWindowIds.add(root.windowId)) continue
+                val wp = root.packageName?.toString() ?: continue
+                if (wp.isEmpty()) continue
+                if (pkg.contains(wp) || wp.contains(pkg)) result.add(root)
+            }
+        } catch (_: Exception) {
+            // 个别 ROM 对 windows 枚举抛异常时退回单窗口行为
+        }
+        return result
+    }
+
+    /** 递归收集指定窗口可见文本(text + contentDescription),限深限量限字数。 */
+    private fun collectWindowText(root: AccessibilityNodeInfo): String {
         try {
             val sb = StringBuilder()
             collectText(root, sb, 0, NodeStats())
@@ -305,31 +350,13 @@ open class ScreenTextWatcher : AccessibilityService() {
     }
 
     /**
-     * 锚点预筛(GKD fastQuery 规律适配):在整树采集前用框架原生的文本查找
-     * 探测强锚点是否存在。findAccessibilityNodeInfosByText 对节点的
-     * text/contentDescription 做不区分大小写的包含匹配,与 collectWindowText
-     * 的「text+desc 拼接」口径一致;每次调用是单次进程间往返,树遍历由宿主
-     * App 侧完成,比逐节点 getChild 的多轮往返便宜。任一强锚点命中即值得
-     * 整树采集;全部落空则大概率不是账单页。API<33 的返回节点按惯例回收。
+     * 锚点预筛已废弃(2026-09-10):findAccessibilityNodeInfosByText 在 vivo+
+     * 抖音(WebView/Lynx 容器页)上对页面文本树失明,曾把整个账单详情页拦在
+     * 门外。现在直接有界整树采集(grabAndProcess),文本与否交给内容闸门判定。
      *
-     * 强词之外补一组**组合预筛**(2026-09-09 抖音订单页支持):抖音订单详情
-     * 宿主是 LiveDummyActivity/BulletContainerActivity 通用容器,部分真机上
-     * 状态级强词(「确认收货后付款」)不在文本树里,但「支付方式+支付时间」
-     * 两个详情字段词同时出现已足以证明值得采集 —— 单独一个词太泛(支付设置
-     * 页也有「支付方式」),组合条件不弱于弱锚点 ≥2 的粗筛门槛。
+     * 逐候选窗口采集的候选来源见 [candidateRoots](活动窗口 + windows 列表中
+     * 包名匹配的应用窗口)。
      */
-    private fun hasAnchorNode(root: AccessibilityNodeInfo): Boolean {
-        fun hit(word: String): Boolean {
-            val found = root.findAccessibilityNodeInfosByText(word) ?: return false
-            val exists = found.isNotEmpty()
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-                found.forEach { it.recycle() }
-            }
-            return exists
-        }
-        if (STRONG_TRADE_KEYWORDS.any { hit(it) }) return true
-        return PRE_FILTER_COMBO.all { hit(it) }
-    }
 
     // ------------------------------------------------------------
     // 过滤规则(与 SmsReceiver/NotificationWatcher 同策略,可单测)
@@ -574,12 +601,23 @@ open class ScreenTextWatcher : AccessibilityService() {
         // ---- 识别决策环形队列(设置页「最近识别记录」,排查真机漏记用) ----
         // 隐私:只存决策码/命中关键词/长度与计数,**绝不存页面文本** —— 文本仍
         // 遵守「不入日志、不落盘,仅在 AI 已配置时发往用户配置的服务商」约定。
+        // source 标记决策来源通道(2026-09-10):screen=无障碍详情页抓取,
+        // notification=通知监听,screenshot=截图 OCR,供识别记录页分类展示。
         const val KEY_DECISIONS = "recent_decisions"
         const val MAX_DECISIONS = 20
         private const val MAX_DECISION_DETAIL = 120
+        const val DECISION_SOURCE_SCREEN = "screen"
+        const val DECISION_SOURCE_NOTIFICATION = "notification"
+        const val DECISION_SOURCE_SCREENSHOT = "screenshot"
 
         /** 记录一条识别决策。任何线程可调;失败静默(诊断能力不能反噬主流程)。 */
-        fun recordDecision(context: Context, pkg: String, decision: String, detail: String) {
+        fun recordDecision(
+            context: Context,
+            pkg: String,
+            decision: String,
+            detail: String,
+            source: String = DECISION_SOURCE_SCREEN,
+        ) {
             try {
                 val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
                 val arr = JSONArray(prefs.getString(KEY_DECISIONS, null) ?: "[]")
@@ -589,6 +627,7 @@ open class ScreenTextWatcher : AccessibilityService() {
                         .put("pkg", pkg)
                         .put("decision", decision)
                         .put("detail", detail.take(MAX_DECISION_DETAIL))
+                        .put("source", source)
                 )
                 while (arr.length() > MAX_DECISIONS) arr.remove(0)
                 prefs.edit().putString(KEY_DECISIONS, arr.toString()).apply()
@@ -610,7 +649,8 @@ open class ScreenTextWatcher : AccessibilityService() {
                             "ts" to obj.optLong("ts").toString(),
                             "pkg" to obj.optString("pkg"),
                             "decision" to obj.optString("decision"),
-                            "detail" to obj.optString("detail")
+                            "detail" to obj.optString("detail"),
+                            "source" to obj.optString("source", DECISION_SOURCE_SCREEN)
                         )
                     )
                 }
@@ -661,10 +701,6 @@ open class ScreenTextWatcher : AccessibilityService() {
         /** 订单列表页标题词(抖音/京东「我的订单」):一票判列表页,见
             [isListPage]。详情页不会出现该标题,误伤面为零。 */
         private val LIST_TITLE_KEYWORDS = listOf("我的订单")
-
-        /** 预筛组合词:两个**同时**命中才值得整树采集(单独一个太泛);
-            必须保持 ⊆ [WEAK_TRADE_KEYWORDS],见 [hasAnchorNode]。 */
-        private val PRE_FILTER_COMBO = listOf("支付方式", "支付时间")
 
         /** 日期写法:「9-08」「2026-09-08」中的日期段、「9月8日」。时刻
             (18:53:41)、卡尾、无分隔的订单号都不命中;lookbehind 挡掉从

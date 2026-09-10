@@ -46,6 +46,7 @@ class _AutoRecognitionRecordsPageState
     'list_page': '列表页(金额过多)',
     'non_bookable': '不可入账状态',
     'duplicate': '重复页面',
+    'partial_access': '照片权限受限',
   };
 
   @override
@@ -121,6 +122,8 @@ class _AutoRecognitionRecordsPageState
                 ? '智记'
                 : (pkg.isNotEmpty ? pkg.split('.').last : '系统/未知'));
         final statusColor = _decisionColor(context, code);
+        final source = _sourceLabels[d['source'] ?? 'screen'];
+        final sourceColor = _sourceColor(context, d['source'] ?? 'screen');
 
         return Card(
           margin: const EdgeInsets.only(bottom: 12),
@@ -188,26 +191,53 @@ class _AutoRecognitionRecordsPageState
                         ],
                       ),
                       const SizedBox(height: 6),
-                      // 第二行：状态标签
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 7, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: statusColor.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(
-                            color: statusColor.withValues(alpha: 0.28),
-                            width: 0.8,
+                      // 第二行：来源分类 + 状态标签
+                      Row(
+                        children: [
+                          if (source != null) ...[
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 7, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: sourceColor.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(
+                                  color: sourceColor.withValues(alpha: 0.28),
+                                  width: 0.8,
+                                ),
+                              ),
+                              child: Text(
+                                source,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: sourceColor,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                          ],
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 7, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: statusColor.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: statusColor.withValues(alpha: 0.28),
+                                width: 0.8,
+                              ),
+                            ),
+                            child: Text(
+                              label,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: statusColor,
+                              ),
+                            ),
                           ),
-                        ),
-                        child: Text(
-                          label,
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: statusColor,
-                          ),
-                        ),
+                        ],
                       ),
                       if (detail.isNotEmpty) ...[
                         const SizedBox(height: 6),
@@ -229,6 +259,26 @@ class _AutoRecognitionRecordsPageState
         );
       },
     );
+  }
+
+  /// 来源通道 → 标签(与 AutoDecisionSource 口径一致;旧记录无 source 字段
+  /// 按 screen 展示)。
+  static const _sourceLabels = <String, String>{
+    'screen': '无障碍',
+    'notification': '通知',
+    'screenshot': '截图',
+  };
+
+  static Color _sourceColor(BuildContext context, String source) {
+    switch (source) {
+      case 'notification':
+        return Colors.teal;
+      case 'screenshot':
+        return Colors.orange;
+      case 'screen':
+      default:
+        return Colors.indigo;
+    }
   }
 
   static Color _decisionColor(BuildContext context, String code) {

@@ -97,8 +97,19 @@ class NotificationWatcher : NotificationListenerService() {
                 )
             ) {
                 log("通知已在已处理记录或待处理队列中,丢弃")
+                // 决策记录只挑关键节点(通知事件量大,全记会淹没 20 条环形队列)
+                ScreenTextWatcher.recordDecision(
+                    this, pkg, "duplicate",
+                    "同通知已在队列/已处理 len=${text.length}",
+                    ScreenTextWatcher.DECISION_SOURCE_NOTIFICATION,
+                )
                 return
             }
+            ScreenTextWatcher.recordDecision(
+                this, pkg, "enqueued",
+                "len=${text.length} titleLen=${title.length}",
+                ScreenTextWatcher.DECISION_SOURCE_NOTIFICATION,
+            )
 
             try {
                 sendBroadcast(Intent(BRIDGE_ACTION).setPackage(packageName))

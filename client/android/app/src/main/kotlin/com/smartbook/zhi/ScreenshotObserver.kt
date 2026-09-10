@@ -6,12 +6,14 @@ import android.database.ContentObserver
 import android.database.Cursor
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
 import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 
 /**
  * 截图监听器
@@ -178,6 +180,7 @@ class ScreenshotObserver(
             val projection = arrayOf(
                 MediaStore.Images.Media._ID,
                 MediaStore.Images.Media.DATA,
+                MediaStore.Images.Media.RELATIVE_PATH,
                 MediaStore.Images.Media.DATE_ADDED,
                 MediaStore.Images.Media.DISPLAY_NAME
             )
@@ -196,14 +199,30 @@ class ScreenshotObserver(
             val processStartTime = System.currentTimeMillis()
             var retry = false
             cursor?.use {
+                LoggerPlugin.debug(TAG, "媒体查询结果: rows=${it.count}")
                 if (it.moveToFirst()) {
-                    val dataIndex = it.getColumnIndex(MediaStore.Images.Media.DATA)
                     val nameIndex = it.getColumnIndex(MediaStore.Images.Media.DISPLAY_NAME)
                     val dateIndex = it.getColumnIndex(MediaStore.Images.Media.DATE_ADDED)
+                    val dataIndex = it.getColumnIndex(MediaStore.Images.Media.DATA)
+                    val relIndex = it.getColumnIndex(MediaStore.Images.Media.RELATIVE_PATH)
 
-                    if (dataIndex >= 0 && nameIndex >= 0 && dateIndex >= 0) {
-                        val imagePath = it.getString(dataIndex) ?: return false
-                        val imageName = it.getString(nameIndex) ?: ""
+                    // 2026-09-10 真机定位(vivo OriginOS):ROM 对非属主 App 可能
+                    // 不回 `_data` 列(路径隐私),旧代码该列缺失时整段静默跳过,
+                    // 截图链路表现为「onChange 有事件、查询有耗时、之后零日志」。
+                    // 路径兜底:relative_path 是 API 29+ 对所有有媒体权限的 App
+                    // 可见的列,拼出物理路径供 OCR 读取。
+                    val imageName = if (nameIndex >= 0) it.getString(nameIndex) ?: "" else ""
+                    var resolvedPath = if (dataIndex >= 0) it.getString(dataIndex) else null
+                    if (resolvedPath.isNullOrEmpty() && relIndex >= 0 && imageName.isNotEmpty()) {
+                        val rel = it.getString(relIndex) ?: ""
+                        if (rel.isNotEmpty()) {
+                            resolvedPath = "${Environment.getExternalStorageDirectory().absolutePath}/$rel$imageName"
+                            LoggerPlugin.debug(TAG, "_data 列缺失,按 relative_path 还原路径: $resolvedPath")
+                        }
+                    }
+                    val imagePath = resolvedPath
+
+                    if (!imagePath.isNullOrEmpty() && dateIndex >= 0) {
 
                         // 两段写入中间态:等 rename(MAX_PENDING_RETRIES 次重试后放弃)
                         if (isPendingTmp(imagePath, imageName)) {
@@ -230,6 +249,11 @@ class ScreenshotObserver(
                             Log.d(TAG, "✅ 检测到新截图: $imagePath")
                             Log.d(TAG, "文件名: $imageName, 年龄=${imageAge}秒")
                             LoggerPlugin.info(TAG, "检测到新截图: $imageName")
+                            ScreenTextWatcher.recordDecision(
+                                context, "app", "enqueued",
+                                "name=$imageName",
+                                ScreenTextWatcher.DECISION_SOURCE_SCREENSHOT,
+                            )
 
                             // 先写入持久化队列，再通知 Flutter。进程在 AI/DB
                             // 处理前被杀时，启动 drain 仍能恢复；只有 Flutter ACK
@@ -240,6 +264,43 @@ class ScreenshotObserver(
                             Log.d(TAG, "⏱️ [性能] 回调执行完成, 耗时=${callbackElapsed}ms")
                             LoggerPlugin.debug(TAG, "截图回调执行完成, 耗时=${callbackElapsed}ms")
                         }
+                    }
+                } else if (isPartialPhotoAccess()) {
+                    // 2026-09-10 真机定位:onChange 仍通知但查询游标为空,几乎
+                    // 必然是「仅允许选中的照片」部分授权 —— 显式警告,不再静默
+                    LoggerPlugin.warning(
+                        TAG,
+                        "照片权限为「仅选中的照片」,MediaStore 看不到新截图;请到系统设置把智记的照片权限改为「允许所有照片」"
+                    )
+                    ScreenTextWatcher.recordDecision(
+                        context, "app", "partial_access",
+                        "照片权限=仅选中的照片,MediaStore 看不到新截图",
+                        ScreenTextWatcher.DECISION_SOURCE_SCREENSHOT,
+                    )
+                }
+                if (!retry) {
+                    val fallbackPath = findRecentScreenshotFile()
+                    if (fallbackPath != null &&
+                        enqueuePending(fallbackPath, System.currentTimeMillis())
+                    ) {
+                        // MediaStore 行不可见的文件系统兜底(vivo 真机 2026-09-10:
+                        // 权限全量、is_pending=0,provider 查询仍恒 0 行;而
+                        // targetSdk 32 + legacy storage 的 FUSE 直读不受影响)
+                        LoggerPlugin.info(
+                            TAG,
+                            "检测到新截图(MediaStore 0 行,文件系统兜底): ${File(fallbackPath).name}"
+                        )
+                        ScreenTextWatcher.recordDecision(
+                            context, "app", "enqueued",
+                            "name=${File(fallbackPath).name}(文件兜底)",
+                            ScreenTextWatcher.DECISION_SOURCE_SCREENSHOT,
+                        )
+                        val callbackStartTime = System.currentTimeMillis()
+                        onScreenshotDetected(fallbackPath)
+                        LoggerPlugin.debug(
+                            TAG,
+                            "截图回调执行完成(文件系统兜底), 耗时=${System.currentTimeMillis() - callbackStartTime}ms"
+                        )
                     }
                 }
                 val processElapsed = System.currentTimeMillis() - processStartTime
@@ -269,6 +330,7 @@ class ScreenshotObserver(
             val projection = arrayOf(
                 MediaStore.Images.Media._ID,
                 MediaStore.Images.Media.DATA,
+                MediaStore.Images.Media.RELATIVE_PATH,
                 MediaStore.Images.Media.DATE_ADDED,
                 MediaStore.Images.Media.DISPLAY_NAME
             )
@@ -295,13 +357,23 @@ class ScreenshotObserver(
                 var foundCount = 0
                 while (it.moveToNext()) {
                     foundCount++
-                    val dataIndex = it.getColumnIndex(MediaStore.Images.Media.DATA)
                     val nameIndex = it.getColumnIndex(MediaStore.Images.Media.DISPLAY_NAME)
                     val dateIndex = it.getColumnIndex(MediaStore.Images.Media.DATE_ADDED)
+                    val dataIndex = it.getColumnIndex(MediaStore.Images.Media.DATA)
+                    val relIndex = it.getColumnIndex(MediaStore.Images.Media.RELATIVE_PATH)
 
-                    if (dataIndex >= 0 && nameIndex >= 0 && dateIndex >= 0) {
-                        val imagePath = it.getString(dataIndex) ?: continue
-                        val imageName = it.getString(nameIndex) ?: ""
+                    // 与 checkImageUri 同款路径兜底:_data 列可能被 ROM 对非属主隐藏
+                    val imageName = if (nameIndex >= 0) it.getString(nameIndex) ?: "" else ""
+                    var resolvedPath = if (dataIndex >= 0) it.getString(dataIndex) else null
+                    if (resolvedPath.isNullOrEmpty() && relIndex >= 0 && imageName.isNotEmpty()) {
+                        val rel = it.getString(relIndex) ?: ""
+                        if (rel.isNotEmpty()) {
+                            resolvedPath = "${Environment.getExternalStorageDirectory().absolutePath}/$rel$imageName"
+                        }
+                    }
+                    val imagePath = resolvedPath
+
+                    if (!imagePath.isNullOrEmpty() && dateIndex >= 0) {
                         val dateAdded = it.getLong(dateIndex)
 
                         // 检查图片年龄（防止处理历史图片）
@@ -337,6 +409,64 @@ class ScreenshotObserver(
         }
     }
 
+    /**
+     * 文件系统兜底:MediaStore 查询不到行时,直接扫系统截图目录找
+     * [MAX_SCREENSHOT_AGE_SECONDS] 内的新截图(见 checkImageUri 内注释)。
+     * 只扫截图专属目录,列表小、主线程开销可忽略;enqueuePending 按路径幂等。
+     */
+    private fun findRecentScreenshotFile(): String? {
+        val roots = listOfNotNull(
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM),
+        ).flatMap { listOfNotNull(it, File(it, "Screenshots")) }
+            .filter { it.isDirectory }
+        val cutoff = System.currentTimeMillis() - MAX_SCREENSHOT_AGE_SECONDS * 1000
+        var best: File? = null
+        var bestTime = 0L
+        for (dir in roots) {
+            val files = dir.listFiles()
+            LoggerPlugin.debug(TAG, "兜底扫描 ${dir.absolutePath}: ${files?.size ?: -1}")
+            if (files == null) continue
+            for (f in files) {
+                if (!f.isFile) continue
+                val nameLower = f.name.lowercase()
+                if (SCREENSHOT_KEYWORDS.none { nameLower.contains(it) }) continue
+                if (isPendingTmp(f.absolutePath, f.name)) continue
+                val mtime = resolveCaptureTime(f)
+                if (mtime < cutoff) continue
+                if (best == null || mtime > bestTime) {
+                    best = f
+                    bestTime = mtime
+                }
+            }
+        }
+        return best?.absolutePath
+    }
+
+    /**
+     * 截图捕获时间:vivo FUSE 对其他 App 新建的文件可能回 lastModified=0(真机
+     * 2026-09-10 兜底扫描不命中的根因),而系统截图的标准文件名内嵌拍摄时间
+     * (Screenshot_20260910_101242.jpg),优先解析文件名,异常再退 lastModified。
+     */
+    private fun resolveCaptureTime(f: File): Long {
+        Regex("(\\d{8})_(\\d{6})").find(f.name)?.let { m ->
+            val (d, t) = m.destructured
+            try {
+                val cal = java.util.Calendar.getInstance().apply {
+                    set(
+                        d.substring(0, 4).toInt(), d.substring(4, 6).toInt() - 1,
+                        d.substring(6, 8).toInt(), t.substring(0, 2).toInt(),
+                        t.substring(2, 4).toInt(), t.substring(4, 6).toInt()
+                    )
+                    set(java.util.Calendar.MILLISECOND, 0)
+                }
+                return cal.timeInMillis
+            } catch (_: Exception) {
+            }
+        }
+        return f.lastModified()
+    }
+
     /** 将截图路径写入待处理队列，队列项本身作为事件级幂等兜底。 */
     @Synchronized
     private fun enqueuePending(path: String, ts: Long): Boolean {
@@ -351,6 +481,23 @@ class ScreenshotObserver(
         while (arr.length() > MAX_PENDING_QUEUE) arr.remove(0)
         prefs.edit().putString(KEY_PENDING_QUEUE, arr.toString()).apply()
         return true
+    }
+
+    /**
+     * 是否「仅允许选中的照片」部分授权(Android 14+)。判定必须是**组合**条件:
+     * USER_SELECTED 授权 且 READ_MEDIA_IMAGES 未授权 —— 部分 ROM(vivo 实测
+     * 2026-09-10)在「允许全部」时也会附带授出 USER_SELECTED,只看它会把
+     * 完全访问误判成部分授权,反复弹「仅选中的照片」提示。
+     */
+    private fun isPartialPhotoAccess(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return false
+        val userSelectedGranted = context.checkSelfPermission(
+            android.Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        val imagesGranted = context.checkSelfPermission(
+            android.Manifest.permission.READ_MEDIA_IMAGES
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        return userSelectedGranted && !imagesGranted
     }
 
     /**

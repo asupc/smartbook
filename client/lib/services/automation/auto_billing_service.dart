@@ -21,6 +21,7 @@ import '../billing/pending_candidate.dart';
 import '../billing/post_processor.dart';
 import '../data/source_channel_resolver.dart';
 import '../data/tag_seed_service.dart';
+import '../platform/screen_text_monitor_service.dart';
 import '../system/logger_service.dart';
 import 'auto_billing_config.dart';
 import 'auto_book_event.dart';
@@ -573,6 +574,15 @@ class AutoBillingService {
           !result.aiNotConfigured) {
         await _markAsProcessed(imagePath);
       }
+
+      // 决策记录(截图来源):AI 段结局,与原生「已捕获入队」拼成完整链路
+      unawaited(_logAutoDecision(
+        AutoDecisionSource.screenshot,
+        result.success
+            ? 'drain_success'
+            : (!result.handled ? 'drain_noTransaction' : 'drain_failed'),
+        detail: 'saved=${result.savedCount} failed=${result.failedCount}',
+      ));
 
       if (result.success) {
         _container.read(statsRefreshProvider.notifier).state++;
@@ -1253,6 +1263,24 @@ class AutoBillingService {
     return SmsProcessOutcome.noTransaction;
   }
 
+  /// 追加一条自动记账决策到「自动识别记录」环形队列(source 标记来源通道)。
+  /// 截图/通知路径的 AI 段结局经此入环,与无障碍路径共用同一个查看器。
+  Future<void> _logAutoDecision(
+    String source,
+    String decision, {
+    String? pkg,
+    String detail = '',
+  }) async {
+    try {
+      await ScreenTextMonitorService(_container).logAutoDecision(
+        source: source,
+        pkg: pkg,
+        decision: decision,
+        detail: detail,
+      );
+    } catch (_) {}
+  }
+
   /// 核心:处理支付通知文本并自动记账(通知监听)。
   ///
   /// 与 [processSms] 流程一致(native 过滤 → 指纹二次去重 → fromText),
@@ -1339,6 +1367,13 @@ class AutoBillingService {
       }
 
       final outcome = _outcomeForResult(result);
+      // 决策记录(通知来源):AI 段结局,与原生「已捕获入队」拼成完整链路
+      unawaited(_logAutoDecision(
+        AutoDecisionSource.notification,
+        'drain_${outcome.name}',
+        pkg: pkg,
+        detail: 'titleLen=${title.length} len=${body.length}',
+      ));
       if (outcome == SmsProcessOutcome.noTransaction) {
         await _markNotifyProcessed(fingerprint);
         logger.info('AutoBilling', '通知非交易,已丢弃');

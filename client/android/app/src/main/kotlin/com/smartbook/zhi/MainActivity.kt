@@ -390,7 +390,9 @@ class MainActivity: FlutterFragmentActivity() {
                     val pkg = call.argument<String>("pkg") ?: ""
                     val decision = call.argument<String>("decision") ?: ""
                     val detail = call.argument<String>("detail") ?: ""
-                    ScreenTextWatcher.recordDecision(this, pkg, decision, detail)
+                    val source = call.argument<String>("source")
+                        ?: ScreenTextWatcher.DECISION_SOURCE_SCREEN
+                    ScreenTextWatcher.recordDecision(this, pkg, decision, detail, source)
                     result.success(true)
                 }
                 // 获取已安装应用的应用图标 (PNG 字节数组)

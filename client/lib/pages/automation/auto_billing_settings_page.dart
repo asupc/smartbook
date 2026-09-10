@@ -387,6 +387,19 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
         status = await Permission.photos.request();
         print('📸 [AutoBilling] 照片权限请求结果: $status');
 
+        // Android 13/14「仅允许选中的照片」(limited):MediaStore 查询看不到
+        // 未选中的新截图,截图自动记账必须「允许所有照片」——引导去系统设置
+        // 改授权,而不是误以为已开通(2026-09-10 真机定位:onChange 仍通知,
+        // 查询游标为空,检测链路静默失效)。
+        if (status == PermissionStatus.limited) {
+          if (mounted) {
+            showToast(context, l10n.photosPermissionLimitedHint,
+                duration: const Duration(seconds: 4));
+            await openAppSettings();
+          }
+          return;
+        }
+
         // 如果photos被拒绝，尝试storage
         if (!status.isGranted) {
           status = await Permission.storage.request();

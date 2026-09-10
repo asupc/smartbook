@@ -10,13 +10,17 @@
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/accessibility_service_description"
     android:settingsActivity="com.smartbook.zhi.MainActivity"
-    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged"
-    android:accessibilityFeedbackType="feedbackGeneric"
-    android:notificationTimeout="200"
-    android:accessibilityFlags="flagDefault"
-    android:canRetrieveWindowContent="true"
-    android:canPerformGestures="true"
-    android:isAccessibilityTool="true" />
+  android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged"
+  android:accessibilityFeedbackType="feedbackGeneric"
+  android:notificationTimeout="200"
+  android:accessibilityFlags="flagRetrieveInteractiveWindows"
+  android:canRetrieveWindowContent="true"
+  android:canPerformGestures="true"
+  android:isAccessibilityTool="true" />
+<!-- flagRetrieveInteractiveWindows(2026-09-10 vivo+抖音真机定位):抖音 Lynx
+     账单页上 rootInActiveWindow 返回的是无文本的 TYPE_SYSTEM 空窗口(包名空),
+     真正承载账单文本的是另一个应用窗口,只有开此 flag 后 getWindows() 才能按
+     包名枚举到它(ScreenTextWatcher.candidateRoots 多窗口候选探测)。 -->
 <!-- 白名单 packageNames 已移除(2026-09 vivo 秒关排查):李跳跳能通过 vivo 离页
      校验的唯一剩余差异就是它不声明 packageNames(接收全部 App 事件)。声明白名单
      = 自报"我只监听支付/购物 App" = 风控特征。移除后由 Kotlin 侧 TRUSTED_PACKAGES

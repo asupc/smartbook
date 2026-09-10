@@ -260,13 +260,32 @@ class ScreenTextMonitorService {
   }
 
   /// 追加一条 Dart 段(drain/AI)决策记录,与原生判定拼成完整链路。失败静默。
-  Future<void> _logDecision(String decision, String detail, {String? pkg}) async {
+  Future<void> _logDecision(String decision, String detail, {String? pkg}) {
+    return logAutoDecision(
+      source: AutoDecisionSource.screen,
+      pkg: pkg,
+      decision: decision,
+      detail: detail,
+    );
+  }
+
+  /// 追加一条自动记账决策记录(供「自动识别记录」页分类展示)。
+  ///
+  /// [source] 标记来源通道:screen=无障碍详情页,screenshot=截图 OCR,
+  /// notification=通知监听;各自动入口在关键决策点调用,失败静默。
+  Future<void> logAutoDecision({
+    required String source,
+    String? pkg,
+    required String decision,
+    String detail = '',
+  }) async {
     if (!Platform.isAndroid) return;
     try {
       await _channel.invokeMethod('appendDecision', {
         'pkg': pkg ?? 'app',
         'decision': decision,
         'detail': detail,
+        'source': source,
       });
     } catch (_) {}
   }
@@ -302,4 +321,11 @@ class ScreenTextMonitorService {
   void dispose() {
     _autoBillingService.dispose();
   }
+}
+
+/// 自动记账决策来源(「自动识别记录」页分类展示用)。
+abstract final class AutoDecisionSource {
+  static const screen = 'screen'; // 无障碍详情页抓取
+  static const notification = 'notification'; // 通知监听
+  static const screenshot = 'screenshot'; // 截图 OCR
 }
