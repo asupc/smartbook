@@ -33,6 +33,10 @@ interface Props {
   currentMonthSummary: WorkspaceAnalyticsSummary | null
   currentMonthSeries: WorkspaceAnalyticsSeriesItem[]
   currentMonthCategoryRanks: WorkspaceAnalytics['category_ranks']
+  /** 批次5:donut 跟随 heroScope 的三份排行(上月/今年/汇总)。 */
+  lastMonthCategoryRanks?: WorkspaceAnalytics['category_ranks']
+  yearCategoryRanks?: WorkspaceAnalytics['category_ranks']
+  allCategoryRanks?: WorkspaceAnalytics['category_ranks']
   /** 上月(记账周期口径)收支 — hero「上月」视角,拉取失败时为 null。 */
   lastMonthSummary: WorkspaceAnalyticsSummary | null
   lastMonthSeries: WorkspaceAnalyticsSeriesItem[]
@@ -71,6 +75,9 @@ export function OverviewSection({
   currentMonthSummary,
   currentMonthSeries,
   currentMonthCategoryRanks,
+  lastMonthCategoryRanks,
+  yearCategoryRanks,
+  allCategoryRanks,
   lastMonthSummary,
   lastMonthSeries,
   currentYearSummary,
@@ -158,7 +165,20 @@ export function OverviewSection({
       </div>
 
       <div className="grid gap-5 lg:grid-cols-2 items-stretch">
-        <HomeMonthCategoryDonut ranks={currentMonthCategoryRanks} currency={currency} />
+        {/* 批次5:占比环跟随 hero 视角(上月/今年/汇总)——此前切视角只有 hero
+            数字变,下方图表纹丝不动,页内数字口径自相矛盾。 */}
+        <HomeMonthCategoryDonut
+          ranks={
+            heroScope === 'lastMonth'
+              ? (lastMonthCategoryRanks ?? currentMonthCategoryRanks)
+              : heroScope === 'year'
+                ? (yearCategoryRanks ?? currentMonthCategoryRanks)
+                : heroScope === 'all'
+                  ? (allCategoryRanks ?? currentMonthCategoryRanks)
+                  : currentMonthCategoryRanks
+          }
+          currency={currency}
+        />
         <HomeYearHeatmap
           yearSeries={currentYearSeries}
           currency={currency}

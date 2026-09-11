@@ -5,12 +5,19 @@ import { cn } from '../lib/cn'
 
 type ToastVariant = 'default' | 'success' | 'error' | 'warning' | 'info'
 
+export interface ToastAction {
+  label: string
+  onClick: () => void
+}
+
 export interface ToastItem {
   id: string
   title?: string
   description: string
   variant: ToastVariant
   durationMs: number
+  /** 可选内联动作(如删除后「撤销」)。带 action 的 toast 自动延长展示时间。 */
+  action?: ToastAction
 }
 
 interface ToastContextValue {
@@ -20,6 +27,8 @@ interface ToastContextValue {
   error: (description: string, title?: string) => string
   warning: (description: string, title?: string) => string
   info: (description: string, title?: string) => string
+  /** success + 内联动作按钮。durationMs 默认 8s(给用户留点击时间)。 */
+  successWithAction: (description: string, action: ToastAction, title?: string) => string
 }
 
 const ToastContext = createContext<ToastContextValue | null>(null)
@@ -74,6 +83,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     dismiss,
     success: (description, title) =>
       show({ description, title, variant: 'success', durationMs: DEFAULT_DURATION.success }),
+    successWithAction: (description, action, title) =>
+      show({ description, title, variant: 'success', durationMs: 8000, action }),
     error: (description, title) =>
       show({ description, title, variant: 'error', durationMs: DEFAULT_DURATION.error }),
     warning: (description, title) =>
@@ -113,6 +124,18 @@ function ToastView({ item, onDismiss }: { item: ToastItem; onDismiss: () => void
         <div className="min-w-0 flex-1">
           {item.title && <div className="mb-0.5 text-sm font-semibold">{item.title}</div>}
           <div className="break-words text-sm leading-snug">{item.description}</div>
+          {item.action && (
+            <button
+              type="button"
+              onClick={() => {
+                item.action!.onClick()
+                onDismiss()
+              }}
+              className="mt-1.5 rounded border border-current/30 px-2 py-0.5 text-xs font-medium underline-offset-2 transition hover:underline focus:outline-none"
+            >
+              {item.action.label}
+            </button>
+          )}
         </div>
         <button
           type="button"

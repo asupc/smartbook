@@ -67,6 +67,16 @@ export function OverviewPage() {
   const [currentMonthCategoryRanks, setCurrentMonthCategoryRanks] = usePageCache<
     WorkspaceAnalytics['category_ranks']
   >(`overview:${bucket}:monthCategoryRanks`, [])
+  // 批次5:donut 跟随 heroScope —— 上月/今年/汇总三份排行此前拉了没存。
+  const [lastMonthCategoryRanks, setLastMonthCategoryRanks] = usePageCache<
+    WorkspaceAnalytics['category_ranks']
+  >(`overview:${bucket}:lastMonthCategoryRanks`, [])
+  const [allTimeCategoryRanks, setAllTimeCategoryRanks] = usePageCache<
+    WorkspaceAnalytics['category_ranks']
+  >(`overview:${bucket}:allTimeCategoryRanks`, [])
+  const [currentYearCategoryRanks, setCurrentYearCategoryRanks] = usePageCache<
+    WorkspaceAnalytics['category_ranks']
+  >(`overview:${bucket}:yearCategoryRanks`, [])
   // 上月(按账本记账周期口径)收支:hero「上月」视角专用,请求失败静默降级
   const [lastMonthSummary, setLastMonthSummary] = usePageCache<
     WorkspaceAnalytics['summary'] | null
@@ -207,6 +217,7 @@ export function OverviewPage() {
       setAnalyticsData(rYearExpense.value)
       setCurrentYearSummary(rYearExpense.value.summary)
       setCurrentYearSeries(rYearExpense.value.series || [])
+      setCurrentYearCategoryRanks(rYearExpense.value.category_ranks || [])
     }
     if (rYearIncome.status === 'fulfilled') {
       setAnalyticsIncomeRanks(rYearIncome.value.category_ranks || [])
@@ -219,10 +230,12 @@ export function OverviewPage() {
     if (rLastMonth.status === 'fulfilled') {
       setLastMonthSummary(rLastMonth.value.summary)
       setLastMonthSeries(rLastMonth.value.series || [])
+      setLastMonthCategoryRanks(rLastMonth.value.category_ranks || [])
     }
     if (rAll.status === 'fulfilled') {
       setAllTimeSummary(rAll.value.summary)
       setAllTimeSeries(rAll.value.series || [])
+      setAllTimeCategoryRanks(rAll.value.category_ranks || [])
     }
     if (rCounts.status === 'fulfilled') {
       setLedgerCounts(rCounts.value)
@@ -315,6 +328,9 @@ export function OverviewPage() {
       currentMonthSummary={currentMonthSummary}
       currentMonthSeries={currentMonthSeries}
       currentMonthCategoryRanks={currentMonthCategoryRanks}
+      lastMonthCategoryRanks={lastMonthCategoryRanks}
+      yearCategoryRanks={currentYearCategoryRanks}
+      allCategoryRanks={allTimeCategoryRanks}
       lastMonthSummary={lastMonthSummary}
       lastMonthSeries={lastMonthSeries}
       currentYearSummary={currentYearSummary}

@@ -21,7 +21,7 @@ import { bundleToReadResources } from '../../lib/shared-ledger-mappers'
 
 import { CheckSquare, Download, Filter, Plus, RotateCcw, Search } from 'lucide-react'
 
-import { Button, DatePicker, Drawer, Input, Select, Tooltip } from 'antd'
+import { Button, DatePicker, Drawer, Input, Modal, Select, Tooltip } from 'antd'
 import dayjs from 'dayjs'
 
 const { RangePicker } = DatePicker
@@ -36,7 +36,9 @@ import {
   ApiError,
   batchAttachmentExists,
   batchDeleteTransactions,
+  batchMoveTransactions,
   downloadAttachment,
+  restoreTrashTx,
   uploadAttachment,
   type AttachmentRef,
   type ReadAccount,
@@ -93,7 +95,7 @@ type Notice = {
 } | null
 
 type PendingDelete =
-  | { kind: 'tx'; id: string; ledgerId: string }
+  | { kind: 'tx'; id: string; ledgerId: string; summary?: string }
   | { kind: 'account'; id: string }
   | { kind: 'category'; id: string }
   | { kind: 'tag'; id: string }
@@ -137,7 +139,7 @@ type TxFilter = {
   /** 标签显示名(同上,UI 维度)。 */
   tagName: string
   /** 列表排序字段:交易时间(happened_at,默认)/ 记录时间(created_at)。 */
-  sortField: 'happened_at' | 'created_at'
+  sortField: 'happened_at' | 'created_at' | 'amount'
   /** 排序方向,默认 desc(最新在前)。 */
   sortOrder: 'asc' | 'desc'
 }
@@ -191,7 +193,10 @@ function parseStoredTxFilter(raw: string | null): TxFilter | null {
       categoryName: typeof parsed.categoryName === 'string' ? parsed.categoryName : '',
       tagSyncId: typeof parsed.tagSyncId === 'string' ? parsed.tagSyncId : '',
       tagName: typeof parsed.tagName === 'string' ? parsed.tagName : '',
-      sortField: parsed.sortField === 'created_at' ? 'created_at' : 'happened_at',
+      sortField:
+        parsed.sortField === 'created_at' || parsed.sortField === 'amount'
+          ? parsed.sortField
+          : 'happened_at',
       sortOrder: parsed.sortOrder === 'asc' ? 'asc' : 'desc',
     }
   } catch {
@@ -351,6 +356,15 @@ export function TransactionsPage() {
   // 每次 listQuery 改都跟 URL 双向拉扯。
   const [searchParams, setSearchParams] = useSearchParams()
   const [listQuery, setListQueryRaw] = useState(() => searchParams.get('q') || '')
+
+  // 批次5:关键词防抖(300ms)—— listQuery 每字符直接触发刷新 effect 会连发
+  // 4 个并发请求且列表反复重渲;刷新/URL 同步仍用即时值,只有数据查询走
+  // debounced 值。
+  const [debouncedListQuery, setDebouncedListQuery] = useState(listQuery)
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedListQuery(listQuery), 300)
+    return () => clearTimeout(timer)
+  }, [listQuery])
   const setListQuery = useCallback(
     (next: string) => {
       setListQueryRaw(next)
@@ -571,23 +585,30 @@ export function TransactionsPage() {
     [txWriteTags, txFilterApplied.tagName, txFilterApplied.tagSyncId]
   )
 
-  // 日期预设 label 走 i18n(依赖 t,en locale 下不再显示中文)
-  const dateRangePresets = useMemo(
-    () => [
+  // 日期预设 label 走 i18n(依赖 t,en locale 下不再显示中文)。
+  // 批次4:「本月/上月」跟随账本记账日 month_start_day(与首页 Overview /
+  // 账户页 KPI 同口径);此前用日历月,发薪日记账用户两处合计对不上。
+  const dateRangePresets = useMemo(() => {
+    const monthStartDay = Math.min(28, Math.max(1, selectedLedger?.month_start_day || 1))
+    const now = dayjs()
+    const periodStart =
+      now.date() >= monthStartDay
+        ? now.date(monthStartDay).startOf('day')
+        : now.subtract(1, 'month').date(monthStartDay).startOf('day')
+    const periodEnd = periodStart.add(1, 'month').subtract(1, 'millisecond').endOf('day')
+    const prevStart = periodStart.subtract(1, 'month')
+    const prevEnd = prevStart.add(1, 'month').subtract(1, 'millisecond').endOf('day')
+    return [
       { label: t('transactions.filter.preset.today'), value: [dayjs().startOf('day'), dayjs().endOf('day')] as [dayjs.Dayjs, dayjs.Dayjs] },
       { label: t('transactions.filter.preset.thisWeek'), value: [dayjs().startOf('week'), dayjs().endOf('week')] as [dayjs.Dayjs, dayjs.Dayjs] },
-      { label: t('transactions.filter.preset.thisMonth'), value: [dayjs().startOf('month'), dayjs().endOf('month')] as [dayjs.Dayjs, dayjs.Dayjs] },
+      { label: t('transactions.filter.preset.thisMonth'), value: [periodStart, periodEnd] as [dayjs.Dayjs, dayjs.Dayjs] },
       {
         label: t('transactions.filter.preset.lastMonth'),
-        value: [
-          dayjs().subtract(1, 'month').startOf('month'),
-          dayjs().subtract(1, 'month').endOf('month'),
-        ] as [dayjs.Dayjs, dayjs.Dayjs],
+        value: [prevStart, prevEnd] as [dayjs.Dayjs, dayjs.Dayjs],
       },
       { label: t('transactions.filter.preset.thisYear'), value: [dayjs().startOf('year'), dayjs().endOf('year')] as [dayjs.Dayjs, dayjs.Dayjs] },
-    ],
-    [t]
-  )
+    ]
+  }, [t, selectedLedger])
 
   const hasActiveTxFilters = useMemo(() => {
     return Boolean(
@@ -623,7 +644,7 @@ export function TransactionsPage() {
 
   // 表头点击排序:同列反复点击在 升/降 之间切换,换列默认降序(最新在前)。
   const handleTxSortChange = useCallback(
-    (field: 'happened_at' | 'created_at') => {
+    (field: 'happened_at' | 'created_at' | 'amount') => {
       setTxFilterApplied((prev) => ({
         ...prev,
         sortField: field,
@@ -745,7 +766,7 @@ export function TransactionsPage() {
         fetchWorkspaceTransactions(token, {
           ledgerId: ledgerId || undefined,
           userId: txUserId,
-          q: listQuery || undefined,
+          q: debouncedListQuery || undefined,
           txType: txFilterApplied.txType || undefined,
           accountName: txFilterApplied.accountName || undefined,
           categorySyncId: txFilterApplied.categorySyncId || undefined,
@@ -790,7 +811,7 @@ export function TransactionsPage() {
       setAccounts(
         await fetchWorkspaceAccounts(token, {
           userId: userGlobalUserId,
-          q: listQuery || undefined,
+          q: debouncedListQuery || undefined,
           limit: 500
         })
       )
@@ -801,7 +822,7 @@ export function TransactionsPage() {
       setCategories(
         await fetchWorkspaceCategories(token, {
           userId: userGlobalUserId,
-          q: listQuery || undefined,
+          q: debouncedListQuery || undefined,
           limit: 500
         })
       )
@@ -812,7 +833,7 @@ export function TransactionsPage() {
       setTags(
         await fetchWorkspaceTags(token, {
           userId: userGlobalUserId,
-          q: listQuery || undefined,
+          q: debouncedListQuery || undefined,
           limit: 500
         })
       )
@@ -1038,7 +1059,7 @@ export function TransactionsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     listUserFilter,
-    listQuery,
+    debouncedListQuery,
     txFilterApplied,
     route.section,
     isAdminUser,
@@ -1054,6 +1075,7 @@ export function TransactionsPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeLedgerId, listUserFilter, listQuery, txFilterApplied.txType, txFilterApplied.accountName, route.section])
+
 
   useEffect(() => {
     if (route.section !== 'transactions' || !isAdminResolved) return
@@ -1210,10 +1232,13 @@ export function TransactionsPage() {
 
   // 查询条件全部平铺在搜索区,改动即生效(同 keyword 的即时语义)。不再有
   // 独立"应用 / 重置"按钮 —— 每个控件直接写入 applied,paginate 归 1。
+  // 筛选变化同时清空批量选择:dataset 变了再保留 selection 会把当前列表
+  // 里**看不见**的行一并批量删除(资金数据误删风险)。
   const onInlineTxFilterPatch = useCallback(
     (patch: Partial<TxFilter>) => {
       setTxFilterApplied((prev) => ({ ...prev, ...patch }))
       setTxPage(1)
+      setSelectedTxIds(new Set())
     },
     [],
   )
@@ -1401,6 +1426,35 @@ export function TransactionsPage() {
     }
   }
 
+  // 批次5:表单附件上传/移除 —— 复活此前已写好但从未接线的死代码
+  // onUploadTxAttachments,补齐 Web 端「给交易加小票/删错图」能力。
+  const [txAttachmentsUploading, setTxAttachmentsUploading] = useState(false)
+  const onAddTxAttachments = useCallback(
+    (files: File[]) => {
+      void (async () => {
+        setTxAttachmentsUploading(true)
+        try {
+          const refs = await onUploadTxAttachments(files)
+          if (refs.length > 0) {
+            setTxForm((prev) => ({
+              ...prev,
+              attachments: [...prev.attachments, ...refs],
+            }))
+          }
+        } finally {
+          setTxAttachmentsUploading(false)
+        }
+      })()
+    },
+    [onUploadTxAttachments]
+  )
+  const onRemoveTxAttachment = useCallback((index: number) => {
+    setTxForm((prev) => ({
+      ...prev,
+      attachments: prev.attachments.filter((_att, i) => i !== index),
+    }))
+  }, [])
+
   // ensureCategoryIconPreview 已合并到全局 AttachmentCache.ensureLoadedMany 里,
   // 不再每个页面手动维护 inflight 去重。下面这个 noop 只是为了向下兼容
   // 保留旧调用点签名(其中一个 attachment 预览 fallback 还会调到)。
@@ -1426,6 +1480,21 @@ export function TransactionsPage() {
       if (await handleWriteFailure(err, 'overview', activeLedgerId)) return
       setErrorNotice(renderError(err))
     }
+  }
+
+  // 批次5:保存并再记一笔 —— 保存成功后保留表单(分类/账户/类型不动),
+  // 只清金额/备注/时间到当前时刻,焦点回到金额输入。
+  const onSaveTransactionAndNext = async (): Promise<boolean> => {
+    const ok = await onSaveTransaction()
+    if (ok) {
+      setTxForm((prev) => ({
+        ...prev,
+        amount: '',
+        note: '',
+        date: new Date().toISOString(),
+      }))
+    }
+    return ok
   }
 
   const onSaveTransaction = async (): Promise<boolean> => {
@@ -1533,53 +1602,19 @@ export function TransactionsPage() {
         exclude_from_budget: txForm.tx_type === 'expense' ? txForm.exclude_from_budget : false,
         ...currencyFields
       }
-      // eslint-disable-next-line no-console
-      console.info('[tx-save] request', {
-        editingId: txForm.editingId,
-        ledgerId,
-        payload_tags: payload.tags,
-        payload_account_name: payload.account_name,
-        payload_account_id: payload.account_id
-      })
       const res = await retryOnConflict(ledgerId, (base) =>
         txForm.editingId
           ? updateTransaction(token, ledgerId, txForm.editingId, base, payload)
           : createTransaction(token, ledgerId, base, payload)
       )
-      // eslint-disable-next-line no-console
-      console.info('[tx-save] response', {
-        entity_id: res.entity_id,
-        new_change_id: res.new_change_id,
-        server_timestamp: res.server_timestamp
-      })
+      // 批次5:清掉三处 [tx-save] console 与保存后的额外验证请求(诊断残留,
+      // 每次编辑多等一个请求周期 + 控制台泄露 payload)。
       if (activeLedgerId === ledgerId) {
         setBaseChangeId(res.new_change_id)
       }
-      const editingTxId = txForm.editingId
       setTxForm(txDefaults())
       const refreshLedger = activeLedgerId || ledgerId
       await refreshSectionData(refreshLedger, 'transactions')
-      // 再打一次查询看服务端回给我们的具体这条 tx 的 tags/account_name；
-      // 排查"更新没生效"时先看 server 是不是真的返回新值了。
-      if (editingTxId) {
-        try {
-          const verifyPage = await fetchWorkspaceTransactions(token, {
-            ledgerId: refreshLedger || undefined,
-            limit: txPageSize,
-            offset: (txPage - 1) * txPageSize
-          })
-          const hit = verifyPage.items.find((row) => row.id === editingTxId)
-          // eslint-disable-next-line no-console
-          console.info('[tx-save] server returned for updated tx', {
-            id: editingTxId,
-            tags: hit?.tags,
-            tags_list: hit?.tags_list,
-            account_name: hit?.account_name
-          })
-        } catch (_) {
-          // 诊断用，静默失败
-        }
-      }
       setSuccessNotice(txForm.editingId ? t('notice.txUpdated') : t('notice.txCreated'))
       return true
     } catch (err) {
@@ -1766,18 +1801,34 @@ export function TransactionsPage() {
     () => transactions.filter((t) => selectedTxIds.has(t.id)),
     [transactions, selectedTxIds],
   )
+  // 跨页选择金额缓存:selectedTxIds 跨页累积,但 transactions 只含当前页;
+  // 弹窗「合计 ¥X」若只算当前页,与实际删除范围不符(批量删除走全量 ids)。
+  // 每次列表到达时记忆所有行的折本位币金额,翻页/筛选清选择后缓存随选集
+  // 一同失效。
+  const selectedTxAmountByIdRef = useRef<Map<string, number>>(new Map())
+  useEffect(() => {
+    for (const t of transactions) {
+      const amt = Number(t.native_amount ?? t.amount) || 0
+      let signed = 0
+      if (t.tx_type === 'expense') signed = -amt
+      else if (t.tx_type === 'income') signed = amt
+      selectedTxAmountByIdRef.current.set(t.id, signed)
+    }
+    // 选集之外的缓存清掉(防无限增长)
+    for (const id of Array.from(selectedTxAmountByIdRef.current.keys())) {
+      if (!selectedTxIds.has(id)) selectedTxAmountByIdRef.current.delete(id)
+    }
+  }, [transactions, selectedTxIds])
   // 已选合计金额:支出 - 收入(转账中性,不计入展示)。
   // 跨账户合计属账本维度 → 折本位币口径:native_amount ?? amount(多币种账本
   // 裸加原币会错;单币种 native===amount 结果不变)。
   const selectedTotalAmount = useMemo(() => {
     let sum = 0
-    for (const t of selectedTxList) {
-      const amt = Number(t.native_amount ?? t.amount) || 0
-      if (t.tx_type === 'expense') sum -= amt
-      else if (t.tx_type === 'income') sum += amt
+    for (const id of selectedTxIds) {
+      sum += selectedTxAmountByIdRef.current.get(id) ?? 0
     }
     return sum
-  }, [selectedTxList])
+  }, [selectedTxIds, transactions])
 
   const handleBatchExport = useCallback(async () => {
     if (!activeLedgerId) return
@@ -1796,6 +1847,47 @@ export function TransactionsPage() {
       setBatchSaving(false)
     }
   }, [activeLedgerId, selectedTxIds, token, locale, t, toast])
+
+  // 批次5:批量改分类 —— 弹 CategoryTreeSelect 让用户挑目标分类,确认后
+  // 调既有 /write/transactions/batch/move(与 CategoriesPage 的批量迁移同
+  // 端点,200 条/批,超出自动分批)。
+  const [batchMoveOpen, setBatchMoveOpen] = useState(false)
+  const [batchMoveTarget, setBatchMoveTarget] = useState<{ id: string; name: string } | null>(null)
+  const handleBatchMoveConfirm = useCallback(async () => {
+    if (!activeLedgerId || !batchMoveTarget) return
+    if (selectedTxIds.size === 0) return
+    setBatchSaving(true)
+    try {
+      const ids = Array.from(selectedTxIds)
+      let moved = 0
+      let failed = 0
+      for (let i = 0; i < ids.length; i += 200) {
+        const group = ids.slice(i, i + 200)
+        const result = await retryOnConflict(activeLedgerId, (base) =>
+          batchMoveTransactions(token, {
+            ledgerId: activeLedgerId,
+            txIds: group,
+            targetCategoryId: batchMoveTarget.id,
+            baseChangeId: base,
+          })
+        )
+        moved += result.moved_tx_ids.length
+        failed += result.failed.length
+      }
+      if (failed > 0) {
+        toast.error(t('txBatch.moveResult.partial', { moved, failed }) as string)
+      } else {
+        toast.success(t('txBatch.moveResult.ok', { count: moved, target: batchMoveTarget.name }))
+      }
+      setBatchMoveOpen(false)
+      exitSelection()
+      void onRefresh()
+    } catch (err) {
+      toast.error(localizeError(err, t))
+    } finally {
+      setBatchSaving(false)
+    }
+  }, [activeLedgerId, batchMoveTarget, selectedTxIds, token, t, toast, exitSelection])
 
   const handleBatchDeleteConfirm = useCallback(async () => {
     if (!activeLedgerId) return
@@ -1816,7 +1908,31 @@ export function TransactionsPage() {
           }) as string,
         )
       } else {
-        toast.success(t('txBatch.deleteResult.ok', { count: deleted }))
+        // 软删(0030)落地:成功 toast 带「撤销」,一键恢复全部刚删交易
+        // (30 天内也可在回收站页恢复)。
+        const deletedIds = [...result.deleted_tx_ids]
+        toast.successWithAction(
+          t('txBatch.deleteResult.ok', { count: deleted }) as string,
+          {
+            label: t('common.undo'),
+            onClick: () => {
+              void (async () => {
+                let restored = 0
+                for (const id of deletedIds) {
+                  try {
+                    const r = await restoreTrashTx(token, id)
+                    if (r.ok) restored++
+                  } catch {
+                    // 单条恢复失败继续其余;终态可见于回收站页
+                  }
+                }
+                if (restored > 0) toast.success(t('txBatch.undoResult.ok', { count: restored }))
+                else toast.error(t('txBatch.undoResult.failed'))
+                void onRefresh()
+              })()
+            },
+          },
+        )
       }
       setBatchDeleteOpen(false)
       exitSelection()
@@ -1905,13 +2021,15 @@ export function TransactionsPage() {
                   </div>
 
                   <div className="ml-auto flex items-center gap-2 shrink-0">
-                    {/* 「批量选择」入口 — 桌面端独占,小屏完全不渲染。点击进选择
-                        模式,toolbar 出现,行首加 checkbox。设计:.docs/web-tx-batch-actions.md */}
+                    {/* 「批量选择」入口 — 桌面端独占,小屏完全不渲染(与 SelectionToolbar
+                        的 hidden md:flex 同口径;小屏无 Esc 键,进入后 toolbar 不渲染会把
+                        用户锁死在选择模式里,故不放开入口)。设计:.docs/web-tx-batch-actions.md */}
                     {canWriteTx && !selectionMode ? (
                       <Tooltip title={t('txBatch.entryTooltip')}>
                         <Button
                           icon={<CheckSquare className="h-4 w-4" />}
                           aria-label={t('txBatch.entryTooltip') as string}
+                          className="hidden md:inline-flex"
                           onClick={() => enterSelection()}
                         >
                           <span className="hidden sm:inline">{t('txBatch.entryTooltip')}</span>
@@ -2098,6 +2216,7 @@ export function TransactionsPage() {
                   onToggleAllVisible={toggleSelectAllVisible}
                   onDelete={() => setBatchDeleteOpen(true)}
                   onExport={handleBatchExport}
+                  onMoveCategory={() => setBatchMoveOpen(true)}
                   onExit={exitSelection}
                 />
               ) : null}
@@ -2142,6 +2261,10 @@ export function TransactionsPage() {
                 dialogOpen={txDialogOpen}
                 onDialogOpenChange={setTxDialogOpen}
                 onSave={onSaveTransaction}
+                onSaveAndNext={onSaveTransactionAndNext}
+                onAddTxAttachments={onAddTxAttachments}
+                onRemoveTxAttachment={onRemoveTxAttachment}
+                txAttachmentsUploading={txAttachmentsUploading}
                 onReset={() => {
                   setTxForm(txDefaults())
                   if (
@@ -2193,7 +2316,13 @@ export function TransactionsPage() {
                   setPendingDelete({
                     kind: 'tx',
                     id: row.id,
-                    ledgerId: row.ledger_id || txWriteLedgerId || activeLedgerId || ''
+                    ledgerId: row.ledger_id || txWriteLedgerId || activeLedgerId || '',
+                    // 确认框带摘要:连续删多笔时,同文案弹窗容易"肌肉记忆"确认错行
+                    summary: `${row.tx_type === 'income' ? '+' : '-'}${Number(
+                      row.native_amount ?? row.amount
+                    ).toFixed(2)} · ${row.happened_at?.slice(5, 10) ?? ''} · ${
+                      row.category_name || row.note || ''
+                    }`
                   })
                 }
                 onSelect={(row) => {
@@ -2209,6 +2338,32 @@ export function TransactionsPage() {
                 onConfirm={handleBatchDeleteConfirm}
                 onClose={() => setBatchDeleteOpen(false)}
               />
+              <Modal
+                open={batchMoveOpen}
+                title={t('txBatch.moveCategory')}
+                okText={t('common.confirm')}
+                okButtonProps={{ disabled: !batchMoveTarget }}
+                cancelText={t('common.cancel')}
+                onOk={() => void handleBatchMoveConfirm()}
+                onCancel={() => setBatchMoveOpen(false)}
+              >
+                <div className="space-y-3 py-1">
+                  <p className="text-sm text-muted-foreground">
+                    {t('txBatch.moveCategoryDesc', { count: selectedTxIds.size })}
+                  </p>
+                  <CategoryTreeSelect
+                    className="w-full"
+                    categories={txWriteCategories}
+                    value={batchMoveTarget?.id || ''}
+                    kind={txFilterApplied.txType || 'all'}
+                    mode="filter"
+                    placeholder={t('shell.filter.category')}
+                    onChange={(catId, catName) =>
+                      setBatchMoveTarget(catId ? { id: catId, name: catName } : null)
+                    }
+                  />
+                </div>
+              </Modal>
             </div>
           ) : null}
 
@@ -2310,7 +2465,12 @@ export function TransactionsPage() {
       <ConfirmDialog
         open={Boolean(pendingDelete)}
         title={t('dialog.delete.title')}
-        description={t('dialog.delete.description')}
+        description={
+          pendingDelete?.kind === 'tx' && pendingDelete.summary
+            ? `${pendingDelete.summary}
+${t('dialog.delete.description')}`
+            : t('dialog.delete.description')
+        }
         cancelText={t('dialog.cancel')}
         confirmText={t('dialog.delete.confirm')}
         onCancel={() => setPendingDelete(null)}

@@ -39,6 +39,12 @@ let editCategoryHandlerCount = 0
 export type NewTxPrefill = {
   happenedAt?: string
   ledgerId?: string
+  /** 批次5:预填交易类型(信用卡「记还款」用 transfer)。 */
+  txType?: 'expense' | 'income' | 'transfer'
+  /** 批次5:预填转入账户名(还款 = 转到该信用卡)。 */
+  toAccountName?: string
+  /** 批次5:预填金额(还款 = 当前欠款)。 */
+  amount?: number
 }
 
 export function dispatchOpenNewTx(prefill?: NewTxPrefill) {

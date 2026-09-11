@@ -42,6 +42,63 @@ export async function fetchAccountAdjustments(
   )
 }
 
+
+// ── 回收站(0030 软删) ─────────────────────────────────────────────
+
+export type TrashItem = {
+  sync_id: string
+  ledger_id: string
+  ledger_name?: string | null
+  tx_type: string
+  amount: number
+  happened_at: string
+  note?: string | null
+  category_name?: string | null
+  account_name?: string | null
+  deleted_at: string
+  days_left: number
+}
+
+export type TrashListResponse = {
+  items: TrashItem[]
+  total: number
+}
+
+export type TrashActionResponse = {
+  sync_id: string
+  ok: boolean
+  new_change_id?: number | null
+}
+
+export async function fetchTrashList(
+  token: string,
+  options?: { limit?: number; offset?: number }
+): Promise<TrashListResponse> {
+  const params = new URLSearchParams()
+  if (options?.limit) params.set('limit', String(options.limit))
+  if (options?.offset) params.set('offset', String(options.offset))
+  const q = params.toString() ? `?${params.toString()}` : ''
+  return authedGet<TrashListResponse>(`/read/workspace/trash${q}`, token)
+}
+
+export async function restoreTrashTx(token: string, syncId: string): Promise<TrashActionResponse> {
+  const { authedPost } = await import('./http')
+  return authedPost<TrashActionResponse>(
+    `/read/workspace/trash/${encodeURIComponent(syncId)}/restore`,
+    token,
+    {}
+  )
+}
+
+export async function purgeTrashTx(token: string, syncId: string): Promise<TrashActionResponse> {
+  const { authedPost } = await import('./http')
+  return authedPost<TrashActionResponse>(
+    `/read/workspace/trash/${encodeURIComponent(syncId)}/purge`,
+    token,
+    {}
+  )
+}
+
 export async function fetchReadTransactions(
   token: string,
   ledgerId: string,
@@ -157,7 +214,7 @@ export async function fetchWorkspaceTransactions(
     /** happened_at < dateTo (ISO 8601, 独占)。前端通常传"次日 00:00"包含整天。 */
     dateTo?: string
     /** 排序字段:happened_at=交易时间(默认),created_at=记录时间(server 0024 盖章)。 */
-    sortBy?: 'happened_at' | 'created_at'
+    sortBy?: 'happened_at' | 'created_at' | 'amount'
     /** 排序方向,默认 desc(最新在前)。 */
     sortOrder?: 'asc' | 'desc'
     limit?: number

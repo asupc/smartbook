@@ -66,9 +66,9 @@ type TransactionsPanelProps = {
   onPageSizeChange: (pageSize: number) => void
   /** 表头排序:当前排序字段(交易时间 happened_at / 记录时间 created_at)。
    *  与 onSortChange 一起传才启用表头点击排序;不传保持纯静态表头(兼容)。 */
-  sortField?: 'happened_at' | 'created_at'
+  sortField?: 'happened_at' | 'created_at' | 'amount'
   sortOrder?: 'asc' | 'desc'
-  onSortChange?: (field: 'happened_at' | 'created_at') => void
+  onSortChange?: (field: 'happened_at' | 'created_at' | 'amount') => void
   canWrite: boolean
   dictionariesLoading?: boolean
   showCreatorColumn?: boolean
@@ -80,6 +80,13 @@ type TransactionsPanelProps = {
   dialogOpen: boolean
   onDialogOpenChange: (open: boolean) => void
   onSave: () => Promise<boolean> | boolean
+  /** 批次5:保存成功后保留表单继续记下一笔(金额/备注清空,其余字段保留)。 */
+  onSaveAndNext?: () => Promise<boolean> | boolean
+  /** 批次5:表单附件上传(接通现成 onUploadTxAttachments)。 */
+  onAddTxAttachments?: (files: File[]) => void
+  /** 批次5:移除表单附件。 */
+  onRemoveTxAttachment?: (index: number) => void
+  txAttachmentsUploading?: boolean
   onReset: () => void
   onReload: () => void
   onPreviewAttachment: (
@@ -298,6 +305,11 @@ type FormAttachmentThumbProps = {
     startIndex: number
   ) => Promise<void>
   resolveAttachmentPreviewUrl: (ref: AttachmentRef) => Promise<string | null>
+  /** 批次5:添加附件(上传后 append 到 form.attachments)。不传则不显示入口。 */
+  onAddAttachments?: (files: File[]) => void
+  /** 批次5:移除一个附件(从 form.attachments 删除)。 */
+  onRemoveAttachment?: (index: number) => void
+  uploading?: boolean
 }
 
 /**
@@ -309,6 +321,9 @@ function FormAttachmentThumbGrid({
   attachments,
   onPreviewAttachment,
   resolveAttachmentPreviewUrl,
+  onAddAttachments,
+  onRemoveAttachment,
+  uploading = false,
 }: FormAttachmentThumbProps) {
   const t = useT()
   // fileId → blob URL。'' 表示已解析但不可预览(非图片/下载失败),undefined
@@ -334,6 +349,27 @@ function FormAttachmentThumbGrid({
 
   return (
     <div className="grid grid-cols-4 gap-2 sm:grid-cols-5">
+      {onAddAttachments ? (
+        <label
+          className={`relative flex aspect-square cursor-pointer flex-col items-center justify-center gap-1 rounded-md border border-dashed border-border bg-muted/20 text-muted-foreground transition hover:border-primary hover:text-foreground ${uploading ? 'pointer-events-none opacity-60' : ''}`}
+        >
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              const files = Array.from(e.target.files || [])
+              e.target.value = ''
+              if (files.length > 0) onAddAttachments(files)
+            }}
+          />
+          <span className="text-lg leading-none">＋</span>
+          <span className="px-1 text-center text-[10px] leading-tight">
+            {uploading ? t('transactions.attachment.uploading') : t('transactions.attachment.add')}
+          </span>
+        </label>
+      ) : null}
       {attachments.map((att, i) => {
         const url = urlByIndex[i]
         const fileId = att.cloudFileId?.trim() || ''
@@ -348,12 +384,32 @@ function FormAttachmentThumbGrid({
               if (!url) return
               void onPreviewAttachment(attachments, i)
             }}
-            className={`relative aspect-square overflow-hidden rounded-md border border-border/60 bg-muted/40 transition ${
+            className={`group relative aspect-square overflow-hidden rounded-md border border-border/60 bg-muted/40 transition ${
               url
                 ? 'cursor-zoom-in hover:border-primary hover:shadow-md'
                 : 'cursor-default'
             }`}
           >
+            {onRemoveAttachment ? (
+              <span
+                role="button"
+                tabIndex={0}
+                aria-label={t('transactions.attachment.remove')}
+                onClick={(ev) => {
+                  ev.stopPropagation()
+                  onRemoveAttachment(i)
+                }}
+                onKeyDown={(ev) => {
+                  if (ev.key === 'Enter') {
+                    ev.stopPropagation()
+                    onRemoveAttachment(i)
+                  }
+                }}
+                className="absolute right-1 top-1 z-10 hidden h-5 w-5 items-center justify-center rounded-full bg-black/60 text-xs text-white group-hover:flex hover:bg-red-600"
+              >
+                ×
+              </span>
+            ) : null}
             {url ? (
               <img
                 alt={name}
@@ -405,6 +461,10 @@ export function TransactionsPanel({
   dialogOpen,
   onDialogOpenChange,
   onSave,
+  onSaveAndNext,
+  onAddTxAttachments,
+  onRemoveTxAttachment,
+  txAttachmentsUploading,
   onReset,
   onReload,
   onPreviewAttachment,
@@ -541,7 +601,16 @@ export function TransactionsPanel({
                 >
                   {t('transactions.table.time')}
                 </SortableTableHead>
-                <TableHead className="bc-table-head">{t('transactions.table.amount')}</TableHead>
+                {/* 批次5:金额列可排序(按绝对值,server sort_by=amount)——
+                    找最大一笔支出不再翻页目测。 */}
+                <SortableTableHead
+                  active={sortField === 'amount'}
+                  dir={sortOrder}
+                  hint={t('transactions.table.sortHint')}
+                  onClick={onSortChange ? () => onSortChange('amount') : undefined}
+                >
+                  {t('transactions.table.amount')}
+                </SortableTableHead>
                 <TableHead className="bc-table-head">{t('transactions.table.type')}</TableHead>
                 <TableHead className="bc-table-head">{t('transactions.table.category')}</TableHead>
                 <TableHead className="bc-table-head">{t('transactions.table.account')}</TableHead>
@@ -880,6 +949,9 @@ export function TransactionsPanel({
                   attachments={form.attachments}
                   onPreviewAttachment={onPreviewAttachment}
                   resolveAttachmentPreviewUrl={resolveAttachmentPreviewUrl}
+                  onAddAttachments={onAddTxAttachments}
+                  onRemoveAttachment={onRemoveTxAttachment}
+                  uploading={txAttachmentsUploading}
                 />
               </div>
             ) : null}
@@ -944,6 +1016,19 @@ export function TransactionsPanel({
             >
               {t('dialog.cancel')}
             </Button>
+            {!form.editingId && onSaveAndNext ? (
+              <Button
+                variant="outline"
+                disabled={!canWrite || !canSubmit}
+                onClick={async () => {
+                  // 保存成功后不关弹窗,由父层清金额/备注继续记下一笔(固定
+                  // 支出/同店多笔场景少一半点击)。
+                  await onSaveAndNext()
+                }}
+              >
+                {t('transactions.button.saveAndNext')}
+              </Button>
+            ) : null}
             <Button
               disabled={!canWrite || !canSubmit}
               onClick={async () => {

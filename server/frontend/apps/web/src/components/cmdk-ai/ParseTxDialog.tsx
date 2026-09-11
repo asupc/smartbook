@@ -191,9 +191,24 @@ export function ParseTxDialog({
       <div className="flex h-full flex-col">
         {/* 原始输入展示区 */}
         {mode === 'image' && imageUrl && (
-          <details className="border-b border-border/40 px-4 py-2">
-            <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
-              {t('cmdk.parseTx.viewImage')}
+          <details className="group border-b border-border/40 px-4 py-2">
+            <summary className="flex cursor-pointer items-center justify-between text-xs text-muted-foreground hover:text-foreground">
+              <span>{t('cmdk.parseTx.viewImage')}</span>
+              {/* 批次5:image 模式 parsed 后允许重识别 —— LLM 视觉输出有随机性,
+                  同一张图重试常能出更好的结果(text 模式早有此按钮)。 */}
+              {status === 'parsed' ? (
+                <Button
+                  size="small"
+                  className="ml-auto mr-2"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    runParse()
+                  }}
+                  icon={<Send className="h-3 w-3" />}
+                >
+                  {t('cmdk.parseTx.reparse')}
+                </Button>
+              ) : null}
             </summary>
             <div className="mt-2">
               <img

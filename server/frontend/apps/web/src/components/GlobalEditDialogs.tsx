@@ -186,6 +186,13 @@ export function GlobalEditDialogs() {
       setEditTxForm({
         ...defaults,
         happened_at: prefill?.happenedAt || defaults.happened_at,
+        // 批次5:信用卡「记还款」预填(transfer + 目标卡 + 当前欠款额)。
+        tx_type: prefill?.txType || defaults.tx_type,
+        to_account_name: prefill?.toAccountName || defaults.to_account_name,
+        amount:
+          typeof prefill?.amount === 'number'
+            ? String(prefill.amount)
+            : defaults.amount,
       })
       await loadRefsForLedger(ledgerId)
       setEditTxOpen(true)

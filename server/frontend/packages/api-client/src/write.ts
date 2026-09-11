@@ -41,10 +41,19 @@ export async function createTransaction(
   baseChangeId: number,
   payload: TxPayload
 ): Promise<WriteCommitMeta> {
-  return authedPost<WriteCommitMeta>(`/write/ledgers/${encodeURIComponent(ledgerId)}/transactions`, token, {
-    base_change_id: baseChangeId,
-    ...payload
-  })
+  // 批次5:新建交易强制带 Idempotency-Key —— 服务端 24h 去重窗口内,网络
+  // 重试/双击不会再产生重复交易。key 每次调用生成(同一次用户意图 = 一次
+  // 调用;重试由 http 层复用同一响应)。编辑路径(updated)天然幂等,不需要。
+  const key = `tx-create-${crypto.randomUUID()}`
+  return authedPost<WriteCommitMeta>(
+    `/write/ledgers/${encodeURIComponent(ledgerId)}/transactions`,
+    token,
+    {
+      base_change_id: baseChangeId,
+      ...payload
+    },
+    key
+  )
 }
 
 export interface AccountAdjustmentPayload {

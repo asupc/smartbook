@@ -3,13 +3,13 @@ import type {
   WorkspaceTag,
   WorkspaceTransaction
 } from '@smartbook/api-client'
-import { Drawer } from 'antd'
+import { Button, Drawer } from 'antd'
 import { useT } from '@smartbook/ui'
 import { TransactionList } from '@smartbook/web-features'
 import { Banknote, Calendar as CalendarIcon, CreditCard } from 'lucide-react'
 
 import { useAuth } from '../../context/AuthContext'
-import type { DetailScope } from '../../lib/txDialogEvents'
+import { dispatchOpenNewTx, type DetailScope } from '../../lib/txDialogEvents'
 import { DetailScopeToggle } from './DetailScopeToggle'
 
 export type AccountWithStats = ReadAccount & {
@@ -251,7 +251,7 @@ function AccountCardInfo({
         </div>
       ) : null}
 
-      {/* 信用卡:额度 + 账单日 + 还款日 + 倒计时 */}
+      {/* 信用卡:额度 + 账单日 + 还款日 + 倒计时 + 记还款快捷入口 */}
       {isCreditCard ? (
         <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
           {creditLimit !== null && creditLimit !== undefined ? (
@@ -280,6 +280,24 @@ function AccountCardInfo({
               urgent={daysUntilDay(paymentDueDay) <= 3}
             />
           ) : null}
+          {/* 批次5:「记还款」快捷入口 —— 预填 transfer + 目标卡 + 当前欠款额。
+              此前还款只能手动新建转账逐字段选(注释里自认的语义缺口)。 */}
+          <div className="col-span-2 flex items-end sm:col-span-1">
+            <Button
+              size="small"
+              className="w-full"
+              onClick={() => {
+                // 欠款 = -balance(负余额表示欠款);无欠款时仍允许记(预填 0)
+                dispatchOpenNewTx({
+                  txType: 'transfer',
+                  toAccountName: account.name,
+                  amount: Math.max(0, -balance),
+                })
+              }}
+            >
+              {t('detail.account.recordRepayment')}
+            </Button>
+          </div>
         </div>
       ) : null}
     </div>

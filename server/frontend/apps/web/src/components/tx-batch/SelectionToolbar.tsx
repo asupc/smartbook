@@ -1,6 +1,6 @@
 import { Button } from 'antd'
 import { useT } from '@smartbook/ui'
-import { CheckSquare, Download, Trash2, X } from 'lucide-react'
+import { CheckSquare, Download, FolderInput, Trash2, X } from 'lucide-react'
 
 interface Props {
   selectedCount: number
@@ -11,6 +11,8 @@ interface Props {
   onToggleAllVisible: () => void
   onDelete: () => void
   onExport: () => void
+  /** 批次5:批量改分类(server /write/transactions/batch/move 已就绪)。 */
+  onMoveCategory?: () => void
   onExit: () => void
 }
 
@@ -30,6 +32,7 @@ export function SelectionToolbar({
   onToggleAllVisible,
   onDelete,
   onExport,
+  onMoveCategory,
   onExit,
 }: Props) {
   const t = useT()
@@ -61,6 +64,16 @@ export function SelectionToolbar({
         >
           {t('txBatch.exportCsv')}
         </Button>
+        {onMoveCategory ? (
+          <Button
+            size="small"
+            icon={<FolderInput className="h-3.5 w-3.5" />}
+            onClick={onMoveCategory}
+            disabled={noneSelected || saving}
+          >
+            {t('txBatch.moveCategory')}
+          </Button>
+        ) : null}
         <Button
           size="small"
           danger
