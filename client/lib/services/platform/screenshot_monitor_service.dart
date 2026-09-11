@@ -146,13 +146,17 @@ class ScreenshotMonitorService {
       final items = await _channel
               .invokeMethod<List<dynamic>>('peekPendingScreenshots') ??
           const [];
+      if (!_isEnabled || !_isMonitoring) return;
+      // 并行分发:逐张交给 Coordinator(有界并发,同一截图的 key 是内容
+      // hash,天然串行),不再逐张 await。
+      final futures = <Future<void>>[];
       for (final raw in items) {
-        if (!_isEnabled || !_isMonitoring) break;
-        if (raw is Map) {
-          final path = (raw['path'] ?? '').toString();
-          if (path.isNotEmpty) await _handleScreenshot(path);
-        }
+        if (raw is! Map) continue;
+        final path = (raw['path'] ?? '').toString();
+        if (path.isEmpty) continue;
+        futures.add(_handleScreenshot(path));
       }
+      await Future.wait(futures);
     } catch (e, st) {
       // 队列桥接失败不影响监听；下次启动再 drain。
       print('⚠️ [ScreenshotMonitor] 恢复截图队列失败: $e');

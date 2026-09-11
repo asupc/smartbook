@@ -368,4 +368,43 @@ class ScreenTextWatcherTest {
         // 详情页不含列表标题,不受影响
         assertFalse(watcher.isListPage("订单详情\n鲜铺子猕猴桃\n-19.80\n交易成功"))
     }
+
+    @Test
+    fun `微信聊天列表页被账单页强约束拒识`() {
+        // 2026-09-11 真机事故:聊天列表里「微信支付」服务号会话预览
+        // 「已支付¥8.00」同时命中强锚点「已支付」与金额闸(类名黑名单在
+        // 浮窗/面板场景下失守),整页聊天列表被送 AI 记账。
+        val text = "浮窗\n退出浮窗\n微信运动\n昨天\n[应用消息]\n苏家渝\n昨天\n收到\n" +
+            "微信支付\n昨天\n已支付¥8.00\n朋友圈"
+        // 旧内容闸全部放行(这正是泄漏路径)
+        assertFalse(watcher.shouldReject(text))
+        assertTrue(watcher.hasAmount(text))
+        assertTrue(watcher.hasBookableHint(text))
+        // 新强约束:微信页面必须同时含「支付状态」+「支付成功」
+        assertFalse(watcher.isWechatBillPage("com.tencent.mm", text))
+    }
+
+    @Test
+    fun `微信账单详情页通过强约束`() {
+        // 微信支付账单详情的标准字段行:状态区「支付状态 已支付/支付成功」
+        val text = "账单详情\n京东平台商户\n-529.00\n支付状态 支付成功\n" +
+            "支付方式 招商银行信用卡 (1467)\n创建时间 2026-09-05 20:28:42\n" +
+            "总订单编号 3612495000067592"
+        assertTrue(watcher.isWechatBillPage("com.tencent.mm", text))
+        assertTrue(watcher.isWechatBillPage("com.tencent.mm:tools", text))
+        // 其它 App 不受强约束影响
+        assertTrue(watcher.isWechatBillPage("com.eg.android.AlipayGphone", "任意文本"))
+        assertTrue(watcher.isWechatBillPage("com.ss.android.ugc.aweme", "任意文本"))
+    }
+
+    @Test
+    fun `微信朋友圈与小程序页面被强约束拒识`() {
+        assertFalse(watcher.isWechatBillPage("com.tencent.mm", "朋友圈\n好友动态\n广告"))
+        assertFalse(
+            watcher.isWechatBillPage(
+                "com.tencent.mm:appbrand0",
+                "商品详情\n立即购买\n¥ 99.00"
+            )
+        )
+    }
 }

@@ -630,6 +630,8 @@ class AutoBillingService {
           finalId: resultNotificationId,
           title: _successTitle(result, l10n),
           body: _successBody(result, l10n),
+          // 批次5(深链):成功通知点击落首页账单流(刚记的账在顶部)。
+          payload: 'smartbook://open?page=detail',
         );
       }
       logger.info('AutoBilling', '自动记账事件已处理',
@@ -840,9 +842,13 @@ class AutoBillingService {
 
     // 二次去重(预检由队列管理侧调用 isSmsProcessed 先行处理)。
     // skipDedup:仅「模拟短信」调试入口使用 —— 同一模板可反复发送验证链路。
+    // 2026-09-10 收紧降级:真实路径(队列 drain)已全部 skipDedup=true,事件
+    // 幂等由 AutoBookCoordinator 按 eventKey 把关;这里内容指纹命中只说明
+    // 「同正文短信曾处理过」,不再直接丢弃 —— 否则「同店同款两笔真实消费」
+    // 的第二条会在这一层被静默吞掉(native 已按 eventKey 放行,不能在 Dart
+    // 层又按内容否决)。放行后由语义判重(金额相等+时间窗)裁决是否合并。
     if (!skipDedup && _isSmsProcessed(fingerprint)) {
-      logger.debug('AutoBilling', '短信指纹已处理过,跳过', fingerprint);
-      return SmsProcessOutcome.duplicate;
+      logger.debug('AutoBilling', '短信内容指纹曾处理过,降级交语义判重', fingerprint);
     }
 
     const notificationId = 1003;
@@ -1296,9 +1302,10 @@ class AutoBillingService {
   }) async {
     final fingerprint = notifyFingerprint(pkg, title, body);
 
+    // 与 processSms 同口径(2026-09-10):内容指纹命中不再直接丢弃,交语义
+    // 判重裁决;事件幂等由 Coordinator 按 eventKey 把关。
     if (!skipDedup && _isNotifyProcessed(fingerprint)) {
-      logger.debug('AutoBilling', '通知指纹已处理过,跳过', fingerprint);
-      return SmsProcessOutcome.duplicate;
+      logger.debug('AutoBilling', '通知内容指纹曾处理过,降级交语义判重', fingerprint);
     }
 
     const notificationId = 1004;
@@ -1700,8 +1707,11 @@ class AutoBillingService {
       _processedBillFingerprints.contains(fingerprint);
 
   /// 账单级指纹:sha256(渠道|金额|备注|交易日期) 前 16 位。
-  /// 金额用绝对值(收/支同额不同向不误判)、日期用 yyyy-MM-dd(去掉时分秒,
-  /// 避免同一账单在不同时刻进入详情页时日期抖动)。
+  /// 金额用绝对值(收/支同额不同向不误判)、日期到小时 yyyy-MM-ddTHH。
+  /// 2026-09-10 从「按天」收紧到「按小时」:按天粒度会把「同日同店同款的
+  /// 第二笔真实消费」(上午/下午各一杯同款咖啡)静默吞掉。小时粒度与语义
+  /// 判重的 ±1 分钟硬闸门仍宽,残留的重复进入风险由 SemanticDedupMatcher
+  /// 兜底;同一详情页短时间重复进入仍能靠指纹稳定去重。
   static String billFingerprint({
     required String channel,
     required double amount,
@@ -1710,7 +1720,9 @@ class AutoBillingService {
   }) {
     final date = time == null
         ? ''
-        : '${time.year}-${time.month.toString().padLeft(2, '0')}-${time.day.toString().padLeft(2, '0')}';
+        : '${time.year}-${time.month.toString().padLeft(2, '0')}-'
+            '${time.day.toString().padLeft(2, '0')}T'
+            '${time.hour.toString().padLeft(2, '0')}';
     final normalizedNote = (note ?? '').trim();
     return sha256
         .convert(utf8.encode(
@@ -1861,6 +1873,8 @@ class AutoBillingService {
         l10n.autoBillingNotifyPendingBody(
             state.count, state.amount.toStringAsFixed(2)),
         details,
+        // 批次5(深链):待确认通知点击直达待确认页。
+        payload: 'smartbook://open?page=pending',
       );
     } catch (e) {
       logger.warning('AutoBilling', '待确认通知发送失败(不中断记账): $e');
@@ -1870,22 +1884,33 @@ class AutoBillingService {
   /// 强判重合并轻通知(P1-1):强语义(≥0.92)合并曾完全静默,真实消费被吞
   /// 用户毫无感知。正文只含目标交易日期/金额/笔数(不含商户名,与 §6 隐私
   /// 口径一致);撤销入口在自动记账历史详情页。
+  /// 账单级指纹命中(duplicateBills,无关联交易 ID)同样走这里 —— 该路径
+  /// 曾完全不发通知,「同日第二笔同款」被吞时用户零感知(2026-09-10 补)。
   Future<void> _notifyMergedCandidates(BookkeepingResult result) async {
     final ids = result.duplicateTransactionIds;
-    if (result.duplicateCount <= 0 || ids.isEmpty) return;
+    final hasAny = result.duplicateCount > 0 && (ids.isNotEmpty || result.duplicateBills.isNotEmpty);
+    if (!hasAny) return;
     String dateLabel = '';
     String amountLabel = '';
-    try {
-      final tx = await _container
-          .read(repositoryProvider)
-          .getTransactionById(ids.first);
-      if (tx != null) {
-        dateLabel = '${tx.happenedAt.month}/${tx.happenedAt.day}';
-        amountLabel = tx.amount.abs().toStringAsFixed(2);
+    if (ids.isNotEmpty) {
+      try {
+        final tx = await _container
+            .read(repositoryProvider)
+            .getTransactionById(ids.first);
+        if (tx != null) {
+          dateLabel = '${tx.happenedAt.month}/${tx.happenedAt.day}';
+          amountLabel = tx.amount.abs().toStringAsFixed(2);
+        }
+      } catch (e) {
+        logger.debug('AutoBilling', '查询判重目标交易失败,跳过合并通知', '$e');
+        return;
       }
-    } catch (e) {
-      logger.debug('AutoBilling', '查询判重目标交易失败,跳过合并通知', '$e');
-      return;
+    } else {
+      final bill = result.duplicateBills.first;
+      final time = bill.time;
+      if (time == null || bill.amount == null) return;
+      dateLabel = '${time.month}/${time.day}';
+      amountLabel = bill.amount!.abs().toStringAsFixed(2);
     }
     if (dateLabel.isEmpty) return;
 
@@ -1908,6 +1933,8 @@ class AutoBillingService {
         l10n.autoBillingNotifyMergeBody(
             result.duplicateCount, dateLabel, amountLabel),
         details,
+        // 批次5(深链):合并通知点击直达自动记账历史页(撤销合并入口)。
+        payload: 'smartbook://open?page=auto_history',
       );
     } catch (e) {
       logger.warning('AutoBilling', '合并通知发送失败(不中断记账): $e');
@@ -1924,6 +1951,7 @@ class AutoBillingService {
     required int id,
     required String title,
     required String body,
+    String? payload,
   }) async {
     const androidDetails = AndroidNotificationDetails(
       'screenshot_ocr',
@@ -1941,7 +1969,7 @@ class AutoBillingService {
     );
 
     try {
-      await _notificationsPlugin.show(id, title, body, details);
+      await _notificationsPlugin.show(id, title, body, details, payload: payload);
     } catch (e) {
       logger.warning('AutoBilling', '通知发送失败(未授权通知时属预期,不中断记账流程): $e');
     }
@@ -1963,8 +1991,9 @@ class AutoBillingService {
     required int finalId,
     required String title,
     required String body,
+    String? payload,
   }) async {
-    await _showNotification(id: finalId, title: title, body: body);
+    await _showNotification(id: finalId, title: title, body: body, payload: payload);
   }
 
   /// 释放资源(AI 服务无 native handle,不需要 dispose,保留方法以备后续添加)

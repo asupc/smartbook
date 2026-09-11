@@ -1,4 +1,5 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'notification_tap_router.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'notification_util.dart' as util;
 
@@ -23,7 +24,10 @@ class IOSNotificationUtil implements util.NotificationUtil {
 
     const initSettings = InitializationSettings(iOS: iosSettings);
 
-    await _plugin.initialize(initSettings);
+    await _plugin.initialize(
+      initSettings,
+      onDidReceiveNotificationResponse: NotificationTapRouter.onTap,
+    );
 
     _initialized = true;
 

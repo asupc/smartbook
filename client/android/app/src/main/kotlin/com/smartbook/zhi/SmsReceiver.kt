@@ -55,6 +55,10 @@ class SmsReceiver : BroadcastReceiver() {
             log("内容命中垃圾/非交易特征,丢弃")
             return
         }
+        if (isMarketingSms(body)) {
+            log("内容命中营销特征且无已结算交易词,丢弃")
+            return
+        }
         if (isPureBalanceReminder(body)) {
             log("纯余额/结余提醒(有余额词但无收支动作),丢弃")
             return
@@ -98,16 +102,26 @@ class SmsReceiver : BroadcastReceiver() {
         return TRUSTED_SENDER_KEYWORDS.any { s.contains(it) }
     }
 
-    /** 垃圾短信:验证码/安全校验类、营销推广类,命中即拒。 */
+    /** 垃圾短信:验证码/安全校验类命中即拒(银行也会用这些文案,与金额无关)。 */
     fun shouldReject(body: String): Boolean {
-        return REJECT_KEYWORDS.any { body.contains(it) } ||
-            MARKETING_KEYWORDS.any { body.contains(it) }
+        return REJECT_KEYWORDS.any { body.contains(it) }
     }
 
     /** 至少一个"交易证据":金额模式,或收支动作词。 */
     fun hasAmountOrAction(body: String): Boolean {
         return AMOUNT_PATTERN.containsMatchIn(body) ||
             ACTION_KEYWORDS.any { body.contains(it) }
+    }
+
+    /**
+     * 营销页拒识(与 ScreenTextWatcher.isMarketingPage 同规则,2026-09-10
+     * 回移):营销词命中 **且** 无已结算交易词时才拒。真实消费/账单详情短信
+     * 常把「立减/满减/优惠券」作为抵扣行内嵌,营销词一票否决会把真实交易
+     * 静默丢弃(屏幕看护路 2026-09-06 真机漏记根因,同根因补齐到短信路)。
+     */
+    fun isMarketingSms(body: String): Boolean {
+        return MARKETING_KEYWORDS.any { body.contains(it) } &&
+            !SETTLED_KEYWORDS.any { body.contains(it) }
     }
 
     /** 纯余额/结余提醒:出现余额类关键词但无任何收支动作词,按文档剔除。 */
@@ -303,12 +317,20 @@ class SmsReceiver : BroadcastReceiver() {
             "网页链接", "点击链接", "查看链接"
         )
 
-        /** 营销推广类:命中即拒。 */
+        /** 营销推广类:配合 [isMarketingSms] 使用(命中且无已结算词才拒)。 */
         private val MARKETING_KEYWORDS = listOf(
             "退订", "回复TD", "优惠券", "满减", "秒杀", "邀请码", "购物节",
             "双11", "双十一", "618", "促销", "特惠", "会员日", "立减",
             "抽奖", "问卷", "红包雨", "有奖", "限时", "领券", "福利",
             "直降", "特价", "折扣"
+        )
+
+        /** 已结算交易词:与 [MARKETING_KEYWORDS] 组合判定(营销词命中但含
+         *  已结算词的真实消费放行,交给 AI 精判)。 */
+        private val SETTLED_KEYWORDS = listOf(
+            "支付成功", "付款成功", "交易成功", "已支付", "已付款", "支付完成",
+            "扣款成功", "消费成功", "退款成功", "收款到账", "交易完成",
+            "消费", "支出", "扣款", "扣费", "支付", "付款", "退款", "入账", "到账"
         )
 
         /** 余额/结余类关键词:配合动作词判定"纯余额提醒"。 */
@@ -324,12 +346,17 @@ class SmsReceiver : BroadcastReceiver() {
             "利息", "存现", "存入", "取现", "取款", "汇兑", "购汇", "费"
         )
 
-        /** 明确的账单/订单非结算状态，不能直接生成消费。 */
+        /** 明确的账单/订单非结算状态，不能直接生成消费。
+         *  2026-09-10 收窄:「可用额度」从本表移除 —— 信用卡消费短信正文尾部
+         *  常带「可用额度 xxxx 元」尾注,一票否决把真实消费静默丢弃;纯额度
+         *  提醒(无收支动作词)由 [isPureBalanceReminder] 正确覆盖。
+         *  「还款日」同理仅保留强汇总写法(「还款日前」「最低还款」),
+         *  单独「还款日」多是已还款通知的一部分。 */
         private val NON_BOOKABLE_KEYWORDS = listOf(
             "本期账单", "账单已出", "账单出账", "最低还款", "还款日前",
-            "还款日", "待付款", "待支付", "待确认", "订单确认",
+            "待付款", "待支付", "待确认", "订单确认",
             "交易关闭", "支付失败", "交易失败", "支付未成功", "订单已关闭",
-            "可用额度", "积分余额", "积分到账"
+            "积分余额", "积分到账"
         )
 
         /** 金额证据:带 ¥/￥ 符号,或数字紧邻 元/块。 */

@@ -146,8 +146,11 @@ class ScreenTextMonitorService {
     try {
       final items =
           await _channel.invokeMethod<List<dynamic>>('peekPending') ?? const [];
+      if (!_isEnabled) return; // 用户中途关闭:整条队列留在 native
+      // 并行分发:逐条交给 Coordinator(有界并发,同 eventKey 串行),每条完成
+      // 即 ACK,不再逐条 await —— 一批积压页面文本的识别墙钟时间 ≈ 1/并发数。
+      final futures = <Future<void>>[];
       for (final raw in items) {
-        if (!_isEnabled) break;
         if (raw is! Map) continue;
         final pkg = (raw['package'] ?? '').toString();
         final text = (raw['text'] ?? '').toString();
@@ -157,65 +160,96 @@ class ScreenTextMonitorService {
         final eventKey = nativeEventKey.isNotEmpty
             ? 'screen:v3:$nativeEventKey'
             : 'screen:v2:$fingerprint:${timestamp ?? 0}';
-
-        final alreadyWarned = _noAiNotified.contains(eventKey);
-        final execution = await _coordinator.execute(
-          input: AutoBookInput(
-            eventKey: eventKey,
-            source: AutoBookSource.screenText,
-            captureIntent: AutoBookCaptureIntent.automatic,
-            capturedAt: DateTime.now(),
-            sourceOccurredAt: timestamp == null
-                ? null
-                : DateTime.fromMillisecondsSinceEpoch(timestamp),
-            contentHash: fingerprint,
-            sourceChannel: SourceChannelResolver.channelForPackage(pkg),
-            rawText: text,
-            rawActor: pkg,
-            rawMetadata: {
-              'fingerprint': fingerprint,
-              if (nativeEventKey.isNotEmpty) 'nativeEventKey': nativeEventKey,
-              if (timestamp != null) 'timestamp': timestamp,
-            },
-          ),
-          action: () => _autoBillingService.processScreenText(
-            pkg,
-            text,
-            // 成功入账始终通知;「AI 未配置」引导按指纹只提示一次
-            showNotification: true,
-            notifyAiUnconfigured: !alreadyWarned,
-            // 内容指纹去重(持久化,跨会话):Coordinator 按 eventKey 幂等,而
-            // eventKey 含捕获时间戳每次进入都变,兜不住同内容重复入账。这里
-            // 不再跳过 screenTextFingerprint 去重,与原生端指纹拦队形成双保险。
-            skipDedup: false,
-            eventKey: eventKey,
-          ),
-          // M1-3:与短信/通知共用一份走向映射。
-          updateFor: (outcome) => outcome.eventUpdate,
-        );
-
-        if (execution.skipped) {
-          await _logDecision(
-            'drain_skipped',
-            'pkg=$pkg state=${execution.state.value}',
-            pkg: pkg,
-          );
-          if (execution.terminal) await _ack(fingerprint, eventKey);
-          continue;
-        }
-
-        final outcome = execution.value;
-        if (outcome == null) continue;
-        await _logDecision('drain_${outcome.name}', 'pkg=$pkg', pkg: pkg);
-        if (outcome == SmsProcessOutcome.noAiConfigured) {
-          _noAiNotified.add(eventKey);
-        }
-        if (outcome.canAckNativeQueue) {
-          await _ack(fingerprint, eventKey);
-        }
+        futures.add(_processOne(
+          pkg: pkg,
+          text: text,
+          fingerprint: fingerprint,
+          eventKey: eventKey,
+          timestamp: timestamp,
+        ));
       }
+      await Future.wait(futures);
     } catch (_) {
       // 队列读取/通道异常不抛;未 ack 的项下次 drain 通过指纹预检补 ack
+    }
+  }
+
+  /// 单条页面文本的识别 + ACK(与 drain 并行分发配套;异常自吞,原样保留队列)。
+  Future<void> _processOne({
+    required String pkg,
+    required String text,
+    required String fingerprint,
+    required String eventKey,
+    int? timestamp,
+  }) async {
+    // 微信账单页强约束(与 native isWechatBillPage 同口径):旧版本已入队的
+    // 微信聊天列表文本(会话预览「已支付¥8.00」命中强锚点)在 drain 时也
+    // 要拦下,直接 ACK 丢弃,不再送 AI —— 既省一次识别,也杜绝复发。
+    if (pkg.contains('com.tencent.mm') &&
+        !(text.contains('支付状态') && text.contains('支付成功'))) {
+      await _logDecision(
+        'wechat_not_bill_page',
+        'pkg=$pkg len=${text.length}(缺少 支付状态+支付成功 双特征)',
+        pkg: pkg,
+      );
+      await _ack(fingerprint, eventKey);
+      return;
+    }
+    final alreadyWarned = _noAiNotified.contains(eventKey);
+    final execution = await _coordinator.execute(
+      input: AutoBookInput(
+        eventKey: eventKey,
+        source: AutoBookSource.screenText,
+        captureIntent: AutoBookCaptureIntent.automatic,
+        capturedAt: DateTime.now(),
+        sourceOccurredAt: timestamp == null
+            ? null
+            : DateTime.fromMillisecondsSinceEpoch(timestamp),
+        contentHash: fingerprint,
+        sourceChannel: SourceChannelResolver.channelForPackage(pkg),
+        rawText: text,
+        rawActor: pkg,
+        rawMetadata: {
+          'fingerprint': fingerprint,
+          if (eventKey.startsWith('screen:v3:'))
+            'nativeEventKey': eventKey.substring('screen:v3:'.length),
+          if (timestamp != null) 'timestamp': timestamp,
+        },
+      ),
+      action: () => _autoBillingService.processScreenText(
+        pkg,
+        text,
+        // 成功入账始终通知;「AI 未配置」引导按指纹只提示一次
+        showNotification: true,
+        notifyAiUnconfigured: !alreadyWarned,
+        // 内容指纹去重(持久化,跨会话):Coordinator 按 eventKey 幂等,而
+        // eventKey 含捕获时间戳每次进入都变,兜不住同内容重复入账。这里
+        // 不再跳过 screenTextFingerprint 去重,与原生端指纹拦队形成双保险。
+        skipDedup: false,
+        eventKey: eventKey,
+      ),
+      // M1-3:与短信/通知共用一份走向映射。
+      updateFor: (outcome) => outcome.eventUpdate,
+    );
+
+    if (execution.skipped) {
+      await _logDecision(
+        'drain_skipped',
+        'pkg=$pkg state=${execution.state.value}',
+        pkg: pkg,
+      );
+      if (execution.terminal) await _ack(fingerprint, eventKey);
+      return;
+    }
+
+    final outcome = execution.value;
+    if (outcome == null) return;
+    await _logDecision('drain_${outcome.name}', 'pkg=$pkg', pkg: pkg);
+    if (outcome == SmsProcessOutcome.noAiConfigured) {
+      _noAiNotified.add(eventKey);
+    }
+    if (outcome.canAckNativeQueue) {
+      await _ack(fingerprint, eventKey);
     }
   }
 

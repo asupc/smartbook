@@ -62,6 +62,10 @@ class NotificationWatcher : NotificationListenerService() {
                 log("内容命中垃圾特征,丢弃")
                 return
             }
+            if (isMarketingNotification(text)) {
+                log("内容命中营销特征且无已结算交易词,丢弃")
+                return
+            }
             if (isPureBalanceReminder(text)) {
                 log("纯余额/结余提醒,丢弃")
                 return
@@ -125,17 +129,27 @@ class NotificationWatcher : NotificationListenerService() {
     // 过滤规则(与 SmsReceiver 同策略,可单测)
     // ------------------------------------------------------------
 
+    /** 垃圾通知:验证码/安全校验类命中即拒(与金额无关)。 */
     fun shouldReject(text: String): Boolean {
-        return REJECT_KEYWORDS.any { text.contains(it) } ||
-            MARKETING_KEYWORDS.any { text.contains(it) }
+        return REJECT_KEYWORDS.any { text.contains(it) }
     }
 
-    /** 金额与收支动作词须**同时命中**(缺一视为非交易)。
-     *  通知文本噪声多,只有动作词(如"请及时支付")或只有金额都不足以确定
+    /** 通知文本噪声多,只有动作词(如"请及时支付")或只有金额都不足以确定
      *  是支付通知,两者都要有才能交给 AI 做精细判定。 */
     fun hasAmountAndAction(text: String): Boolean {
         return AMOUNT_PATTERN.containsMatchIn(text) &&
             ACTION_KEYWORDS.any { text.contains(it) }
+    }
+
+    /**
+     * 营销通知拒识(与 ScreenTextWatcher.isMarketingPage 同规则,2026-09-10
+     * 回移):营销词命中 **且** 无已结算交易词时才拒。真实支付通知常把
+     * 「立减/满减/优惠券」作为抵扣行内嵌,营销词一票否决会把真实交易
+     * 静默丢弃(屏幕看护路 2026-09-06 真机漏记根因,同根因补齐到通知路)。
+     */
+    fun isMarketingNotification(text: String): Boolean {
+        return MARKETING_KEYWORDS.any { text.contains(it) } &&
+            !SETTLED_KEYWORDS.any { text.contains(it) }
     }
 
     fun isPureBalanceReminder(text: String): Boolean {
@@ -143,7 +157,9 @@ class NotificationWatcher : NotificationListenerService() {
             !ACTION_KEYWORDS.any { text.contains(it) }
     }
 
-    /** 明确不是已完成交易的状态，避免通知侧把订单/账单提醒送入 AI。 */
+    /** 明确不是已完成交易的状态，避免通知侧把订单/账单提醒送入 AI。
+     *  2026-09-10 收窄:「可用额度」移除(信用卡消费通知标配尾注,纯额度
+     *  提醒由 [isPureBalanceReminder] 覆盖);「还款日」仅保留强汇总写法。 */
     fun isNonBookableStatus(text: String): Boolean {
         return NON_BOOKABLE_KEYWORDS.any { text.contains(it) }
     }
@@ -333,6 +349,14 @@ class NotificationWatcher : NotificationListenerService() {
             "直降", "特价", "折扣"
         )
 
+        /** 已结算交易词:与 [MARKETING_KEYWORDS] 组合判定(营销词命中但含
+         *  已结算词的真实消费放行,交给 AI 精判)。 */
+        private val SETTLED_KEYWORDS = listOf(
+            "支付成功", "付款成功", "交易成功", "已支付", "已付款", "支付完成",
+            "扣款成功", "消费成功", "退款成功", "收款到账", "交易完成",
+            "消费", "支出", "扣款", "扣费", "支付", "付款", "退款", "入账", "到账"
+        )
+
         private val BALANCE_TRIGGER = listOf(
             "余额", "结余", "可用金额", "可用额度", "当前余额", "账户余额"
         )
@@ -346,9 +370,9 @@ class NotificationWatcher : NotificationListenerService() {
 
         private val NON_BOOKABLE_KEYWORDS = listOf(
             "本期账单", "账单已出", "账单出账", "最低还款", "还款日前",
-            "还款日", "待付款", "待支付", "待确认", "订单确认",
+            "待付款", "待支付", "待确认", "订单确认",
             "交易关闭", "支付失败", "交易失败", "支付未成功", "订单已关闭",
-            "可用额度", "积分余额", "积分到账"
+            "积分余额", "积分到账"
         )
 
         private val AMOUNT_PATTERN = Regex("[¥￥]\\s*\\d|\\d[\\d,]*(\\.[\\d]{1,2})?\\s*元|\\d[\\d,]*(\\.[\\d]{1,2})?\\s*块|人民币\\s*\\d")

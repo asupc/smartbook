@@ -141,8 +141,11 @@ class SmsMonitorService {
       final items =
           await _channel.invokeMethod<List<dynamic>>('peekPendingSms') ??
               const [];
+      if (!_isEnabled) return; // 用户中途关闭:整条队列留在 native
+      // 并行分发:逐条交给 Coordinator(有界并发,同 eventKey 串行),每条完成
+      // 即 ACK,不再逐条 await —— 一批积压短信的识别墙钟时间 ≈ 1/并发数。
+      final futures = <Future<void>>[];
       for (final raw in items) {
-        if (!_isEnabled) break; // 用户中途关闭:剩余项留在队列
         if (raw is! Map) continue;
         final sender = (raw['sender'] ?? '').toString();
         final body = (raw['body'] ?? '').toString();
@@ -153,66 +156,84 @@ class SmsMonitorService {
             ? 'sms:v3:$nativeEventKey'
             : 'sms:v2:$fingerprint:${timestamp ?? 0}';
         if (body.isEmpty) {
-          await _ack(fingerprint, eventKey);
+          futures.add(_ack(fingerprint, eventKey));
           continue;
         }
-
-        // AI 未配置的提示每事件只弹一次(会话内)
-        final alreadyWarned = _noAiNotified.contains(eventKey);
-        final execution = await _coordinator.execute(
-          input: AutoBookInput(
-            // v2 把 native 时间带入 key，避免同一模板在不同日期被误当成
-            // 同一条短信；同一条广播重放仍保持相同 key。
-            eventKey: eventKey,
-            source: AutoBookSource.sms,
-            captureIntent: AutoBookCaptureIntent.automatic,
-            capturedAt: DateTime.now(),
-            sourceOccurredAt: timestamp == null
-                ? null
-                : DateTime.fromMillisecondsSinceEpoch(timestamp),
-            contentHash: fingerprint,
-            sourceChannel: SourceChannelResolver.channelForSmsSender(sender),
-            rawText: body,
-            rawActor: sender,
-            rawMetadata: {
-              'fingerprint': fingerprint,
-              if (nativeEventKey.isNotEmpty) 'nativeEventKey': nativeEventKey,
-              if (timestamp != null) 'timestamp': timestamp,
-            },
-          ),
-          action: () => _autoBillingService.processSms(
-            sender,
-            body,
-            showNotification: !alreadyWarned,
-            // Coordinator 已接管事件级幂等；避免旧的内存 cache 把 retry
-            // 误判成已处理。
-            skipDedup: true,
-            eventKey: eventKey,
-          ),
-          // M1-3:走向 → 事件状态的映射收敛到 SmsProcessOutcomeEvent,四路
-          // 监听共用一份,新增走向不会漏分支。
-          updateFor: (outcome) => outcome.eventUpdate,
-        );
-
-        if (execution.skipped) {
-          // terminal 事件只需补 ACK；retry/processing 尚未到终态时保留队列。
-          if (execution.terminal) await _ack(fingerprint, eventKey);
-          continue;
-        }
-
-        final outcome = execution.value;
-        if (outcome == null) continue;
-        if (outcome == SmsProcessOutcome.noAiConfigured) {
-          _noAiNotified.add(eventKey);
-        }
-        // 只有终态才出队:可重试失败与「AI 未配置」必须留着原始短信。
-        if (outcome.canAckNativeQueue) {
-          await _ack(fingerprint, eventKey);
-        }
+        futures.add(_processOne(
+          sender: sender,
+          body: body,
+          fingerprint: fingerprint,
+          eventKey: eventKey,
+          timestamp: timestamp,
+        ));
       }
+      await Future.wait(futures);
     } catch (e) {
       // 队列读取/通道异常不抛:不影响主流程。
       // 已处理项未 ack 会在下次 drain 通过指纹预检补 ack。
+    }
+  }
+
+  /// 单条短信的识别 + ACK(与 drain 并行分发配套;异常自吞,原样保留队列)。
+  Future<void> _processOne({
+    required String sender,
+    required String body,
+    required String fingerprint,
+    required String eventKey,
+    int? timestamp,
+  }) async {
+    // AI 未配置的提示每事件只弹一次(会话内)
+    final alreadyWarned = _noAiNotified.contains(eventKey);
+    final execution = await _coordinator.execute(
+      input: AutoBookInput(
+        // v2 把 native 时间带入 key，避免同一模板在不同日期被误当成
+        // 同一条短信；同一条广播重放仍保持相同 key。
+        eventKey: eventKey,
+        source: AutoBookSource.sms,
+        captureIntent: AutoBookCaptureIntent.automatic,
+        capturedAt: DateTime.now(),
+        sourceOccurredAt: timestamp == null
+            ? null
+            : DateTime.fromMillisecondsSinceEpoch(timestamp),
+        contentHash: fingerprint,
+        sourceChannel: SourceChannelResolver.channelForSmsSender(sender),
+        rawText: body,
+        rawActor: sender,
+        rawMetadata: {
+          'fingerprint': fingerprint,
+          if (eventKey.startsWith('sms:v3:'))
+            'nativeEventKey': eventKey.substring('sms:v3:'.length),
+          if (timestamp != null) 'timestamp': timestamp,
+        },
+      ),
+      action: () => _autoBillingService.processSms(
+        sender,
+        body,
+        showNotification: !alreadyWarned,
+        // Coordinator 已接管事件级幂等；避免旧的内存 cache 把 retry
+        // 误判成已处理。
+        skipDedup: true,
+        eventKey: eventKey,
+      ),
+      // M1-3:走向 → 事件状态的映射收敛到 SmsProcessOutcomeEvent,四路
+      // 监听共用一份,新增走向不会漏分支。
+      updateFor: (outcome) => outcome.eventUpdate,
+    );
+
+    if (execution.skipped) {
+      // terminal 事件只需补 ACK；retry/processing 尚未到终态时保留队列。
+      if (execution.terminal) await _ack(fingerprint, eventKey);
+      return;
+    }
+
+    final outcome = execution.value;
+    if (outcome == null) return;
+    if (outcome == SmsProcessOutcome.noAiConfigured) {
+      _noAiNotified.add(eventKey);
+    }
+    // 只有终态才出队:可重试失败与「AI 未配置」必须留着原始短信。
+    if (outcome.canAckNativeQueue) {
+      await _ack(fingerprint, eventKey);
     }
   }
 

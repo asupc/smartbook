@@ -1,4 +1,5 @@
 import 'package:flutter/services.dart';
+import 'notification_tap_router.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'notification_util.dart' as util;
@@ -18,7 +19,12 @@ class AndroidNotificationUtil implements util.NotificationUtil {
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
     const initSettings = InitializationSettings(android: androidSettings);
 
-    await _plugin.initialize(initSettings);
+    // 批次5(通知深链):点击回调(payload=目标页路由标识)。冷启动点击由
+    // getNotificationAppLaunchDetails 补发;处理器由 app 层注册。
+    await _plugin.initialize(
+      initSettings,
+      onDidReceiveNotificationResponse: NotificationTapRouter.onTap,
+    );
 
     // 权限请求不再混在 initialize() 里(PERF-P0-02):requestNotificationsPermission
     // 在 Android 13+ 未授权时会弹系统对话框并 await 到用户点完,放在 runApp 之前

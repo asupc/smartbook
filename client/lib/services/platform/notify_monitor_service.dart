@@ -134,8 +134,11 @@ class NotifyMonitorService {
     try {
       final items =
           await _channel.invokeMethod<List<dynamic>>('peekPending') ?? const [];
+      if (!_isEnabled) return; // 用户中途关闭:整条队列留在 native
+      // 并行分发:逐条交给 Coordinator(有界并发,同 eventKey 串行),每条完成
+      // 即 ACK,不再逐条 await —— 一批积压通知的识别墙钟时间 ≈ 1/并发数。
+      final futures = <Future<void>>[];
       for (final raw in items) {
-        if (!_isEnabled) break;
         if (raw is! Map) continue;
         final pkg = (raw['package'] ?? '').toString();
         final title = (raw['title'] ?? '').toString();
@@ -144,63 +147,83 @@ class NotifyMonitorService {
         final notificationKey = (raw['notificationKey'] ?? '').toString();
         final notificationId =
             int.tryParse((raw['notificationId'] ?? '').toString());
-
-        final alreadyWarned = _noAiNotified.contains(fingerprint);
         final timestamp = int.tryParse((raw['timestamp'] ?? '').toString());
-        // native fingerprint 已包含 StatusBarNotification key/id/postTime；
-        // 旧队列没有这些字段时仍能通过 content fingerprint 兼容。
-        final eventKey = 'notification:v3:$fingerprint';
-        final execution = await _coordinator.execute(
-          input: AutoBookInput(
-            eventKey: eventKey,
-            source: AutoBookSource.notification,
-            captureIntent: AutoBookCaptureIntent.automatic,
-            capturedAt: DateTime.now(),
-            sourceOccurredAt: timestamp == null
-                ? null
-                : DateTime.fromMillisecondsSinceEpoch(timestamp),
-            contentHash: fingerprint,
-            sourceChannel: SourceChannelResolver.channelForPackage(pkg),
-            rawTitle: title,
-            rawText: body,
-            rawActor: pkg,
-            rawMetadata: {
-              'fingerprint': fingerprint,
-              if (notificationKey.isNotEmpty)
-                'notificationKey': notificationKey,
-              if (notificationId != null) 'notificationId': notificationId,
-              if (timestamp != null) 'timestamp': timestamp,
-            },
-          ),
-          action: () => _autoBillingService.processNotification(
-            pkg,
-            title,
-            body,
-            showNotification: !alreadyWarned,
-            // 事件幂等由 Coordinator 负责，避免旧内存 cache 影响 retry。
-            skipDedup: true,
-            eventKey: eventKey,
-          ),
-          // M1-3:与短信/详情页共用一份走向映射。
-          updateFor: (outcome) => outcome.eventUpdate,
-        );
-
-        if (execution.skipped) {
-          if (execution.terminal) await _ack(fingerprint);
-          continue;
-        }
-
-        final outcome = execution.value;
-        if (outcome == null) continue;
-        if (outcome == SmsProcessOutcome.noAiConfigured) {
-          _noAiNotified.add(fingerprint);
-        }
-        if (outcome.canAckNativeQueue) {
-          await _ack(fingerprint);
-        }
+        futures.add(_processOne(
+          pkg: pkg,
+          title: title,
+          body: body,
+          fingerprint: fingerprint,
+          notificationKey: notificationKey,
+          notificationId: notificationId,
+          timestamp: timestamp,
+        ));
       }
+      await Future.wait(futures);
     } catch (_) {
       // 队列读取/通道异常不抛;未 ack 的项下次 drain 通过指纹预检补 ack
+    }
+  }
+
+  /// 单条通知的识别 + ACK(与 drain 并行分发配套;异常自吞,原样保留队列)。
+  Future<void> _processOne({
+    required String pkg,
+    required String title,
+    required String body,
+    required String fingerprint,
+    required String notificationKey,
+    int? notificationId,
+    int? timestamp,
+  }) async {
+    final alreadyWarned = _noAiNotified.contains(fingerprint);
+    // native fingerprint 已包含 StatusBarNotification key/id/postTime；
+    // 旧队列没有这些字段时仍能通过 content fingerprint 兼容。
+    final eventKey = 'notification:v3:$fingerprint';
+    final execution = await _coordinator.execute(
+      input: AutoBookInput(
+        eventKey: eventKey,
+        source: AutoBookSource.notification,
+        captureIntent: AutoBookCaptureIntent.automatic,
+        capturedAt: DateTime.now(),
+        sourceOccurredAt: timestamp == null
+            ? null
+            : DateTime.fromMillisecondsSinceEpoch(timestamp),
+        contentHash: fingerprint,
+        sourceChannel: SourceChannelResolver.channelForPackage(pkg),
+        rawTitle: title,
+        rawText: body,
+        rawActor: pkg,
+        rawMetadata: {
+          'fingerprint': fingerprint,
+          if (notificationKey.isNotEmpty) 'notificationKey': notificationKey,
+          if (notificationId != null) 'notificationId': notificationId,
+          if (timestamp != null) 'timestamp': timestamp,
+        },
+      ),
+      action: () => _autoBillingService.processNotification(
+        pkg,
+        title,
+        body,
+        showNotification: !alreadyWarned,
+        // 事件幂等由 Coordinator 负责，避免旧内存 cache 影响 retry。
+        skipDedup: true,
+        eventKey: eventKey,
+      ),
+      // M1-3:与短信/详情页共用一份走向映射。
+      updateFor: (outcome) => outcome.eventUpdate,
+    );
+
+    if (execution.skipped) {
+      if (execution.terminal) await _ack(fingerprint);
+      return;
+    }
+
+    final outcome = execution.value;
+    if (outcome == null) return;
+    if (outcome == SmsProcessOutcome.noAiConfigured) {
+      _noAiNotified.add(fingerprint);
+    }
+    if (outcome.canAckNativeQueue) {
+      await _ack(fingerprint);
     }
   }
 

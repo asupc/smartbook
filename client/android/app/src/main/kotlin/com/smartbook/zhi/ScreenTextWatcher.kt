@@ -243,6 +243,15 @@ open class ScreenTextWatcher : AccessibilityService() {
                 return
             }
 
+            // 微信账单页强约束:高频 IM 的页面文本默认不是账单,必须同时含
+            // 「支付状态」+「支付成功」(账单详情状态字段行)才继续。放在
+            // 各内容闸之后、入队之前 —— 聊天列表/朋友圈/小程序等页面全部挡下。
+            if (!isWechatBillPage(pkg, text)) {
+                log("微信页面缺少账单详情双特征(支付状态+支付成功),丢弃: $pkg len=$logLen")
+                recordDecision(this, pkg, "wechat_not_bill_page", "cls=$lastPageClass")
+                return
+            }
+
             val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             val fingerprint = fingerprint(pkg, text)
             val timestamp = System.currentTimeMillis()
@@ -395,6 +404,20 @@ open class ScreenTextWatcher : AccessibilityService() {
             (pageClass.contains("LauncherUI") || pageClass.contains("ChatUI"))
         ) return true
         return false
+    }
+
+    /**
+     * 微信账单页强约束(2026-09-11 真机事故):微信是高频 IM,无障碍抓全页
+     * 文本的场景几乎全是聊天列表/会话页 —— 列表里「微信支付」服务号会话
+     * 预览「已支付¥8.00」同时命中强锚点「已支付」与金额闸,整页聊天列表被
+     * 送进 AI 记账(类名黑名单依赖 lastPageClass,浮窗/面板场景下失守)。
+     * 因此微信页面只在「确认是账单详情页」时才放行:文本同时含
+     * 「支付状态」与「支付成功」(微信账单详情的状态字段行)。
+     * 其余 App 不受影响(内容启发式照旧)。
+     */
+    fun isWechatBillPage(pkg: String, text: String): Boolean {
+        if (!pkg.contains("com.tencent.mm")) return true
+        return text.contains("支付状态") && text.contains("支付成功")
     }
 
     /**
