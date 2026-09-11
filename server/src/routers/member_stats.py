@@ -113,6 +113,8 @@ def get_member_stats(
         ReadTxProjection.tx_type.in_(("income", "expense")),  # 跳过 transfer
         ReadTxProjection.created_by_user_id.is_not(None),
         ReadTxProjection.exclude_from_stats == sa_false(),
+        # 0030:回收站中的交易不计成员统计。
+        ReadTxProjection.deleted_at.is_(None),
     )
     if start_at is not None:
         q = q.where(ReadTxProjection.happened_at >= start_at)

@@ -194,7 +194,10 @@ async def create_tx_batch(
                     },
                 )
 
-        snapshot = snapshot_builder.build(db, ledger)
+        # F2:create 不需要既有 items —— 新行就是唯一变更(mutator 只 append)。
+        # 跳过全量 tx SELECT(10 万 tx 账本上每笔批量创建都要付全表扫描),
+        # 其余小表(accounts/categories/tags/budgets)仍构建。
+        snapshot = snapshot_builder.build(db, ledger, include_items=False)
         prev_snapshot = {**snapshot}
         for _k in ("items", "accounts", "categories", "tags", "budgets"):
             arr = snapshot.get(_k)

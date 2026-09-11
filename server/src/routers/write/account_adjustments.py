@@ -8,8 +8,8 @@ POST for /ledgers/{ledger_id}/account-adjustments。「调整余额」不再
 sync_applier 侧的 delete dispatch 保留作防御(旧客户端 push delete 不炸),
 web 写路径没有删除通道。
 
-Create 走 _commit_write(mutator diff)而非 tx 的 fast path —— accountAdjustments[]
-在 snapshot 里是新数组,首次接入需要 _emit_entity_diffs 按实体 diff 发 change。
+Create 走小实体快路径(F1,_commit_write_fast_entity)—— accountAdjustments[]
+是独立实体数组,不涉及 items,无需全量 snapshot。
 """
 from __future__ import annotations
 
@@ -54,7 +54,7 @@ async def create_account_adjustment(
     if replay:
         return replay
     mutate_payload = _payload_with_actor(payload, current_user, ledger=ledger)
-    return await _commit_write(
+    return await _commit_write_fast_entity(
         request=request,
         db=db,
         current_user=current_user,
@@ -64,5 +64,7 @@ async def create_account_adjustment(
         idempotency_key=idempotency_key,
         device_id=device_id,
         audit_action="web_account_adjustment_create",
+        entity_type="account_adjustment",
+        entity_sync_id=None,
         mutate=lambda snapshot: _mutate_create_adjustment(snapshot, mutate_payload),
     )

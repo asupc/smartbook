@@ -10,6 +10,12 @@ import statistics as _stats
 
 from pydantic import BaseModel
 from sqlalchemy import false as sa_false
+from sqlalchemy import case as sa_case
+from sqlalchemy import cast as sa_cast
+from sqlalchemy import extract as sa_extract
+from sqlalchemy import func as sa_func
+from sqlalchemy import Integer as sa_Integer
+from sqlalchemy import text as sa_text
 
 from ._shared import *  # noqa: F401,F403 — imports + helpers + router
 from ...models import ExchangeRateCache, UserExchangeRateProjection
@@ -44,7 +50,7 @@ def list_workspace_transactions(
     amount_max: float | None = Query(default=None, description="金额上限(含)"),
     date_from: datetime | None = Query(default=None, description="happened_at >= date_from"),
     date_to: datetime | None = Query(default=None, description="happened_at < date_to(独占,前端传当天 23:59:59 即可包含整天)"),
-    sort_by: str = Query(default="happened_at", pattern="^(happened_at|created_at)$", description="排序字段:happened_at=交易时间(默认),created_at=记录时间"),
+    sort_by: str = Query(default="happened_at", pattern="^(happened_at|created_at|amount)$", description="排序字段:happened_at=交易时间(默认),created_at=记录时间,amount=金额绝对值(批次5:找最大一笔支出不用翻页目测)"),
     sort_order: str = Query(default="desc", pattern="^(asc|desc)$", description="排序方向,默认倒序(最新在前)"),
     limit: int = Query(default=20, ge=1, le=2000),
     offset: int = Query(default=0, ge=0),
@@ -74,7 +80,11 @@ def list_workspace_transactions(
     owner_map = _owner_map_for_ledgers(db, ledgers)
 
     # 组装 projection query:filter + sort + paginate 全交给 SQL + index
-    query = select(ReadTxProjection).where(ReadTxProjection.ledger_id.in_(ledger_internal_ids))
+    query = select(ReadTxProjection).where(
+        ReadTxProjection.ledger_id.in_(ledger_internal_ids),
+        # 0030:回收站中的交易不出现在任何读路径。
+        ReadTxProjection.deleted_at.is_(None),
+    )
     if tx_type:
         query = query.where(ReadTxProjection.tx_type == tx_type)
     if account_name:
@@ -134,6 +144,9 @@ def list_workspace_transactions(
     # happened_at,避免 PG DESC 默认 NULLS FIRST 把老数据顶到最前。
     if sort_by == "created_at":
         sort_key = func.coalesce(ReadTxProjection.created_at, ReadTxProjection.happened_at)
+    elif sort_by == "amount":
+        # 批次5:按金额绝对值排序(expense 正/income 负的符号存储不影响大小)
+        sort_key = func.abs(ReadTxProjection.amount)
     else:
         sort_key = ReadTxProjection.happened_at
     order_expr = sort_key.asc() if sort_order == "asc" else sort_key.desc()
@@ -376,7 +389,11 @@ def export_workspace_transactions_csv(
     )
 
     if ledger_internal_ids:
-        query = query.where(ReadTxProjection.ledger_id.in_(ledger_internal_ids))
+        query = query.where(
+            ReadTxProjection.ledger_id.in_(ledger_internal_ids),
+            # 0030:回收站中的交易不导出。
+            ReadTxProjection.deleted_at.is_(None),
+        )
     else:
         query = query.where(false_literal())
 
@@ -589,6 +606,7 @@ def list_workspace_accounts(
                 else_=0.0)), 0.0).label("expense"),
         ).where(
             ReadTxProjection.ledger_id.in_(ledger_internal_ids),
+            ReadTxProjection.deleted_at.is_(None),
             ReadTxProjection.account_sync_id.is_not(None),
             ReadTxProjection.tx_type.in_(["income", "expense"]),
         ).group_by(ReadTxProjection.account_sync_id)
@@ -602,6 +620,7 @@ def list_workspace_accounts(
             func.coalesce(func.sum(ReadTxProjection.amount), 0.0).label("amt"),
         ).where(
             ReadTxProjection.ledger_id.in_(ledger_internal_ids),
+            ReadTxProjection.deleted_at.is_(None),
             ReadTxProjection.tx_type == "transfer",
             ReadTxProjection.from_account_sync_id.is_not(None),
         ).group_by(ReadTxProjection.from_account_sync_id)
@@ -613,6 +632,7 @@ def list_workspace_accounts(
             func.coalesce(func.sum(ReadTxProjection.amount), 0.0).label("amt"),
         ).where(
             ReadTxProjection.ledger_id.in_(ledger_internal_ids),
+            ReadTxProjection.deleted_at.is_(None),
             ReadTxProjection.tx_type == "transfer",
             ReadTxProjection.to_account_sync_id.is_not(None),
         ).group_by(ReadTxProjection.to_account_sync_id)
@@ -773,6 +793,7 @@ def list_workspace_categories(
             )
             .where(
                 ReadTxProjection.ledger_id.in_(ledger_internal_ids),
+                ReadTxProjection.deleted_at.is_(None),
                 ReadTxProjection.category_sync_id.is_not(None),
             )
             .group_by(ReadTxProjection.category_sync_id)
@@ -891,6 +912,9 @@ def list_workspace_tags(
     # 账本维度口径:折本位币(native ?? amount)+ 排除「不计收支」标记笔,
     # 与 analytics / _projection_totals / App getTagStats 一致(审查发现:
     # 此前此处两个口径都缺,多币种/标记场景下标签合计与分析页对不上)。
+    # F7:两个标签列都 NULL 的行(大多数)在 SQL 侧直接排除 —— 此前全表拉回
+    # 后逐行 json.loads,10 万行只有小部分带标签;过滤后 Python 侧只处理
+    # 真正可能匹配的行。
     tx_rows = db.execute(
         select(
             ReadTxProjection.tx_type,
@@ -899,7 +923,12 @@ def list_workspace_tags(
             ReadTxProjection.tags_csv,
         ).where(
             ReadTxProjection.ledger_id.in_(ledger_internal_ids),
+            ReadTxProjection.deleted_at.is_(None),
             ReadTxProjection.exclude_from_stats == sa_false(),
+            or_(
+                ReadTxProjection.tag_sync_ids_json.isnot(None),
+                ReadTxProjection.tags_csv.isnot(None),
+            ),
         )
     ).all()
     for tx_type_val, amount, tag_ids_json, tags_csv in tx_rows:
@@ -965,20 +994,36 @@ def workspace_ledger_counts(
         select(
             func.count(),
             func.min(ReadTxProjection.happened_at),
-        ).where(ReadTxProjection.ledger_id.in_(ledger_internal_ids))
+        ).where(
+            ReadTxProjection.ledger_id.in_(ledger_internal_ids),
+            ReadTxProjection.deleted_at.is_(None),
+        )
     ).one()
     tx_count = int(row[0] or 0)
     first_at = _to_utc(row[1]) if row[1] else None
 
-    # distinct days:需要扫 happened_at 列一次(投不出 SQL 抽象,直接 Python)
-    day_set: set[str] = set()
+    # distinct days(F5):按 UTC 日期串 GROUP BY 计数,不再把全部 happened_at
+    # 拉回 Python 建 set。此端点无 tz 参数,口径 = UTC 日期(与改造前的
+    # _to_utc(ts).strftime 一致)。
+    distinct_days = 0
     if tx_count > 0:
-        for (ts,) in db.execute(
-            select(ReadTxProjection.happened_at)
-            .where(ReadTxProjection.ledger_id.in_(ledger_internal_ids))
-        ).all():
-            if ts:
-                day_set.add(_to_utc(ts).strftime("%Y-%m-%d"))
+        bind = db.get_bind()
+        if bind.dialect.name == "sqlite":
+            day_expr = func.strftime("%Y-%m-%d", ReadTxProjection.happened_at)
+        else:
+            day_expr = sa_func.to_char(ReadTxProjection.happened_at, "YYYY-MM-DD")
+        day_count_row = db.execute(
+            select(func.count()).select_from(
+                select(day_expr.label("d"))
+                .where(
+                    ReadTxProjection.ledger_id.in_(ledger_internal_ids),
+                    ReadTxProjection.deleted_at.is_(None),
+                )
+                .group_by(day_expr)
+                .subquery()
+            )
+        ).scalar()
+        distinct_days = int(day_count_row or 0)
 
     days_since_first_tx = 0
     if first_at is not None:
@@ -990,7 +1035,7 @@ def workspace_ledger_counts(
     return WorkspaceLedgerCountsOut(
         tx_count=tx_count,
         days_since_first_tx=days_since_first_tx,
-        distinct_days=len(day_set),
+        distinct_days=distinct_days,
         first_tx_at=first_at,
     )
 
@@ -1029,6 +1074,8 @@ def workspace_analytics(
     transaction_count = 0
     income_total = 0.0
     expense_total = 0.0
+    # 批次4:多币种折算不完整标记(无账本时恒 False)
+    analytics_missing_rate = False
     series_map: dict[str, dict[str, float]] = {}
     category_map: dict[str, dict[str, float]] = {}
     # bucket → category → expense 总额。仅 scope=year anomaly 归因用,其它 scope
@@ -1039,62 +1086,160 @@ def workspace_analytics(
     last_tx_at: datetime | None = None
 
     if ledger_internal_ids:
-        tx_query = select(
-            ReadTxProjection.tx_type,
-            # 账本维度折本位币口径(0018):native_amount ?? amount。
-            func.coalesce(ReadTxProjection.native_amount, ReadTxProjection.amount),
-            ReadTxProjection.happened_at,
-            ReadTxProjection.category_name,
-        ).where(
+        _native = func.coalesce(ReadTxProjection.native_amount, ReadTxProjection.amount)
+        base_filters = [
             ReadTxProjection.ledger_id.in_(ledger_internal_ids),
+            ReadTxProjection.deleted_at.is_(None),
             # exclude_from_stats=True 的交易不计入收支统计(D1);该端点所有
             # 数字(income/expense 汇总、series、分类排行、anomaly)都源自这一
             # 查询,故在此一处过滤即覆盖全部收支口径。余额/净值口径在
             # workspace_net_worth_history 端点,不受此过滤影响。
             ReadTxProjection.exclude_from_stats == sa_false(),
-        )
+        ]
         if start_at is not None:
-            tx_query = tx_query.where(ReadTxProjection.happened_at >= start_at)
+            base_filters.append(ReadTxProjection.happened_at >= start_at)
         if end_at is not None:
-            tx_query = tx_query.where(ReadTxProjection.happened_at < end_at)
+            base_filters.append(ReadTxProjection.happened_at < end_at)
 
-        # 用本地时区折算的日期算"记账天数",跟 _bucket_key 同步;否则东半球用户在
-        # 本地 0-8 点记的笔会被算到前一天的 distinct_days,跟日历视图不一致。
-        from datetime import timedelta as _td
+        # F4:聚合下推 SQL。原先把范围内全部行拉回 Python 逐行累加(scope=all
+        # = 全表),10 万行 ≈ 0.5-1.5s/次;现在一条 GROUP BY(tx_type × bucket ×
+        # category)+ 一条 MIN/MAX/首末聚合,Python 只消费 ≤ 12×分类数 行。
+        # bucket 表达式与 _bucket_key 同口径:本地时区平移(tz_offset_minutes)
+        # 后取 YYYY-MM;month_start_day>1 时 day<start_day 归上月 —— 用
+        # day_of_shifted_month < start_day 的 CASE 递减月份表达。transfer 不进
+        # 收支,SQL 侧直接排除(与老循环 continue 一致)。
+        _shift_minutes = int(tz_offset_minutes)
+        _start_day = _clamp_month_start_day(month_start_day) if scope != "month" else 1
+        # SQLite/PG 通吃的位移表达:happened_at + interval 'N minutes'。
+        # SQLite 用 modify 语法 '±N minutes' modifier;PG 用 make_interval。
+        bind = db.get_bind()
+        is_sqlite = bind.dialect.name == "sqlite"
+        if is_sqlite:
+            _shifted = func.datetime(
+                ReadTxProjection.happened_at, f"{_shift_minutes:+d} minutes",
+            )
+        else:
+            _shifted = ReadTxProjection.happened_at + sa_text(
+                f"make_interval(mins => {_shift_minutes})"
+            )
 
-        for tx_type_val, amount, happened_at_raw, cat_name in db.execute(tx_query).all():
-            if happened_at_raw is None:
-                continue
-            happened_at = _to_utc(happened_at_raw)
-            amt = float(amount or 0.0)
-            transaction_count += 1
-            local_for_day = happened_at + _td(minutes=tz_offset_minutes)
-            distinct_days_set.add(local_for_day.strftime("%Y-%m-%d"))
-            if first_tx_at is None or happened_at < first_tx_at:
-                first_tx_at = happened_at
-            if last_tx_at is None or happened_at > last_tx_at:
-                last_tx_at = happened_at
-            bucket = _bucket_key(scope, happened_at, tz_offset_minutes, month_start_day)
-            slot = series_map.setdefault(bucket, {"expense": 0.0, "income": 0.0})
-            if tx_type_val == "income":
-                income_total += amt
-                slot["income"] += amt
-            elif tx_type_val == "expense":
-                expense_total += amt
-                slot["expense"] += amt
+        # bucket 列:month scope → 日期串;year/all → 年月(带 month_start_day
+        # 周期归月)。PG 与 SQLite 方言差异大,统一先取"平移后的 (year, month,
+        # day)"三个整数列再在 Python 拼桶 —— GROUP BY 键少(月×分类)且行数
+        # 小,拼装成本可忽略;这比在 SQL 里嵌 CASE-of-EXTRACT 简单且两方言一致。
+        if is_sqlite:
+            _year_e = func.cast(func.strftime("%Y", _shifted), sa_Integer)
+            _month_e = func.cast(func.strftime("%m", _shifted), sa_Integer)
+            _day_e = func.cast(func.strftime("%d", _shifted), sa_Integer)
+            _ymd_e = func.strftime("%Y-%m-%d", _shifted)
+        else:
+            _year_e = sa_extract("year", _shifted)
+            _month_e = sa_extract("month", _shifted)
+            _day_e = sa_extract("day", _shifted)
+            _ymd_e = sa_func.to_char(_shifted, "YYYY-MM-DD")
+
+        if scope == "month":
+            group_cols = [ReadTxProjection.tx_type, _ymd_e, ReadTxProjection.category_name]
+        else:
+            group_cols = [
+                ReadTxProjection.tx_type,
+                sa_case(( _day_e < _start_day, _month_e - 1 ), else_=_month_e).label("adj_month"),
+                _month_e,
+                _year_e,
+                ReadTxProjection.category_name,
+            ]
+
+        # 批次4:ledger_id 进 GROUP BY —— 多账本多币种时按账本币种折算
+        # (见下方行循环),不再把各账本本位币裸加。
+        group_cols.append(ReadTxProjection.ledger_id)
+        rows = db.execute(
+            select(
+                ReadTxProjection.tx_type,
+                func.sum(_native),
+                func.count(),
+                *group_cols[1:],
+            ).where(
+                *base_filters,
+                ReadTxProjection.tx_type.in_(("income", "expense")),
+            ).group_by(*group_cols)
+        ).all()
+
+        # 各账本币种 → 主币种汇率(与 net-worth-history 同 helper/同口径)。
+        ledger_currency_of = {l.id: (l.currency or "CNY").upper() for l in ledgers}
+        all_currencies = set(ledger_currency_of.values())
+        _base = _user_base_currency(db, current_user.id, all_currencies)
+        _rates = _rates_to_base_for_user(db, current_user.id, _base)
+        multi_currency = len(all_currencies) > 1
+        # 缺汇率的账本:折算率为 None → 标记 incomplete,前端提示设主币种/补
+        # 汇率(与净值 needsBase 引导同一交互),绝不按 1.0 裸加。
+        _ledger_rate: dict[str, float | None] = {
+            lid: _rates.get(cur)
+            for lid, cur in ledger_currency_of.items()
+        }
+        analytics_missing_rate = multi_currency and any(
+            r is None for r in _ledger_rate.values()
+        )
+
+        for row in rows:
+            if scope == "month":
+                tx_type_val, total, cnt, ymd, cat_name, row_ledger = row
+                bucket = str(ymd or "")
             else:
-                continue
+                (
+                    tx_type_val, total, cnt, adj_month, month_v, year_v,
+                    cat_name, row_ledger,
+                ) = row
+                m = int(month_v or 0)
+                if int(adj_month or m) == m - 1 and m - 1 < 1:
+                    bucket = f"{int(year_v or 0) - 1}-12"
+                elif int(adj_month or m) == m - 1:
+                    bucket = f"{int(year_v or 0):04d}-{m - 1:02d}"
+                else:
+                    bucket = f"{int(year_v or 0):04d}-{m:02d}"
+            total = float(total or 0.0)
+            if multi_currency:
+                rate = _ledger_rate.get(row_ledger)
+                if rate is not None:
+                    total *= rate
+                # rate is None:该账本币种缺汇率,行被跳过折算但仍在计数里;
+                # analytics_missing_rate=True 让前端提示补汇率。
             category = (cat_name or "").strip() or "Uncategorized"
+            slot = series_map.setdefault(bucket, {"expense": 0.0, "income": 0.0})
             category_slot = category_map.setdefault(
                 category, {"income": 0.0, "expense": 0.0, "count": 0.0})
-            category_slot["count"] += 1.0
+            category_slot["count"] += float(cnt or 0)
             if tx_type_val == "income":
-                category_slot["income"] += amt
-            elif tx_type_val == "expense":
-                category_slot["expense"] += amt
-                # 同步累加 per-bucket category → anomaly 归因输入
+                income_total += total
+                slot["income"] += total
+                category_slot["income"] += total
+            else:
+                expense_total += total
+                slot["expense"] += total
+                category_slot["expense"] += total
                 bucket_cat = category_by_bucket.setdefault(bucket, {})
-                bucket_cat[category] = bucket_cat.get(category, 0.0) + amt
+                bucket_cat[category] = bucket_cat.get(category, 0.0) + total
+
+        # 汇总行:count/distinct days/首末时间一条 SQL(仍需 distinct_days 的
+        # 本地日期口径,用 GROUP BY 平移后的日期串数行数)。
+        if is_sqlite:
+            _day_str = func.strftime("%Y-%m-%d", _shifted)
+        else:
+            _day_str = sa_func.to_char(_shifted, "YYYY-MM-DD")
+        summary_row = db.execute(
+            select(
+                func.count(),
+                func.min(ReadTxProjection.happened_at),
+                func.max(ReadTxProjection.happened_at),
+                _day_str,
+            ).where(*base_filters).group_by(_day_str)
+        ).all()
+        if summary_row:
+            transaction_count = sum(int(r[0] or 0) for r in summary_row)
+            mins = [r[1] for r in summary_row if r[1]]
+            maxs = [r[2] for r in summary_row if r[2]]
+            first_tx_at = _to_utc(min(mins)) if mins else None
+            last_tx_at = _to_utc(max(maxs)) if maxs else None
+            distinct_days_set = {str(r[3]) for r in summary_row}
 
     series = [
         WorkspaceAnalyticsSeriesItemOut(
@@ -1140,6 +1285,7 @@ def workspace_analytics(
         series=series,
         category_ranks=category_ranks,
         anomaly_months=anomaly_months,
+        multi_currency_incomplete=analytics_missing_rate,
         range=WorkspaceAnalyticsRangeOut(
             scope=scope,
             metric=metric,
@@ -1251,6 +1397,65 @@ def _compute_anomaly_months(
     return out
 
 
+
+def _rates_to_base_for_user(
+    db: Session, user_id: str, base: str
+) -> dict[str, float]:
+    """各币种 → base 的汇率表(批次4 抽取,analytics 与净值共用)。
+
+    base 自身 1.0;自动缓存 payload 是「1 base = x quote」取倒数;手动
+    override「1 quote = rate base」覆盖自动。缺汇率的币种不进表,由调用方
+    决定剔除或标记。base 为空返回空表。
+    """
+    if not base:
+        return {}
+    rates: dict[str, float] = {base: 1.0}
+    cache_payload = db.execute(
+        select(ExchangeRateCache.payload_json).where(
+            ExchangeRateCache.base_currency == base
+        )
+    ).scalar()
+    if isinstance(cache_payload, dict):
+        for q, x in cache_payload.items():
+            try:
+                xf = float(x)
+            except (TypeError, ValueError):
+                continue
+            if xf > 0:
+                rates[q.upper()] = 1.0 / xf
+    for ov in db.execute(
+        select(
+            UserExchangeRateProjection.quote_currency,
+            UserExchangeRateProjection.rate,
+        ).where(
+            UserExchangeRateProjection.user_id == user_id,
+            UserExchangeRateProjection.base_currency == base,
+        )
+    ).all():
+        try:
+            r = float(ov.rate)
+        except (TypeError, ValueError):
+            continue
+        if r > 0:
+            rates[ov.quote_currency.upper()] = r
+    return rates
+
+
+def _user_base_currency(db: Session, user_id: str, fallback_single: set[str]) -> str:
+    """主币种:用户设置 > 唯一币种回退 > 空(多币种未设 → 前端引导)。"""
+    base = (
+        db.execute(
+            select(UserProfile.primary_currency).where(
+                UserProfile.user_id == user_id
+            )
+        ).scalar()
+        or ""
+    ).upper()
+    if not base and len(fallback_single) == 1:
+        base = next(iter(fallback_single))
+    return base
+
+
 # ---------------------------------------------------------------------------
 # 净值历史端点
 # ---------------------------------------------------------------------------
@@ -1287,102 +1492,97 @@ def workspace_net_worth_history(
     currencies = {(a.currency or "CNY").upper() for a in accts if a.sync_id in init_by_acc}
     multi_currency = len(currencies) > 1
 
-    # 主币种(base):用户设的 primary_currency;没设则单币种用唯一币种、多币种留空
-    # (留空时下方 rates_to_base 为空 → 全部账户剔除 → series 为空,由前端引导设主币种)。
-    base = (
-        db.execute(
-            select(UserProfile.primary_currency).where(
-                UserProfile.user_id == current_user.id
-            )
-        ).scalar()
-        or ""
-    ).upper()
-    if not base and len(currencies) == 1:
-        # 没设主币种且单币种:回退到该唯一币种(折算率 1)。多币种未设主币种则 base
-        # 为空 → rates_to_base 为空 → series 各点折算后为 0,前端据 needsBase 出引导卡。
-        base = next(iter(currencies))
+    # 主币种 + 各币种汇率(批次4:与 analytics 共用 helper,口径单点维护)。
+    base = _user_base_currency(db, current_user.id, currencies)
+    rates_to_base: dict[str, float] = _rates_to_base_for_user(db, current_user.id, base)
 
-    # 各币种 → base 汇率,净值序列折算到主币种(与净资产卡同口径):base 自身 1.0;
-    # 自动缓存 payload 是「1 base = x quote」取倒数;手动 override「1 quote = rate base」
-    # 覆盖自动。缺汇率的币种在 _net 内整条剔除,绝不按 1.0 裸加。
-    rates_to_base: dict[str, float] = {}
-    if base:
-        rates_to_base[base] = 1.0
-        cache_payload = db.execute(
-            select(ExchangeRateCache.payload_json).where(
-                ExchangeRateCache.base_currency == base
-            )
-        ).scalar()
-        if isinstance(cache_payload, dict):
-            for q, x in cache_payload.items():
-                try:
-                    xf = float(x)
-                except (TypeError, ValueError):
-                    continue
-                if xf > 0:
-                    rates_to_base[q.upper()] = 1.0 / xf
-        for ov in db.execute(
-            select(
-                UserExchangeRateProjection.quote_currency,
-                UserExchangeRateProjection.rate,
-            ).where(
-                UserExchangeRateProjection.user_id == current_user.id,
-                UserExchangeRateProjection.base_currency == base,
-            )
-        ).all():
-            try:
-                r = float(ov.rate)
-            except (TypeError, ValueError):
-                continue
-            if r > 0:
-                rates_to_base[ov.quote_currency.upper()] = r
+    # F6:先在 SQL 侧按 (账户 × 月桶) 聚合出净流,再在 Python 做月粒度前缀和
+    # —— 行数从 O(全部交易) 降到 O(月数×账户数)(10 万 tx ≈ 几百行)。
+    # 月桶口径与逐行版一致:happened_at + tz_offset 后的 YYYY-MM。
+    # 同月内的应用顺序不影响月末余额(加法交换律),月界快照与逐行回放等值。
+    from sqlalchemy import case as _nw_case
 
-    txs = db.execute(
+    _shift_minutes_nw = int(tz_offset_minutes)
+    bind_nw = db.get_bind()
+    _is_sqlite_nw = bind_nw.dialect.name == "sqlite"
+    if _is_sqlite_nw:
+        _ym_nw = func.strftime("%Y-%m", func.datetime(
+            ReadTxProjection.happened_at, f"{_shift_minutes_nw:+d} minutes"))
+    else:
+        _ym_nw = sa_func.to_char(
+            ReadTxProjection.happened_at + sa_text(
+                f"make_interval(mins => {_shift_minutes_nw})"), "YYYY-MM")
+
+    _from_id = ReadTxProjection.from_account_sync_id
+    _to_id = ReadTxProjection.to_account_sync_id
+
+    # 每行产生最多两段流:主账户(income+/expense−/transfer−)与 to 账户(transfer+)。
+    # 用 UNION ALL 展开成 (month, account, delta) 再 GROUP BY 聚合。
+    main_delta = _nw_case(
+        (ReadTxProjection.tx_type == "income", ReadTxProjection.amount),
+        (ReadTxProjection.tx_type == "expense", -ReadTxProjection.amount),
+        (ReadTxProjection.tx_type == "transfer", -ReadTxProjection.amount),
+        else_=0.0,
+    )
+    main_side = select(
+        _ym_nw.label("ym"),
+        ReadTxProjection.account_sync_id.label("acc"),
+        main_delta.label("delta"),
+    ).where(
+        ReadTxProjection.ledger_id.in_(ledger_internal_ids),
+        ReadTxProjection.deleted_at.is_(None),
+        ReadTxProjection.account_sync_id.isnot(None),
+    )
+    to_side = select(
+        _ym_nw.label("ym"),
+        _to_id.label("acc"),
+        ReadTxProjection.amount.label("delta"),
+    ).where(
+        ReadTxProjection.ledger_id.in_(ledger_internal_ids),
+        ReadTxProjection.deleted_at.is_(None),
+        ReadTxProjection.tx_type == "transfer",
+        ReadTxProjection.to_account_sync_id.isnot(None),
+    )
+    flows_subq = main_side.union_all(to_side).subquery()
+    monthly_rows = db.execute(
         select(
-            ReadTxProjection.tx_type,
-            ReadTxProjection.amount,
-            ReadTxProjection.happened_at,
-            ReadTxProjection.account_sync_id,
-            ReadTxProjection.from_account_sync_id,
-            ReadTxProjection.to_account_sync_id,
-        )
-        .where(ReadTxProjection.ledger_id.in_(ledger_internal_ids))
-        .order_by(ReadTxProjection.happened_at.asc())
+            flows_subq.c.ym,
+            flows_subq.c.acc,
+            func.sum(flows_subq.c.delta),
+        ).group_by(flows_subq.c.ym, flows_subq.c.acc)
     ).all()
 
-    # 余额调整记录(0028):跟 tx 一起按时间回放。类型用 "adjustment" 复用
-    # _apply 的既有分支(bal[acc] += amt,带符号)。
+    # 余额调整记录(0028):同样按 (账户 × 月) 聚合(带符号求和)。
     from ...models import ReadAccountAdjustmentProjection as _AdjProj
 
-    adj_rows = db.execute(
+    if _is_sqlite_nw:
+        _ym_adj = func.strftime("%Y-%m", func.datetime(
+            _AdjProj.happened_at, f"{_shift_minutes_nw:+d} minutes"))
+    else:
+        _ym_adj = sa_func.to_char(
+            _AdjProj.happened_at + sa_text(
+                f"make_interval(mins => {_shift_minutes_nw})"), "YYYY-MM")
+    adj_monthly = db.execute(
         select(
-            _AdjProj.amount,
-            _AdjProj.happened_at,
-            _AdjProj.account_sync_id,
-        )
-        .where(_AdjProj.ledger_id.in_(ledger_internal_ids))
-        .order_by(_AdjProj.happened_at.asc())
+            _ym_adj.label("ym"),
+            _AdjProj.account_sync_id.label("acc"),
+            func.sum(_AdjProj.amount).label("delta"),
+        ).where(_AdjProj.ledger_id.in_(ledger_internal_ids))
+        .group_by(_ym_adj, _AdjProj.account_sync_id)
     ).all()
-    events = [(t.happened_at, "tx", t) for t in txs] + [
-        (a.happened_at, "adj", a) for a in adj_rows
-    ]
-    events.sort(key=lambda e: e[0])
+
+    # 合并成月度事件流(tx 流 + 调整流),按月升序回放。
+    monthly: dict[str, dict[str, float]] = {}
+    for ym, acc, delta in monthly_rows:
+        if ym is None or acc is None:
+            continue
+        monthly.setdefault(str(ym), {})[str(acc)] = monthly.get(str(ym), {}).get(str(acc), 0.0) + float(delta or 0.0)
+    for ym, acc, delta in adj_monthly:
+        if ym is None or acc is None:
+            continue
+        monthly.setdefault(str(ym), {})[str(acc)] = monthly.get(str(ym), {}).get(str(acc), 0.0) + float(delta or 0.0)
 
     bal = dict(init_by_acc)
-
-    def _apply(tx_type, amt, acc, from_acc, to_acc):
-        if tx_type == "income" and acc in bal:
-            bal[acc] += amt
-        elif tx_type == "expense" and acc in bal:
-            bal[acc] -= amt
-        elif tx_type == "adjustment" and acc in bal:
-            bal[acc] += amt
-        elif tx_type == "transfer":
-            fa, ta = from_acc or acc, to_acc
-            if fa in bal:
-                bal[fa] -= amt
-            if ta in bal:
-                bal[ta] += amt
 
     def _net():
         # 折算到主币种:各账户余额 × 该币种汇率;缺汇率(或无 base)的账户整条剔除,
@@ -1401,31 +1601,13 @@ def workspace_net_worth_history(
         return assets, liab
 
     series: list[NetWorthHistorySeriesItemOut] = []
-    last_bucket: str | None = None
-    for happened_at, _kind, ev in events:
-        if happened_at is None:
-            continue
-        ha = _to_utc(happened_at)
-        bucket = (ha + timedelta(minutes=tz_offset_minutes)).strftime("%Y-%m")
-        if last_bucket is not None and bucket != last_bucket:
-            a, l = _net()
-            series.append(NetWorthHistorySeriesItemOut(
-                bucket=last_bucket, net_worth=a + l, assets=a, liabilities=l,
-            ))
-        if _kind == "adj":
-            # 调整记录:amount 带符号,直接叠加到目标账户。
-            if ev.account_sync_id in bal:
-                bal[ev.account_sync_id] += float(ev.amount or 0.0)
-        else:
-            _apply(
-                ev.tx_type, float(ev.amount or 0.0),
-                ev.account_sync_id, ev.from_account_sync_id, ev.to_account_sync_id,
-            )
-        last_bucket = bucket
-    if last_bucket is not None:
+    for ym in sorted(monthly.keys()):
+        for acc, delta in monthly[ym].items():
+            if acc in bal:
+                bal[acc] += delta
         a, l = _net()
         series.append(NetWorthHistorySeriesItemOut(
-            bucket=last_bucket, net_worth=a + l, assets=a, liabilities=l,
+            bucket=ym, net_worth=a + l, assets=a, liabilities=l,
         ))
     if not series and init_by_acc:
         a, l = _net()

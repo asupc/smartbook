@@ -221,6 +221,8 @@ def _enrich_tx_payloads_with_user_ids(
         ).where(
             ReadTxProjection.sync_id.in_(sync_ids),
             ReadTxProjection.ledger_id.in_(ledger_ids),
+            # 软删行仍参与 enrichment(delete 前最后版本的 actor/时间要补),
+            # 不加 deleted_at 过滤 —— 这里只取元数据列,不下发交易内容。
         )
     ).all()
     proj_by_key = {

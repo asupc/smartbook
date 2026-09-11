@@ -27,7 +27,7 @@ from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
@@ -310,16 +310,13 @@ def _diff_entity_list(
 
     for sync_id in prev_map:
         if sync_id not in next_map:
-            # 删 tx / category 前先收集附件 fileId(tx 从 attachments_json,
-            # category 从 icon_cloud_file_id + 子分类图标)。删完 projection
-            # 行后调 gc_orphan_attachments:被共享引用的 blob 保留,完全孤立
-            # 的 DELETE attachment_files + unlink 物理文件。
+            # category 删除前收集图标 fileId,删完 projection 行后调
+            # gc_orphan_attachments:被共享引用的 blob 保留,完全孤立的
+            # DELETE attachment_files + unlink 物理文件。
+            # transaction 删除(0030)改软删,不在此 GC 附件 —— 物理删除
+            # 延后到回收站「彻底删除/30 天过期清理」。
             gc_file_ids: set[str] = set()
-            if entity_type == "transaction":
-                gc_file_ids = projection.collect_tx_attachment_fileids(
-                    db, ledger_id=ledger.id, sync_id=sync_id,
-                )
-            elif entity_type == "category":
+            if entity_type == "category":
                 gc_file_ids = projection.collect_category_icon_fileids(
                     db, user_id=current_user.id, sync_id=sync_id,
                 )
@@ -715,10 +712,8 @@ async def _commit_write_fast_tx(
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
 
         if action == "delete":
-            # 删 tx 前收集引用的 cloudFileId,删后 GC 孤立附件(物理 blob + 行)
-            tx_file_ids = projection.collect_tx_attachment_fileids(
-                db, ledger_id=ledger.id, sync_id=tx_id,
-            )
+            # 0030 软删(回收站):只写 deleted_at,附件物理 GC 延后到
+            # 「彻底删除/30 天过期清理」,误删可恢复。
             change_row = SyncChange(
                 user_id=ledger.user_id,
                 ledger_id=ledger.id,
@@ -733,9 +728,6 @@ async def _commit_write_fast_tx(
             db.add(change_row)
             db.flush()
             projection.delete_tx(db, ledger_id=ledger.id, sync_id=tx_id)
-            projection.gc_orphan_attachments(
-                db, user_id=ledger.user_id, file_ids=tx_file_ids,
-            )
         else:
             # Upsert:merge payload 到 prev_item
             from ...snapshot_mutator import update_transaction
@@ -908,6 +900,348 @@ def _projection_row_to_tx_dict(row: ReadTxProjection) -> dict[str, Any]:
     if row.native_amount is not None:
         item["nativeAmount"] = row.native_amount
     return item
+
+
+# --------------------------------------------------------------------------- #
+# 小实体快路径(F1):account/category/tag/budget/account_adjustment 的 web 写
+# ---------------------------------------------------------------------------- #
+# 旧路径每个 PATCH 都要 snapshot_builder.build 全量 items(10 万 tx = 全表
+# SELECT + 每行 2 次 json.loads)再 diff。小实体的 mutator 只读自身实体列表;
+# 级联改名在快路径里由 rename_cascade_* 的 SQL UPDATE 处理投影,这里只按
+# 精确谓词把受影响 tx 行"定向补发"成 cascade-only SyncChange(bulk insert,
+# 语义与全量 diff 的 cascade-only 分支一致)。
+
+def _cascade_tx_rows_for_account(
+    db: Session, *, user_id: str, account_sync_id: str,
+) -> list[ReadTxProjection]:
+    """account 删除后投影剥离/级联涉及的 tx 行。谓词与 snapshot_mutator
+    .delete_account 的剥离逻辑一一对应:现代数据按 sync_id 精确匹配;老数据
+    (行上三个 account id 列全 NULL)的回退名字匹配由剥离 SQL 单独处理,
+    这里只负责补发变更事件,精确谓词已覆盖现代数据。"""
+    return list(db.scalars(
+        select(ReadTxProjection).where(
+            ReadTxProjection.user_id == user_id,
+            or_(
+                ReadTxProjection.account_sync_id == account_sync_id,
+                ReadTxProjection.from_account_sync_id == account_sync_id,
+                ReadTxProjection.to_account_sync_id == account_sync_id,
+            ),
+        )
+    ))
+
+
+def _cascade_tx_rows_for_category(
+    db: Session, *, user_id: str, category_sync_id: str,
+) -> list[ReadTxProjection]:
+    """category 删除涉及的 tx 行(按 category_sync_id 精确匹配)。"""
+    return list(db.scalars(
+        select(ReadTxProjection).where(
+            ReadTxProjection.user_id == user_id,
+            ReadTxProjection.category_sync_id == category_sync_id,
+        )
+    ))
+
+
+def _cascade_tx_rows_for_tag(
+    db: Session, *, user_id: str, tag_sync_id: str,
+) -> list[ReadTxProjection]:
+    """tag 改名涉及的 tx 行:tag_sync_ids_json 含该 sync_id(与 rename_cascade_tag
+    的 by-id 集合一致)。"""
+    like_pat = f'%"{tag_sync_id}"%'
+    return list(db.scalars(
+        select(ReadTxProjection).where(
+            ReadTxProjection.user_id == user_id,
+            ReadTxProjection.tag_sync_ids_json.like(like_pat),
+        )
+    ))
+
+
+def _emit_cascade_tx_changes(
+    db: Session,
+    *,
+    ledger: Ledger,
+    current_user: User,
+    device_id: str,
+    now: datetime,
+    rows: list[ReadTxProjection],
+) -> list[int]:
+    """rename cascade 后,把受影响 tx 行以 cascade-only SyncChange 形式 bulk
+    insert(一条 executemany),供 mobile pull 刷本地冗余字段。投影已由
+    rename_cascade_* SQL 刷过 —— 这里把投影行序列化成 payload(与全量 diff
+    路径里 next items 的对应项同源)。返回本批新 change_id(max)。"""
+    if not rows:
+        return []
+    from sqlalchemy import insert as sa_insert
+    bulk_rows = []
+    for row in rows:
+        bulk_rows.append({
+            "user_id": row.user_id,
+            "ledger_id": row.ledger_id,
+            "scope": "ledger",
+            "entity_type": "transaction",
+            "entity_sync_id": row.sync_id,
+            "action": "upsert",
+            "payload_json": _projection_row_to_tx_dict(row),
+            "updated_at": now,
+            "updated_by_device_id": device_id,
+            "updated_by_user_id": current_user.id,
+        })
+    db.execute(sa_insert(SyncChange), bulk_rows)
+    new_max = db.scalar(
+        select(func.max(SyncChange.change_id)).where(
+            SyncChange.ledger_id == ledger.id
+        )
+    )
+    return [int(new_max)] if new_max else []
+
+
+def _cascade_rows_for_entity(
+    db: Session,
+    *,
+    current_user: User,
+    entity_type: str,
+    entity_sync_id: str,
+    renamed: bool,
+    deleted: bool,
+) -> list[ReadTxProjection]:
+    """entity 改名/删除时需要定向补发 cascade SyncChange 的 tx 行。"""
+    if not (renamed or deleted):
+        return []
+    if entity_type == "account":
+        return _cascade_tx_rows_for_account(
+            db, user_id=current_user.id, account_sync_id=entity_sync_id,
+        )
+    if entity_type == "category":
+        return _cascade_tx_rows_for_category(
+            db, user_id=current_user.id, category_sync_id=entity_sync_id,
+        )
+    if entity_type == "tag":
+        if not renamed:
+            # tag 删除被 in_use 校验拦截,理论到不了这里;防御性返回空。
+            return []
+        return _cascade_tx_rows_for_tag(
+            db, user_id=current_user.id, tag_sync_id=entity_sync_id,
+        )
+    return []
+
+
+async def _commit_write_fast_entity(
+    *,
+    request: Request,
+    db: Session,
+    current_user: User,
+    ledger: Ledger,
+    base_change_id: int,
+    request_payload: dict,
+    idempotency_key: str | None,
+    device_id: str,
+    audit_action: str,
+    entity_type: str,  # account | category | tag | budget | account_adjustment
+    entity_sync_id: str | None,  # create 时 None
+    mutate: Callable[[dict], tuple[dict, str | None]],
+    cascade_tx_items: list[ReadTxProjection] | None = None,
+) -> WriteCommitMeta:
+    """Fast path:account/category/tag/budget/account_adjustment 单实体写,
+    跳过全量 items 的 snapshot build(F1)。
+
+    与 _commit_write(全量 build→mutate→diff)对单实体的语义一致性:
+    - snapshot 仍从 projection 构建(小表全量),mutator 校验/改名逻辑原样跑;
+    - diff 只发生在该实体自己的列表里(prev/next 都是小列表);
+    - rename 的投影级联走 rename_cascade_* SQL,与全量 diff 路径同款;受影响
+      tx 行由 _cascade_rows_for_entity 定向补发 cascade-only SyncChange(bulk)。
+    成本从 O(账本交易数) 降到 O(1)(改名时 + 受影响行数)。
+    """
+
+    def _core() -> tuple[WriteCommitMeta, bool, list]:
+        lock_ledger_for_materialize(db, ledger.id)
+
+        if get_settings().strict_base_change_id:
+            latest_any_change_id = snapshot_builder.latest_change_id(db, ledger.id)
+            if base_change_id != latest_any_change_id:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "message": "Write conflict",
+                        "latest_change_id": latest_any_change_id,
+                    },
+                )
+
+        # include_items=False 跳过全量 tx。带 cascade_tx_items 的删除路径例外:
+        # 那是精确点查出来的关联行子集,喂给 mutator 做 in-use 关联校验。
+        include_items = cascade_tx_items is not None
+        snapshot = snapshot_builder.build(db, ledger, include_items=include_items)
+        if include_items:
+            snapshot["items"] = [_projection_row_to_tx_dict(r) for r in cascade_tx_items]
+        prev_snapshot = {**snapshot}
+        for _k in ("items", "accounts", "categories", "tags", "budgets", "accountAdjustments"):
+            arr = snapshot.get(_k)
+            if isinstance(arr, list):
+                prev_snapshot[_k] = [dict(e) if isinstance(e, dict) else e for e in arr]
+        try:
+            next_snapshot, entity_id = mutate(snapshot)
+        except KeyError:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entity not found") from None
+        except PermissionError as exc:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        now = _utcnow()
+
+        # rename 检测(与 _emit_entity_diffs 同源逻辑,只看本实体列表)
+        _list_key = {
+            "account": "accounts",
+            "category": "categories",
+            "tag": "tags",
+            "budget": "budgets",
+            "account_adjustment": "accountAdjustments",
+        }.get(entity_type, "")
+        prev_list = prev_snapshot.get(_list_key) or []
+        next_list = next_snapshot.get(_list_key) or []
+        renames = _collect_renames(prev_list, next_list) if _list_key else []
+        deleted = len(next_list) < len(prev_list)
+
+        emitted_change_ids: list[int] = []
+
+        # 实体自身的 upsert/delete change(+ 同事务投影写入/删除/图标 GC)。
+        _diff_entity_list(
+            db, ledger, current_user, device_id, now,
+            prev_list, next_list, entity_type, emitted_change_ids,
+        )
+
+        # 投影级联 rename / 删除剥离(与全量路径同款 SQL)。
+        cascade_rows: list[ReadTxProjection] = []
+        if renames:
+            for sync_id, _old, new_name, new_kind in renames:
+                if entity_type == "account":
+                    projection.rename_cascade_account(
+                        db, user_id=current_user.id,
+                        account_sync_id=sync_id, new_name=new_name,
+                    )
+                elif entity_type == "category":
+                    projection.rename_cascade_category(
+                        db, user_id=current_user.id, category_sync_id=sync_id,
+                        new_name=new_name, new_kind=new_kind,
+                    )
+                elif entity_type == "tag":
+                    projection.rename_cascade_tag(
+                        db, user_id=current_user.id, tag_sync_id=sync_id,
+                        old_name=_old, new_name=new_name,
+                    )
+            if entity_type in ("account", "category", "tag"):
+                cascade_rows = _cascade_rows_for_entity(
+                    db,
+                    current_user=current_user,
+                    entity_type=entity_type,
+                    entity_sync_id=renames[0][0],
+                    renamed=True,
+                    deleted=False,
+                )
+        elif deleted and entity_type == "account" and entity_id:
+            # 删除路径:mutator 已经用 cascade_tx_items 子集做过关联校验(有
+            # 关联交易会 400),能走到这里说明子集为空 → 投影无需剥离,也无需
+            # 补发;老数据(名字匹配)的剥离走全量路径才有 —— web 快路径删除
+            # 老账本账户时罕见,由上面的精确谓词子集兜底已足够。
+            pass
+
+        # 定向补发 cascade-only tx SyncChange(bulk,一条 executemany)。
+        if cascade_rows:
+            emitted_change_ids.extend(_emit_cascade_tx_changes(
+                db, ledger=ledger, current_user=current_user,
+                device_id=device_id, now=now, rows=cascade_rows,
+            ))
+
+        new_change_id = max(emitted_change_ids) if emitted_change_ids else (
+            snapshot_builder.latest_change_id(db, ledger.id)
+        )
+
+        db.add(
+            AuditLog(
+                user_id=current_user.id,
+                ledger_id=ledger.id,
+                action=audit_action,
+                metadata_json={
+                    "ledgerId": ledger.external_id,
+                    "baseChangeId": base_change_id,
+                    "newChangeId": new_change_id,
+                    "entityId": entity_id,
+                },
+            )
+        )
+
+        response = WriteCommitMeta(
+            ledger_id=ledger.external_id,
+            base_change_id=base_change_id,
+            new_change_id=new_change_id,
+            server_timestamp=now,
+            idempotency_replayed=False,
+            entity_id=entity_id,
+        )
+
+        request_hash = _hash_request(request.method, request.url.path, request_payload)
+        if idempotency_key:
+            db.add(
+                SyncPushIdempotency(
+                    user_id=current_user.id,
+                    device_id=device_id,
+                    idempotency_key=idempotency_key,
+                    request_hash=request_hash,
+                    response_json=response.model_dump(mode="json"),
+                    created_at=now,
+                    expires_at=now + timedelta(hours=24),
+                )
+            )
+
+        try:
+            db.commit()
+        except IntegrityError as exc:
+            db.rollback()
+            if idempotency_key:
+                replay = _load_idempotent_response(
+                    db,
+                    user_id=current_user.id,
+                    device_id=device_id,
+                    idempotency_key=idempotency_key,
+                    request_hash=request_hash,
+                )
+                if replay is not None:
+                    return replay, True, []
+            raise exc
+
+        logger.info(
+            "write.commit.fast_entity %s ledger=%s entity=%s change_id=%d device=%s user=%s",
+            entity_type, ledger.external_id, entity_id, response.new_change_id,
+            device_id, current_user.id,
+        )
+        user_global_events = _diff_user_global_for_shared_resource(
+            prev=prev_snapshot, next=next_snapshot,
+        )
+        return response, False, user_global_events
+
+    response, did_replay, user_global_events = await run_in_threadpool(_core)
+    if did_replay:
+        return response
+
+    from ...websocket_manager import broadcast_to_ledger
+    await broadcast_to_ledger(
+        db=db,
+        ws_manager=request.app.state.ws_manager,
+        ledger_id=ledger.id,
+        payload={
+            "type": "sync_change",
+            "ledgerId": ledger.external_id,
+            "serverCursor": response.new_change_id,
+            "serverTimestamp": response.server_timestamp.isoformat(),
+        },
+    )
+    if user_global_events:
+        await _broadcast_shared_resource_events(
+            request=request,
+            db=db,
+            owner_user_id=current_user.id,
+            events=user_global_events,
+        )
+    return response
 
 
 async def _commit_write(
@@ -1330,6 +1664,12 @@ __all__ = [
     '_collect_renames',
     '_diff_entity_list',
     '_emit_entity_diffs',
+    '_cascade_tx_rows_for_account',
+    '_cascade_tx_rows_for_category',
+    '_cascade_tx_rows_for_tag',
+    '_emit_cascade_tx_changes',
+    '_cascade_rows_for_entity',
+    '_commit_write_fast_entity',
     '_load_ledger_for_write',
     '_latest_snapshot_change',
     '_parse_snapshot',

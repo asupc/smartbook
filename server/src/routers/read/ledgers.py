@@ -28,7 +28,7 @@ def list_ledgers(
 ) -> list[ReadLedgerOut]:
     # 共享账本 Phase 1:走 LedgerMember 表拿 caller 能访问的全部 ledger(含
     # 自己 owner 的 + 加入的共享账本)。admin 用户直接看所有(管理后台需求)。
-    from ...ledger_access import list_accessible_memberships, count_ledger_members
+    from ...ledger_access import list_accessible_memberships
 
     if _is_admin(current_user):
         rows = list(db.scalars(select(Ledger).order_by(Ledger.created_at.desc())).all())
@@ -37,17 +37,72 @@ def list_ledgers(
         memberships = list_accessible_memberships(db, user_id=current_user.id)
 
     out: list[ReadLedgerOut] = []
+    if not memberships:
+        return out
+    # F8:墓碑 + 账本聚合 + 成员数全部批量化 —— 旧路径每个账本 4-5 条查询
+    # (其中 _is_ledger_deleted 是 sync_changes 倒扫),L 个账本 = 1+5L 次。
+    deleted_ids = _deleted_ledger_ids(db, ledger_ids=[lg.id for lg, _ in memberships])
+    ledger_ids = [lg.id for lg, _ in memberships if lg.id not in deleted_ids]
+    totals_map: dict[str, tuple] = {}
+    if ledger_ids:
+        from ...models import ReadAccountAdjustmentProjection
+        from sqlalchemy import case as sa_case
+
+        _native = func.coalesce(ReadTxProjection.native_amount, ReadTxProjection.amount)
+        _counted = ReadTxProjection.exclude_from_stats == sa_false()
+        rows = db.execute(
+            select(
+                ReadTxProjection.ledger_id,
+                func.count(ReadTxProjection.sync_id),
+                func.coalesce(func.sum(sa_case(
+                    ((ReadTxProjection.tx_type == "income") & _counted, _native),
+                    else_=0.0)), 0.0),
+                func.coalesce(func.sum(sa_case(
+                    ((ReadTxProjection.tx_type == "expense") & _counted, _native),
+                    else_=0.0)), 0.0),
+                func.coalesce(func.sum(sa_case(
+                    (ReadTxProjection.tx_type == "income", _native),
+                    (ReadTxProjection.tx_type == "expense", -_native),
+                    else_=0.0)), 0.0),
+            ).where(
+                ReadTxProjection.ledger_id.in_(ledger_ids),
+                ReadTxProjection.deleted_at.is_(None),
+            )
+            .group_by(ReadTxProjection.ledger_id)
+        ).all()
+        base_totals = {r[0]: (int(r[1] or 0), float(r[2] or 0), float(r[3] or 0), float(r[4] or 0)) for r in rows}
+        adj_rows = db.execute(
+            select(
+                ReadAccountAdjustmentProjection.ledger_id,
+                func.coalesce(func.sum(ReadAccountAdjustmentProjection.amount), 0.0),
+            ).where(ReadAccountAdjustmentProjection.ledger_id.in_(ledger_ids))
+            .group_by(ReadAccountAdjustmentProjection.ledger_id)
+        ).all()
+        adj_map = {r[0]: float(r[1] or 0) for r in adj_rows}
+        totals_map = {
+            lid: (t[0], t[1], t[2], t[3] + adj_map.get(lid, 0.0))
+            for lid, t in base_totals.items()
+        }
+    member_counts: dict[str, int] = {}
+    if ledger_ids:
+        mc_rows = db.execute(
+            select(LedgerMember.ledger_id, func.count(LedgerMember.user_id))
+            .where(LedgerMember.ledger_id.in_(ledger_ids))
+            .group_by(LedgerMember.ledger_id)
+        ).all()
+        member_counts = {r[0]: int(r[1] or 0) for r in mc_rows}
+
+    now = datetime.now(timezone.utc)
     for ledger, role in memberships:
         # Hide soft-deleted ledgers.
-        if _is_ledger_deleted(db, ledger_id=ledger.id):
+        if ledger.id in deleted_ids:
             continue
-        # currency 暂不做 projection 化 —— 顶层元数据非热点,snapshot_cache 命中
-        # 后 ~1ms,偶发 cold miss 50ms 可接受;list_ledgers 本身调用频率低。
         currency = ledger.currency or "CNY"
         ledger_name = _resolve_ledger_name(db, ledger=ledger)
-        tx_count, income_total, expense_total, balance_all, _ = _projection_totals(db, ledger.id)
-        now = datetime.now(timezone.utc)
-        member_count = count_ledger_members(db, ledger_id=ledger.id)
+        tx_count, income_total, expense_total, balance_all = totals_map.get(
+            ledger.id, (0, 0.0, 0.0, 0.0),
+        )
+        member_count = member_counts.get(ledger.id, 1)
         effective_role = role or ("owner" if ledger.user_id == current_user.id else "viewer")
         out.append(
             ReadLedgerOut(
@@ -99,19 +154,23 @@ def get_ledger_stats(
 
     tx_count = _count(ReadTxProjection)
     budget_count = _count(ReadBudgetProjection)
-    # account / category / tag 是 user-global —— "per-ledger count" 在这里
-    # 没意义,跟 total 同口径:COUNT DISTINCT sync_id WHERE user_id。下面的
-    # _count_distinct_sync 之后会复用同一份。
-    def _count_distinct_sync_for(model) -> int:
-        return int(db.scalar(
-            select(func.count(func.distinct(model.sync_id)))
-            .where(model.user_id == current_user.id)
-        ) or 0)
 
     # user-global tables 都用 user_id PK,count distinct 就是 count rows。
-    account_count = _count_distinct_sync_for(UserAccountProjection)
-    category_count = _count_distinct_sync_for(UserCategoryProjection)
-    tag_count = _count_distinct_sync_for(UserTagProjection)
+    # F16:account/category/tag 的 per-ledger 与 total 两个口径在 user-global
+    # 表上 SQL 完全一致(老的 _count_distinct_sync_for 与 _count_distinct_sync
+    # 是逐字重复),算一次复用,少 3 条查询。
+    account_count = int(db.scalar(
+        select(func.count(func.distinct(UserAccountProjection.sync_id)))
+        .where(UserAccountProjection.user_id == current_user.id)
+    ) or 0)
+    category_count = int(db.scalar(
+        select(func.count(func.distinct(UserCategoryProjection.sync_id)))
+        .where(UserCategoryProjection.user_id == current_user.id)
+    ) or 0)
+    tag_count = int(db.scalar(
+        select(func.count(func.distinct(UserTagProjection.sync_id)))
+        .where(UserTagProjection.user_id == current_user.id)
+    ) or 0)
 
     # 附件计数按 attachment_kind 区分:
     #   - attachment_count / attachment_total: tx 附件(挂在 ledger 上)
@@ -155,9 +214,10 @@ def get_ledger_stats(
 
     tx_total = _count_ledger_scoped(ReadTxProjection)
     budget_total = _count_ledger_scoped(ReadBudgetProjection)
-    account_total = _count_distinct_sync(UserAccountProjection)
-    category_total = _count_distinct_sync(UserCategoryProjection)
-    tag_total = _count_distinct_sync(UserTagProjection)
+    # F16:user-global 三表 per-ledger 与 total 口径一致(见上),直接复用。
+    account_total = account_count
+    category_total = category_count
+    tag_total = tag_count
 
     attachment_total = int(
         db.scalar(
@@ -265,13 +325,19 @@ def list_transactions(
         _load_owner_identity(db, ledger=ledger)
     )
 
-    query = select(ReadTxProjection).where(ReadTxProjection.ledger_id == ledger.id)
+    query = select(ReadTxProjection).where(
+        ReadTxProjection.ledger_id == ledger.id,
+        ReadTxProjection.deleted_at.is_(None),
+    )
     if tx_type:
         query = query.where(ReadTxProjection.tx_type == tx_type)
     if start_at:
         query = query.where(ReadTxProjection.happened_at >= _to_utc(start_at))
     if end_at:
-        query = query.where(ReadTxProjection.happened_at <= _to_utc(end_at))
+        # 批次4:半开区间(< end_at),与 /read/workspace/transactions 的 date_to
+        # 口径统一。调用方传「次日 00:00」;此前 <= 含边界,23:59:59 的交易在
+        # 两个端点一边有一边没有。
+        query = query.where(ReadTxProjection.happened_at < _to_utc(end_at))
     if q:
         pattern = f"%{q}%"
         query = query.where(or_(
@@ -530,6 +596,7 @@ def list_budgets(
 )
 def list_budgets_usage(
     ledger_external_id: str,
+    tz_offset_minutes: int = Query(default=0, ge=-720, le=840),
     _scopes: set[str] = Depends(_READ_SCOPE_DEP),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -573,13 +640,22 @@ def list_budgets_usage(
         if current is None or current.sync_id < b.sync_id:
             dedup[key] = b
 
-    now = datetime.now(timezone.utc)
+    # 批次4(时区口径):预算周期边界按用户本地时区切(与 analytics
+    # _analytics_range 同口径)。此前用 UTC 切月,月初 0-8 点的支出会落进
+    # 上一个预算周期,与本地时区月度图表互相矛盾。默认 0 保持兼容。
+    from datetime import timedelta as _td
+    local_now = datetime.now(timezone.utc) + _td(minutes=int(tz_offset_minutes))
 
     # 预算周期跟随账本 month_start_day(设计 D5:budget.start_day 弃用,
     # 与 mobile local_budget_repository 同口径)
     period_day = ledger.month_start_day or 1
 
-    start, end = _current_period_range(period_day, now)
+    start_local, end_local = _current_period_range(period_day, local_now)
+    # 边界在「本地墙钟」语义上计算后转回 UTC 与 happened_at(UTC) 比较;
+    # tz 偏移恒定(中国无 DST),减同一偏移即可。
+    shift = _td(minutes=int(tz_offset_minutes))
+    start = start_local.replace(tzinfo=None).replace(tzinfo=timezone.utc) - shift
+    end = end_local.replace(tzinfo=None).replace(tzinfo=timezone.utc) - shift
 
     items: list[ReadBudgetUsageItemOut] = []
     for b in dedup.values():
@@ -595,6 +671,8 @@ def list_budgets_usage(
             # D2: 预算用量仅看 exclude_from_budget,与 exclude_from_stats 独立。
             # 标记排除预算的交易不计入用量(total + category 共用此 base_q)。
             ReadTxProjection.exclude_from_budget == sa_false(),
+            # 0030:回收站中的交易不计预算。
+            ReadTxProjection.deleted_at.is_(None),
         )
         if (b.budget_type or "total") == "category" and b.category_sync_id:
             # parent + 所有 parent_sync_id 指向它的子分类

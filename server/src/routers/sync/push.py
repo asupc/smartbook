@@ -35,6 +35,10 @@ async def push_changes(
     rejected = 0
     conflict_count = 0
     conflict_samples: list[dict[str, Any]] = []
+    # 批次3:apply 抛异常的 change 隔离计数(不再整批 500 → 客户端无限重推
+    # 同一批的确定性死循环)。savepoint 回滚该条,其余照常 commit。
+    failed_count = 0
+    failed_samples: list[dict[str, Any]] = []
     max_cursor = 0
     touched_ledgers: dict[str, str] = {}
     # 共享账本 Phase 1:user-global category/account/tag 变更要 fan-out 给
@@ -44,6 +48,11 @@ async def push_changes(
     # 是否触动 user-global —— 触动了就额外给 owner 广播一条 __user_global__
     # 通道的 sync_change(让其他设备拉这一份)。
     touched_user_global = False
+
+    # F10:批内缓存。追赶推送 500 条 = 旧路径对同一 ledger 重复解析 500 次、
+    # 同一 tx 的 creator 重复点查;字典缓存后各只查一次。
+    ledger_cache: dict[str, Ledger | None] = {}
+    tx_creator_cache: dict[tuple[str, str], str | None] = {}
 
     for change in req.changes:
         is_user_global = change.entity_type in USER_GLOBAL_ENTITY_TYPES
@@ -76,12 +85,61 @@ async def push_changes(
                 )
                 rejected += 1
                 continue
-            row = get_accessible_ledger_by_external_id(
-                db,
-                user_id=current_user.id,
-                ledger_external_id=change.ledger_id,
-            )
+            # F10:批内缓存 —— 同一 external_id 只解析一次。None = 首次解析
+            # 不存在(auto-create 后续 change 复用 __auto__ 里已建的 Ledger,
+            # 不再重复创建);命中过的直接取。
+            if change.ledger_id not in ledger_cache:
+                row0 = get_accessible_ledger_by_external_id(
+                    db,
+                    user_id=current_user.id,
+                    ledger_external_id=change.ledger_id,
+                )
+                if row0 is None:
+                    ledger_cache[change.ledger_id] = None
+                else:
+                    ledger_cache[change.ledger_id] = row0
+            cached_entry = ledger_cache.get(change.ledger_id)
+            if isinstance(cached_entry, tuple):
+                row = cached_entry
+            elif cached_entry is None and f"__auto__{change.ledger_id}" in ledger_cache:
+                # 本批早前 auto-create 过 → 复用(本批内不会有人删它)。
+                ledger = ledger_cache[f"__auto__{change.ledger_id}"]
+                row = (ledger, "owner")
+            else:
+                row = None
             if row is None:
+                # 批次3(幽灵账本收紧):auto-create 只在「首次绑定」放行 —— 该
+                # device 从未推送过任何账本(全新设备首绑)。老口径无差别自动建
+                # 账本,客户端 syncId 丢失/降级回退本地 int id 时,服务端会静默
+                # 建出幽灵空账本:旧账本数据"消失"、统计被空账本稀释,且之后
+                # 正确 syncId 的推送与幽灵账本并存,极难自查。非首绑场景返回
+                # 404 让客户端走 fullPush/重新绑定,而不是制造数据分裂。
+                if device.last_seen_at is not None:
+                    # last_seen_at 非 None = 不是该 device 的第一次 push(登录即
+                    # 写入)。首绑/迁移期(用户名下 ≤1 个账本)仍放行 auto-create;
+                    # 已有 ≥2 个账本的用户突然推未知 external_id,大概率是客户端
+                    # syncId 丢失回退本地 int id,拒绝并让客户端走 fullPush。
+                    _owned = db.scalar(
+                        select(func.count(Ledger.id)).where(
+                            Ledger.user_id == current_user.id
+                        )
+                    )
+                    if (_owned or 0) >= 2:
+                        logger.warning(
+                            "sync.push.reject unknown ledger (ghost-ledger guard) "
+                            "user=%s device=%s ledger=%s entity=%s",
+                            current_user.id, req.device_id, change.ledger_id,
+                            change.entity_type,
+                        )
+                        rejected += 1
+                        if len(failed_samples) < 20:
+                            failed_samples.append({
+                                "reason": "unknown_ledger",
+                                "ledgerId": change.ledger_id,
+                                "entityType": change.entity_type,
+                                "entitySyncId": change.entity_sync_id,
+                            })
+                        continue
                 # Caller doesn't own a ledger with this external_id — auto-create.
                 # The (user_id, external_id) unique constraint keeps per-user ids
                 # isolated, so two users can independently own "default".
@@ -96,6 +154,8 @@ async def push_changes(
                     joined_at=now,
                 ))
                 db.flush()
+                # F10:本批内后续 change 复用,不再重复解析/创建。
+                ledger_cache[f"__auto__{change.ledger_id}"] = ledger
             else:
                 ledger, caller_role = row
                 # 共享账本 Phase 1:Editor 只能推 transaction / budget;不能推
@@ -233,14 +293,17 @@ async def push_changes(
             db.add(row_change)
             db.flush()
             try:
-                extra_fanout = apply_user_change_to_projection(
-                    db,
-                    user_id=current_user.id,
-                    change=row_change,
-                )
-            except Exception:
+                with db.begin_nested():
+                    extra_fanout = apply_user_change_to_projection(
+                        db,
+                        user_id=current_user.id,
+                        change=row_change,
+                    )
+            except Exception as exc:
+                # 批次3:坏 change 隔离 —— savepoint 只回滚这一条的投影应用,
+                # 不再 raise 炸整批(旧行为:客户端无限重推同一批,同步永久卡死)。
                 logger.exception(
-                    "sync.push.apply_failed (user-scope) entity=%s action=%s "
+                    "sync.push.apply_failed (user-scope, isolated) entity=%s action=%s "
                     "sync_id=%s change_id=%d payload=%s",
                     change.entity_type,
                     change.action,
@@ -248,7 +311,16 @@ async def push_changes(
                     row_change.change_id,
                     change.payload,
                 )
-                raise
+                failed_count += 1
+                if len(failed_samples) < 20:
+                    failed_samples.append({
+                        "reason": "apply_failed",
+                        "entityType": change.entity_type,
+                        "entitySyncId": change.entity_sync_id,
+                        "action": change.action,
+                        "error": str(exc)[:200],
+                    })
+                continue
             touched_user_global = True
             # 共享账本 fan-out:只对 category/account/tag 三种 user-global 类型
             # 推 shared_resource_change(其他 user-global 类型如 device 等不外推)
@@ -281,14 +353,16 @@ async def push_changes(
                 if not change.payload.get("updatedByUserId"):
                     change.payload["updatedByUserId"] = current_user.id
                 if not change.payload.get("createdByUserId"):
-                    existing_creator = db.scalar(
-                        select(ReadTxProjection.created_by_user_id).where(
-                            ReadTxProjection.ledger_id == ledger.id,
-                            ReadTxProjection.sync_id == change.entity_sync_id,
+                    cache_key = (ledger.id, change.entity_sync_id)
+                    if cache_key not in tx_creator_cache:
+                        tx_creator_cache[cache_key] = db.scalar(
+                            select(ReadTxProjection.created_by_user_id).where(
+                                ReadTxProjection.ledger_id == ledger.id,
+                                ReadTxProjection.sync_id == change.entity_sync_id,
+                            )
                         )
-                    )
                     change.payload["createdByUserId"] = (
-                        existing_creator or current_user.id
+                        tx_creator_cache[cache_key] or current_user.id
                     )
             row_change = SyncChange(
                 user_id=ledger.user_id,
@@ -309,17 +383,19 @@ async def push_changes(
                 # lock 一次/账本,避免两个 push 并发走同个 ledger 的 cascade
                 lock_ledger_for_materialize(db, ledger.id)
                 try:
-                    apply_change_to_projection(
-                        db,
-                        ledger_id=ledger.id,
-                        ledger_owner_id=ledger.user_id,
-                        change=row_change,
-                    )
-                except Exception:
-                    # 批量 push 里一条坏 change 炸了要看得到是哪一条;不然 500 只见
-                    # generic Internal server error,得上生产日志面板才能查。
+                    with db.begin_nested():
+                        apply_change_to_projection(
+                            db,
+                            ledger_id=ledger.id,
+                            ledger_owner_id=ledger.user_id,
+                            change=row_change,
+                        )
+                except Exception as exc:
+                    # 批次3:坏 change 隔离 —— savepoint 回滚这一条的投影应用与
+                    # SyncChange 行,其余 change 照常 commit。旧行为(raise 整批
+                    # 500)会让一条 poison change 永久卡死该设备的全部推送。
                     logger.exception(
-                        "sync.push.apply_failed entity=%s action=%s ledger=%s sync_id=%s "
+                        "sync.push.apply_failed (isolated) entity=%s action=%s ledger=%s sync_id=%s "
                         "change_id=%d payload=%s",
                         change.entity_type,
                         change.action,
@@ -328,7 +404,17 @@ async def push_changes(
                         row_change.change_id,
                         change.payload,
                     )
-                    raise
+                    failed_count += 1
+                    if len(failed_samples) < 20:
+                        failed_samples.append({
+                            "reason": "apply_failed",
+                            "ledgerId": change.ledger_id,
+                            "entityType": change.entity_type,
+                            "entitySyncId": change.entity_sync_id,
+                            "action": change.action,
+                            "error": str(exc)[:200],
+                        })
+                    continue
             touched_ledgers[ledger.external_id] = ledger.id
 
         accepted += 1
@@ -424,6 +510,8 @@ async def push_changes(
         rejected=rejected,
         conflict_count=conflict_count,
         conflict_samples=conflict_samples,
+        failed_count=failed_count,
+        failed_samples=failed_samples,
         server_cursor=max_cursor,
         server_timestamp=now,
     )
