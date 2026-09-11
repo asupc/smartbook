@@ -403,21 +403,19 @@ def test_delete_tx_cleans_editor_attachment_and_compacts_log(tmp_path):
         _delete_tx(db, ledger_id="L1", sync_id="tx-DEL", user_id="owner")
         db.commit()
 
-        # 1. tx projection 行已删
-        assert db.scalar(
+        # 0030 软删:行保留+deleted_at 盖章;附件/上传历史保留(恢复用),
+        # 物理清理延后到 purge(回收站「彻底删除」/30 天过期)。
+        row = db.scalar(
             select(ReadTxProjection).where(ReadTxProjection.sync_id == "tx-DEL")
-        ) is None
-
-        # 2. Editor 上传的 attachment 行被清
-        assert db.get(AttachmentFile, "f-by-editor") is None
-        assert not path.exists()
-
-        # 3. sync_changes 里 tx-DEL 只剩 delete event
+        )
+        assert row is not None and row.deleted_at is not None
+        assert db.get(AttachmentFile, "f-by-editor") is not None
+        assert path.exists()
+        # upsert 历史不 compact(restore 靠重放 upsert payload)
         remaining = db.scalars(
             select(SyncChange).where(SyncChange.entity_sync_id == "tx-DEL")
         ).all()
-        assert len(remaining) == 1
-        assert remaining[0].action == "delete"
+        assert len(remaining) == 3  # 2 upsert + 1 delete
 
 
 # ============================================================================

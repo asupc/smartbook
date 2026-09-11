@@ -48,10 +48,12 @@ def scan_all(db: Session, *, attachments_root: Path | None = None) -> ScanReport
     if attachments_root is not None:
         file_orphans.extend(_scan_disk_file_no_row(db, attachments_root))
     sync_orphans = [*_scan_sync_change_missing_entity(db)]
+    expired_trash = _scan_tx_trash_expired(db)
     return ScanReport(
         db_orphans=db_orphans,
         file_orphans=file_orphans,
         sync_orphans=sync_orphans,
+        expired_trash=expired_trash,
     )
 
 
@@ -435,3 +437,46 @@ def _scan_tx_ref_broken_attachment(db: Session) -> list[OrphanRecord]:
 
 # 防 lint 不用
 _unused = (aliased, Iterable)
+
+
+# ─────────────────────── D 类:回收站过期(0030) ───────────────────────
+
+
+def _scan_tx_trash_expired(db: Session) -> list[OrphanRecord]:
+    """D1 — 软删超过 30 天的交易(回收站保留期到)。
+
+    clean 后物理删除(行 + 附件 GC)。天数口径与 read/trash.py 的
+    TRASH_RETENTION_DAYS 一致(自然日,按 deleted_at 算)。
+    """
+    from datetime import datetime, timedelta, timezone
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+    tx = ReadTxProjection
+    stmt = select(
+        tx.user_id,
+        tx.ledger_id,
+        tx.sync_id,
+        tx.amount,
+        tx.tx_type,
+        tx.deleted_at,
+    ).where(
+        tx.deleted_at.is_not(None),
+        tx.deleted_at < cutoff,
+    )
+    records = []
+    for row in db.execute(stmt).all():
+        deleted_at = row.deleted_at
+        if deleted_at.tzinfo is None:
+            deleted_at = deleted_at.replace(tzinfo=timezone.utc)
+        records.append(
+            OrphanRecord(
+                type=OrphanType.TX_TRASH_EXPIRED,
+                user_id=row.user_id,
+                row_id=f"{row.ledger_id}:{row.sync_id}",
+                sync_id=row.sync_id,
+                title=f"回收站过期交易 {row.sync_id[:8]} (¥{row.amount:.2f})",
+                subtitle=f"删除于 {deleted_at:%Y-%m-%d},超过 30 天保留期",
+                extra={"ledger_id": row.ledger_id, "sync_id": row.sync_id},
+            )
+        )
+    return records

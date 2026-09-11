@@ -32,6 +32,9 @@ class OrphanType(str, Enum):
     DISK_FILE_NO_ROW = "disk_file_no_row"  # B3: 磁盘文件无 DB 行
     TX_REF_BROKEN_ATTACHMENT = "tx_ref_broken_attachment"  # B4: tx 引用 fileId 不存在
 
+    # D 类:回收站过期(0030 软删 30 天保留期到)
+    TX_TRASH_EXPIRED = "tx_trash_expired"
+
 
 class OrphanRecord(BaseModel):
     """单条孤儿数据。
@@ -63,10 +66,17 @@ class ScanReport(BaseModel):
     db_orphans: list[OrphanRecord] = Field(default_factory=list)  # A 类
     file_orphans: list[OrphanRecord] = Field(default_factory=list)  # B 类
     sync_orphans: list[OrphanRecord] = Field(default_factory=list)  # C 类(A5 归这里)
+    # D 类:回收站 30 天保留期到的软删交易(0030)。clean 后物理删除。
+    expired_trash: list[OrphanRecord] = Field(default_factory=list)
 
     @property
     def total_count(self) -> int:
-        return len(self.db_orphans) + len(self.file_orphans) + len(self.sync_orphans)
+        return (
+            len(self.db_orphans)
+            + len(self.file_orphans)
+            + len(self.sync_orphans)
+            + len(self.expired_trash)
+        )
 
     @property
     def total_size_bytes(self) -> int:

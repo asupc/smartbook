@@ -60,8 +60,11 @@ def scan_duplicate_transactions(db: Session) -> list[DuplicateGroup]:
     (部分记账入口记录的消费时间没有秒,秒位被截成 0,精确到秒会漏判同一笔)。
     不区分收支类型。每组 >= 2 笔才上报。
     """
+    # 0030:回收站中的交易不参与重复扫描(软删后仍在表内,但已非活跃数据)。
     rows = db.scalars(
-        select(ReadTxProjection).order_by(
+        select(ReadTxProjection)
+        .where(ReadTxProjection.deleted_at.is_(None))
+        .order_by(
             ReadTxProjection.ledger_id,
             ReadTxProjection.happened_at,
             ReadTxProjection.sync_id,

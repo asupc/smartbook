@@ -11,7 +11,7 @@ import os
 from pathlib import Path
 from typing import Iterable
 
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from ...config import get_settings
@@ -132,6 +132,8 @@ def _dispatch(db: Session, r: OrphanRecord, file_ops: list) -> None:
         file_ops.append(lambda: _delete_disk_file_only(r))
     elif t == OrphanType.TX_REF_BROKEN_ATTACHMENT:
         _strip_broken_attachments(db, r)
+    elif t == OrphanType.TX_TRASH_EXPIRED:
+        _purge_expired_trash_tx(db, r, file_ops)
     else:  # pragma: no cover
         raise ValueError(f"unknown OrphanType: {t}")
 
@@ -269,3 +271,32 @@ def _strip_broken_attachments(db: Session, r: OrphanRecord) -> None:
         if not (isinstance(a, dict) and a.get("cloudFileId") in broken_set)
     ]
     obj.attachments_json = json.dumps(kept) if kept else None
+
+
+def _purge_expired_trash_tx(db: Session, r: OrphanRecord, file_ops: list) -> None:
+    """D 类(0030):回收站 30 天保留期到的交易物理删除(行 + 附件 GC)。
+
+    与 read/trash.py 的 purge 端点同语义:先收集附件引用,删行,再 GC
+    孤立附件(共享引用保留)。GC 的文件 unlink 由 gc 内部处理;这里的
+    file_ops 预留为空(clean() 会在 DB commit 后跑列表内容)。
+    """
+    from ... import projection
+
+    ledger_id, sync_id = _ledger_sync_from_record(r)
+    # 二次校验仍在回收站(避免清理扫描后用户已恢复的行被误删)
+    row = db.scalar(
+        select(ReadTxProjection).where(
+            ReadTxProjection.ledger_id == ledger_id,
+            ReadTxProjection.sync_id == sync_id,
+            ReadTxProjection.deleted_at.is_not(None),
+        )
+    )
+    if row is None:
+        return
+    tx_file_ids = projection.collect_tx_attachment_fileids(
+        db, ledger_id=ledger_id, sync_id=sync_id,
+    )
+    projection.purge_tx(db, ledger_id=ledger_id, sync_id=sync_id)
+    projection.gc_orphan_attachments_for_ledger(
+        db, ledger_id=ledger_id, file_ids=tx_file_ids,
+    )

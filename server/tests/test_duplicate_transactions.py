@@ -125,8 +125,9 @@ def test_clean_deletes_selected_and_keeps_keeper(session_factory):
         assert result.success_count == 1
         assert result.failures == []
 
-        # tx-b 被删,tx-a 保留;且生成了 SyncChange delete 行。
-        assert db.get(ReadTxProjection, ("L1", "tx-b")) is None
+        # tx-b 被删(0030 软删:行保留+盖章),tx-a 保留;且生成了 delete change。
+        row_b = db.get(ReadTxProjection, ("L1", "tx-b"))
+        assert row_b is not None and row_b.deleted_at is not None
         assert db.get(ReadTxProjection, ("L1", "tx-a")) is not None
         deletes = db.scalars(
             select(SyncChange).where(
