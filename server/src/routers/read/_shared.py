@@ -262,6 +262,34 @@ def _is_ledger_deleted(db: Session, *, ledger_id: str) -> bool:
     return latest_action == "delete"
 
 
+def _deleted_ledger_ids(db: Session, *, ledger_ids: list[str]) -> set[str]:
+    """批量版 _is_ledger_deleted(F9):一条 SQL 取每个账本最新一条
+    ledger_snapshot 变更的 action,返回软删集合。
+
+    单条版倒序扫 (ledger_id, change_id) 索引且过滤 entity_type 在索引之外,
+    sync_changes 大时每账本每次请求都要走一遍倒扫;这里 window 函数一次
+    拿全部账本的墓碑判定,group 两行 Python。SQLite ≥ 3.25 / PG 都支持
+    row_number()。"""
+    if not ledger_ids:
+        return set()
+    rn = func.row_number().over(
+        partition_by=SyncChange.ledger_id,
+        order_by=SyncChange.change_id.desc(),
+    ).label("rn")
+    subq = (
+        select(SyncChange.ledger_id.label("lg"), SyncChange.action.label("act"), rn)
+        .where(
+            SyncChange.ledger_id.in_(ledger_ids),
+            SyncChange.entity_type == "ledger_snapshot",
+        )
+        .subquery()
+    )
+    rows = db.execute(
+        select(subq.c.lg, subq.c.act).where(subq.c.rn == 1)
+    ).all()
+    return {lg for lg, act in rows if act == "delete"}
+
+
 def _visible_workspace_ledgers(
     db: Session,
     *,
@@ -300,7 +328,10 @@ def _visible_workspace_ledgers(
             select(Ledger).where(and_(*conditions) if conditions else true())
         ).scalars().all()
     )
-    return [lg for lg in ledgers if not _is_ledger_deleted(db, ledger_id=lg.id)]
+    if not ledgers:
+        return []
+    deleted = _deleted_ledger_ids(db, ledger_ids=[lg.id for lg in ledgers])
+    return [lg for lg in ledgers if lg.id not in deleted]
 
 
 def _snapshot_ledger_info(
@@ -472,7 +503,11 @@ def _projection_totals(
                 )
             ), 0.0),
             func.max(ReadTxProjection.happened_at),
-        ).where(ReadTxProjection.ledger_id == ledger_internal_id)
+        ).where(
+            ReadTxProjection.ledger_id == ledger_internal_id,
+            # 0030:回收站中的交易不计入 summary。
+            ReadTxProjection.deleted_at.is_(None),
+        )
     ).one()
     tx_count, income_total, expense_total, balance_all, latest_raw = row
     # 0028:并入余额调整记录(带符号差额)。调整不进收支(income/expense 不动),
@@ -709,6 +744,7 @@ __all__ = [
     '_owner_map_for_ledgers',
     '_user_info_map',
     '_is_ledger_deleted',
+    '_deleted_ledger_ids',
     '_visible_workspace_ledgers',
     '_snapshot_ledger_info',
     '_resolve_ledger_name',
@@ -718,6 +754,7 @@ __all__ = [
     '_projection_totals',
     '_bucket_key',
     '_analytics_range',
+    '_clamp_month_start_day',
     '_csv_field',
     '_sanitize_filename',
 ]

@@ -153,8 +153,10 @@ def test_mobile_push_tx_delete_removes_projection_row():
              "action": "delete", "updated_at": _iso(later), "payload": {}},
         ])
         with sf() as db:
-            assert db.scalar(select(ReadTxProjection).where(
-                ReadTxProjection.ledger_id == lid, ReadTxProjection.sync_id == "tx1")) is None
+            # 0030 软删:行保留,deleted_at 盖章(读路径统一过滤)。
+            row = db.scalar(select(ReadTxProjection).where(
+                ReadTxProjection.ledger_id == lid, ReadTxProjection.sync_id == "tx1"))
+            assert row is not None and row.deleted_at is not None
     finally:
         app.dependency_overrides.clear()
 
@@ -350,8 +352,10 @@ def test_web_delete_tx_removes_projection_row():
                            headers=hdr, json={"base_change_id": base})
         assert r.status_code == 200, r.text
         with sf() as db:
-            assert db.scalar(select(ReadTxProjection).where(
-                ReadTxProjection.ledger_id == lid, ReadTxProjection.sync_id == tx_id)) is None
+            # 0030 软删:行保留,deleted_at 盖章(读路径统一过滤)。
+            row = db.scalar(select(ReadTxProjection).where(
+                ReadTxProjection.ledger_id == lid, ReadTxProjection.sync_id == tx_id))
+            assert row is not None and row.deleted_at is not None
     finally:
         app.dependency_overrides.clear()
 
@@ -418,10 +422,17 @@ def test_projection_count_matches_snapshot_after_mixed_writes():
             snap = snapshot_builder.build(db, ledger)
             proj_count = db.scalar(select(
                 __import__("sqlalchemy").func.count()
-            ).select_from(ReadTxProjection).where(ReadTxProjection.ledger_id == lid))
+            ).select_from(ReadTxProjection).where(
+                ReadTxProjection.ledger_id == lid,
+                ReadTxProjection.deleted_at.is_(None),
+            ))
             built_tx_ids = {e["syncId"] for e in (snap.get("items") or []) if e.get("syncId")}
+            # 0030 软删:回收站行不算「活跃投影」(与 snapshot items 同口径)。
             proj_tx_ids = {r.sync_id for r in db.scalars(
-                select(ReadTxProjection).where(ReadTxProjection.ledger_id == lid)
+                select(ReadTxProjection).where(
+                    ReadTxProjection.ledger_id == lid,
+                    ReadTxProjection.deleted_at.is_(None),
+                )
             ).all()}
             assert proj_tx_ids == built_tx_ids
             assert proj_tx_ids == {"tx1", "tx3"}, f"expected tx1+tx3 after tx2 delete, got {proj_tx_ids}"

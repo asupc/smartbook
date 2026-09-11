@@ -9,6 +9,10 @@ broadcast + 一次 idempotency。区别:
 - 部分失败按 tx 粒度返回 `failed[]`,只在事务级错误才 500
 - 不开放 base_change_id 严格校验(用户多选时不应该被并发其它写入卡死;现有
   单笔 DELETE 也用 lenient 模式)
+
+性能(F2):不再 build 全量 items 快照 —— 按 tx_ids 一次点查目标行
+(sync_id IN,走 PK),构造 items 子集喂 mutator;diff 也只发生在子集内。
+K 笔删除从 O(K×全表) 降到 O(K)。DB 核心整段跑 threadpool,不阻塞事件循环。
 """
 from __future__ import annotations
 
@@ -20,6 +24,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from ... import snapshot_builder
 from ...concurrency import lock_ledger_for_materialize
@@ -27,7 +32,7 @@ from ...database import get_db
 from ...deps import get_current_user
 from sqlalchemy import select
 
-from ...models import AuditLog, SyncPushIdempotency, User
+from ...models import AuditLog, ReadTxProjection, SyncPushIdempotency, User
 from ...snapshot_mutator import delete_transaction
 from ._shared import (
     _TRANSACTION_WRITE_ROLES,
@@ -38,6 +43,7 @@ from ._shared import (
     _load_idempotent_response,
     _payload_with_actor,
     _prepare_write,
+    _projection_row_to_tx_dict,
 )
 
 logger = logging.getLogger(__name__)
@@ -121,116 +127,138 @@ async def delete_tx_batch(
             unique_ids.append(tx_id)
             seen.add(tx_id)
 
-    lock_ledger_for_materialize(db, ledger.id)
-    snapshot = snapshot_builder.build(db, ledger)
-    # 深拷贝快照用于 diff(跟 batch_create 同模式)
-    prev_snapshot = {**snapshot}
-    for _k in ("items", "accounts", "categories", "tags", "budgets"):
-        arr = snapshot.get(_k)
-        if isinstance(arr, list):
-            prev_snapshot[_k] = [dict(e) if isinstance(e, dict) else e for e in arr]
+    # DB 核心整段丢 threadpool(F2):10 万 tx 账本的全量 build 曾把事件循环
+    # 卡秒级;现在子集点查本身很快,但 emit/commit 仍可能写不少行,统一走
+    # 线程池与其余 write 端点一致。
+    def _core() -> tuple[BatchTxDeleteResponse, int, list[str]]:
+        lock_ledger_for_materialize(db, ledger.id)
 
-    # 循环 mutate;单个 tx 报错 → 记 failed 继续。事务级错误(KeyboardInterrupt 等)
-    # 不在这里捕获,按惯例往上抛由 FastAPI 处理。
-    deleted_ids: list[str] = []
-    failed: list[BatchTxFailure] = []
-    delete_payload = _payload_with_actor({}, current_user)
-
-    for tx_id in unique_ids:
-        try:
-            snapshot = delete_transaction(snapshot, tx_id, delete_payload)
-            deleted_ids.append(tx_id)
-        except KeyError:
-            # _find_by_sync_id 抛 KeyError → tx 不在 snapshot(已删 / ID 错 / 跨 ledger)
-            failed.append(
-                BatchTxFailure(tx_id=tx_id, reason="not_found", message="transaction not in ledger")
+        # 一次点查目标行(ledger_id + sync_id 走复合 PK),构造 items 子集。
+        # 已软删(回收站)的行不出现 → 记 not_found,不会二次发 delete change。
+        # mutator 的 update/delete 只读 items;attachments GC 由
+        # _emit_entity_diffs 的 delete 分支按 sync_id 精确处理。
+        rows = db.scalars(
+            select(ReadTxProjection).where(
+                ReadTxProjection.ledger_id == ledger.id,
+                ReadTxProjection.sync_id.in_(unique_ids),
+                ReadTxProjection.deleted_at.is_(None),
             )
-        except PermissionError as exc:
-            failed.append(
-                BatchTxFailure(tx_id=tx_id, reason="permission_denied", message=str(exc))
-            )
-        except ValueError as exc:
-            # snapshot_mutator 在 sync_id prefix 不对 / 其它校验失败时抛
-            failed.append(BatchTxFailure(tx_id=tx_id, reason="conflict", message=str(exc)))
+        ).all()
+        items = [_projection_row_to_tx_dict(r) for r in rows]
+        snapshot = {
+            "items": items,
+            "count": len(items),
+            "accounts": [], "categories": [], "tags": [], "budgets": [],
+        }
+        prev_snapshot = {**snapshot, "items": [dict(e) for e in items]}
 
-    # diff + emit changes(只针对实际变更的 items)
-    now = datetime.now(timezone.utc)
-    if deleted_ids:
-        emitted_change_ids = _emit_entity_diffs(
-            db,
-            ledger=ledger,
-            current_user=current_user,
-            device_id=device_id,
-            prev=prev_snapshot,
-            next_snapshot=snapshot,
-            now=now,
-        )
-        new_change_id = max(emitted_change_ids) if emitted_change_ids else (
-            snapshot_builder.latest_change_id(db, ledger.id)
-        )
-    else:
-        new_change_id = snapshot_builder.latest_change_id(db, ledger.id)
+        # 循环 mutate;单个 tx 报错 → 记 failed 继续。事务级错误(KeyboardInterrupt 等)
+        # 不在这里捕获,按惯例往上抛由 FastAPI 处理。
+        deleted_ids: list[str] = []
+        failed: list[BatchTxFailure] = []
+        delete_payload = _payload_with_actor({}, current_user)
 
-    db.add(
-        AuditLog(
-            user_id=current_user.id,
-            ledger_id=ledger.id,
-            action="web_tx_batch_delete",
-            metadata_json={
-                "ledgerId": ledger.external_id,
-                "baseChangeId": req.base_change_id,
-                "newChangeId": new_change_id,
-                "deletedCount": len(deleted_ids),
-                "deletedIds": deleted_ids,
-                "failedCount": len(failed),
-                "failedIds": [f.tx_id for f in failed],
-            },
-        )
-    )
+        for tx_id in unique_ids:
+            try:
+                snapshot = delete_transaction(snapshot, tx_id, delete_payload)
+                deleted_ids.append(tx_id)
+            except KeyError:
+                # _find_by_sync_id 抛 KeyError → tx 不在账本(已删 / ID 错 / 跨 ledger)
+                failed.append(
+                    BatchTxFailure(tx_id=tx_id, reason="not_found", message="transaction not in ledger")
+                )
+            except PermissionError as exc:
+                failed.append(BatchTxFailure(tx_id=tx_id, reason="permission_denied", message=str(exc)))
+            except ValueError as exc:
+                # snapshot_mutator 在 sync_id prefix 不对 / 其它校验失败时抛
+                failed.append(BatchTxFailure(tx_id=tx_id, reason="conflict", message=str(exc)))
 
-    response = BatchTxDeleteResponse(
-        ledger_id=ledger.external_id,
-        base_change_id=req.base_change_id,
-        new_change_id=new_change_id,
-        server_timestamp=now,
-        deleted_tx_ids=deleted_ids,
-        failed=failed,
-    )
-
-    request_hash = _hash_request(request.method, request.url.path, payload_for_ide)
-    if idempotency_key:
-        db.add(
-            SyncPushIdempotency(
-                user_id=current_user.id,
-                device_id=device_id,
-                idempotency_key=idempotency_key,
-                request_hash=request_hash,
-                response_json=response.model_dump(mode="json"),
-                created_at=now,
-                expires_at=now + timedelta(hours=24),
-            )
-        )
-
-    try:
-        db.commit()
-    except IntegrityError:
-        db.rollback()
-        if idempotency_key:
-            replay = _load_idempotent_response(
+        # diff + emit changes(只针对实际变更的 items)
+        now = datetime.now(timezone.utc)
+        if deleted_ids:
+            emitted_change_ids = _emit_entity_diffs(
                 db,
-                user_id=current_user.id,
+                ledger=ledger,
+                current_user=current_user,
                 device_id=device_id,
-                idempotency_key=idempotency_key,
-                request_hash=request_hash,
+                prev=prev_snapshot,
+                next_snapshot=snapshot,
+                now=now,
             )
-            if replay is not None:
-                return BatchTxDeleteResponse(**replay.model_dump()) if hasattr(replay, "model_dump") else replay  # type: ignore[return-value]
-        raise
+            new_change_id = max(emitted_change_ids) if emitted_change_ids else (
+                snapshot_builder.latest_change_id(db, ledger.id)
+            )
+        else:
+            new_change_id = snapshot_builder.latest_change_id(db, ledger.id)
 
-    logger.info(
-        "tx.batch_delete ledger=%s deleted=%d failed=%d change_id=%d device=%s user=%s",
-        ledger.external_id, len(deleted_ids), len(failed), new_change_id, device_id, current_user.id,
-    )
+        db.add(
+            AuditLog(
+                user_id=current_user.id,
+                ledger_id=ledger.id,
+                action="web_tx_batch_delete",
+                metadata_json={
+                    "ledgerId": ledger.external_id,
+                    "baseChangeId": req.base_change_id,
+                    "newChangeId": new_change_id,
+                    "deletedCount": len(deleted_ids),
+                    "deletedIds": deleted_ids,
+                    "failedCount": len(failed),
+                    "failedIds": [f.tx_id for f in failed],
+                },
+            )
+        )
+
+        response = BatchTxDeleteResponse(
+            ledger_id=ledger.external_id,
+            base_change_id=req.base_change_id,
+            new_change_id=new_change_id,
+            server_timestamp=now,
+            deleted_tx_ids=deleted_ids,
+            failed=failed,
+        )
+
+        request_hash = _hash_request(request.method, request.url.path, payload_for_ide)
+        if idempotency_key:
+            db.add(
+                SyncPushIdempotency(
+                    user_id=current_user.id,
+                    device_id=device_id,
+                    idempotency_key=idempotency_key,
+                    request_hash=request_hash,
+                    response_json=response.model_dump(mode="json"),
+                    created_at=now,
+                    expires_at=now + timedelta(hours=24),
+                )
+            )
+
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            if idempotency_key:
+                replay2 = _load_idempotent_response(
+                    db,
+                    user_id=current_user.id,
+                    device_id=device_id,
+                    idempotency_key=idempotency_key,
+                    request_hash=request_hash,
+                )
+                if replay2 is not None:
+                    return (
+                        BatchTxDeleteResponse(**replay2.model_dump())
+                        if hasattr(replay2, "model_dump") else replay2,
+                        replay2.new_change_id,
+                        [],
+                    )  # type: ignore[return-value]
+            raise
+
+        logger.info(
+            "tx.batch_delete ledger=%s deleted=%d failed=%d change_id=%d device=%s user=%s",
+            ledger.external_id, len(deleted_ids), len(failed), new_change_id, device_id, current_user.id,
+        )
+        return response, new_change_id, deleted_ids
+
+    response, new_change_id, deleted_ids = await run_in_threadpool(_core)
 
     if deleted_ids:
         # 共享账本:fan-out 给所有 LedgerMember,Editor 端 mobile 实时收到。
@@ -243,7 +271,7 @@ async def delete_tx_batch(
                 "type": "sync_change",
                 "ledgerId": ledger.external_id,
                 "serverCursor": new_change_id,
-                "serverTimestamp": now.isoformat(),
+                "serverTimestamp": response.server_timestamp.isoformat(),
             },
         )
     return response

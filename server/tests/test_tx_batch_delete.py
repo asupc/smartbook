@@ -129,8 +129,12 @@ def test_batch_delete_happy_path():
         # projection 行应该不在了(delete_transaction 走 _emit_entity_diffs 处理)
         db = next(app.dependency_overrides[get_db]())
         try:
+            # 0030 软删:行保留,deleted_at 盖章;活跃行(未软删)应为空。
             remaining = db.scalars(
-                select(ReadTxProjection).where(ReadTxProjection.sync_id.in_(tx_ids))
+                select(ReadTxProjection).where(
+                    ReadTxProjection.sync_id.in_(tx_ids),
+                    ReadTxProjection.deleted_at.is_(None),
+                )
             ).all()
             assert remaining == []
             # 验证 sync_change 里有 delete 类型记录
