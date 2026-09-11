@@ -160,6 +160,21 @@ class Transactions extends Table {
   RealColumn get nativeAmount => real().nullable()();
 }
 
+/// v43 回收站 tombstone:删除的交易整行搬到这里(payloadJson = Transactions
+/// 行序列化),主表读路径零改动;恢复 = payload 写回主表(新 int id)。30 天后
+/// 由 [LocalRepository.cleanupDeletedTransactions] 物理清理(连附件文件)。
+/// 远端 delete change 应用时也走同一路径(本地与服务端回收站各自独立)。
+class DeletedTransactions extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get syncId => text()(); // 冗余列:恢复时反查/去重
+  IntColumn get ledgerId => integer()();
+  RealColumn get amount => real()();
+  TextColumn get txType => text()();
+  DateTimeColumn get happenedAt => dateTime()();
+  TextColumn get payloadJson => text()(); // 整行 Transactions 序列化
+  DateTimeColumn get deletedAt => dateTime().withDefault(currentDateAndTime)();
+}
+
 class RecurringTransactions extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get ledgerId => integer()();
@@ -586,6 +601,7 @@ class SharedLedgerTags extends Table {
   AutoBookEvents,
   AutoBookEventItems,
   AccountAdjustments,
+  DeletedTransactions,
 ])
 class BeeDatabase extends _$BeeDatabase {
   BeeDatabase() : super(_openConnection());
@@ -596,7 +612,7 @@ class BeeDatabase extends _$BeeDatabase {
   BeeDatabase.forTesting(QueryExecutor executor) : super(executor);
 
   @override
-  int get schemaVersion => 42; // v42: 余额调整记录表(调整余额不再落交易);v41: keyset 分页索引 (ledger_id, happened_at DESC, id DESC)
+  int get schemaVersion => 43; // v43: 回收站 tombstone 表(删除可恢复);v42: 余额调整记录表
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -1417,6 +1433,10 @@ class BeeDatabase extends _$BeeDatabase {
             // v42 余额调整记录表:调整余额不再落一笔 exclude_from_stats 交易,
             // 独立实体只参与余额口径。存量调整交易不迁移(exclude 标记继续生效)。
             await migrator.createTable(accountAdjustments);
+          }
+          if (from < 43) {
+            // v43 回收站 tombstone 表:删除的交易整行暂存,30 天内可恢复。
+            await migrator.createTable(deletedTransactions);
           }
           // v39(M3-1):索引统一到 _ensureIndexes(),无条件跑一遍。
           await _ensureIndexes();

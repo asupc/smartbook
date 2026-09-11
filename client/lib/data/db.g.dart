@@ -14018,6 +14018,428 @@ class AccountAdjustmentsCompanion extends UpdateCompanion<AccountAdjustment> {
   }
 }
 
+class $DeletedTransactionsTable extends DeletedTransactions
+    with TableInfo<$DeletedTransactionsTable, DeletedTransaction> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DeletedTransactionsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+      'id', aliasedName, false,
+      hasAutoIncrement: true,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('PRIMARY KEY AUTOINCREMENT'));
+  static const VerificationMeta _syncIdMeta = const VerificationMeta('syncId');
+  @override
+  late final GeneratedColumn<String> syncId = GeneratedColumn<String>(
+      'sync_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _ledgerIdMeta =
+      const VerificationMeta('ledgerId');
+  @override
+  late final GeneratedColumn<int> ledgerId = GeneratedColumn<int>(
+      'ledger_id', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _amountMeta = const VerificationMeta('amount');
+  @override
+  late final GeneratedColumn<double> amount = GeneratedColumn<double>(
+      'amount', aliasedName, false,
+      type: DriftSqlType.double, requiredDuringInsert: true);
+  static const VerificationMeta _txTypeMeta = const VerificationMeta('txType');
+  @override
+  late final GeneratedColumn<String> txType = GeneratedColumn<String>(
+      'tx_type', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _happenedAtMeta =
+      const VerificationMeta('happenedAt');
+  @override
+  late final GeneratedColumn<DateTime> happenedAt = GeneratedColumn<DateTime>(
+      'happened_at', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  static const VerificationMeta _payloadJsonMeta =
+      const VerificationMeta('payloadJson');
+  @override
+  late final GeneratedColumn<String> payloadJson = GeneratedColumn<String>(
+      'payload_json', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _deletedAtMeta =
+      const VerificationMeta('deletedAt');
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+      'deleted_at', aliasedName, false,
+      type: DriftSqlType.dateTime,
+      requiredDuringInsert: false,
+      defaultValue: currentDateAndTime);
+  @override
+  List<GeneratedColumn> get $columns => [
+        id,
+        syncId,
+        ledgerId,
+        amount,
+        txType,
+        happenedAt,
+        payloadJson,
+        deletedAt
+      ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'deleted_transactions';
+  @override
+  VerificationContext validateIntegrity(Insertable<DeletedTransaction> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('sync_id')) {
+      context.handle(_syncIdMeta,
+          syncId.isAcceptableOrUnknown(data['sync_id']!, _syncIdMeta));
+    } else if (isInserting) {
+      context.missing(_syncIdMeta);
+    }
+    if (data.containsKey('ledger_id')) {
+      context.handle(_ledgerIdMeta,
+          ledgerId.isAcceptableOrUnknown(data['ledger_id']!, _ledgerIdMeta));
+    } else if (isInserting) {
+      context.missing(_ledgerIdMeta);
+    }
+    if (data.containsKey('amount')) {
+      context.handle(_amountMeta,
+          amount.isAcceptableOrUnknown(data['amount']!, _amountMeta));
+    } else if (isInserting) {
+      context.missing(_amountMeta);
+    }
+    if (data.containsKey('tx_type')) {
+      context.handle(_txTypeMeta,
+          txType.isAcceptableOrUnknown(data['tx_type']!, _txTypeMeta));
+    } else if (isInserting) {
+      context.missing(_txTypeMeta);
+    }
+    if (data.containsKey('happened_at')) {
+      context.handle(
+          _happenedAtMeta,
+          happenedAt.isAcceptableOrUnknown(
+              data['happened_at']!, _happenedAtMeta));
+    } else if (isInserting) {
+      context.missing(_happenedAtMeta);
+    }
+    if (data.containsKey('payload_json')) {
+      context.handle(
+          _payloadJsonMeta,
+          payloadJson.isAcceptableOrUnknown(
+              data['payload_json']!, _payloadJsonMeta));
+    } else if (isInserting) {
+      context.missing(_payloadJsonMeta);
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(_deletedAtMeta,
+          deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  DeletedTransaction map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DeletedTransaction(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
+      syncId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}sync_id'])!,
+      ledgerId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}ledger_id'])!,
+      amount: attachedDatabase.typeMapping
+          .read(DriftSqlType.double, data['${effectivePrefix}amount'])!,
+      txType: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}tx_type'])!,
+      happenedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}happened_at'])!,
+      payloadJson: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}payload_json'])!,
+      deletedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}deleted_at'])!,
+    );
+  }
+
+  @override
+  $DeletedTransactionsTable createAlias(String alias) {
+    return $DeletedTransactionsTable(attachedDatabase, alias);
+  }
+}
+
+class DeletedTransaction extends DataClass
+    implements Insertable<DeletedTransaction> {
+  final int id;
+  final String syncId;
+  final int ledgerId;
+  final double amount;
+  final String txType;
+  final DateTime happenedAt;
+  final String payloadJson;
+  final DateTime deletedAt;
+  const DeletedTransaction(
+      {required this.id,
+      required this.syncId,
+      required this.ledgerId,
+      required this.amount,
+      required this.txType,
+      required this.happenedAt,
+      required this.payloadJson,
+      required this.deletedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['sync_id'] = Variable<String>(syncId);
+    map['ledger_id'] = Variable<int>(ledgerId);
+    map['amount'] = Variable<double>(amount);
+    map['tx_type'] = Variable<String>(txType);
+    map['happened_at'] = Variable<DateTime>(happenedAt);
+    map['payload_json'] = Variable<String>(payloadJson);
+    map['deleted_at'] = Variable<DateTime>(deletedAt);
+    return map;
+  }
+
+  DeletedTransactionsCompanion toCompanion(bool nullToAbsent) {
+    return DeletedTransactionsCompanion(
+      id: Value(id),
+      syncId: Value(syncId),
+      ledgerId: Value(ledgerId),
+      amount: Value(amount),
+      txType: Value(txType),
+      happenedAt: Value(happenedAt),
+      payloadJson: Value(payloadJson),
+      deletedAt: Value(deletedAt),
+    );
+  }
+
+  factory DeletedTransaction.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DeletedTransaction(
+      id: serializer.fromJson<int>(json['id']),
+      syncId: serializer.fromJson<String>(json['syncId']),
+      ledgerId: serializer.fromJson<int>(json['ledgerId']),
+      amount: serializer.fromJson<double>(json['amount']),
+      txType: serializer.fromJson<String>(json['txType']),
+      happenedAt: serializer.fromJson<DateTime>(json['happenedAt']),
+      payloadJson: serializer.fromJson<String>(json['payloadJson']),
+      deletedAt: serializer.fromJson<DateTime>(json['deletedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'syncId': serializer.toJson<String>(syncId),
+      'ledgerId': serializer.toJson<int>(ledgerId),
+      'amount': serializer.toJson<double>(amount),
+      'txType': serializer.toJson<String>(txType),
+      'happenedAt': serializer.toJson<DateTime>(happenedAt),
+      'payloadJson': serializer.toJson<String>(payloadJson),
+      'deletedAt': serializer.toJson<DateTime>(deletedAt),
+    };
+  }
+
+  DeletedTransaction copyWith(
+          {int? id,
+          String? syncId,
+          int? ledgerId,
+          double? amount,
+          String? txType,
+          DateTime? happenedAt,
+          String? payloadJson,
+          DateTime? deletedAt}) =>
+      DeletedTransaction(
+        id: id ?? this.id,
+        syncId: syncId ?? this.syncId,
+        ledgerId: ledgerId ?? this.ledgerId,
+        amount: amount ?? this.amount,
+        txType: txType ?? this.txType,
+        happenedAt: happenedAt ?? this.happenedAt,
+        payloadJson: payloadJson ?? this.payloadJson,
+        deletedAt: deletedAt ?? this.deletedAt,
+      );
+  DeletedTransaction copyWithCompanion(DeletedTransactionsCompanion data) {
+    return DeletedTransaction(
+      id: data.id.present ? data.id.value : this.id,
+      syncId: data.syncId.present ? data.syncId.value : this.syncId,
+      ledgerId: data.ledgerId.present ? data.ledgerId.value : this.ledgerId,
+      amount: data.amount.present ? data.amount.value : this.amount,
+      txType: data.txType.present ? data.txType.value : this.txType,
+      happenedAt:
+          data.happenedAt.present ? data.happenedAt.value : this.happenedAt,
+      payloadJson:
+          data.payloadJson.present ? data.payloadJson.value : this.payloadJson,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DeletedTransaction(')
+          ..write('id: $id, ')
+          ..write('syncId: $syncId, ')
+          ..write('ledgerId: $ledgerId, ')
+          ..write('amount: $amount, ')
+          ..write('txType: $txType, ')
+          ..write('happenedAt: $happenedAt, ')
+          ..write('payloadJson: $payloadJson, ')
+          ..write('deletedAt: $deletedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+      id, syncId, ledgerId, amount, txType, happenedAt, payloadJson, deletedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DeletedTransaction &&
+          other.id == this.id &&
+          other.syncId == this.syncId &&
+          other.ledgerId == this.ledgerId &&
+          other.amount == this.amount &&
+          other.txType == this.txType &&
+          other.happenedAt == this.happenedAt &&
+          other.payloadJson == this.payloadJson &&
+          other.deletedAt == this.deletedAt);
+}
+
+class DeletedTransactionsCompanion extends UpdateCompanion<DeletedTransaction> {
+  final Value<int> id;
+  final Value<String> syncId;
+  final Value<int> ledgerId;
+  final Value<double> amount;
+  final Value<String> txType;
+  final Value<DateTime> happenedAt;
+  final Value<String> payloadJson;
+  final Value<DateTime> deletedAt;
+  const DeletedTransactionsCompanion({
+    this.id = const Value.absent(),
+    this.syncId = const Value.absent(),
+    this.ledgerId = const Value.absent(),
+    this.amount = const Value.absent(),
+    this.txType = const Value.absent(),
+    this.happenedAt = const Value.absent(),
+    this.payloadJson = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+  });
+  DeletedTransactionsCompanion.insert({
+    this.id = const Value.absent(),
+    required String syncId,
+    required int ledgerId,
+    required double amount,
+    required String txType,
+    required DateTime happenedAt,
+    required String payloadJson,
+    this.deletedAt = const Value.absent(),
+  })  : syncId = Value(syncId),
+        ledgerId = Value(ledgerId),
+        amount = Value(amount),
+        txType = Value(txType),
+        happenedAt = Value(happenedAt),
+        payloadJson = Value(payloadJson);
+  static Insertable<DeletedTransaction> custom({
+    Expression<int>? id,
+    Expression<String>? syncId,
+    Expression<int>? ledgerId,
+    Expression<double>? amount,
+    Expression<String>? txType,
+    Expression<DateTime>? happenedAt,
+    Expression<String>? payloadJson,
+    Expression<DateTime>? deletedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (syncId != null) 'sync_id': syncId,
+      if (ledgerId != null) 'ledger_id': ledgerId,
+      if (amount != null) 'amount': amount,
+      if (txType != null) 'tx_type': txType,
+      if (happenedAt != null) 'happened_at': happenedAt,
+      if (payloadJson != null) 'payload_json': payloadJson,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+    });
+  }
+
+  DeletedTransactionsCompanion copyWith(
+      {Value<int>? id,
+      Value<String>? syncId,
+      Value<int>? ledgerId,
+      Value<double>? amount,
+      Value<String>? txType,
+      Value<DateTime>? happenedAt,
+      Value<String>? payloadJson,
+      Value<DateTime>? deletedAt}) {
+    return DeletedTransactionsCompanion(
+      id: id ?? this.id,
+      syncId: syncId ?? this.syncId,
+      ledgerId: ledgerId ?? this.ledgerId,
+      amount: amount ?? this.amount,
+      txType: txType ?? this.txType,
+      happenedAt: happenedAt ?? this.happenedAt,
+      payloadJson: payloadJson ?? this.payloadJson,
+      deletedAt: deletedAt ?? this.deletedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (syncId.present) {
+      map['sync_id'] = Variable<String>(syncId.value);
+    }
+    if (ledgerId.present) {
+      map['ledger_id'] = Variable<int>(ledgerId.value);
+    }
+    if (amount.present) {
+      map['amount'] = Variable<double>(amount.value);
+    }
+    if (txType.present) {
+      map['tx_type'] = Variable<String>(txType.value);
+    }
+    if (happenedAt.present) {
+      map['happened_at'] = Variable<DateTime>(happenedAt.value);
+    }
+    if (payloadJson.present) {
+      map['payload_json'] = Variable<String>(payloadJson.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DeletedTransactionsCompanion(')
+          ..write('id: $id, ')
+          ..write('syncId: $syncId, ')
+          ..write('ledgerId: $ledgerId, ')
+          ..write('amount: $amount, ')
+          ..write('txType: $txType, ')
+          ..write('happenedAt: $happenedAt, ')
+          ..write('payloadJson: $payloadJson, ')
+          ..write('deletedAt: $deletedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$BeeDatabase extends GeneratedDatabase {
   _$BeeDatabase(QueryExecutor e) : super(e);
   $BeeDatabaseManager get managers => $BeeDatabaseManager(this);
@@ -14055,6 +14477,8 @@ abstract class _$BeeDatabase extends GeneratedDatabase {
       $AutoBookEventItemsTable(this);
   late final $AccountAdjustmentsTable accountAdjustments =
       $AccountAdjustmentsTable(this);
+  late final $DeletedTransactionsTable deletedTransactions =
+      $DeletedTransactionsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -14083,7 +14507,8 @@ abstract class _$BeeDatabase extends GeneratedDatabase {
         exchangeRateOverrides,
         autoBookEvents,
         autoBookEventItems,
-        accountAdjustments
+        accountAdjustments,
+        deletedTransactions
       ];
 }
 
@@ -20540,6 +20965,223 @@ typedef $$AccountAdjustmentsTableProcessedTableManager = ProcessedTableManager<
     ),
     AccountAdjustment,
     PrefetchHooks Function()>;
+typedef $$DeletedTransactionsTableCreateCompanionBuilder
+    = DeletedTransactionsCompanion Function({
+  Value<int> id,
+  required String syncId,
+  required int ledgerId,
+  required double amount,
+  required String txType,
+  required DateTime happenedAt,
+  required String payloadJson,
+  Value<DateTime> deletedAt,
+});
+typedef $$DeletedTransactionsTableUpdateCompanionBuilder
+    = DeletedTransactionsCompanion Function({
+  Value<int> id,
+  Value<String> syncId,
+  Value<int> ledgerId,
+  Value<double> amount,
+  Value<String> txType,
+  Value<DateTime> happenedAt,
+  Value<String> payloadJson,
+  Value<DateTime> deletedAt,
+});
+
+class $$DeletedTransactionsTableFilterComposer
+    extends Composer<_$BeeDatabase, $DeletedTransactionsTable> {
+  $$DeletedTransactionsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get syncId => $composableBuilder(
+      column: $table.syncId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get ledgerId => $composableBuilder(
+      column: $table.ledgerId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<double> get amount => $composableBuilder(
+      column: $table.amount, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get txType => $composableBuilder(
+      column: $table.txType, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get happenedAt => $composableBuilder(
+      column: $table.happenedAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get payloadJson => $composableBuilder(
+      column: $table.payloadJson, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+      column: $table.deletedAt, builder: (column) => ColumnFilters(column));
+}
+
+class $$DeletedTransactionsTableOrderingComposer
+    extends Composer<_$BeeDatabase, $DeletedTransactionsTable> {
+  $$DeletedTransactionsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get syncId => $composableBuilder(
+      column: $table.syncId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get ledgerId => $composableBuilder(
+      column: $table.ledgerId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<double> get amount => $composableBuilder(
+      column: $table.amount, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get txType => $composableBuilder(
+      column: $table.txType, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get happenedAt => $composableBuilder(
+      column: $table.happenedAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get payloadJson => $composableBuilder(
+      column: $table.payloadJson, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+      column: $table.deletedAt, builder: (column) => ColumnOrderings(column));
+}
+
+class $$DeletedTransactionsTableAnnotationComposer
+    extends Composer<_$BeeDatabase, $DeletedTransactionsTable> {
+  $$DeletedTransactionsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get syncId =>
+      $composableBuilder(column: $table.syncId, builder: (column) => column);
+
+  GeneratedColumn<int> get ledgerId =>
+      $composableBuilder(column: $table.ledgerId, builder: (column) => column);
+
+  GeneratedColumn<double> get amount =>
+      $composableBuilder(column: $table.amount, builder: (column) => column);
+
+  GeneratedColumn<String> get txType =>
+      $composableBuilder(column: $table.txType, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get happenedAt => $composableBuilder(
+      column: $table.happenedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get payloadJson => $composableBuilder(
+      column: $table.payloadJson, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+}
+
+class $$DeletedTransactionsTableTableManager extends RootTableManager<
+    _$BeeDatabase,
+    $DeletedTransactionsTable,
+    DeletedTransaction,
+    $$DeletedTransactionsTableFilterComposer,
+    $$DeletedTransactionsTableOrderingComposer,
+    $$DeletedTransactionsTableAnnotationComposer,
+    $$DeletedTransactionsTableCreateCompanionBuilder,
+    $$DeletedTransactionsTableUpdateCompanionBuilder,
+    (
+      DeletedTransaction,
+      BaseReferences<_$BeeDatabase, $DeletedTransactionsTable,
+          DeletedTransaction>
+    ),
+    DeletedTransaction,
+    PrefetchHooks Function()> {
+  $$DeletedTransactionsTableTableManager(
+      _$BeeDatabase db, $DeletedTransactionsTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DeletedTransactionsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DeletedTransactionsTableOrderingComposer(
+                  $db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DeletedTransactionsTableAnnotationComposer(
+                  $db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            Value<String> syncId = const Value.absent(),
+            Value<int> ledgerId = const Value.absent(),
+            Value<double> amount = const Value.absent(),
+            Value<String> txType = const Value.absent(),
+            Value<DateTime> happenedAt = const Value.absent(),
+            Value<String> payloadJson = const Value.absent(),
+            Value<DateTime> deletedAt = const Value.absent(),
+          }) =>
+              DeletedTransactionsCompanion(
+            id: id,
+            syncId: syncId,
+            ledgerId: ledgerId,
+            amount: amount,
+            txType: txType,
+            happenedAt: happenedAt,
+            payloadJson: payloadJson,
+            deletedAt: deletedAt,
+          ),
+          createCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            required String syncId,
+            required int ledgerId,
+            required double amount,
+            required String txType,
+            required DateTime happenedAt,
+            required String payloadJson,
+            Value<DateTime> deletedAt = const Value.absent(),
+          }) =>
+              DeletedTransactionsCompanion.insert(
+            id: id,
+            syncId: syncId,
+            ledgerId: ledgerId,
+            amount: amount,
+            txType: txType,
+            happenedAt: happenedAt,
+            payloadJson: payloadJson,
+            deletedAt: deletedAt,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$DeletedTransactionsTableProcessedTableManager = ProcessedTableManager<
+    _$BeeDatabase,
+    $DeletedTransactionsTable,
+    DeletedTransaction,
+    $$DeletedTransactionsTableFilterComposer,
+    $$DeletedTransactionsTableOrderingComposer,
+    $$DeletedTransactionsTableAnnotationComposer,
+    $$DeletedTransactionsTableCreateCompanionBuilder,
+    $$DeletedTransactionsTableUpdateCompanionBuilder,
+    (
+      DeletedTransaction,
+      BaseReferences<_$BeeDatabase, $DeletedTransactionsTable,
+          DeletedTransaction>
+    ),
+    DeletedTransaction,
+    PrefetchHooks Function()>;
 
 class $BeeDatabaseManager {
   final _$BeeDatabase _db;
@@ -20594,4 +21236,6 @@ class $BeeDatabaseManager {
       $$AutoBookEventItemsTableTableManager(_db, _db.autoBookEventItems);
   $$AccountAdjustmentsTableTableManager get accountAdjustments =>
       $$AccountAdjustmentsTableTableManager(_db, _db.accountAdjustments);
+  $$DeletedTransactionsTableTableManager get deletedTransactions =>
+      $$DeletedTransactionsTableTableManager(_db, _db.deletedTransactions);
 }

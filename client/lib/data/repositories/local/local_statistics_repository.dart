@@ -12,49 +12,87 @@ class LocalStatisticsRepository implements StatisticsRepository {
 
   LocalStatisticsRepository(this.db);
 
+
+  /// C5:本机时区偏移秒(东八区 = 28800)。drift 把 naive DateTime 按本机
+  /// 时区转 epoch 秒存储;SQL 侧取"本地日期"时把 epoch 加回偏移再走
+  /// 'unixepoch' 解析 —— 等价于 Dart 侧 happenedAt.toLocal() 的字段语义。
+  /// 不能用 SQLite 的 'localtime' 修饰符:部分 Android 构建不含 OS 时区
+  /// 支持,返回 NULL。
+  static int get _localTzOffsetSeconds =>
+      DateTime.now().timeZoneOffset.inSeconds;
+
   @override
-  Future<List<({int? id, String name, String? icon, double total})>> totalsByCategory({
+  Future<List<({int? id, String name, String? icon, double total})>>
+      totalsByCategory({
     required int ledgerId,
     required String type,
     required DateTime start,
     required DateTime end,
   }) async {
-    final q = (db.select(db.transactions)
-          ..where((t) =>
-              t.ledgerId.equals(ledgerId) &
-              t.type.equals(type) &
-              t.excludeFromStats.equals(false) &
-              t.happenedAt.isBiggerOrEqualValue(start) & t.happenedAt.isSmallerThanValue(end)))
-        .join([
-      d.leftOuterJoin(db.categories,
-          db.categories.id.equalsExp(db.transactions.categoryId)),
-    ]);
-    final rows = await q.get();
-    final shared = await _loadSharedCategoriesForLedger(ledgerId);
+    // C5:SQL GROUP BY 下推(此前全表物化后在 Dart 循环累加,10 万行 = 10 万
+    // 个 data class)。共享账本 override 兜底单独一条小查询。
+    final rows = await db.customSelect(
+      '''
+      SELECT c.id AS catId, c.name AS catName, c.icon AS catIcon,
+             COALESCE(SUM(COALESCE(t.native_amount, t.amount)), 0) AS total
+      FROM transactions t
+      LEFT JOIN categories c ON c.id = t.category_id
+      WHERE t.ledger_id = ?1 AND t.type = ?2 AND t.exclude_from_stats = 0
+        AND t.happened_at >= ?3 AND t.happened_at < ?4
+      GROUP BY c.id, c.name, c.icon
+      ''',
+      variables: [
+        d.Variable<int>(ledgerId),
+        d.Variable<String>(type),
+        d.Variable<DateTime>(start),
+        d.Variable<DateTime>(end),
+      ],
+      readsFrom: {db.transactions, db.categories},
+    ).get();
+
     final map = <int?, double>{};
     final names = <int?, String>{};
     final icons = <int?, String?>{};
     for (final r in rows) {
-      final t = r.readTable(db.transactions);
-      final c = r.readTableOrNull(db.categories);
-      int? id = c?.id;
-      String name = c?.name ?? '未分类';
-      String? icon = c?.icon;
-      // §7 共享账本:Editor 写的 tx categoryId 为空,但 categorySyncIdOverride
-      // 指向 Owner 的分类 syncId — 查 SharedLedgerCategories 兜底。
-      if (c == null && t.categorySyncIdOverride != null) {
-        final s = shared[t.categorySyncIdOverride!];
-        if (s != null) {
-          id = syntheticIdForSyncId(s.syncId);
-          name = s.name;
-          icon = s.icon;
-        }
-      }
-      names[id] = name;
-      icons[id] = icon;
-      map.update(id, (v) => v + (t.nativeAmount ?? t.amount),
-          ifAbsent: () => t.nativeAmount ?? t.amount);
+      final id = r.read<int?>('catId');
+      names[id] = r.read<String?>('catName') ?? '未分类';
+      icons[id] = r.read<String?>('catIcon');
+      map[id] = (r.read<double>('total'));
     }
+
+    // §7 共享账本:Editor 写的 tx categoryId 为空但 categorySyncIdOverride 指向
+    // Owner 分类 —— 只对这些行(有 override 的少量行)做补充聚合。
+    final shared = await _loadSharedCategoriesForLedger(ledgerId);
+    if (shared.isNotEmpty) {
+      final overrideRows = await db.customSelect(
+        '''
+        SELECT t.category_sync_id_override AS syncId,
+               COALESCE(SUM(COALESCE(t.native_amount, t.amount)), 0) AS total
+        FROM transactions t
+        WHERE t.ledger_id = ?1 AND t.type = ?2 AND t.exclude_from_stats = 0
+          AND t.happened_at >= ?3 AND t.happened_at < ?4
+          AND t.category_id IS NULL AND t.category_sync_id_override IS NOT NULL
+        GROUP BY t.category_sync_id_override
+        ''',
+        variables: [
+          d.Variable<int>(ledgerId),
+          d.Variable<String>(type),
+          d.Variable<DateTime>(start),
+          d.Variable<DateTime>(end),
+        ],
+        readsFrom: {db.transactions},
+      ).get();
+      for (final r in overrideRows) {
+        final s = shared[r.read<String>('syncId')];
+        if (s == null) continue;
+        final id = syntheticIdForSyncId(s.syncId);
+        names[id] = s.name;
+        icons[id] = s.icon;
+        map.update(id, (v) => v + (r.read<double>('total')),
+            ifAbsent: () => r.read<double>('total'));
+      }
+    }
+
     final list = map.entries
         .map((e) => (id: e.key, name: names[e.key] ?? '未分类', icon: icons[e.key], total: e.value))
         .toList()
@@ -114,43 +152,64 @@ class LocalStatisticsRepository implements StatisticsRepository {
     required DateTime start,
     required DateTime end,
   }) async {
-    final q = (db.select(db.transactions)
-          ..where((t) =>
-              t.ledgerId.equals(ledgerId) &
-              t.type.equals(type) &
-              t.excludeFromStats.equals(false) &
-              t.happenedAt.isBiggerOrEqualValue(start) & t.happenedAt.isSmallerThanValue(end)))
-        .join([
-      d.leftOuterJoin(db.categories,
-          db.categories.id.equalsExp(db.transactions.categoryId)),
-    ]);
+    // C5:SQL GROUP BY 下推,Java/Dart 侧只做分类信息映射与 override 兜底。
+    final rows = await db.customSelect(
+      '''
+      SELECT t.category_id AS catId, t.category_sync_id_override AS overrideSyncId,
+             COALESCE(SUM(COALESCE(t.native_amount, t.amount)), 0) AS total
+      FROM transactions t
+      WHERE t.ledger_id = ?1 AND t.type = ?2 AND t.exclude_from_stats = 0
+        AND t.happened_at >= ?3 AND t.happened_at < ?4
+      GROUP BY t.category_id, t.category_sync_id_override
+      ''',
+      variables: [
+        d.Variable<int>(ledgerId),
+        d.Variable<String>(type),
+        d.Variable<DateTime>(start),
+        d.Variable<DateTime>(end),
+      ],
+      readsFrom: {db.transactions},
+    ).get();
 
-    final rows = await q.get();
     final shared = await _loadSharedCategoriesForLedger(ledgerId);
+    final catIds = <int>{};
+    for (final r in rows) {
+      final id = r.read<int?>('catId');
+      if (id != null) catIds.add(id);
+    }
+    var catInfos = const <int, Category>{};
+    if (catIds.isNotEmpty) {
+      final cats = await (db.select(db.categories)
+            ..where((c) => c.id.isIn(catIds)))
+          .get();
+      catInfos = {for (final c in cats) c.id: c};
+    }
+
     final map = <int?, double>{};
     final categoryInfo = <int?, ({String name, String? icon, int? parentId, int level})>{};
 
     for (final r in rows) {
-      final t = r.readTable(db.transactions);
-      final c = r.readTableOrNull(db.categories);
-      int? id = c?.id;
+      final catId = r.read<int?>('catId');
+      final overrideSync = r.read<String?>('overrideSyncId');
+      final total = r.read<double>('total');
+      int? id = catId;
 
-      if (c != null) {
+      if (catId != null && catInfos.containsKey(catId)) {
+        final c = catInfos[catId]!;
         categoryInfo[id] = (
           name: c.name,
           icon: c.icon,
           parentId: c.parentId,
           level: c.level,
         );
-      } else if (t.categorySyncIdOverride != null &&
-          shared[t.categorySyncIdOverride!] != null) {
+      } else if (overrideSync != null && shared[overrideSync] != null) {
         // §7 共享账本:Editor 写的 tx 用 categorySyncIdOverride 指向 Owner
         // 的分类,主表 join 不到,查 SharedLedger* 兜底。用 synthetic 负 id
         // 做聚合 key,跟 picker filter 保持一致。
         // §7 二级分类 hierarchy:Phase 2 加了 parent_sync_id 后,L2 SharedLedger*
         // 行有父分类 syncId — 转 synthetic 负 id 写入 parentId,让 analytics
         // 的 L2→L1 rollup 正确累加,而不是把 L2 当 orphan 丢掉。
-        final s = shared[t.categorySyncIdOverride!]!;
+        final s = shared[overrideSync]!;
         id = syntheticIdForSyncId(s.syncId);
         final pSyncId = s.parentSyncId;
         final parentSyntheticId = (pSyncId != null && pSyncId.isNotEmpty)
@@ -171,8 +230,7 @@ class LocalStatisticsRepository implements StatisticsRepository {
         );
       }
 
-      map.update(id, (v) => v + (t.nativeAmount ?? t.amount),
-          ifAbsent: () => t.nativeAmount ?? t.amount);
+      map.update(id, (v) => v + total, ifAbsent: () => total);
     }
 
     final list = map.entries.map((e) {
@@ -198,26 +256,38 @@ class LocalStatisticsRepository implements StatisticsRepository {
     required DateTime start,
     required DateTime end,
   }) async {
-    final rows = await (db.select(db.transactions)
-          ..where((t) =>
-              t.ledgerId.equals(ledgerId) &
-              t.type.equals(type) &
-              t.excludeFromStats.equals(false) &
-              t.happenedAt.isBiggerOrEqualValue(start) & t.happenedAt.isSmallerThanValue(end)))
-        .get();
-    final map = <DateTime, double>{};
-    for (final t in rows) {
-      final dt = t.happenedAt.toLocal();
-      final day = DateTime(dt.year, dt.month, dt.day);
-      map.update(day, (v) => v + (t.nativeAmount ?? t.amount),
-          ifAbsent: () => t.nativeAmount ?? t.amount);
+    // C5:SQL GROUP BY(本地日分桶)。drift 的 DateTime 变量按 UTC 写入,
+    // 'localtime' 修饰符与 t.happenedAt.toLocal() 同口径。
+    final rows = await db.customSelect(
+      '''
+      SELECT strftime('%Y-%m-%d', datetime(happened_at + $_localTzOffsetSeconds, 'unixepoch')) AS day,
+             COALESCE(SUM(COALESCE(native_amount, amount)), 0) AS total
+      FROM transactions
+      WHERE ledger_id = ?1 AND type = ?2 AND exclude_from_stats = 0
+        AND happened_at >= ?3 AND happened_at < ?4
+      GROUP BY day
+      ''',
+      variables: [
+        d.Variable<int>(ledgerId),
+        d.Variable<String>(type),
+        d.Variable<DateTime>(start),
+        d.Variable<DateTime>(end),
+      ],
+      readsFrom: {db.transactions},
+    ).get();
+    final map = <String, double>{};
+    for (final r in rows) {
+      final day = r.read<String?>('day');
+      if (day != null) map[day] = r.read<double>('total');
     }
     // ensure full range continuity
     final result = <({DateTime day, double total})>[];
     for (DateTime d = DateTime(start.year, start.month, start.day);
         d.isBefore(end);
         d = d.add(const Duration(days: 1))) {
-      result.add((day: d, total: map[d] ?? 0));
+      final key =
+          '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+      result.add((day: d, total: map[key] ?? 0));
     }
     return result;
   }
@@ -230,20 +300,40 @@ class LocalStatisticsRepository implements StatisticsRepository {
   }) async {
     final sd = await _monthStartDayOf(ledgerId);
     final yr = yearRangeFor(year, sd);
-    final rows = await (db.select(db.transactions)
-          ..where((t) =>
-              t.ledgerId.equals(ledgerId) &
-              t.type.equals(type) &
-              t.excludeFromStats.equals(false) &
-              t.happenedAt.isBiggerOrEqualValue(yr.start) &
-              t.happenedAt.isSmallerThanValue(yr.end)))
-        .get();
+    // C5:SQL GROUP BY。周期标签月在 SQL 内算好(CASE 归月),Dart 只读结果。
+    // CAST(REAL AS INTEGER) 兜底 drift 对表达式列的类型推断。
+    final rows = await db.customSelect(
+      '''
+      SELECT CAST(
+        (CAST(strftime('%Y', datetime(happened_at + $_localTzOffsetSeconds, 'unixepoch')) AS INTEGER) * 12
+         + CAST(strftime('%m', datetime(happened_at + $_localTzOffsetSeconds, 'unixepoch')) AS INTEGER)
+         - (CASE WHEN CAST(strftime('%d', datetime(happened_at + $_localTzOffsetSeconds, 'unixepoch')) AS INTEGER) < $sd
+                 THEN 1 ELSE 0 END))
+      AS INTEGER) AS label,
+             COALESCE(SUM(COALESCE(native_amount, amount)), 0) AS total
+      FROM transactions
+      WHERE ledger_id = ?1 AND type = ?2 AND exclude_from_stats = 0
+        AND happened_at >= ?3 AND happened_at < ?4
+      GROUP BY label
+      ''',
+      variables: [
+        d.Variable<int>(ledgerId),
+        d.Variable<String>(type),
+        d.Variable<DateTime>(yr.start),
+        d.Variable<DateTime>(yr.end),
+      ],
+      readsFrom: {db.transactions},
+    ).get();
     final map = <int, double>{};
-    for (final t in rows) {
-      // 年范围 [当年1月周期起点, 次年1月周期起点) 内的标签必属 year,直接取 month
-      final label = labelForDate(t.happenedAt.toLocal(), sd);
-      map.update(label.month, (v) => v + (t.nativeAmount ?? t.amount),
-          ifAbsent: () => t.nativeAmount ?? t.amount);
+    for (final r in rows) {
+      // label = 年*12+月 的绝对月序号(跨年减位自动落到上一年 12 月);
+      // 结果集限定在 [year-1 周期12月, year+1 周期1月) 之外不会出现,
+      // 范围内只有 0(=上年12月)与 1..12 两种,再映射回月号。
+      final absMonth = r.read<int?>('label');
+      if (absMonth == null) continue;
+      final total = r.read<double>('total');
+      final m = ((absMonth - 1) % 12) + 1; // 2027-01-05 → 2026*12+0 → 12
+      map.update(m, (v) => v + total, ifAbsent: () => total);
     }
     final result = <({DateTime month, double total})>[];
     for (int m = 1; m <= 12; m++) {
@@ -257,22 +347,37 @@ class LocalStatisticsRepository implements StatisticsRepository {
     required int ledgerId,
     required String type,
   }) async {
-    final rows = await (db.select(db.transactions)
-          ..where((t) =>
-              t.ledgerId.equals(ledgerId) &
-              t.type.equals(type) &
-              t.excludeFromStats.equals(false)))
-        .get();
-    if (rows.isEmpty) return const [];
     final sd = await _monthStartDayOf(ledgerId);
+    // C5:SQL GROUP BY(此前整表物化,labelForDate 逐行算)。周期标签年 =
+    // 本地年 + (day < startDay 且 month=1 ? -1 : 0)。
+    final rows = await db.customSelect(
+      '''
+      SELECT CAST(strftime('%Y', datetime(happened_at + $_localTzOffsetSeconds, 'unixepoch')) AS INTEGER) AS y,
+             CAST(strftime('%m', datetime(happened_at + $_localTzOffsetSeconds, 'unixepoch')) AS INTEGER) AS m,
+             CAST(strftime('%d', datetime(happened_at + $_localTzOffsetSeconds, 'unixepoch')) AS INTEGER) AS d,
+             COALESCE(SUM(COALESCE(native_amount, amount)), 0) AS total
+      FROM transactions
+      WHERE ledger_id = ?1 AND type = ?2 AND exclude_from_stats = 0
+      GROUP BY y, m, d
+      ''',
+      variables: [
+        d.Variable<int>(ledgerId),
+        d.Variable<String>(type),
+      ],
+      readsFrom: {db.transactions},
+    ).get();
+    if (rows.isEmpty) return const [];
     final map = <int, double>{};
     int minYear = 9999, maxYear = 0;
-    for (final t in rows) {
-      final y = labelForDate(t.happenedAt.toLocal(), sd).year;
+    for (final r in rows) {
+      var y = r.read<int>('y');
+      final m = r.read<int>('m');
+      final day = r.read<int>('d');
+      if (m == 1 && day < sd) y -= 1; // 归上一年 12 月周期
       if (y < minYear) minYear = y;
       if (y > maxYear) maxYear = y;
-      map.update(y, (v) => v + (t.nativeAmount ?? t.amount),
-          ifAbsent: () => t.nativeAmount ?? t.amount);
+      final total = r.read<double>('total');
+      map.update(y, (v) => v + total, ifAbsent: () => total);
     }
     final out = <({int year, double total})>[];
     for (int y = minYear; y <= maxYear; y++) {

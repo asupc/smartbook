@@ -349,8 +349,12 @@ class SmartBookCloudProvider implements CloudProvider {
     );
   }
 
-  /// 推送增量变更（个体实体级别，非 ledger_snapshot 包装）
-  Future<void> pushChanges({
+  /// 推送增量变更（个体实体级别，非 ledger_snapshot 包装）。
+  ///
+  /// 2026-09-10(批次3):返回服务端结构化结果 —— LWW 被拒(conflict)与
+  /// apply 失败(poison change)不再被当作「推送成功」静默吞掉;调用方
+  /// (SyncEngine)据此决定 markPushed 范围并提示用户。
+  Future<SmartBookPushResult> pushChanges({
     required List<Map<String, dynamic>> changes,
   }) async {
     final storage = _storage;
@@ -2225,10 +2229,15 @@ class SmartBookCloudStorageService implements CloudStorageService {
   }
 
   /// 推送增量变更（个体实体级别，非 ledger_snapshot 包装）
-  Future<void> pushEntityChanges({
+  Future<SmartBookPushResult> pushEntityChanges({
     required List<Map<String, dynamic>> changes,
   }) async {
-    if (changes.isEmpty) return;
+    if (changes.isEmpty) {
+      return const SmartBookPushResult(
+        accepted: 0, rejected: 0, conflictCount: 0, conflictSamples: [],
+        failedCount: 0, failedSamples: [], serverCursor: 0,
+      );
+    }
     // 先确保 session 有效（触发 token refresh），再读 deviceId
     await auth.requireAccessToken();
     final deviceId = auth.currentDeviceId;
@@ -2258,6 +2267,7 @@ class SmartBookCloudStorageService implements CloudStorageService {
       throw CloudStorageException(
           'Push entity changes failed (${response.statusCode}): ${_extractErrorMessage(response)}');
     }
+    return SmartBookPushResult.fromJson(_decodeJsonObject(response.body));
   }
 
   Future<Map<String, SmartBookCloudAttachmentExistsItem>>
@@ -5017,4 +5027,59 @@ class SmartBookCloudMemberStats {
       items: items,
     );
   }
+}
+
+/// /sync/push 的结构化结果(2026-09-10 批次3)。
+///
+/// 服务端 200 不代表全部 accepted:LWW 判负(conflict_samples)与 apply
+/// 异常隔离(failed_samples, poison change)都会在 200 里返回。旧客户端
+/// 只看状态码,把被拒 change 标记为已推送 → 本地编辑静默丢失。
+class SmartBookPushResult {
+  final int accepted;
+  final int rejected;
+  final int conflictCount;
+  final List<Map<String, dynamic>> conflictSamples;
+  final int failedCount;
+  final List<Map<String, dynamic>> failedSamples;
+  final int serverCursor;
+
+  const SmartBookPushResult({
+    required this.accepted,
+    required this.rejected,
+    required this.conflictCount,
+    required this.conflictSamples,
+    required this.failedCount,
+    required this.failedSamples,
+    required this.serverCursor,
+  });
+
+  /// 老服务器响应缺 failed_* 字段 → 按 0 处理。
+  factory SmartBookPushResult.fromJson(Map<String, dynamic> json) {
+    List<Map<String, dynamic>> asList(dynamic raw) {
+      if (raw is! List) return const [];
+      return raw
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList(growable: false);
+    }
+
+    return SmartBookPushResult(
+      accepted: (json['accepted'] as num?)?.toInt() ?? 0,
+      rejected: (json['rejected'] as num?)?.toInt() ?? 0,
+      conflictCount: (json['conflict_count'] as num?)?.toInt() ?? 0,
+      conflictSamples: asList(json['conflict_samples']),
+      failedCount: (json['failed_count'] as num?)?.toInt() ?? 0,
+      failedSamples: asList(json['failed_samples']),
+      serverCursor: (json['server_cursor'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  /// 被服务端明确拒绝(LWW 判负)的实体 sync_id 集合 —— 这些 change 不该
+  /// markPushed,且应立即 pull 对齐服务端版本。
+  Set<String> get rejectedEntitySyncIds => {
+        for (final s in conflictSamples)
+          if (s['entitySyncId'] is String) s['entitySyncId']! as String,
+        for (final s in failedSamples)
+          if (s['entitySyncId'] is String) s['entitySyncId']! as String,
+      };
 }

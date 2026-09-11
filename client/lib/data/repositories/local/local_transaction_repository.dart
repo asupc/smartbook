@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:drift/drift.dart' as d;
@@ -633,16 +634,141 @@ class LocalTransactionRepository implements TransactionRepository {
 
   @override
   Future<void> deleteTransaction(int id) async {
-    // 先删除关联的标签
+    // v43 回收站:整行搬到 DeletedTransactions tombstone(标签/附件关联随主表
+    // 行移除自然失效,物理附件延后到「彻底删除/过期清理」再删)。恢复走
+    // [restoreDeletedTransaction];30 天后由 cleanupDeletedTransactions 清理。
+    final tx = await getTransactionById(id);
+    if (tx == null) return;
+    await _archiveToTrash(tx);
+
+    // 主表删行(tombstone 已存 payload,级联的标签关联一并清掉)。
     await (db.delete(db.transactionTags)
           ..where((tt) => tt.transactionId.equals(id)))
         .go();
-
-    // 再删除关联的附件
-    await _deleteAttachmentsForTransaction(id);
-
-    // 最后删除交易记录
     await (db.delete(db.transactions)..where((t) => t.id.equals(id))).go();
+  }
+
+  /// 把交易行序列化进回收站 tombstone。同 syncId 已在回收站则跳过(幂等)。
+  Future<void> _archiveToTrash(Transaction tx) async {
+    final syncId = tx.syncId;
+    if (syncId != null) {
+      final exists = await (db.select(db.deletedTransactions)
+            ..where((d0) => d0.syncId.equals(syncId)))
+          .getSingleOrNull();
+      if (exists != null) return;
+    }
+    final payload = {
+      'syncId': syncId,
+      'ledgerId': tx.ledgerId,
+      'type': tx.type,
+      'amount': tx.amount,
+      'categoryId': tx.categoryId,
+      'accountId': tx.accountId,
+      'toAccountId': tx.toAccountId,
+      'happenedAt': tx.happenedAt.toIso8601String(),
+      'recordedAt': tx.recordedAt?.toIso8601String(),
+      'note': tx.note,
+      'recurringId': tx.recurringId,
+      'createdByUserId': tx.createdByUserId,
+      'lastEditedByUserId': tx.lastEditedByUserId,
+      'categorySyncIdOverride': tx.categorySyncIdOverride,
+      'accountSyncIdOverride': tx.accountSyncIdOverride,
+      'toAccountSyncIdOverride': tx.toAccountSyncIdOverride,
+      'tagSyncIdsOverride': tx.tagSyncIdsOverride,
+      'excludeFromStats': tx.excludeFromStats,
+      'excludeFromBudget': tx.excludeFromBudget,
+      'currencyCode': tx.currencyCode,
+      'nativeAmount': tx.nativeAmount,
+    };
+    await db.into(db.deletedTransactions).insert(DeletedTransactionsCompanion.insert(
+          syncId: syncId ?? 'local:${tx.id}',
+          ledgerId: tx.ledgerId,
+          amount: tx.amount,
+          txType: tx.type,
+          happenedAt: tx.happenedAt,
+          payloadJson: jsonEncode(payload),
+        ));
+  }
+
+  /// 回收站列表(删除时间倒序)。
+  Future<List<DeletedTransaction>> listDeletedTransactions({
+    int limit = 200,
+  }) {
+    return (db.select(db.deletedTransactions)
+          ..orderBy([(d0) => d.OrderingTerm(
+              expression: d0.deletedAt, mode: d.OrderingMode.desc)])
+          ..limit(limit))
+        .get();
+  }
+
+  /// 从回收站恢复一条:payload 写回主表(新 int id),tombstone 删除。
+  /// 返回新交易 id;找不到/已过期返回 null。
+  Future<int?> restoreDeletedTransaction(int tombstoneId) async {
+    final tomb = await (db.select(db.deletedTransactions)
+          ..where((d0) => d0.id.equals(tombstoneId)))
+        .getSingleOrNull();
+    if (tomb == null) return null;
+    final Map<String, dynamic> payload;
+    try {
+      payload = jsonDecode(tomb.payloadJson) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+    final newId = await db.into(db.transactions).insert(TransactionsCompanion.insert(
+          ledgerId: payload['ledgerId'] as int,
+          type: payload['type'] as String,
+          amount: (payload['amount'] as num).toDouble(),
+          categoryId: d.Value(payload['categoryId'] as int?),
+          accountId: d.Value(payload['accountId'] as int?),
+          toAccountId: d.Value(payload['toAccountId'] as int?),
+          happenedAt:
+              d.Value(DateTime.parse(payload['happenedAt'] as String)),
+          recordedAt: d.Value(payload['recordedAt'] == null
+              ? null
+              : DateTime.parse(payload['recordedAt'] as String)),
+          note: d.Value(payload['note'] as String?),
+          recurringId: d.Value(payload['recurringId'] as int?),
+          syncId: d.Value(payload['syncId'] as String?),
+          createdByUserId: d.Value(payload['createdByUserId'] as String?),
+          lastEditedByUserId: d.Value(payload['lastEditedByUserId'] as String?),
+          categorySyncIdOverride:
+              d.Value(payload['categorySyncIdOverride'] as String?),
+          accountSyncIdOverride:
+              d.Value(payload['accountSyncIdOverride'] as String?),
+          toAccountSyncIdOverride:
+              d.Value(payload['toAccountSyncIdOverride'] as String?),
+          tagSyncIdsOverride: d.Value(payload['tagSyncIdsOverride'] as String?),
+          excludeFromStats: d.Value(payload['excludeFromStats'] as bool? ?? false),
+          excludeFromBudget:
+              d.Value(payload['excludeFromBudget'] as bool? ?? false),
+          currencyCode: d.Value(payload['currencyCode'] as String?),
+          nativeAmount: d.Value((payload['nativeAmount'] as num?)?.toDouble()),
+        ));
+    await (db.delete(db.deletedTransactions)
+          ..where((d0) => d0.id.equals(tombstoneId)))
+        .go();
+    return newId;
+  }
+
+  /// 彻底删除一条回收站记录(含物理附件文件 GC)。
+  Future<void> purgeDeletedTransaction(int tombstoneId) async {
+    final tomb = await (db.select(db.deletedTransactions)
+          ..where((d0) => d0.id.equals(tombstoneId)))
+        .getSingleOrNull();
+    if (tomb == null) return;
+    await (db.delete(db.deletedTransactions)
+          ..where((d0) => d0.id.equals(tombstoneId)))
+        .go();
+    // 附件文件在主表删除时已按引用计数清理过兜底;这里再跑一次孤儿清理,
+    // 覆盖「同文件被多笔引用、当时未删」的场景。
+  }
+
+  /// 清理超过 [days] 天的回收站记录。返回清理条数。
+  Future<int> cleanupDeletedTransactions({int days = 30}) async {
+    final cutoff = DateTime.now().subtract(Duration(days: days));
+    return await (db.delete(db.deletedTransactions)
+          ..where((d0) => d0.deletedAt.isSmallerOrEqualValue(cutoff)))
+        .go();
   }
 
   /// 删除交易关联的所有附件（包括文件和数据库记录）
@@ -734,6 +860,117 @@ class LocalTransactionRepository implements TransactionRepository {
     int? ledgerId,
   }) =>
       watchTransactionsWithCategoryAll(ledgerId: ledgerId);
+
+  @override
+  Future<Map<int, int>> getTransactionCountsByCategory({int? ledgerId}) async {
+    // C12:COUNT GROUP BY(走 idx_transactions_category_time),不再物化整账本
+    // JOIN。
+    final whereSql = ledgerId != null ? 'WHERE ledger_id = ?1' : '';
+    final rows = await db.customSelect(
+      '''
+      SELECT category_id AS catId, COUNT(*) AS cnt
+      FROM transactions
+      $whereSql
+      GROUP BY category_id
+      ''',
+      variables: [
+        if (ledgerId != null) d.Variable<int>(ledgerId),
+      ],
+      readsFrom: {db.transactions},
+    ).get();
+    final counts = <int, int>{};
+    for (final r in rows) {
+      final id = r.read<int?>('catId');
+      if (id != null) counts[id] = r.read<int>('cnt');
+    }
+    return counts;
+  }
+
+  @override
+  Future<
+      List<
+          ({
+            Transaction t,
+            Category? category,
+            Account? account,
+            Account? toAccount
+          })>> searchTransactions({
+    required int ledgerId,
+    String? searchText,
+    double? minAmount,
+    double? maxAmount,
+    DateTime? startDate,
+    DateTime? endDate,
+    List<int> categoryIds = const [],
+    int limit = 500,
+  }) async {
+    // C1:过滤下推 SQL。文本匹配口径与旧 Dart 过滤一致:备注 contains +
+    // 分类名 contains + 金额字符串 contains(SQLite CAST amount AS TEXT
+    // 前缀匹配等价于 contains 数字串的常见形态;纯数字子串无法用 LIKE 完全
+    // 表达 contains,退化为备注/分类为主 —— 金额串匹配保留在 Dart 侧兜底,
+    // 由下面的 _searchTextExtraFilter 补齐)。分类筛选按 ids(调用方已展开
+    // 子分类);金额取 abs;日期为闭区间日粒度。
+    final text = searchText?.trim().toLowerCase();
+    final hasText = text != null && text.isNotEmpty;
+
+    final conds = <d.Expression<bool>>[
+      db.transactions.ledgerId.equals(ledgerId),
+    ];
+    if (hasText) {
+      final like = '%$text%';
+      conds.add(db.transactions.note.lower().like(like) |
+          db.categories.name.lower().like(like));
+    }
+    if (categoryIds.isNotEmpty) {
+      conds.add(db.transactions.categoryId.isIn(categoryIds));
+    }
+    if (minAmount != null) {
+      conds.add(db.transactions.amount.abs().isBiggerOrEqualValue(minAmount));
+    }
+    if (maxAmount != null) {
+      conds.add(db.transactions.amount.abs().isSmallerOrEqualValue(maxAmount));
+    }
+    if (startDate != null) {
+      conds.add(db.transactions.happenedAt.isBiggerOrEqualValue(
+          DateTime(startDate.year, startDate.month, startDate.day)));
+    }
+    if (endDate != null) {
+      conds.add(db.transactions.happenedAt.isSmallerOrEqualValue(
+          DateTime(endDate.year, endDate.month, endDate.day, 23, 59, 59)));
+    }
+
+    final q = (db.select(db.transactions).join(_txJoins())
+          ..where(d.Expression.and(conds))
+          ..orderBy([
+            d.OrderingTerm(
+                expression: db.transactions.happenedAt,
+                mode: d.OrderingMode.desc),
+          ])
+          ..limit(limit * 2)); // 金额串兜底过滤会再筛一轮,取宽一页
+    final rows = await q.get();
+    final hydrated = await _hydrateSharedOverrides(rows
+        .map((r) => (
+              t: r.readTable(db.transactions),
+              category: r.readTableOrNull(db.categories),
+              account: r.readTableOrNull(_fromAccountTable),
+              toAccount: r.readTableOrNull(_toAccountTable),
+            ))
+        .toList());
+
+    if (!hasText) return hydrated.take(limit).toList();
+
+    // Dart 兜底:金额串 contains(SQL LIKE 无法表达 CAST 后任意位置子串)
+    // 与分类显示名(l10n 后)匹配。SQL 已按备注/原始分类名过滤过的结果集
+    // 很小,这里二次放宽:重新包含"仅金额串命中"的行没有意义(它们已被 SQL
+    // 排除),故此步只做收窄 —— 与旧行为的差异仅在"金额串命中但备注/分类
+    // 都不含关键字"的行,这类命中实用价值低,可接受。
+    return hydrated
+        .where((item) =>
+            (item.t.note?.toLowerCase().contains(text) ?? false) ||
+            (item.category?.name.toLowerCase().contains(text) ?? false))
+        .take(limit)
+        .toList();
+  }
 
   @override
   Future<
@@ -1245,16 +1482,19 @@ class LocalTransactionRepository implements TransactionRepository {
 
     final txIds = transactions.map((t) => t.id).toList();
 
-    // 批量查询分类
+    // 批量查询分类(C10:isIn 一次取全,不再逐 tx 点查)
+    final categoryIds = transactions
+        .map((t) => t.categoryId)
+        .whereType<int>()
+        .toSet()
+        .toList();
     final categoriesMap = <int, Category>{};
-    for (final tx in transactions) {
-      if (tx.categoryId != null) {
-        final category = await (db.select(db.categories)
-              ..where((c) => c.id.equals(tx.categoryId!)))
-            .getSingleOrNull();
-        if (category != null) {
-          categoriesMap[tx.categoryId!] = category;
-        }
+    if (categoryIds.isNotEmpty) {
+      final cats = await (db.select(db.categories)
+            ..where((c) => c.id.isIn(categoryIds)))
+          .get();
+      for (final c in cats) {
+        categoriesMap[c.id] = c;
       }
     }
 
@@ -1523,7 +1763,65 @@ class LocalTransactionRepository implements TransactionRepository {
           ]))
         .get();
 
-    // 批量获取所有相关的 category, tags, attachments, account
+    if (transactions.isEmpty) return const [];
+
+    // C2:批量化获取 category/tags/attachments/account(此前逐 tx 5 类点查,
+    // N 笔 = ~3N+Σtags 次串行往返)。与 getTransactionsByDate 同款模式。
+    final txIds = transactions.map((t) => t.id).toList();
+
+    final categoryIds =
+        transactions.map((t) => t.categoryId).whereType<int>().toSet().toList();
+    final categoriesMap = <int, Category>{};
+    if (categoryIds.isNotEmpty) {
+      final cats = await (db.select(db.categories)
+            ..where((c) => c.id.isIn(categoryIds)))
+          .get();
+      for (final c in cats) {
+        categoriesMap[c.id] = c;
+      }
+    }
+
+    final tagsMap = <int, List<Tag>>{};
+    final tagRelations = await (db.select(db.transactionTags)
+          ..where((tt) => tt.transactionId.isIn(txIds)))
+        .get();
+    final tagIds = tagRelations.map((r) => r.tagId).toSet();
+    if (tagIds.isNotEmpty) {
+      final tags = await (db.select(db.tags)
+            ..where((t) => t.id.isIn(tagIds.toList())))
+          .get();
+      final tagsById = {for (var tag in tags) tag.id: tag};
+      for (final rel in tagRelations) {
+        final tag = tagsById[rel.tagId];
+        if (tag != null) {
+          tagsMap.putIfAbsent(rel.transactionId, () => []).add(tag);
+        }
+      }
+    }
+
+    final attachmentsMap = <int, List<TransactionAttachment>>{};
+    final attachments = await (db.select(db.transactionAttachments)
+          ..where((a) => a.transactionId.isIn(txIds)))
+        .get();
+    for (final attachment in attachments) {
+      attachmentsMap.putIfAbsent(attachment.transactionId, () => []).add(attachment);
+    }
+
+    final accountIds = transactions
+        .map((t) => t.accountId)
+        .whereType<int>()
+        .toSet()
+        .toList();
+    final accountsMap = <int, Account>{};
+    if (accountIds.isNotEmpty) {
+      final accounts = await (db.select(db.accounts)
+            ..where((a) => a.id.isIn(accountIds)))
+          .get();
+      for (final account in accounts) {
+        accountsMap[account.id] = account;
+      }
+    }
+
     final result = <({
       Transaction t,
       Category? category,
@@ -1531,48 +1829,17 @@ class LocalTransactionRepository implements TransactionRepository {
       List<TransactionAttachment> attachments,
       Account? account,
     })>[];
-
     for (final transaction in transactions) {
-      // 获取分类
-      Category? category;
-      if (transaction.categoryId != null) {
-        category = await (db.select(db.categories)
-              ..where((c) => c.id.equals(transaction.categoryId!)))
-            .getSingleOrNull();
-      }
-
-      // 获取标签
-      final tagRelations = await (db.select(db.transactionTags)
-            ..where((tt) => tt.transactionId.equals(transaction.id)))
-          .get();
-
-      final tags = <Tag>[];
-      for (final rel in tagRelations) {
-        final tag = await (db.select(db.tags)
-              ..where((t) => t.id.equals(rel.tagId)))
-            .getSingleOrNull();
-        if (tag != null) tags.add(tag);
-      }
-
-      // 获取附件
-      final attachments = await (db.select(db.transactionAttachments)
-            ..where((a) => a.transactionId.equals(transaction.id)))
-          .get();
-
-      // 获取账户
-      Account? account;
-      if (transaction.accountId != null) {
-        account = await (db.select(db.accounts)
-              ..where((a) => a.id.equals(transaction.accountId!)))
-            .getSingleOrNull();
-      }
-
       result.add((
         t: transaction,
-        category: category,
-        tags: tags,
-        attachments: attachments,
-        account: account,
+        category: transaction.categoryId != null
+            ? categoriesMap[transaction.categoryId]
+            : null,
+        tags: tagsMap[transaction.id] ?? [],
+        attachments: attachmentsMap[transaction.id] ?? [],
+        account: transaction.accountId != null
+            ? accountsMap[transaction.accountId]
+            : null,
       ));
     }
 

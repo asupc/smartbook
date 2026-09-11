@@ -265,6 +265,10 @@ class LocalRepository extends BaseRepository {
   // ============================================
 
   @override
+  Future<Map<int, int>> getTransactionCountsByCategory({int? ledgerId}) =>
+      _transactionRepo.getTransactionCountsByCategory(ledgerId: ledgerId);
+
+  @override
   Stream<List<Transaction>> watchRecentTransactions(
           {required int ledgerId, int limit = 20}) =>
       _transactionRepo.watchRecentTransactions(
@@ -584,6 +588,27 @@ class LocalRepository extends BaseRepository {
     await _transactionRepo.deleteTransaction(id);
   }
 
+  // ── v43 回收站(最近删除) ─────────────────────────────────────────
+
+  /// 回收站列表(删除时间倒序)。删除的交易在 tombstone 表暂存 30 天。
+  Future<List<DeletedTransaction>> listDeletedTransactions({int limit = 200}) =>
+      _transactionRepo.listDeletedTransactions(limit: limit);
+
+  /// 恢复一条回收站记录:写回主表(新 int id)。本地恢复后**不再**自动向云端
+  /// 发 upsert —— 远端有自己的回收站(0030,restore 由 web 端触发并广播),
+  /// 本地恢复只作用于本机视图;若该交易远端仍在回收站,下次 pull 不会复活,
+  /// 需要用户在 Web 回收站同步恢复(两端回收站各自独立,不互相同步 tombstone)。
+  Future<int?> restoreDeletedTransaction(int tombstoneId) =>
+      _transactionRepo.restoreDeletedTransaction(tombstoneId);
+
+  /// 彻底删除一条回收站记录。
+  Future<void> purgeDeletedTransaction(int tombstoneId) =>
+      _transactionRepo.purgeDeletedTransaction(tombstoneId);
+
+  /// 清理超 30 天的回收站记录(App 启动时调用一次)。返回清理条数。
+  Future<int> cleanupDeletedTransactions({int days = 30}) =>
+      _transactionRepo.cleanupDeletedTransactions(days: days);
+
   @override
   Future<Transaction?> getTransactionById(int id) =>
       _transactionRepo.getTransactionById(id);
@@ -888,6 +913,35 @@ class LocalRepository extends BaseRepository {
             Account? toAccount
           })>> transactionsWithCategoryAll({int? ledgerId}) =>
       _transactionRepo.transactionsWithCategoryAll(ledgerId: ledgerId);
+
+  @override
+  Future<
+      List<
+          ({
+            Transaction t,
+            Category? category,
+            Account? account,
+            Account? toAccount
+          })>> searchTransactions({
+    required int ledgerId,
+    String? searchText,
+    double? minAmount,
+    double? maxAmount,
+    DateTime? startDate,
+    DateTime? endDate,
+    List<int> categoryIds = const [],
+    int limit = 500,
+  }) =>
+      _transactionRepo.searchTransactions(
+        ledgerId: ledgerId,
+        searchText: searchText,
+        minAmount: minAmount,
+        maxAmount: maxAmount,
+        startDate: startDate,
+        endDate: endDate,
+        categoryIds: categoryIds,
+        limit: limit,
+      );
 
   /// 转发历史备注聚合查询，保持交易数据访问统一由子仓储处理。
   @override

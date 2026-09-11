@@ -40,7 +40,7 @@ void main() {
     'idx_budgets_ledger',
     'idx_budgets_category',
     'idx_budgets_ledger_type',
-    // v42 余额调整记录
+    // v43 余额调整记录
     'idx_account_adjustments_account_time',
     'idx_account_adjustments_ledger_time',
     'idx_account_adjustments_sync_id',
@@ -86,7 +86,7 @@ void main() {
     addTearDown(db.close);
     final version = await db.customSelect('PRAGMA user_version').getSingle();
 
-    expect(version.read<int>('user_version'), 42);
+    expect(version.read<int>('user_version'), 43);
     expect(await indexNames(db), containsAll(expected));
   });
 

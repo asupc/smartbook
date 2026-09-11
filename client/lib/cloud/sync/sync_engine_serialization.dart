@@ -558,6 +558,24 @@ extension SyncEngineSerializationExt on SyncEngine {
       attachmentsByTx.putIfAbsent(a.transactionId, () => []).add(a);
     }
 
+    // C3:一次批查全部 tag 关联(此前循环内逐 tx SELECT,10 万笔 = 10 万次
+    // 往返),并预建 id→实体 Map(替代循环内 firstWhere 线性扫)。
+    final txIds = transactions.map((t) => t.id).toList();
+    final tagRelsByTx = <int, List<TransactionTag>>{};
+    if (txIds.isNotEmpty) {
+      for (final chunk in chunkIds(txIds)) {
+        final rels = await (db.select(db.transactionTags)
+              ..where((tt) => tt.transactionId.isIn(chunk)))
+            .get();
+        for (final rel in rels) {
+          tagRelsByTx.putIfAbsent(rel.transactionId, () => []).add(rel);
+        }
+      }
+    }
+    final catById = {for (final c in categories) c.id: c};
+    final accById = {for (final a in accounts) a.id: a};
+    final tagById = {for (final t in tags) t.id: t};
+
     for (final tx in transactions) {
       final syncId = tx.syncId ?? _uuid.v4();
       if (tx.syncId == null) {
@@ -565,31 +583,15 @@ extension SyncEngineSerializationExt on SyncEngine {
             .write(TransactionsCompanion(syncId: d.Value(syncId)));
       }
 
-      final cat = tx.categoryId != null
-          ? categories
-              .cast<Category?>()
-              .firstWhere((c) => c?.id == tx.categoryId, orElse: () => null)
-          : null;
-      final acc = tx.accountId != null
-          ? accounts
-              .cast<Account?>()
-              .firstWhere((a) => a?.id == tx.accountId, orElse: () => null)
-          : null;
-      final toAcc = tx.toAccountId != null
-          ? accounts
-              .cast<Account?>()
-              .firstWhere((a) => a?.id == tx.toAccountId, orElse: () => null)
-          : null;
+      final cat = tx.categoryId != null ? catById[tx.categoryId] : null;
+      final acc = tx.accountId != null ? accById[tx.accountId] : null;
+      final toAcc = tx.toAccountId != null ? accById[tx.toAccountId] : null;
 
-      final txTags = await (db.select(db.transactionTags)
-            ..where((tt) => tt.transactionId.equals(tx.id)))
-          .get();
+      final txTags = tagRelsByTx[tx.id] ?? const <TransactionTag>[];
       final tagNames = <String>[];
       final tagSyncIds = <String>[];
       for (final tt in txTags) {
-        final tag = tags
-            .cast<Tag?>()
-            .firstWhere((t) => t?.id == tt.tagId, orElse: () => null);
+        final tag = tagById[tt.tagId];
         if (tag != null) {
           tagNames.add(tag.name);
           if (tag.syncId != null && tag.syncId!.isNotEmpty) {

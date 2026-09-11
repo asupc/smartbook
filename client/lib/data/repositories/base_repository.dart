@@ -1,4 +1,5 @@
 import 'ledger_repository.dart';
+import '../db.dart' show DeletedTransaction;
 import 'transaction_repository.dart';
 import 'category_repository.dart';
 import 'account_repository.dart';
@@ -61,4 +62,17 @@ abstract class BaseRepository
 
   /// 按 picker 账户 id 解析币种:正数=主表账户;负数=共享账本 synthetic id。
   Future<String?> getAccountCurrencyByAnyId(int accountId);
+
+  // ── v43 回收站(最近删除) ─────────────────────────────────────────
+  /// 回收站列表(删除时间倒序,默认最近 200 条)。
+  Future<List<DeletedTransaction>> listDeletedTransactions({int limit = 200});
+
+  /// 恢复一条回收站记录(写回主表,新 int id);找不到返回 null。
+  Future<int?> restoreDeletedTransaction(int tombstoneId);
+
+  /// 彻底删除一条回收站记录(不可恢复)。
+  Future<void> purgeDeletedTransaction(int tombstoneId);
+
+  /// 清理超 [days] 天的回收站记录(App 启动时调用),返回清理条数。
+  Future<int> cleanupDeletedTransactions({int days = 30});
 }

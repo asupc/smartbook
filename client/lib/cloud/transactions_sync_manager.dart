@@ -134,12 +134,11 @@ class TransactionsSyncManager implements SyncService {
     try {
       logger.info('CloudSync', '开始上传账本 $ledgerId');
 
-      // 上传前先计算本地指纹（用于记录上传快照）
+      // 上传前先计算本地指纹（用于记录上传快照）。C8:Map 版免 encode+decode。
       String? localFp;
       int? localCount;
       try {
-        final jsonStr = await exportTransactionsJson(db, ledgerId);
-        final map = jsonDecode(jsonStr) as Map<String, dynamic>;
+        final map = await exportTransactionsJsonMap(db, ledgerId);
         localFp = _contentFingerprintFromMap(map);
         localCount = (map['count'] as num?)?.toInt();
       } catch (e) {
@@ -328,9 +327,8 @@ class TransactionsSyncManager implements SyncService {
     print('🟡 [getStatus] 缓存未命中，开始计算: ledgerId=$ledgerId');
 
     try {
-      // 计算本地指纹
-      final jsonStr = await exportTransactionsJson(db, ledgerId);
-      final localMap = jsonDecode(jsonStr) as Map<String, dynamic>;
+      // 计算本地指纹。C8:Map 版免 encode+decode。
+      final localMap = await exportTransactionsJsonMap(db, ledgerId);
       final localFp = _contentFingerprintFromMap(localMap);
       final localCount = (localMap['count'] as num).toInt();
 

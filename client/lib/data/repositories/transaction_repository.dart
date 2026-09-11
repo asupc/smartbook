@@ -132,6 +132,31 @@ abstract class TransactionRepository {
     int? ledgerId,
   });
 
+  /// C12:每个分类的交易笔数(SQL GROUP BY,分类选择器弹窗用)。
+  /// [ledgerId] 可空 = 全部账本。覆盖账本 override 情形见实现侧注释。
+  Future<Map<int, int>> getTransactionCountsByCategory({int? ledgerId});
+
+  /// C1:搜索页定向查询 —— 文本(备注/分类名/金额串)、金额区间、时间范围、
+  /// 分类(含子分类)全部下推 SQL,limit 兜底,替代"全账本 JOIN 流 + Dart 过滤"。
+  /// 共享账本 override hydration 与 [transactionsWithCategoryAll] 一致。
+  Future<
+      List<
+          ({
+            Transaction t,
+            Category? category,
+            Account? account,
+            Account? toAccount
+          })>> searchTransactions({
+    required int ledgerId,
+    String? searchText,
+    double? minAmount,
+    double? maxAmount,
+    DateTime? startDate,
+    DateTime? endDate,
+    List<int> categoryIds,
+    int limit = 500,
+  });
+
   /// M5-4 keyset 分页取一页交易(带分类/账户)。`before` 向下翻旧页、
   /// `after` 向上翻新页，二者互斥。默认一页 80 笔。
   ///

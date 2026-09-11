@@ -13,6 +13,7 @@ import 'package:uuid/uuid.dart';
 import '../../ai/providers/ai_provider_manager.dart';
 import '../../data/db.dart';
 import '../../data/repositories/base_repository.dart';
+import '../../data/repositories/local/chunk_utils.dart';
 import '../../services/custom_icon_service.dart';
 import '../../services/data_import_service.dart';
 import '../../services/system/logger_service.dart';
@@ -80,6 +81,11 @@ class SyncEngine implements app.SyncService {
   /// 状态缓存
   final Map<int, app.SyncStatus> _statusCache = {};
   bool _localChanged = false;
+
+  /// 批次3(2026-09-10):最近一次 push 被服务端拒绝的计数(LWW 冲突 + poison
+  /// apply 失败)。sync() 返回时并入 SyncResult.conflicts,UI 据此提示
+  /// 「X 条修改被服务端版本覆盖」。null = 最近一次 push 无拒绝。
+  ({int conflict, int failed, DateTime at})? _lastPushConflicts;
 
   /// WebSocket 实时监听
   StreamSubscription<SmartBookCloudRealtimeEvent>? _realtimeSubscription;
@@ -485,7 +491,12 @@ class SyncEngine implements app.SyncService {
       // 顺手再拉一次 profile（多数场景 bootstrap 已经拉过，这里幂等兜底）。
       await syncMyProfile();
 
-      final result = SyncResult(pushed: pushed, pulled: pulled);
+      final result = SyncResult(
+        pushed: pushed,
+        pulled: pulled,
+        conflicts: (_lastPushConflicts?.conflict ?? 0) +
+            (_lastPushConflicts?.failed ?? 0),
+      );
       // 【根因修复】同步完成后清掉本账本 getStatus 的 _statusCache,跟手动上传/
       // 下载路径(uploadToCloudFromCurrentLedger / downloadAndRestoreToCurrentLedger
       // 里的 _statusCache.remove)保持一致。否则 push 后 unpushedCount 已归零,但
@@ -792,10 +803,30 @@ class SyncEngine implements app.SyncService {
       }
     }
 
-    // 主批(account/category/tag):照原逻辑推送 + 标记已推。
+    // 主批(account/category/tag):推送后按服务端结果分流 markPushed。
+    // 批次3(2026-09-10):LWW 判负 / poison 被拒的 change 不再标记已推
+    // (旧行为:200 即全量 markPushed,被拒的本地编辑静默丢失)。被拒实体
+    // 保留在 local_changes,由紧随的 pull 用服务端版本覆盖对齐。
     if (mainSyncChanges.isNotEmpty) {
-      await provider.pushChanges(changes: mainSyncChanges);
-      await changeTracker.markPushed(mainChanges.map((c) => c.id).toList());
+      final result = await provider.pushChanges(changes: mainSyncChanges);
+      final rejectedIds = result.rejectedEntitySyncIds;
+      final okIds = mainChanges
+          .where((c) => !rejectedIds.contains(c.entitySyncId))
+          .map((c) => c.id)
+          .toList();
+      if (okIds.isNotEmpty) {
+        await changeTracker.markPushed(okIds);
+      }
+      if (result.conflictCount > 0 || result.failedCount > 0) {
+        _lastPushConflicts = (
+          conflict: result.conflictCount,
+          failed: result.failedCount,
+          at: DateTime.now(),
+        );
+        logger.warning('SyncEngine',
+            'pushUserGlobalEntities: 服务端拒绝 ${result.conflictCount} 条冲突'
+            '/ ${result.failedCount} 条失败,保留本地待 pull 对齐');
+      }
     }
 
     // exchange_rate_override 独立批:旧服务器白名单会拒绝该 entity_type,
@@ -1039,11 +1070,22 @@ class SyncEngine implements app.SyncService {
       });
     }
 
-    // 使用 pushChanges 直接推送个体变更
-    await provider.pushChanges(changes: syncChanges);
-
-    // 标记已推送
-    await changeTracker.markPushed(changes.map((c) => c.id).toList());
+    // 使用 pushChanges 直接推送个体变更(批次3:按结果分流 markPushed)
+    final pushResult = await provider.pushChanges(changes: syncChanges);
+    final rejectedSyncIds = pushResult.rejectedEntitySyncIds;
+    final okChanges =
+        changes.where((c) => !rejectedSyncIds.contains(c.entitySyncId)).toList();
+    await changeTracker.markPushed(okChanges.map((c) => c.id).toList());
+    if (pushResult.conflictCount > 0 || pushResult.failedCount > 0) {
+      _lastPushConflicts = (
+        conflict: pushResult.conflictCount,
+        failed: pushResult.failedCount,
+        at: DateTime.now(),
+      );
+      logger.warning('SyncEngine',
+          'push: 服务端拒绝 ${pushResult.conflictCount} 条冲突 / '
+          '${pushResult.failedCount} 条失败,这些 change 保留本地待 pull 对齐');
+    }
     logger.info('SyncEngine',
         'push: 推送 ${changes.length} 条 ledger-scope 变更 + 本会话 user-global $userGlobalPushed 条');
     return changes.length + userGlobalPushed;

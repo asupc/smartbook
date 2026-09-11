@@ -197,10 +197,19 @@ class FakeSmartBookCloudProvider extends SmartBookCloudProvider {
   }
 
   @override
-  Future<void> pushChanges({
+  Future<SmartBookPushResult> pushChanges({
     required List<Map<String, dynamic>> changes,
   }) async {
     pushedBatches.add(changes);
+    return SmartBookPushResult(
+      accepted: changes.length,
+      rejected: 0,
+      conflictCount: 0,
+      conflictSamples: const [],
+      failedCount: 0,
+      failedSamples: const [],
+      serverCursor: 0,
+    );
   }
 
   @override

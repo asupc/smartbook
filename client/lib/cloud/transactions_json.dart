@@ -42,6 +42,12 @@ String _sanitizeString(String? input) {
 /// - tags: 标签列表（name, color）
 /// - items: 交易明细（type, amount, categoryName, categoryKind, happenedAt, note, tags）
 Future<String> exportTransactionsJson(BeeDatabase db, int ledgerId) async {
+  final payload = await _exportTransactionsPayload(db, ledgerId);
+  return jsonEncode(payload);
+}
+
+Future<Map<String, dynamic>> _exportTransactionsPayload(
+    BeeDatabase db, int ledgerId) async {
   logger.debug('TransactionsJson', '开始导出账本 $ledgerId');
 
   final txs = await (db.select(db.transactions)
@@ -93,14 +99,15 @@ Future<String> exportTransactionsJson(BeeDatabase db, int ledgerId) async {
   final cats = <int, Map<String, dynamic>>{};
   final allCategoriesSet = <int>{}; // 存储所有相关分类ID（包括父分类）
 
-  for (final cid in usedCatIds) {
-    final c = await (db.select(db.categories)..where((c) => c.id.equals(cid)))
-        .getSingleOrNull();
-    if (c != null) {
+  // C8:一次批查所有用到的分类(此前逐 cid 点查,数百分类 = 数百次往返)。
+  if (usedCatIds.isNotEmpty) {
+    final catRows = await (db.select(db.categories)
+          ..where((c) => c.id.isIn(usedCatIds.toList())))
+        .get();
+    for (final c in catRows) {
       final sanitizedName = _sanitizeString(c.name);
-      cats[cid] = {"name": sanitizedName, "kind": c.kind};
-      allCategoriesSet.add(cid);
-
+      cats[c.id] = {"name": sanitizedName, "kind": c.kind};
+      allCategoriesSet.add(c.id);
       // 如果是二级分类，也需要导出其父分类
       if (c.level == 2 && c.parentId != null) {
         allCategoriesSet.add(c.parentId!);
@@ -117,10 +124,12 @@ Future<String> exportTransactionsJson(BeeDatabase db, int ledgerId) async {
   }
   final accounts = <Account>[];
   final accountIdToName = <int, String>{}; // 账户ID -> 名称映射
-  for (final aid in usedAccountIds) {
-    final a = await (db.select(db.accounts)..where((a) => a.id.equals(aid)))
-        .getSingleOrNull();
-    if (a != null) {
+  // C8:一次批查(此前逐 aid 点查)。
+  if (usedAccountIds.isNotEmpty) {
+    final accRows = await (db.select(db.accounts)
+          ..where((a) => a.id.isIn(usedAccountIds.toList())))
+        .get();
+    for (final a in accRows) {
       accounts.add(a);
       accountIdToName[a.id] = _sanitizeString(a.name);
     }
@@ -294,7 +303,13 @@ Future<String> exportTransactionsJson(BeeDatabase db, int ledgerId) async {
   };
 
   logger.debug('TransactionsJson', '导出完成: ${items.length} 条交易, ${categoryItems.length} 个分类');
-  return jsonEncode(payload);
+  return payload;
+}
+
+/// C8:返回 Map 版导出(指纹/计数调用方免一轮 jsonEncode+jsonDecode)。
+Future<Map<String, dynamic>> exportTransactionsJsonMap(
+    BeeDatabase db, int ledgerId) async {
+  return _exportTransactionsPayload(db, ledgerId);
 }
 
 // --- 导入 ---
