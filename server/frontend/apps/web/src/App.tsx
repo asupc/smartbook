@@ -70,6 +70,9 @@ const SettingsPatsPage = lazy(() =>
 const RawEvidencePage = lazy(() =>
   import('./pages/sections/RawEvidencePage').then((m) => ({ default: m.RawEvidencePage })),
 )
+const TrashPage = lazy(() =>
+  import('./pages/sections/TrashPage').then((m) => ({ default: m.TrashPage })),
+)
 const SettingsHealthPage = lazy(() =>
   import('./pages/sections/SettingsHealthPage').then((m) => ({ default: m.SettingsHealthPage })),
 )
@@ -388,6 +391,10 @@ function AppRoutes() {
         <Route
           path="settings/raw-evidence"
           element={<Suspense fallback={<RouteFallback />}><RawEvidencePage /></Suspense>}
+        />
+        <Route
+          path="settings/trash"
+          element={<Suspense fallback={<RouteFallback />}><TrashPage /></Suspense>}
         />
         <Route
           path="settings/health"

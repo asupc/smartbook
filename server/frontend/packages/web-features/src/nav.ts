@@ -16,6 +16,7 @@ export type AppSection =
   | 'settings-ai'
   | 'settings-ai-logs'
   | 'settings-raw-evidence'
+  | 'settings-trash'
   | 'admin-users'
   | 'admin-backup'
   | 'admin-data-cleanup'
@@ -78,6 +79,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { key: 'settings-ai', labelKey: 'nav.ai' },
       { key: 'settings-ai-logs', labelKey: 'nav.aiLogs' },
       { key: 'settings-raw-evidence', labelKey: 'nav.rawEvidence' },
+      { key: 'settings-trash', labelKey: 'nav.trash' },
       { key: 'settings-health', labelKey: 'nav.health' },
       { key: 'settings-devices', labelKey: 'nav.devices' },
       // PAT / MCP 管理 — 给 LLM 客户端发长期 token 的地方。

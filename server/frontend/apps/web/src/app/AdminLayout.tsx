@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, Outlet } from 'react-router-dom'
 import { Button, Layout, Menu, Select, theme } from 'antd'
-import {
+import { Trash2,
   Activity,
   Archive,
   ArrowUpDown,
@@ -63,6 +63,7 @@ const SECTION_ICONS: Record<string, LucideIcon> = {
   'settings-ai': Bot,
   'settings-ai-logs': History,
   'settings-raw-evidence': ScrollText,
+  'settings-trash': Trash2,
   'settings-health': Activity,
   'settings-devices': Smartphone,
   'settings-developer': Key,
