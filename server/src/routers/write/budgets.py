@@ -42,7 +42,7 @@ async def create_bgt(
     if replay:
         return replay
     mutate_payload = _payload_with_actor(payload, current_user, ledger=ledger)
-    return await _commit_write(
+    return await _commit_write_fast_entity(
         request=request,
         db=db,
         current_user=current_user,
@@ -52,6 +52,8 @@ async def create_bgt(
         idempotency_key=idempotency_key,
         device_id=device_id,
         audit_action="web_budget_create",
+        entity_type="budget",
+        entity_sync_id=None,
         mutate=lambda snapshot: create_budget(snapshot, mutate_payload),
     )
 
@@ -87,7 +89,7 @@ async def update_bgt(
     if replay:
         return replay
     mutate_payload = _payload_with_actor(payload, current_user, ledger=ledger)
-    return await _commit_write(
+    return await _commit_write_fast_entity(
         request=request,
         db=db,
         current_user=current_user,
@@ -97,6 +99,8 @@ async def update_bgt(
         idempotency_key=idempotency_key,
         device_id=device_id,
         audit_action="web_budget_update",
+        entity_type="budget",
+        entity_sync_id=budget_id,
         mutate=lambda snapshot: (update_budget(snapshot, budget_id, mutate_payload), budget_id),
     )
 
@@ -132,7 +136,7 @@ async def delete_bgt(
     if replay:
         return replay
     mutate_payload = _payload_with_actor(payload, current_user, ledger=ledger)
-    return await _commit_write(
+    return await _commit_write_fast_entity(
         request=request,
         db=db,
         current_user=current_user,
@@ -142,5 +146,7 @@ async def delete_bgt(
         idempotency_key=idempotency_key,
         device_id=device_id,
         audit_action="web_budget_delete",
+        entity_type="budget",
+        entity_sync_id=budget_id,
         mutate=lambda snapshot: (delete_budget(snapshot, budget_id, mutate_payload), budget_id),
     )

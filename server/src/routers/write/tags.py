@@ -1,16 +1,52 @@
 """Tags write endpoints.
 
 POST / PATCH / DELETE for /ledgers/{ledger_id}/tags(ledgers 自身除外)。
-依赖 `._shared` 里的 _commit_write / _prepare_write / normalize helper /
-WRITE 响应表。Endpoint 自身只管参数校验 + mutate lambda 的构造。
+依赖 `._shared` 里的 _commit_write_fast_entity / _prepare_write / normalize
+helper / WRITE 响应表。Endpoint 自身只管参数校验 + mutate lambda 的构造。
+
+全部走小实体快路径(F1)。DELETE 前定向点查引用该 tag 的交易(tag_sync_ids_json
+精确 + legacy tags_csv 名字匹配),喂给 mutator 做 in-use 校验。
 """
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from sqlalchemy import and_, select as sa_select
 
 from ._shared import *  # noqa: F401,F403 — 集中从 _shared 取所有 symbol
+from ...models import ReadTxProjection, UserTagProjection
 
 router = APIRouter()
+
+
+def _cascade_items_for_tag_delete(db, current_user, tag_id: str):
+    """删除标签前定向点查引用交易,喂给快路径做 mutator 的 in_use 校验。
+    谓词 = tag_sync_ids_json 含该 sync_id(精确)+ tags_csv LIKE 名字粗筛
+    (Python 拆分精确匹配在 mutator 内完成)。返回 None 时走全量路径兜底
+    (tag 行不存在 → mutator 会 KeyError 404,统一从全量路径出)。"""
+    tag = db.scalar(
+        sa_select(UserTagProjection).where(
+            UserTagProjection.user_id == current_user.id,
+            UserTagProjection.sync_id == tag_id,
+        )
+    )
+    if tag is None or not (tag.name or "").strip():
+        return None
+    old_name = (tag.name or "").strip()
+    like_id = f'%"{tag_id}"%'
+    like_name = f"%{old_name}%"
+    rows = db.scalars(
+        sa_select(ReadTxProjection).where(
+            ReadTxProjection.user_id == current_user.id,
+            or_(
+                ReadTxProjection.tag_sync_ids_json.like(like_id),
+                and_(
+                    ReadTxProjection.tags_csv.like(like_name),
+                    ReadTxProjection.tag_sync_ids_json.is_(None),
+                ),
+            ),
+        )
+    ).all()
+    return list(rows)
 
 
 @router.post(
@@ -43,7 +79,7 @@ async def create_tag_api(
     if replay:
         return replay
     mutate_payload = _payload_with_actor(payload, current_user, ledger=ledger)
-    return await _commit_write(
+    return await _commit_write_fast_entity(
         request=request,
         db=db,
         current_user=current_user,
@@ -53,6 +89,8 @@ async def create_tag_api(
         idempotency_key=idempotency_key,
         device_id=device_id,
         audit_action="web_tag_create",
+        entity_type="tag",
+        entity_sync_id=None,
         mutate=lambda snapshot: create_tag(snapshot, mutate_payload),
     )
 
@@ -88,7 +126,7 @@ async def update_tag_api(
     if replay:
         return replay
     mutate_payload = _payload_with_actor(payload, current_user, ledger=ledger)
-    return await _commit_write(
+    return await _commit_write_fast_entity(
         request=request,
         db=db,
         current_user=current_user,
@@ -98,6 +136,8 @@ async def update_tag_api(
         idempotency_key=idempotency_key,
         device_id=device_id,
         audit_action="web_tag_update",
+        entity_type="tag",
+        entity_sync_id=tag_id,
         mutate=lambda snapshot: (update_tag(snapshot, tag_id, mutate_payload), tag_id),
     )
 
@@ -133,7 +173,21 @@ async def delete_tag_api(
     if replay:
         return replay
     mutate_payload = _payload_with_actor(payload, current_user, ledger=ledger)
-    return await _commit_write(
+    cascade_items = _cascade_items_for_tag_delete(db, current_user, tag_id)
+    if cascade_items is None:
+        return await _commit_write(
+            request=request,
+            db=db,
+            current_user=current_user,
+            ledger=ledger,
+            base_change_id=req.base_change_id,
+            request_payload=payload,
+            idempotency_key=idempotency_key,
+            device_id=device_id,
+            audit_action="web_tag_delete",
+            mutate=lambda snapshot: (delete_tag(snapshot, tag_id, mutate_payload), tag_id),
+        )
+    return await _commit_write_fast_entity(
         request=request,
         db=db,
         current_user=current_user,
@@ -143,6 +197,8 @@ async def delete_tag_api(
         idempotency_key=idempotency_key,
         device_id=device_id,
         audit_action="web_tag_delete",
+        entity_type="tag",
+        entity_sync_id=tag_id,
         mutate=lambda snapshot: (delete_tag(snapshot, tag_id, mutate_payload), tag_id),
+        cascade_tx_items=cascade_items,
     )
-
