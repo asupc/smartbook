@@ -29,6 +29,9 @@ import 'pages/ai/ai_chat_page.dart';
 import 'ai/providers/ai_provider_config.dart';
 import 'ai/providers/ai_provider_manager.dart';
 import 'services/platform/app_link_service.dart';
+import 'utils/notification_tap_router.dart';
+import 'pages/automation/pending_confirmation_page.dart';
+import 'pages/automation/auto_book_history_page.dart';
 import 'services/platform/quick_actions_service.dart';
 import 'services/system/logger_service.dart';
 import 'services/security/app_lock_service.dart';
@@ -103,11 +106,49 @@ class _BeeAppState extends ConsumerState<BeeApp>
 
     // 后台刷新账本同步状态
     _refreshLedgersStatusInBackground();
+    // v43 回收站:清理超过 30 天的「最近删除」记录(后台静默,不阻塞启动)
+    Future(() async {
+      try {
+        final n = await ref.read(repositoryProvider).cleanupDeletedTransactions();
+        if (n > 0) {
+          logger.info('Trash', '启动清理过期回收站记录: $n 条');
+        }
+      } catch (e) {
+        logger.warning('Trash', '回收站清理失败(不影响启动)', '$e');
+      }
+    });
     // 延迟监听 AppLink，确保 context 可用
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _setupAppLinkListener();
       _setupQuickActions();
     });
+
+    // 批次5(通知深链):通知点击 → AppLink URI 派发(payload 是
+    // smartbook://open?page=xxx,与小组件深链同通道)。注册前发生的冷启动
+    // 点击由 consumePending 补发。
+    // payload 是 smartbook://open?page=xxx —— 与小组件深链同通道:把 page 塞进
+    // pendingOpenPageProvider + action=open,_handleAppLinkAction 监听会接住并
+    // 走 _openDeepLink 派发(含 pending/auto_history 落地页)。
+    void dispatchNotificationUri(String uri) {
+      if (!mounted) return;
+      final parsed = Uri.tryParse(uri);
+      if (parsed == null) return;
+      final page = parsed.queryParameters['page'];
+      if (page != null && page.isNotEmpty) {
+        ref.read(pendingOpenPageProvider.notifier).state = page;
+      }
+      ref.read(pendingAppLinkActionProvider.notifier).state =
+          AppLinkAction.open;
+    }
+
+    NotificationTapRouter.handler = dispatchNotificationUri;
+    final coldStart = NotificationTapRouter.consumePending();
+    if (coldStart != null) {
+      // 冷启动点击:等页面树 + appInitState 就绪(深链重建可恢复机制会兜底)。
+      Future.delayed(const Duration(milliseconds: 1500), () {
+        if (mounted) dispatchNotificationUri(coldStart);
+      });
+    }
   }
 
   /// 设置快捷操作
@@ -565,6 +606,16 @@ class _BeeAppState extends ConsumerState<BeeApp>
         break;
       case 'budget':
         nav.push(MaterialPageRoute(builder: (_) => const BudgetPage()));
+        break;
+      // 批次5(通知深链):待确认/自动记账历史 —— 通知点击直达,撤销一笔
+      // 误记不再「点通知→进 App→自己翻页面」五步走。
+      case 'pending':
+        nav.push(MaterialPageRoute(
+            builder: (_) => const PendingConfirmationPage()));
+        break;
+      case 'auto_history':
+        nav.push(MaterialPageRoute(
+            builder: (_) => const AutoBookHistoryPage()));
         break;
       case 'detail':
         // 最近交易 / 仪表盘主体 → 首页明细列表:App 没有独立的明细页,首页

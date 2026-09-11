@@ -10985,7 +10985,7 @@ abstract class AppLocalizations {
   /// No description provided for @aiChatUndone.
   ///
   /// In en, this message translates to:
-  /// **'Undone'**
+  /// **'Undone — recoverable in Recently Deleted for 30 days'**
   String get aiChatUndone;
 
   /// No description provided for @aiChatUndoFailed.
@@ -11405,13 +11405,13 @@ abstract class AppLocalizations {
   /// No description provided for @aiVisionConcurrency.
   ///
   /// In en, this message translates to:
-  /// **'Vision concurrency'**
+  /// **'Concurrency'**
   String get aiVisionConcurrency;
 
   /// No description provided for @aiVisionConcurrencyHelper.
   ///
   /// In en, this message translates to:
-  /// **'Max images processed in parallel for batch recognition (1-32)'**
+  /// **'Max simultaneous text and image recognition tasks (1-32)'**
   String get aiVisionConcurrencyHelper;
 
   /// No description provided for @aiModelFast.
@@ -15325,6 +15325,114 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Mauritanian Ouguiya'**
   String get currencyMRU;
+
+  /// No description provided for @trashTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Recently Deleted'**
+  String get trashTitle;
+
+  /// No description provided for @trashEntryDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Deleted transactions kept for 30 days'**
+  String get trashEntryDesc;
+
+  /// No description provided for @trashEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'Trash is empty'**
+  String get trashEmpty;
+
+  /// No description provided for @trashRetentionHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Items are removed automatically after 30 days'**
+  String get trashRetentionHint;
+
+  /// No description provided for @trashRestored.
+  ///
+  /// In en, this message translates to:
+  /// **'Restored'**
+  String get trashRestored;
+
+  /// No description provided for @trashRestoreFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore failed'**
+  String get trashRestoreFailed;
+
+  /// No description provided for @trashRestore.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore'**
+  String get trashRestore;
+
+  /// No description provided for @trashPurgeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete forever'**
+  String get trashPurgeTitle;
+
+  /// No description provided for @trashPurgeAsk.
+  ///
+  /// In en, this message translates to:
+  /// **'Permanently delete {sign}{amount}? This cannot be undone.'**
+  String trashPurgeAsk(Object amount, Object sign);
+
+  /// No description provided for @trashPurgeConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete forever'**
+  String get trashPurgeConfirm;
+
+  /// No description provided for @trashDeletedAt.
+  ///
+  /// In en, this message translates to:
+  /// **'Deleted'**
+  String get trashDeletedAt;
+
+  /// No description provided for @trashDaysLeft.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} days left'**
+  String trashDaysLeft(Object count);
+
+  /// No description provided for @trashTypeIncome.
+  ///
+  /// In en, this message translates to:
+  /// **'Income'**
+  String get trashTypeIncome;
+
+  /// No description provided for @trashTypeExpense.
+  ///
+  /// In en, this message translates to:
+  /// **'Expense'**
+  String get trashTypeExpense;
+
+  /// No description provided for @trashTypeTransfer.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer'**
+  String get trashTypeTransfer;
+
+  /// No description provided for @pendingCandidateReasonSettlementUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'Settlement status unclear — verify it was paid'**
+  String get pendingCandidateReasonSettlementUnknown;
+
+  /// No description provided for @pendingCandidateReasonTransferAccountMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer/repayment is missing an account'**
+  String get pendingCandidateReasonTransferAccountMissing;
+
+  /// No description provided for @pendingCandidateReasonAlreadyProcessed.
+  ///
+  /// In en, this message translates to:
+  /// **'This bill was already processed'**
+  String get pendingCandidateReasonAlreadyProcessed;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

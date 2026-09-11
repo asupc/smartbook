@@ -28,15 +28,11 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   final TextEditingController _noteController = TextEditingController();
 
   List<({Transaction t, Category? category, Account? account, Account? toAccount})> _searchResults = [];
-  List<({Transaction t, Category? category, Account? account, Account? toAccount})> _allTransactions = [];
   bool _isSearching = false;
   String _searchText = '';
 
-  // PERF-P0-07:输入 debounce 与数据源订阅。
+  // PERF-P0-07:输入 debounce。
   Timer? _searchDebounce;
-  StreamSubscription<
-          List<({Transaction t, Category? category, Account? account, Account? toAccount})>>?
-      _txSubscription;
 
   // 筛选条件
   double? _minAmount;
@@ -57,27 +53,14 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   void initState() {
     super.initState();
     _searchController.addListener(_onSearchChanged);
-    // PERF-P0-07:数据源从 build 内联 StreamBuilder 改为 initState 订阅一次。
-    // 此前页面任何 setState 都会重建 Drift stream(旧订阅取消、新查询全表、
-    // snapshot 回 waiting),造成结果闪烁与滚动位置丢失;且在 builder 里写
-    // _allTransactions 属于 build 期改状态。
-    final repo = ref.read(repositoryProvider);
-    final ledgerId = ref.read(currentLedgerIdProvider);
-    _txSubscription =
-        repo.transactionsWithCategoryAll(ledgerId: ledgerId).listen((rows) {
-      if (!mounted) return;
-      _allTransactions = rows;
-      // 库数据变化时,若当前有筛选条件则静默重算结果(不闪 spinner)。
-      if (_hasActiveCriteria && !_isSearching) {
-        _applySearchResult(_computeResults());
-      }
-    });
+    // C1:不再订阅全账本 JOIN 流(每次写库都重新物化整表)。搜索条件变化时
+    // 走 searchTransactions 定向 SQL(过滤下推 + limit),保持 250ms debounce。
+    // 无条件时不加载任何数据(旧行为:空条件清结果)。
   }
 
   @override
   void dispose() {
     _searchDebounce?.cancel();
-    unawaited(_txSubscription?.cancel());
     _searchController.dispose();
     _noteController.dispose();
     super.dispose();
@@ -102,89 +85,6 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     _searchDebounce = Timer(const Duration(milliseconds: 250), _performSearch);
   }
 
-  /// 纯计算:按当前条件过滤 [_allTransactions] 并汇总收支,不触发 setState。
-  ({List<({Transaction t, Category? category, Account? account, Account? toAccount})> results,
-          double expense, double income})
-      _computeResults() {
-    // 循环外算一次(PERF-P0-07:此前每条交易重复 toLowerCase)。
-    final searchLower = _searchText.toLowerCase();
-    // 分类显示名做 l10n + 拼接,按原始名缓存,避免大账本下每笔重复调用。
-    final categoryNameCache = <String, String>{};
-    String categoryNameOf(Category? category) {
-      final raw = category?.name;
-      return categoryNameCache.putIfAbsent(
-        raw ?? '',
-        () => CategoryUtils.getDisplayName(raw, context),
-      );
-    }
-
-    final results = _allTransactions.where((item) {
-      final transaction = item.t;
-      final category = item.category;
-
-      // 文本搜索
-      bool textMatch = true;
-      if (searchLower.isNotEmpty) {
-        final note = transaction.note?.toLowerCase() ?? '';
-        final categoryName = categoryNameOf(category).toLowerCase();
-        final amountStr = transaction.amount.toString();
-
-        textMatch = note.contains(searchLower) ||
-            categoryName.contains(searchLower) ||
-            amountStr.contains(searchLower);
-      }
-
-      // 分类筛选：选择一级分类时，同时包含其二级分类交易。
-      final categoryMatch = _selectedCategory == null ||
-          category?.id == _selectedCategory!.id ||
-          category?.parentId == _selectedCategory!.id;
-
-      // 金额范围搜索
-      bool amountMatch = true;
-      if (_minAmount != null || _maxAmount != null) {
-        final amount = transaction.amount.abs();
-        if (_minAmount != null && amount < _minAmount!) {
-          amountMatch = false;
-        }
-        if (_maxAmount != null && amount > _maxAmount!) {
-          amountMatch = false;
-        }
-      }
-
-      // 时间范围搜索
-      bool dateMatch = true;
-      if (_startDate != null || _endDate != null) {
-        final happenedAt = transaction.happenedAt;
-        if (_startDate != null) {
-          final startOfDay = DateTime(_startDate!.year, _startDate!.month, _startDate!.day);
-          if (happenedAt.isBefore(startOfDay)) {
-            dateMatch = false;
-          }
-        }
-        if (_endDate != null) {
-          final endOfDay = DateTime(_endDate!.year, _endDate!.month, _endDate!.day, 23, 59, 59);
-          if (happenedAt.isAfter(endOfDay)) {
-            dateMatch = false;
-          }
-        }
-      }
-
-      return textMatch && categoryMatch && amountMatch && dateMatch;
-    }).toList();
-
-    double totalExpense = 0.0;
-    double totalIncome = 0.0;
-    for (final e in results) {
-      final v = (e.t.nativeAmount ?? e.t.amount).abs();
-      if (e.t.type == 'expense') {
-        totalExpense += v;
-      } else if (e.t.type == 'income') {
-        totalIncome += v;
-      }
-    }
-    return (results: results, expense: totalExpense, income: totalIncome);
-  }
-
   /// 单次 setState 应用搜索结果(PERF-P0-07:原实现两次 setState + 随后
   /// 再跑两遍 where+fold 汇总)。
   void _applySearchResult(
@@ -199,8 +99,9 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     });
   }
 
-  /// 执行搜索(输入停顿 / 筛选变化后触发)
-  void _performSearch() {
+  /// 执行搜索(输入停顿 / 筛选变化后触发)。C1:直接把条件下推 SQL 定向查询,
+  /// 不再持有/遍历全账本数据。
+  Future<void> _performSearch() async {
     // 如果没有任何搜索条件，清空结果
     if (!_hasActiveCriteria) {
       setState(() {
@@ -212,31 +113,51 @@ class _SearchPageState extends ConsumerState<SearchPage> {
       return;
     }
 
-    _applySearchResult(_computeResults());
-  }
-
-  /// 从数据库重新加载并执行搜索
-  Future<void> _performSearchFromDb() async {
-    if (!mounted) return;
-
     final repo = ref.read(repositoryProvider);
     final ledgerId = ref.read(currentLedgerIdProvider);
 
-    setState(() {
-      _isSearching = true;
-    });
+    // 展开子分类(选择一级分类时含其二级)。
+    var categoryIds = const <int>[];
+    if (_selectedCategory != null) {
+      final children = await repo.getAllCategories();
+      final id = _selectedCategory!.id;
+      categoryIds = [
+        id,
+        ...children
+            .where((c) => c.parentId == id)
+            .map((c) => c.id),
+      ];
+    }
 
-    // 从数据库重新获取所有交易
-    final allTransactions =
-        await repo.transactionsWithCategoryAll(ledgerId: ledgerId).first;
-
+    final results = await repo.searchTransactions(
+      ledgerId: ledgerId,
+      searchText: _searchText,
+      minAmount: _minAmount,
+      maxAmount: _maxAmount,
+      startDate: _startDate,
+      endDate: _endDate,
+      categoryIds: categoryIds,
+    );
     if (!mounted) return;
 
-    // 更新_allTransactions
-    _allTransactions = allTransactions;
+    double totalExpense = 0.0;
+    double totalIncome = 0.0;
+    for (final e in results) {
+      final v = (e.t.nativeAmount ?? e.t.amount).abs();
+      if (e.t.type == 'expense') {
+        totalExpense += v;
+      } else if (e.t.type == 'income') {
+        totalIncome += v;
+      }
+    }
+    _applySearchResult(
+        (results: results, expense: totalExpense, income: totalIncome));
+  }
 
-    // 执行搜索筛选
-    _performSearch();
+  /// 从数据库重新执行搜索(批量操作改库后刷新)。C1:与 _performSearch 同一
+  /// 定向查询路径,不再拉全账本。
+  Future<void> _performSearchFromDb() async {
+    await _performSearch();
   }
 
   /// 切换批量操作模式

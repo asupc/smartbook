@@ -89,6 +89,9 @@ class _HomePageState extends ConsumerState<HomePage> {
       'pending_banner_dismissed_count';
   String? _pendingBannerDismissedDate;
   int _pendingBannerDismissedCount = 0;
+  // 批次5:上次横幅关闭时刻(内存态)。当日一票抑制会让「处理了一半、剩几条」
+  // 的残留候选当天不再提醒 —— 资金性质数据不该被静默;改为 4 小时冷静窗。
+  DateTime? _pendingBannerDismissedAt;
 
   @override
   void initState() {
@@ -127,6 +130,9 @@ class _HomePageState extends ConsumerState<HomePage> {
       setState(() {
         _pendingBannerDismissedDate = today;
         _pendingBannerDismissedCount = count;
+        // 批次5:关闭只进 4 小时冷静窗(不再当日一票抑制),残留候选
+        // 晚些时候会再提醒 —— 处理到一半被忘记是资金数据风险。
+        _pendingBannerDismissedAt = now;
       });
     }
   }
@@ -1176,9 +1182,10 @@ class _HomePageState extends ConsumerState<HomePage> {
                 ref.watch(pendingCandidateCountProvider).valueOrNull ?? 0;
             final now = DateTime.now();
             final today = '${now.year}-${now.month}-${now.day}';
-            final suppressed = count <= 0 ||
-                (_pendingBannerDismissedDate == today &&
-                    _pendingBannerDismissedCount >= count);
+            final dismissedRecently = _pendingBannerDismissedAt != null &&
+                now.difference(_pendingBannerDismissedAt!) <
+                    const Duration(hours: 4);
+            final suppressed = count <= 0 || dismissedRecently;
             if (suppressed) return const SizedBox.shrink();
             return _buildPendingConfirmBanner(context, count);
           }),

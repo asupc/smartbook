@@ -5757,7 +5757,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiChatMessageDeleted => '消息已删除';
 
   @override
-  String get aiChatUndone => '已撤销';
+  String get aiChatUndone => '已撤销,30 天内可在「最近删除」恢复';
 
   @override
   String get aiChatUndoFailed => '撤销失败';
@@ -5969,10 +5969,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiVisionModelTitle => '视觉模型';
 
   @override
-  String get aiVisionConcurrency => '视觉并发数';
+  String get aiVisionConcurrency => '并发数';
 
   @override
-  String get aiVisionConcurrencyHelper => '批量识别时最多并行处理的图片数(1-32)';
+  String get aiVisionConcurrencyHelper => '文字识别与图片识别同时进行的最大任务数(1-32)';
 
   @override
   String get aiModelFast => '快速';
@@ -8081,6 +8081,64 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get currencyMRU => '毛里塔尼亚乌吉亚';
+
+  @override
+  String get trashTitle => '最近删除';
+
+  @override
+  String get trashEntryDesc => '删除的交易保留 30 天,可恢复';
+
+  @override
+  String get trashEmpty => '回收站是空的';
+
+  @override
+  String get trashRetentionHint => '删除的交易保留 30 天后自动清理';
+
+  @override
+  String get trashRestored => '已恢复';
+
+  @override
+  String get trashRestoreFailed => '恢复失败';
+
+  @override
+  String get trashRestore => '恢复';
+
+  @override
+  String get trashPurgeTitle => '彻底删除';
+
+  @override
+  String trashPurgeAsk(Object amount, Object sign) {
+    return '将永久删除 $sign$amount,且无法恢复。确定继续吗?';
+  }
+
+  @override
+  String get trashPurgeConfirm => '彻底删除';
+
+  @override
+  String get trashDeletedAt => '删除于';
+
+  @override
+  String trashDaysLeft(Object count) {
+    return '剩余 $count 天';
+  }
+
+  @override
+  String get trashTypeIncome => '收入';
+
+  @override
+  String get trashTypeExpense => '支出';
+
+  @override
+  String get trashTypeTransfer => '转账';
+
+  @override
+  String get pendingCandidateReasonSettlementUnknown => '结算状态不明确,请核对是否已支付';
+
+  @override
+  String get pendingCandidateReasonTransferAccountMissing => '转账/还款缺少账户,请补充';
+
+  @override
+  String get pendingCandidateReasonAlreadyProcessed => '同一账单已处理过';
 }
 
 /// The translations for Chinese, as used in Taiwan (`zh_TW`).
@@ -13838,7 +13896,7 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
   String get aiChatMessageDeleted => '訊息已刪除';
 
   @override
-  String get aiChatUndone => '已撤銷';
+  String get aiChatUndone => '已撤銷,30 天內可在「最近刪除」恢復';
 
   @override
   String get aiChatUndoFailed => '撤銷失敗';
@@ -14050,10 +14108,10 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
   String get aiVisionModelTitle => '視覺模型';
 
   @override
-  String get aiVisionConcurrency => '視覺並發數';
+  String get aiVisionConcurrency => '並發數';
 
   @override
-  String get aiVisionConcurrencyHelper => '批量辨識時最多並行處理的圖片數(1-32)';
+  String get aiVisionConcurrencyHelper => '文字辨識與圖片辨識同時進行的最大任務數(1-32)';
 
   @override
   String get aiModelFast => '快速';
@@ -16145,4 +16203,62 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
 
   @override
   String get currencyMRU => '毛里塔尼亞烏吉亞';
+
+  @override
+  String get trashTitle => '最近刪除';
+
+  @override
+  String get trashEntryDesc => '刪除的交易保留 30 天,可恢復';
+
+  @override
+  String get trashEmpty => '回收站是空的';
+
+  @override
+  String get trashRetentionHint => '刪除的交易保留 30 天後自動清理';
+
+  @override
+  String get trashRestored => '已恢復';
+
+  @override
+  String get trashRestoreFailed => '恢復失敗';
+
+  @override
+  String get trashRestore => '恢復';
+
+  @override
+  String get trashPurgeTitle => '徹底刪除';
+
+  @override
+  String trashPurgeAsk(Object amount, Object sign) {
+    return '將永久刪除 $sign$amount,且無法恢復。確定繼續嗎?';
+  }
+
+  @override
+  String get trashPurgeConfirm => '徹底刪除';
+
+  @override
+  String get trashDeletedAt => '刪除於';
+
+  @override
+  String trashDaysLeft(Object count) {
+    return '剩餘 $count 天';
+  }
+
+  @override
+  String get trashTypeIncome => '收入';
+
+  @override
+  String get trashTypeExpense => '支出';
+
+  @override
+  String get trashTypeTransfer => '轉帳';
+
+  @override
+  String get pendingCandidateReasonSettlementUnknown => '結算狀態不明確,請核對是否已支付';
+
+  @override
+  String get pendingCandidateReasonTransferAccountMissing => '轉帳/還款缺少帳戶,請補充';
+
+  @override
+  String get pendingCandidateReasonAlreadyProcessed => '同一帳單已處理過';
 }

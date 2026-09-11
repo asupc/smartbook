@@ -5757,7 +5757,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiChatMessageDeleted => 'Message deleted';
 
   @override
-  String get aiChatUndone => 'Undone';
+  String get aiChatUndone => 'Undone — recoverable in Recently Deleted for 30 days';
 
   @override
   String get aiChatUndoFailed => 'Undo failed';
@@ -5969,10 +5969,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiVisionModelTitle => 'Vision Model';
 
   @override
-  String get aiVisionConcurrency => 'Vision concurrency';
+  String get aiVisionConcurrency => 'Concurrency';
 
   @override
-  String get aiVisionConcurrencyHelper => 'Max images processed in parallel for batch recognition (1-32)';
+  String get aiVisionConcurrencyHelper => 'Max simultaneous text and image recognition tasks (1-32)';
 
   @override
   String get aiModelFast => 'Faster';
@@ -8081,4 +8081,62 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get currencyMRU => 'Mauritanian Ouguiya';
+
+  @override
+  String get trashTitle => 'Recently Deleted';
+
+  @override
+  String get trashEntryDesc => 'Deleted transactions kept for 30 days';
+
+  @override
+  String get trashEmpty => 'Trash is empty';
+
+  @override
+  String get trashRetentionHint => 'Items are removed automatically after 30 days';
+
+  @override
+  String get trashRestored => 'Restored';
+
+  @override
+  String get trashRestoreFailed => 'Restore failed';
+
+  @override
+  String get trashRestore => 'Restore';
+
+  @override
+  String get trashPurgeTitle => 'Delete forever';
+
+  @override
+  String trashPurgeAsk(Object amount, Object sign) {
+    return 'Permanently delete $sign$amount? This cannot be undone.';
+  }
+
+  @override
+  String get trashPurgeConfirm => 'Delete forever';
+
+  @override
+  String get trashDeletedAt => 'Deleted';
+
+  @override
+  String trashDaysLeft(Object count) {
+    return '$count days left';
+  }
+
+  @override
+  String get trashTypeIncome => 'Income';
+
+  @override
+  String get trashTypeExpense => 'Expense';
+
+  @override
+  String get trashTypeTransfer => 'Transfer';
+
+  @override
+  String get pendingCandidateReasonSettlementUnknown => 'Settlement status unclear — verify it was paid';
+
+  @override
+  String get pendingCandidateReasonTransferAccountMissing => 'Transfer/repayment is missing an account';
+
+  @override
+  String get pendingCandidateReasonAlreadyProcessed => 'This bill was already processed';
 }

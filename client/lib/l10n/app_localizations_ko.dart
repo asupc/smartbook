@@ -5757,7 +5757,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get aiChatMessageDeleted => '메시지가 삭제되었습니다';
 
   @override
-  String get aiChatUndone => '실행 취소됨';
+  String get aiChatUndone => '취소됨 — 30일 내 최근 삭제에서 복구 가능';
 
   @override
   String get aiChatUndoFailed => '실행 취소 실패';
@@ -5969,10 +5969,10 @@ class AppLocalizationsKo extends AppLocalizations {
   String get aiVisionModelTitle => '비전 모델';
 
   @override
-  String get aiVisionConcurrency => '비전 동시 처리 수';
+  String get aiVisionConcurrency => '동시 처리 수';
 
   @override
-  String get aiVisionConcurrencyHelper => '일괄 인식 시 동시 처리할 최대 이미지 수(1-32)';
+  String get aiVisionConcurrencyHelper => '텍스트 및 이미지 인식이 동시에 처리되는 최대 작업 수(1-32)';
 
   @override
   String get aiModelFast => '빠름';
@@ -8081,4 +8081,62 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get currencyMRU => 'Mauritanian Ouguiya';
+
+  @override
+  String get trashTitle => '최근 삭제';
+
+  @override
+  String get trashEntryDesc => '삭제된 거래는 30일간 보관';
+
+  @override
+  String get trashEmpty => '휴지통이 비어 있습니다';
+
+  @override
+  String get trashRetentionHint => '항목은 30일 후 자동 삭제됩니다';
+
+  @override
+  String get trashRestored => '복구됨';
+
+  @override
+  String get trashRestoreFailed => '복구 실패';
+
+  @override
+  String get trashRestore => '복구';
+
+  @override
+  String get trashPurgeTitle => '영구 삭제';
+
+  @override
+  String trashPurgeAsk(Object amount, Object sign) {
+    return '$sign$amount을(를) 영구 삭제할까요? 되돌릴 수 없습니다.';
+  }
+
+  @override
+  String get trashPurgeConfirm => '영구 삭제';
+
+  @override
+  String get trashDeletedAt => '삭제일';
+
+  @override
+  String trashDaysLeft(Object count) {
+    return '$count일 남음';
+  }
+
+  @override
+  String get trashTypeIncome => '수입';
+
+  @override
+  String get trashTypeExpense => '지출';
+
+  @override
+  String get trashTypeTransfer => '이체';
+
+  @override
+  String get pendingCandidateReasonSettlementUnknown => '결제 상태가 불분명합니다. 지불 여부를 확인하세요';
+
+  @override
+  String get pendingCandidateReasonTransferAccountMissing => '이체/상환에 계좌가 없습니다. 보충해 주세요';
+
+  @override
+  String get pendingCandidateReasonAlreadyProcessed => '동일한 청구서가 이미 처리되었습니다';
 }

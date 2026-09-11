@@ -34,6 +34,7 @@ import '../../services/platform/screenshot_monitor_service.dart';
 import '../../services/platform/sms_monitor_service.dart';
 import '../../services/platform/notify_monitor_service.dart';
 import '../../pages/automation/pending_confirmation_page.dart';
+import '../automation/deleted_transactions_page.dart';
 import '../../utils/ui_scale_extensions.dart';
 
 /// 自动记账健康检查结果(截图/短信/通知监听 + AI 配置 + 电池优化的聚合)。
@@ -253,6 +254,11 @@ class MinePage extends ConsumerWidget {
                                   final cached = sectionRef
                                       .watch(lastSyncStatusProvider(ledgerId));
                                   final st = asyncSt.asData?.value ?? cached;
+                                  // 批次3:同步失败的错误详情(此前 provider 建了
+                                  // 但没有 UI 消费,失败被静默吞)。有错时副标题
+                                  // 直接给原因,点击进同步详情页排查/重试。
+                                  final syncError =
+                                      sectionRef.watch(sp.lastSyncErrorProvider);
 
                                   // 计算简化的同步状态显示
                                   String subtitle = '';
@@ -260,7 +266,12 @@ class MinePage extends ConsumerWidget {
                                   final isFirstLoad = st == null;
                                   final refreshing = asyncSt.isLoading;
 
-                                  if (!isFirstLoad) {
+                                  if (syncError != null) {
+                                    // 失败详情优先于 diff 状态:diff 可能仍显示
+                                    // localNewer(还没推上去),错误才是真信号。
+                                    subtitle =
+                                        '${AppLocalizations.of(sectionContext).mineSyncError}: ${_briefSyncError(syncError)}';
+                                  } else if (!isFirstLoad) {
                                     switch (st.diff) {
                                       case SyncDiff.notLoggedIn:
                                         subtitle =
@@ -317,7 +328,10 @@ class MinePage extends ConsumerWidget {
                                         title:
                                             AppLocalizations.of(sectionContext)
                                                 .mineSyncTitle,
-                                        subtitle: isFirstLoad ? null : subtitle,
+                                        subtitle:
+                                            (isFirstLoad && syncError == null)
+                                                ? null
+                                                : subtitle,
                                         enabled: !isLocalMode,
                                         trailing: (canUseCloud &&
                                                 (isFirstLoad || refreshing))
@@ -522,6 +536,25 @@ class MinePage extends ConsumerWidget {
                               // 返回后刷新计数徽标
                               r.invalidate(pendingCandidateCountProvider);
                             },
+                          );
+                        },
+                      ),
+                      BeeTokens.cardDivider(context),
+                      // 最近删除(v43 回收站):30 天内可恢复误删交易
+                      AppListTile(
+                        leading: Icons.delete_sweep_outlined,
+                        leadingColor: const Color(0xFF64748B),
+                        leadingBgColor:
+                            const Color(0xFF64748B).withValues(alpha: 0.12),
+                        title: AppLocalizations.of(context).trashTitle,
+                        subtitle: AppLocalizations.of(context).trashEntryDesc,
+                        trailing: Icon(Icons.chevron_right,
+                            color: BeeTokens.iconTertiary(context), size: 20),
+                        onTap: () async {
+                          await Navigator.of(context).push(
+                            MaterialPageRoute(
+                                builder: (_) =>
+                                    const DeletedTransactionsPage()),
                           );
                         },
                       ),
@@ -1282,4 +1315,15 @@ class _MinePageHeaderState extends ConsumerState<_MinePageHeader> {
       ),
     );
   }
+}
+
+
+/// 同步错误摘要:去掉异常类名前缀,截断到 80 字符(副标题一行放得下)。
+/// 完整错误在同步详情页(SmartBookCloudSyncPage)可查。
+String _briefSyncError(String raw) {
+  var text = raw;
+  final paren = text.indexOf(': ');
+  if (paren > 0 && paren < 40) text = text.substring(paren + 2);
+  text = text.replaceAll('\n', ' ').trim();
+  return text.length > 80 ? '${text.substring(0, 80)}…' : text;
 }

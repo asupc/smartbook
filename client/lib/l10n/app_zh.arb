@@ -2468,7 +2468,7 @@
   "aiChatCopied": "已复制到剪贴板",
   "aiChatDeleteMessageConfirm": "确定要删除这条消息吗？",
   "aiChatMessageDeleted": "消息已删除",
-  "aiChatUndone": "已撤销",
+  "aiChatUndone": "已撤销,30 天内可在「最近删除」恢复",
   "aiChatUndoFailed": "撤销失败",
   "aiChatTransactionNotFound": "交易记录不存在",
   "aiChatOpenEditorFailed": "打开编辑页面失败",
@@ -2545,8 +2545,8 @@
   "aiPromptVarAccounts": "用户的账户列表（可能为空）",
   "aiModelTitle": "文本推理模型",
   "aiVisionModelTitle": "视觉模型",
-  "aiVisionConcurrency": "视觉并发数",
-  "aiVisionConcurrencyHelper": "批量识别时最多并行处理的图片数(1-32)",
+  "aiVisionConcurrency": "并发数",
+  "aiVisionConcurrencyHelper": "文字识别与图片识别同时进行的最大任务数(1-32)",
   "aiModelFast": "快速",
   "aiModelAccurate": "准确",
   "aiModelSwitched": "已切换到 {modelName}",
@@ -3758,5 +3758,34 @@
   "currencyLSL": "莱索托洛蒂",
   "currencySZL": "斯威士兰里兰吉尼",
   "currencyMGA": "马达加斯加阿里亚里",
-  "currencyMRU": "毛里塔尼亚乌吉亚"
+  "currencyMRU": "毛里塔尼亚乌吉亚",
+  "trashTitle": "最近删除",
+  "trashEntryDesc": "删除的交易保留 30 天,可恢复",
+  "trashEmpty": "回收站是空的",
+  "trashRetentionHint": "删除的交易保留 30 天后自动清理",
+  "trashRestored": "已恢复",
+  "trashRestoreFailed": "恢复失败",
+  "trashRestore": "恢复",
+  "trashPurgeTitle": "彻底删除",
+  "trashPurgeAsk": "将永久删除 {sign}{amount},且无法恢复。确定继续吗?",
+  "@trashPurgeAsk": {
+    "placeholders": {
+      "amount": {},
+      "sign": {}
+    }
+  },
+  "trashPurgeConfirm": "彻底删除",
+  "trashDeletedAt": "删除于",
+  "trashDaysLeft": "剩余 {count} 天",
+  "@trashDaysLeft": {
+    "placeholders": {
+      "count": {}
+    }
+  },
+  "trashTypeIncome": "收入",
+  "trashTypeExpense": "支出",
+  "trashTypeTransfer": "转账",
+  "pendingCandidateReasonSettlementUnknown": "结算状态不明确,请核对是否已支付",
+  "pendingCandidateReasonTransferAccountMissing": "转账/还款缺少账户,请补充",
+  "pendingCandidateReasonAlreadyProcessed": "同一账单已处理过"
 }
