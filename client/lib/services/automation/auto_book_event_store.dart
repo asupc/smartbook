@@ -5,6 +5,7 @@ import 'package:drift/drift.dart' as d;
 import '../../data/db.dart' as schema;
 import 'auto_book_event.dart';
 import '../privacy/raw_evidence_policy.dart';
+import 'semantic_dedup_matcher.dart';
 
 /// 一次事件 claim 的结果。
 class AutoBookClaim {
@@ -302,8 +303,10 @@ class AutoBookEventStore {
   /// 按 provider/channel + external ID 找到已经落库的 canonical transaction。
   ///
   /// external ID 只保存在本地事件摘要，不写入 transactions.syncId，也不把
-  /// 原始短信/通知正文带入云同步。数据量受事件 cap 约束，启动/自动路径可
-  /// 接受一次本地扫描；后续可再加独立索引表。
+  /// 原始短信/通知正文带入云同步。C4 性能修复:外部单号查重走
+  /// `semantic_key` 索引点查(写入侧 semanticKey() 对 externalId 生成的就是
+  /// `external:v1:<hash>`),不再全表拉回 + 逐行 jsonDecode。hash 公式对不上
+  /// (更老版本写入)或行缺失时回退旧扫描路径,行为不变。
   Future<int?> findTransactionByExternalId(
     String externalId, {
     int? ledgerId,
@@ -311,6 +314,60 @@ class AutoBookEventStore {
   }) async {
     final normalized = externalId.trim().toLowerCase();
     if (normalized.isEmpty) return null;
+
+    // 快路径:与 SemanticDedupMatcher.semanticKey 相同的 key 公式点查索引。
+    // 注意 normalize 口径完全复用 matcher(含商户词清洗),保证与写入侧一致。
+    try {
+      final externalKey =
+          SemanticDedupMatcher.externalKey(externalId.trim().toLowerCase());
+      if (externalKey != null) {
+        final rows = await (db.select(db.autoBookEventItems)
+              ..where((t) => t.semanticKey.equals(externalKey))
+              ..where((t) => t.transactionId.isNotNull()))
+            .get();
+        if (rows.isNotEmpty) {
+          final eventIds = rows.map((r) => r.eventId).toSet();
+          final events = await (db.select(db.autoBookEvents)
+                ..where((e) => e.id.isIn(eventIds)))
+              .get();
+          final eventById = {for (final e in events) e.id: e};
+          bool matchesChannel(schema.AutoBookEvent event) {
+            final requested = sourceChannel?.trim().toLowerCase();
+            if (requested == null || requested.isEmpty) return true;
+            return event.sourceChannel?.trim().toLowerCase() == requested;
+          }
+
+          for (final item in rows) {
+            final event = eventById[item.eventId];
+            if (event == null ||
+                event.state != AutoBookState.booked.value ||
+                item.transactionId == null) {
+              continue;
+            }
+            if (ledgerId != null && event.ledgerId != ledgerId) continue;
+            if (!matchesChannel(event)) continue;
+            return item.transactionId;
+          }
+        }
+      }
+    } catch (_) {
+      // 快路径任何异常(例如老库 hash 函数不一致)都退回全扫描,不影响正确性。
+    }
+
+    return _findTransactionByExternalIdScan(
+      normalized,
+      ledgerId: ledgerId,
+      sourceChannel: sourceChannel,
+    );
+  }
+
+  /// 旧版全扫描实现(保留为 fallback:semanticKey 为空的历史行、以及
+  /// externalId 存在于 billJson 而非 parent 行的老数据)。
+  Future<int?> _findTransactionByExternalIdScan(
+    String normalized, {
+    int? ledgerId,
+    String? sourceChannel,
+  }) async {
     final events = await (db.select(db.autoBookEvents)
           ..where((t) => ledgerId == null
               ? const d.Constant(true)
@@ -372,6 +429,58 @@ class AutoBookEventStore {
       }
     }
     return null;
+  }
+
+  /// 该事件(及其子项)关联过的交易 id 集合:
+  /// 父行 transactionId(booked 路径)+ 子项 transactionId(booked/duplicate)。
+  Future<Set<int>> transactionIdsForEvent(int eventId) async {
+    final ids = <int>{};
+    final parent = await findById(eventId);
+    final parentTx = parent?.transactionId;
+    if (parentTx != null) ids.add(parentTx);
+    final items = await (db.select(db.autoBookEventItems)
+          ..where((t) => t.eventId.equals(eventId))
+          ..where((t) => t.transactionId.isNotNull()))
+        .get();
+    ids.addAll(items.map((i) => i.transactionId!));
+    return ids;
+  }
+
+  /// 反查一笔交易的自动记账来源键集合(跨渠道判重用)。
+  ///
+  /// 交易可能被多个事件关联(先 booked 后其它渠道 duplicate),这里返回**全部**
+  /// 事件行上出现过的来源键 —— [SemanticDedupMatcher] 用它判断「当前捕获的
+  /// 来源是否已有别的渠道记录过同一笔」。跨账本迁移后 ledgerId 变化,反查
+  /// 不按 ledgerId 过滤(交易 id 是本地自增主键,已唯一定位一行)。
+  ///
+  /// 返回空集 = 该交易没有自动事件来源(手动记账/导入/云同步),调用方按
+  /// 「无来源信号」处理,不影响原有打分。
+  Future<Set<String>> sourceKeysForTransaction(int transactionId) async {
+    final eventIds = <int>{};
+    // 快路径:items.transactionId 有( eventId, itemIndex ) 主键,无独立索引;
+    // 全表列扫描行数与事件表同量级,本地库(≤30 天保留)可接受。
+    final itemRows = await (db.select(db.autoBookEventItems)
+          ..where((t) => t.transactionId.equals(transactionId)))
+        .get();
+    eventIds.addAll(itemRows.map((r) => r.eventId));
+
+    // 父行两条关联列:booked 的 transactionId + duplicate 的
+    // duplicateOfTransactionId(合并/撤销后可能同时存在)。
+    final parentRows = await (db.select(db.autoBookEvents)
+          ..where((t) =>
+              t.transactionId.equals(transactionId) |
+              t.duplicateOfTransactionId.equals(transactionId)))
+        .get();
+    eventIds.addAll(parentRows.map((r) => r.id));
+    if (eventIds.isEmpty) return const {};
+
+    final events = await (db.select(db.autoBookEvents)
+          ..where((e) => e.id.isIn(eventIds)))
+        .get();
+    return events
+        .map((e) => AutoBookSourceValue.sourceKey(e.source))
+        .whereType<String>()
+        .toSet();
   }
 
   /// 以 (eventId,itemIndex) 幂等写入一笔解析结果摘要.

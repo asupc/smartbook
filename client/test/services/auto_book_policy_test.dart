@@ -39,6 +39,31 @@ void main() {
     expect(result.reason, 'statement_or_balance');
   });
 
+  test('信用卡消费短信带「可用额度」尾注不再误判为汇总(2026-09-10)', () {
+    // 真实信用卡消费短信标配尾注;旧口径把含「可用额度」的正文整条判
+    // statement 静默丢弃,真实消费漏记。
+    final result = policy.evaluate(
+      bill: bill(
+        eventKind: BillEventKind.purchase,
+        status: BillSettlementStatus.settled,
+      ),
+      source: 'sms',
+      evidenceText: '您尾号8888的信用卡于12:05消费100元,可用额度9000元',
+    );
+    expect(result.action, AutoBookPolicyAction.allow);
+    expect(result.reason, 'settled_transaction');
+  });
+
+  test('纯额度提醒(弱汇总词且无动作词)仍判汇总', () {
+    final result = policy.evaluate(
+      bill: bill(eventKind: null),
+      source: 'sms',
+      evidenceText: '您尾号8888的信用卡可用额度9000元',
+    );
+    expect(result.action, AutoBookPolicyAction.ignore);
+    expect(result.reason, 'statement_or_balance');
+  });
+
   test('待付款/失败订单不创建消费', () {
     final result = policy.evaluate(
       bill: bill(eventKind: BillEventKind.pendingOrder),

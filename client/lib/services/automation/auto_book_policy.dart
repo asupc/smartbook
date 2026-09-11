@@ -30,14 +30,24 @@ class AutoBookPolicyDecision {
 /// 关键词只做便宜的前置/兜底判断，最终仍以 AI 的结构化字段为主。主动
 /// 用户路径不经过本类，避免把用户明确说出的内容静默丢弃。
 class AutoBookPolicy {
-  static final _summaryPattern = RegExp(
-    r'本期账单|账单总额|本期应还|最低还款|应还款|还款日|账单日|可用额度|当前余额|余额提醒|积分余额',
+  /// 强汇总信号:单独命中即可判 statement(整条短信只可能在讲账单汇总)。
+  static final _summaryStrongPattern = RegExp(
+    r'本期账单|账单总额|本期应还|最低还款|应还款|还款日|账单日|余额提醒|积分余额',
   );
+
+  /// 弱汇总信号:信用卡/储蓄卡消费短信正文常以「可用额度 xxx 元」作尾注,
+  /// 不能凭它整条判 statement(2026-09-10 修复:同词在 native NON_BOOKABLE
+  /// 一票否决,真实消费被静默丢弃)。仅在无任何收支动作词时才算汇总。
+  static final _summaryWeakPattern = RegExp(r'可用额度|当前余额|账户余额|结余');
+
   static final _pendingPattern = RegExp(
     r'待支付|待付款|订单确认|尚未支付|未支付|交易关闭|支付失败|付款失败|预授权|冻结金额|处理中',
   );
   static final _settledPattern = RegExp(
     r'支付成功|付款成功|交易成功|已支付|已付款|支付完成|扣款成功|消费成功|退款成功|收款到账|交易完成',
+  );
+  static final _actionPattern = RegExp(
+    r'消费|支出|扣款|扣费|转账|转入|转出|收款|入账|到账|充值|退款|还款|支付|付款|扫码|刷卡|提现|汇入|汇出|购买|代扣|扣缴|利息|存现|存入|取现|取款|汇兑|购汇',
   );
   static final _transferPattern = RegExp(r'转账|转帐|还款|充值|提现|汇入|汇出');
   static final _feePattern = RegExp(r'手续费|服务费|利息|fee');
@@ -226,8 +236,17 @@ class AutoBookPolicy {
     );
   }
 
+  /// 汇总信号判定:强词单独命中即 statement;弱词(可用额度/当前余额等
+  /// 消费短信常见尾注)仅在无收支动作词时才判,避免把真实消费整条丢弃。
+  static bool _isSummaryText(String text) {
+    if (text.isEmpty) return false;
+    if (_summaryStrongPattern.hasMatch(text)) return true;
+    return _summaryWeakPattern.hasMatch(text) &&
+        !_actionPattern.hasMatch(text);
+  }
+
   BillEventKind? _inferKind(BillInfo bill, String text) {
-    if (_summaryPattern.hasMatch(text)) return BillEventKind.statement;
+    if (_isSummaryText(text)) return BillEventKind.statement;
     if (_pendingPattern.hasMatch(text)) return BillEventKind.pendingOrder;
     if (_refundPattern.hasMatch(text)) return BillEventKind.refund;
     if (_feePattern.hasMatch(text)) return BillEventKind.fee;
@@ -246,9 +265,11 @@ class AutoBookPolicy {
 
   BillSettlementStatus? _inferStatus(String text) {
     if (text.isEmpty) return null;
-    if (_summaryPattern.hasMatch(text)) return BillSettlementStatus.summary;
-    if (_pendingPattern.hasMatch(text)) return BillSettlementStatus.pending;
+    // 已结算词优先于弱汇总词:「消费 100 元,可用额度 900 元」是 settled
+    // 的真实消费,不是账单汇总。
     if (_settledPattern.hasMatch(text)) return BillSettlementStatus.settled;
+    if (_pendingPattern.hasMatch(text)) return BillSettlementStatus.pending;
+    if (_isSummaryText(text)) return BillSettlementStatus.summary;
     return null;
   }
 

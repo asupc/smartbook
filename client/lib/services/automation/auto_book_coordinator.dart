@@ -1,8 +1,12 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:crypto/crypto.dart';
 
+import '../../ai/providers/ai_provider_config.dart';
+import '../../ai/providers/ai_provider_manager.dart';
 import '../../data/db.dart';
 import '../../services/system/logger_service.dart';
 import 'auto_book_event.dart';
@@ -24,9 +28,16 @@ class AutoBookEventContext {
 
 /// 所有自动入口共享的协调器。
 ///
-/// 第一阶段先解决两个高风险问题：
-/// 1. 不同来源并发处理同一事件时没有全局串行链；
-/// 2. 进程重启/广播重放后无法恢复事件状态。
+/// 执行模型(2026-09 并发化):**有界并发 + 同 eventKey 串行**。
+/// - 不同事件(短信/通知/页面文本/截图…)最多并发 [_maxConcurrency] 个(默认 3,
+///   实际取 text 绑定服务商的「并发数」)同时执行 —— LLM 提取是大头耗时,
+///   并行后一批积压事件的墙钟时间约为原来的 1/K;
+/// - 同一 eventKey 仍在各自的串行尾链上排队,幂等 claim / 租约语义与
+///   「同一事件绝不双执行」不变;进程重启/广播重放由 eventKey UNIQUE 兜底。
+///
+/// 落库判重(24h 基线、账单指纹、疑似重复)是 check-then-add,直接并行会在
+/// 「同一笔支付的短信+通知同时到达」时双记账 —— 该段由 [AiBookkeeper]
+/// `_persistAll` 的静态串行链兜住,协调器不再全局串行。
 ///
 /// 业务提取仍由 [AutoBillingService] / [AiBookkeeper] 完成；协调器只负责
 /// 幂等 claim、状态持久化、可重试和统一 key。这样不会把自动策略耦合进
@@ -34,12 +45,26 @@ class AutoBookEventContext {
 class AutoBookCoordinator {
   static const _tag = 'AutoBookCoordinator';
 
+  /// AI 配置尚未拉到 / 未配置时的默认并发数(与服务端 visionConcurrency
+  /// 缺省一致)。
+  static const int defaultMaxConcurrency = 3;
+
   final AutoBookEventStore store;
-  Future<void> _tail = Future<void>.value();
-  Future<void>? _ready;
   bool _disposed = false;
 
+  // ── 有界并发池(等待者队列信号量;占位直接移交,不经过计数抖动) ──
+  int _inFlight = 0;
+  int _maxConcurrency = defaultMaxConcurrency;
+  bool _concurrencyInitialized = false;
+  final Queue<Completer<void>> _waiters = Queue<Completer<void>>();
+
+  // ── 同 eventKey 串行守卫 ──
+  /// eventKey → 该 key 的任务尾链。同 key 请求严格串行;跨 key 并行。
+  final Map<String, Future<void>> _keyTails = {};
+
   AutoBookCoordinator(BeeDatabase db) : store = AutoBookEventStore(db);
+
+  Future<void>? _ready;
 
   Future<void> initialize() {
     return _ready ??= _initialize();
@@ -53,6 +78,22 @@ class AutoBookCoordinator {
       // 抛出真实数据库错误并进入 retry。
       logger.warning(_tag, '清理过期自动记账事件失败(继续运行)', '$e');
       logger.debug(_tag, '清理过期事件堆栈', st);
+    }
+    // 并发上限按 AI 配置(text 绑定服务商的「并发数」)设定一次;未配置 /
+    // 读失败保持 [defaultMaxConcurrency]。配置变化以「下一次进程启动」为
+    // 生效边界 —— 并发上限只影响吞吐,不值得为它做配置监听;外部显式
+    // setMaxConcurrency(测试)也不被这里覆盖。
+    if (_concurrencyInitialized) return;
+    _concurrencyInitialized = true;
+    try {
+      final provider = await AIProviderManager.getProviderForCapability(
+        AICapabilityType.text,
+      );
+      final limit = provider?.visionConcurrency ?? defaultMaxConcurrency;
+      setMaxConcurrency(limit.clamp(1, 32));
+      logger.info(_tag, '自动记账并发上限已按 AI 配置设定', 'limit=$limit');
+    } catch (e) {
+      logger.debug(_tag, '读取 AI 并发配置失败(用默认值)', '$e');
     }
   }
 
@@ -79,23 +120,97 @@ class AutoBookCoordinator {
     required Future<T> Function(AutoBookEventContext context) action,
     required AutoBookEventUpdate Function(T value) updateFor,
   }) {
-    final future = _tail.then((_) async {
+    final completer = Completer<AutoBookExecution<T>>();
+
+    // 同 eventKey 串行:真正执行挂到该 key 的尾链上,避免同一事件被两个
+    // 调用方(如 drain 与手动重试)同时 claim。跨 key 任务在这里只入各自的
+    // key 链,并发池占位在链内进行,不同 key 互不阻塞。
+    final key = input.eventKey;
+    final chained = _keyTails[key] ?? Future<void>.value();
+    final myTurn = chained.then((_) {
+      return _awaitSlotAndRun(
+        input: input,
+        action: action,
+        updateFor: updateFor,
+        completer: completer,
+      );
+    });
+    // 尾链吞掉异常,失败不阻断同 key 后续任务;链尾离开后清理 map 条目。
+    final swallow = myTurn.then<void>((_) {}, onError: (_) {});
+    _keyTails[key] = swallow;
+    swallow.whenComplete(() {
+      if (identical(_keyTails[key], swallow)) _keyTails.remove(key);
+    });
+
+    return completer.future;
+  }
+
+  /// 等并发池有空位后执行;结果交给 [completer],池占位在 finally 归还。
+  Future<void> _awaitSlotAndRun<T>({
+    required AutoBookInput input,
+    required Future<T> Function(AutoBookEventContext context) action,
+    required AutoBookEventUpdate Function(T value) updateFor,
+    required Completer<AutoBookExecution<T>> completer,
+  }) async {
+    await _acquireSlot();
+    try {
       if (_disposed) {
         throw StateError('AutoBookCoordinator 已释放');
       }
       await initialize();
-      return _runWithContext(
+      final result = await _runWithContext(
         input: input,
         action: action,
         updateFor: updateFor,
       );
-    }).then((value) => value);
-
-    // 维护一个不带结果的 tail，保证前一个任务成功/失败都不会阻断后续
-    // 事件；真正的 future 仍把异常返回给当前调用者。
-    _tail = future.then<void>((_) {}, onError: (_) {});
-    return future;
+      completer.complete(result);
+    } catch (e, st) {
+      completer.completeError(e, st);
+    } finally {
+      _releaseSlot();
+    }
   }
+
+  /// 占一个并发位;池满时排队,任务完成时按 FIFO 唤醒(占位直接移交)。
+  Future<void> _acquireSlot() {
+    if (_inFlight < _maxConcurrency) {
+      _inFlight++;
+      return Future<void>.value();
+    }
+    final ticket = Completer<void>();
+    _waiters.add(ticket);
+    return ticket.future;
+  }
+
+  void _releaseSlot() {
+    if (_waiters.isNotEmpty) {
+      // 占位直接移交给队首等待者,计数不变(所有权转移)。
+      _waiters.removeFirst().complete();
+    } else {
+      _inFlight--;
+    }
+  }
+
+  /// 并发上限变更入口(测试/配置刷新用)。显式调用优先于 AI 配置 bootstrap:
+  /// 生产路径没人调它,首个事件的 initialize 会按 AI 配置设一次;一旦外部
+  /// 设过,后续 initialize 不再覆盖。
+  void setMaxConcurrency(int limit) {
+    if (limit < 1) return;
+    _concurrencyInitialized = true;
+    if (limit > _maxConcurrency) {
+      _maxConcurrency = limit;
+      // 放宽后把新增空位移交给等待者。
+      while (_inFlight < _maxConcurrency && _waiters.isNotEmpty) {
+        _waiters.removeFirst().complete();
+        _inFlight++;
+      }
+    } else {
+      _maxConcurrency = limit;
+    }
+  }
+
+  /// 当前生效的并发上限(测试/诊断用)。
+  int get currentMaxConcurrency => _maxConcurrency;
 
   Future<AutoBookExecution<T>> _runWithContext<T>({
     required AutoBookInput input,
@@ -167,12 +282,16 @@ class AutoBookCoordinator {
   }
 
   /// 事件级截图/分享 key。优先使用内容 hash，文件尚未就绪时退回路径+元数据。
+  /// C14:文件读取 + sha256 丢 Isolate.run(1-4MB 截图此前在串行队列的
+  /// 主 isolate 上算,阻塞 UI 与后续事件)。
   Future<String> imageEventKey(String path) async {
     final file = File(path);
     try {
       if (await file.exists()) {
-        final bytes = await file.readAsBytes();
-        final digest = sha256.convert(bytes).toString();
+        final digest = await Isolate.run(() {
+          final bytes = File(path).readAsBytesSync();
+          return sha256.convert(bytes).toString();
+        });
         return 'image:v1:$digest';
       }
     } catch (e) {

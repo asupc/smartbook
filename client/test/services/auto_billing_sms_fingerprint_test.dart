@@ -37,4 +37,38 @@ void main() {
       expect(RegExp(r'^[0-9a-f]{16}$').hasMatch(fp), isTrue);
     });
   });
+
+  group('AutoBillingService.billFingerprint(2026-09-10 按小时粒度)', () {
+    test('同日同小时同账单 → 相同指纹(重复进详情页仍去重)', () {
+      final a = AutoBillingService.billFingerprint(
+        channel: '支付宝',
+        amount: -19.9,
+        note: '瑞幸咖啡',
+        time: DateTime(2026, 9, 10, 14, 3),
+      );
+      final b = AutoBillingService.billFingerprint(
+        channel: '支付宝',
+        amount: -19.9,
+        note: '瑞幸咖啡',
+        time: DateTime(2026, 9, 10, 14, 58),
+      );
+      expect(a, b);
+    });
+
+    test('同日不同小时的两笔同款 → 不同指纹(真实第二笔不再被吞)', () {
+      final a = AutoBillingService.billFingerprint(
+        channel: '支付宝',
+        amount: -19.9,
+        note: '瑞幸咖啡',
+        time: DateTime(2026, 9, 10, 9, 5),
+      );
+      final b = AutoBillingService.billFingerprint(
+        channel: '支付宝',
+        amount: -19.9,
+        note: '瑞幸咖啡',
+        time: DateTime(2026, 9, 10, 15, 2),
+      );
+      expect(a, isNot(b));
+    });
+  });
 }

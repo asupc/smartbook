@@ -27,6 +27,42 @@ extension AutoBookSourceValue on AutoBookSource {
       orElse: () => AutoBookSource.manual,
     );
   }
+
+  /// 事件来源键(跨渠道判重的「渠道」口径)。注意这是**事件来源**
+  /// (sms/notification/screen/image...),不是 sourceChannel(银行/电商品牌);
+  /// 同一笔支付的 4 路上报分别来自 4 个不同事件来源,而 sourceChannel 可能
+  /// 撞名(微信支付短信和微信支付通知都是「微信支付」)。
+  ///
+  /// 聚合:截图与分享图片同视为 image(同一笔账单的两种捕获形态);
+  /// 深链两类并入 deeplink;manual/import/recurring 不参与
+  /// 跨渠道强判重(用户意图或批量语义,与实时捕获不同质)。返回 null
+  /// 表示该来源无键,调用方按「无来源信号」处理。
+  ///
+  /// 入参兼容两种字符串:A) 事件行的 source 枚举值(screenText/deepLinkText),
+  /// B) AiBookkeeper._persistAll 的注入 source 屏蔽词(screen/text/image...)
+  /// —— 两者历史上没对齐,先归一再取键,保证「页面文本」和「深链文本」
+  /// 各自与短信/通知/账单能区分开。
+  static String? sourceKey(String? raw) {
+    final normalized = switch (raw?.trim()) {
+      'screen' => 'screenText',
+      'text' => 'deepLinkText',
+      'image' => 'screenshot',
+      _ => raw?.trim(),
+    };
+    final parsed = parse(normalized);
+    return switch (parsed) {
+      AutoBookSource.screenshot ||
+      AutoBookSource.sharedImage => 'image',
+      AutoBookSource.screenText => 'screen',
+      AutoBookSource.sms => 'sms',
+      AutoBookSource.notification => 'notification',
+      AutoBookSource.deepLinkText ||
+      AutoBookSource.deepLinkDirect => 'deeplink',
+      AutoBookSource.import ||
+      AutoBookSource.recurring ||
+      AutoBookSource.manual => null,
+    };
+  }
 }
 
 /// 触发意图。自动入口和用户主动入口必须分开，策略不能混用。
