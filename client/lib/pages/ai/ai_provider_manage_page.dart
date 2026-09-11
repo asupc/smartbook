@@ -352,7 +352,8 @@ class _AIProviderEditPageState extends ConsumerState<AIProviderEditPage> {
   /// 接口协议:openai(OpenAI-compatible)/ anthropic(Anthropic /v1/messages)。
   String _protocol = 'openai';
 
-  /// 一次多图批量识别时该服务商最多并行处理的图片数(有上限并发队列)。
+  /// 该服务商对同一用户的 LLM 并发调用上限:文字识别(自动记账事件并行
+  /// 分发)与图片识别(服务端批量)统一生效。
   int _visionConcurrency = 3;
 
   bool _obscureApiKey = true;
@@ -682,7 +683,7 @@ class _AIProviderEditPageState extends ConsumerState<AIProviderEditPage> {
                         ),
                         const SizedBox(height: 16),
 
-                        // 一次多图批量识别的并发数(仅视觉调用生效)
+                        // 并发数:文字与图片识别统一生效
                         TextFormField(
                           initialValue: '$_visionConcurrency',
                           keyboardType: TextInputType.number,

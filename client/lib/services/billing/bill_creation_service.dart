@@ -9,6 +9,8 @@ import '../../l10n/app_localizations.dart';
 import '../data/tag_seed_service.dart';
 import '../system/logger_service.dart';
 import 'category_matcher.dart';
+import 'category_learning_store.dart';
+import '../automation/auto_book_event.dart' show normalizeAutoBookText;
 import 'channel_account_store.dart';
 
 /// 账单交易创建服务。
@@ -280,6 +282,45 @@ class BillCreationService {
     return _matchCategory(bill.category, bill.note ?? '', categories);
   }
 
+  /// 入账路径的兜底分类关键词(「其他」系列)。强判重合并富化(A2)用它判断
+  /// 已有交易的分类是否只是先到渠道无信号时的兜底 —— 是则允许后到渠道
+  /// 用更具体的分类覆盖。
+  static const fallbackCategoryKeywords = ['其他', 'other', '其它', '杂项', 'misc'];
+
+  /// 按账户名匹配账户 id(强判重合并富化 A2 用;完全→模糊→类型映射,
+  /// 与入账路径同一套口径)。[currency] 传交易实际币种,币种不符不匹配。
+  Future<int?> matchAccountIdByName(
+    String accountName,
+    String? currency,
+    BillCreationContext ctx,
+  ) {
+    return _matchAccountByName(accountName, currency, ctx);
+  }
+
+  /// 按来源渠道映射匹配账户 id(95555→招行储蓄卡 等;富化 A2 用)。
+  /// 渠道无映射时回落该币种的默认支出账户;都没有返回 null。
+  Future<int?> matchAccountIdForChannel(
+    String? sourceChannel, {
+    required int ledgerId,
+    required String? currency,
+    required BillCreationContext ctx,
+  }) async {
+    if (sourceChannel == null || sourceChannel.trim().isEmpty) return null;
+    final rule = await ChannelAccountStore().ruleFor(sourceChannel);
+    if (rule != null) {
+      // 币种守卫:交易已按某币种落库,不能富化进一个异币种账户。
+      if (currency != null) {
+        final account = await _accountById(rule.accountId, ctx);
+        if (account != null &&
+            account.currency.toUpperCase() != currency.toUpperCase()) {
+          return null;
+        }
+      }
+      return rule.accountId;
+    }
+    return null;
+  }
+
   // ============================================================
   // 内部实现
   // ============================================================
@@ -339,9 +380,30 @@ class BillCreationService {
   Future<int?> _matchCategory(
     String? aiCategoryName,
     String note,
-    List<Category> categories,
-  ) async {
+    List<Category> categories, {
+    String kind = 'expense',
+  }) async {
     if (categories.isEmpty) return null;
+
+    // 批次5(分类学习):用户纠错历史优先 —— 同商户(备注关键词)命中时用
+    // 最近一次裁定的分类,压过静态关键词表与 AI 输出(AI 错一次同一商户
+    // 永远错下去的问题)。
+    try {
+      final learned = await CategoryLearningStore()
+          .match(normalizeAutoBookText(note), kind);
+      if (learned != null) {
+        final hit = categories.firstWhereOrNull(
+          (c) => c.name == learned.categoryName,
+        );
+        if (hit != null) {
+          logger.debug(_tag,
+              '[分类匹配-学习] 备注命中「${learned.keyword}」→ ${hit.name}(ID:${hit.id})');
+          return hit.id;
+        }
+      }
+    } catch (_) {
+      // 学习表读失败退回静态匹配,不阻断记账
+    }
 
     if (aiCategoryName != null && aiCategoryName.isNotEmpty) {
       // 完全匹配
@@ -383,9 +445,10 @@ class BillCreationService {
     );
   }
 
-  /// 获取兜底分类("其他"系列或最后一个)
+  /// 获取兜底分类。批次4(2026-09-10):只认「其他」系列关键词,不再回退
+  /// categories.last —— 列表排序变化会让未识别交易散落到随机分类,报表
+  /// 口径悄悄失真。找不到时返回 null → caller 走待确认(用户可见,可修正)。
   int? _fallbackCategoryId(List<Category> categories) {
-    if (categories.isEmpty) return null;
     const keywords = ['其他', 'other', '其它', '杂项', 'misc'];
     for (final k in keywords) {
       final hit = categories.firstWhereOrNull(
@@ -396,9 +459,8 @@ class BillCreationService {
         return hit.id;
       }
     }
-    final last = categories.last;
-    logger.debug(_tag, '[分类兜底] 使用"${last.name}"(ID:${last.id})');
-    return last.id;
+    logger.debug(_tag, '[分类兜底] 无「其他」分类,返回 null 进待确认');
+    return null;
   }
 
   /// 收入/支出场景的账户匹配。

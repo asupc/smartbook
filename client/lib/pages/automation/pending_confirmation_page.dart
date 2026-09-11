@@ -14,6 +14,7 @@ import '../../providers/ai_chat_providers.dart';
 import '../../providers/automation_providers.dart';
 import '../../services/billing/pending_candidate.dart';
 import '../../services/automation/semantic_dedup_matcher.dart';
+import '../../services/billing/category_learning_store.dart';
 import '../../services/automation/dedup_exempt_store.dart';
 import '../../services/data/tag_seed_service.dart';
 import '../../widgets/category/category_selector.dart';
@@ -549,11 +550,11 @@ class _PendingConfirmationPageState
       case 'autoBookDisabled':
         return l10n.pendingCandidateReasonAutoBookDisabled;
       case 'settlementUnknown':
-        return '结算状态不明确,请核对是否已支付';
+        return l10n.pendingCandidateReasonSettlementUnknown;
       case 'transferAccountMissing':
-        return '转账/还款缺少账户,请补充';
+        return l10n.pendingCandidateReasonTransferAccountMissing;
       case 'already_processed':
-        return '同一账单已处理过';
+        return l10n.pendingCandidateReasonAlreadyProcessed;
       default:
         return l10n.pendingConfirmationUncheckedReason;
     }
@@ -677,19 +678,68 @@ class _PendingConfirmationPageState
   List<PendingCandidate> get _selectedCandidates =>
       _visibleCandidates.where((c) => _selectedIds.contains(c.id)).toList();
 
-  /// 批量确认:reason=duplicate 的条目默认「合并到已有交易」
-  /// (approvePending 非 forceCreate 路径即该语义),逐条幂等;
-  /// 单条失败不中断,结束后汇总 toast。
+  /// 批量确认(2026-09-10 改分组裁决):选中项含疑似重复(reason=duplicate
+  /// 或带 matchedTransactionId)时,先弹一次性分组选择 ——「合并到已有交易 /
+  /// 仍记一笔」由用户定,不再默认静默合并(旧逻辑用户以为「都记上」,实际
+  /// 疑似重复组被并入已有交易,只 toast 成功条数)。非重复组不受影响直记。
   Future<void> _batchApprove() async {
     final l10n = AppLocalizations.of(context);
     final targets = _selectedCandidates;
     if (targets.isEmpty) return;
+    final duplicates = targets
+        .where((c) => c.matchedTransactionId != null || c.reason == 'duplicate')
+        .toList();
+    var forceCreateForDuplicates = false;
+    if (duplicates.isNotEmpty) {
+      final choice = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('发现可能重复'),
+          content: Text(
+            '选中的 ${targets.length} 笔中有 ${duplicates.length} 笔疑似与已有'
+            '交易重复。请选择这些疑似重复项的处理方式。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, null),
+              child: const Text('稍后'),
+            ),
+            OutlinedButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('合并到已有交易'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('仍记一笔'),
+            ),
+          ],
+        ),
+      );
+      if (choice == null || !mounted) return;
+      forceCreateForDuplicates = choice;
+    }
     final bookkeeper = ref.read(aiBookkeeperProvider);
     var ok = 0;
     var failed = 0;
     for (final c in targets) {
+      final isDuplicate =
+          c.matchedTransactionId != null || c.reason == 'duplicate';
       try {
-        final txId = await bookkeeper.approvePending(c, l10n: l10n);
+        // 与单条 _approve 一致:「仍记一笔」时落豁免规则,同类误判不复发。
+        if (isDuplicate && forceCreateForDuplicates) {
+          final keyword = SemanticDedupMatcher.exemptKeyword(c.bill);
+          final amount = c.bill.amount?.abs();
+          if (keyword != null && amount != null) {
+            try {
+              await DedupExemptStore().add(keyword: keyword, amount: amount);
+            } catch (_) {}
+          }
+        }
+        final txId = await bookkeeper.approvePending(
+          c,
+          l10n: l10n,
+          forceCreate: isDuplicate ? forceCreateForDuplicates : false,
+        );
         if (txId != null) {
           ok++;
         } else {
@@ -866,6 +916,24 @@ class _PendingConfirmationPageState
     if (keyword != null && amount != null) {
       try {
         await DedupExemptStore().add(keyword: keyword, amount: amount);
+      } catch (_) {}
+    }
+    // 批次5(分类学习):用户改了分类且与 AI 原判不同 → 落「商户关键词→分类」
+    // 映射,下次同商户自动优先用裁定结果。
+    final finalCategory = picked?.name;
+    if (finalCategory != null &&
+        finalCategory != bill.category &&
+        (finalNote ?? bill.note ?? '').trim().isNotEmpty) {
+      try {
+        await CategoryLearningStore().add(
+          keyword: normalizeAutoBookText(finalNote ?? bill.note ?? ''),
+          categoryName: finalCategory,
+          kind: switch (bill.type) {
+            BillType.income => 'income',
+            BillType.transfer => 'transfer',
+            _ => 'expense',
+          },
+        );
       } catch (_) {}
     }
     final txId = await ref.read(aiBookkeeperProvider).approvePending(

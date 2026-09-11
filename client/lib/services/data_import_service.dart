@@ -9,6 +9,7 @@ import 'currency/rate_math.dart';
 import 'system/logger_service.dart';
 import 'automation/auto_book_event.dart';
 import 'automation/auto_book_event_store.dart';
+import 'automation/semantic_dedup_matcher.dart';
 
 /// 统一的数据导入服务
 ///
@@ -756,6 +757,12 @@ class DataImportService {
         await eventStore.upsertItem(
           eventId: ref.eventId!,
           itemIndex: itemIndex,
+          // C4:导入路径也写 semanticKey(externalId 存在时),让
+          // findTransactionByExternalId 的索引点查对导入数据同样生效。
+          semanticKey: SemanticDedupMatcher.externalKey(
+            tx.externalId,
+            currency: tx.currencyCode,
+          ),
           eventKind: isRefundStatus(tx.status) ? 'refund' : tx.type,
           settlementStatus: tx.status,
           amount: amount,

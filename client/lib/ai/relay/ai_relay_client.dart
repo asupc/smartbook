@@ -227,10 +227,11 @@ class AiRelayClient {
 
   /// 一次多图批量识别(截图/选图记账,一次发多张)。
   ///
-  /// 服务端按该用户 vision provider 的 `visionConcurrency`(有上限并发队列)
-  /// 至多并行调用大模型,逐张返回结果数组。每张结果含 `imageIndex`(与传入
-  /// 顺序一致)、`content`(识别文本)、以及失败时的 `error`。单张失败不
-  /// 影响其它张,整张结果里 `error != null` 即失败,客户端可对其重试。
+  /// 服务端按该用户 vision provider 的「并发数」(`visionConcurrency`,与文字
+  /// 调用共享同一 (user, provider) 并发闸)至多并行调用大模型,逐张返回结果
+  /// 数组。每张结果含 `imageIndex`(与传入顺序一致)、`content`(识别文本)、
+  /// 以及失败时的 `error`。单张失败不影响其它张,整张结果里 `error != null`
+  /// 即失败,客户端可对其重试。
   Future<List<AiVisionBatchItem>> visionBatch({
     required List<File> images,
     required String prompt,
@@ -347,6 +348,7 @@ class AiRelayClient {
           'visionModel': provider.visionModel,
           'audioModel': provider.audioModel,
           'protocol': provider.protocol,
+          'visionConcurrency': provider.visionConcurrency,
         }),
       ),
     );

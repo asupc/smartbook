@@ -237,7 +237,8 @@ void main() {
       expect(cat?.name, '其它');
     });
 
-    test('无「其他」时使用最后一个分类作为兜底', () async {
+    test('无「其他」时不再兜底最后一个分类(2026-09-10 收紧:落 null 待确认)',
+        () async {
       await repo.createCategory(name: '餐饮', kind: 'expense', sortOrder: 1);
       await repo.createCategory(name: '购物', kind: 'expense', sortOrder: 2);
       await repo.createCategory(name: '娱乐', kind: 'expense', sortOrder: 3);
@@ -251,9 +252,9 @@ void main() {
         ledgerId: ledgerId,
       );
       final tx = await repo.getTransactionById(txId!);
-      // 应使用 sortOrder 最大的那个(列表 last)
-      final cat = await repo.getCategoryById(tx!.categoryId!);
-      expect(cat?.name, '娱乐');
+      // 兜底随分类列表排序漂移会让未识别交易散落到随机分类,报表口径失真;
+      // 现在无「其他」分类时明确落 null(交易仍创建,用户可改分类)。
+      expect(tx!.categoryId, isNull);
     });
   });
 

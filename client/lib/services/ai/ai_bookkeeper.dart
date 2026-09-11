@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -40,6 +41,12 @@ class AiBookkeeper {
   final AutoBookEventStore? _eventStore;
   static const _semanticPolicy = AutoBookPolicy();
   static const _dedupMatcher = SemanticDedupMatcher();
+
+  // 落库串行链(跨实例共享):判重是 check-then-add —— 24h 基线查询、账单
+  // 指纹、疑似重复都依赖「先查再写」之间没有别人插队。自动事件在 Coordinator
+  // 并行识别后,「同一笔支付的短信+通知同时到达」若同时进入落库会双记账;
+  // LLM 提取(真正的大头)仍并行,只把判重+写库这一段串起来。
+  static Future<void> _persistChain = Future<void>.value();
 
   const AiBookkeeper({
     required BaseRepository repository,
@@ -464,6 +471,48 @@ class AiBookkeeper {
       return BookkeepingResult.empty;
     }
 
+    // 判重(24h 基线/账单指纹/疑似重复)是 check-then-add:多个自动事件并行
+    // 识别后,落库段必须互斥,否则「同一笔支付的短信+通知同时到达」会双记账。
+    // LLM 提取在 Coordinator 并行,这里只串判重+写库(毫秒级,不伤吞吐)。
+    final result = Completer<BookkeepingResult>();
+    final chained = _persistChain.then((_) async {
+      try {
+        result.complete(await _persistAllSerial(
+          bills: bills,
+          ledgerId: ledgerId,
+          billingTypes: billingTypes,
+          l10n: l10n,
+          onSaved: onSaved,
+          autoBookFlow: autoBookFlow,
+          source: source,
+          sourceChannel: sourceChannel,
+          skipIfProcessed: skipIfProcessed,
+          evidenceText: evidenceText,
+        ));
+      } catch (e, st) {
+        result.completeError(e, st);
+      }
+    });
+    _persistChain = chained.then<void>((_) {}, onError: (_) {});
+    return result.future;
+  }
+
+  Future<BookkeepingResult> _persistAllSerial({
+    required List<BillInfo> bills,
+    required int ledgerId,
+    required List<String> billingTypes,
+    AppLocalizations? l10n,
+    Future<void> Function(int txId, int index)? onSaved,
+    AutoBookFlow? autoBookFlow,
+    String source = 'auto',
+    String? sourceChannel,
+    Future<bool> Function(BillInfo bill)? skipIfProcessed,
+    String? evidenceText,
+  }) async {
+    if (bills.isEmpty) {
+      return BookkeepingResult.empty;
+    }
+
     // M2 候选制:分流基准数据只取一次(90 天一次拉取,M3 基线共用)。
     // 用可变副本维护本批已经处理的账单，防止模型一次返回重复对象时
     // 第一笔入账后第二笔仍拿旧 pool 判定为“无重复”。
@@ -482,6 +531,8 @@ class AiBookkeeper {
     var shadowCount = 0;
     var pendingAbsAmount = 0.0;
     final duplicateTransactionIds = <int>[];
+    // 账单级指纹命中(无关联交易 ID)的账单,供判重合并轻通知展示金额/时间。
+    final duplicateBills = <BillInfo>[];
 
     final eventStore = autoBookFlow?.eventStore;
     final eventKey = autoBookFlow?.eventKey;
@@ -593,9 +644,11 @@ class AiBookkeeper {
       }
 
       // 账单级去重(调用方注入,如屏幕文本的「金额+备注+日期」指纹):
-      // 命中即视为已入账过,直接跳过,不落库也不进候选。
+      // 命中即视为已入账过,直接跳过,不落库也不进候选。账单本体记入
+      // duplicateBills,让渠道层能发判重合并轻通知(此前该路径完全静默)。
       if (skipIfProcessed != null && await skipIfProcessed(bill)) {
         duplicateCount++;
+        duplicateBills.add(bill);
         await recordEventItem(
           index: i,
           bill: bill,
@@ -633,6 +686,8 @@ class AiBookkeeper {
             bill: bill,
             eventStore: eventStore,
             sourceChannel: sourceChannel,
+            sourceKey: AutoBookSourceValue.sourceKey(source),
+            transactionSourceKeys: eventStore?.sourceKeysForTransaction,
           );
         } catch (e, st) {
           // 判重失败不阻断自动记账；退回候选规则，并保留诊断信息。
@@ -664,19 +719,64 @@ class AiBookkeeper {
       }
 
       // 强匹配直接关联已有交易，不再创建第二笔；弱匹配必须进入候选。
+      // 跨渠道强判重(A2)同时把后到捕获的增量信息富化进已有交易 ——
+      // 银行短信先到落库时往往只有金额+账户,后到的账单页/电商通知
+      // 带着商户/分类/备注,补进去让「谁先到」不再决定记录质量。
       if (autoBookFlow != null && semanticMatch?.isStrong == true) {
         duplicateCount++;
         duplicateTransactionIds.add(semanticMatch!.transactionId);
+        final enrichReason = await _enrichMergedTransaction(
+          transactionId: semanticMatch.transactionId,
+          bill: bill,
+          sourceChannel: sourceChannel,
+          context: billContext,
+        );
         await recordEventItem(
           index: i,
           bill: bill,
           state: AutoBookState.duplicate.value,
           transactionId: semanticMatch.transactionId,
-          reason: 'semantic_strong:${semanticMatch.score.toStringAsFixed(3)}',
+          reason:
+              'semantic_strong:${semanticMatch.score.toStringAsFixed(3)}${enrichReason ?? ''}',
         );
         logger.info(_tag,
-            '第 ${i + 1} 笔命中强语义重复,跳过创建: tx=${semanticMatch.transactionId} score=${semanticMatch.score.toStringAsFixed(3)}');
+            '第 ${i + 1} 笔命中强语义重复,跳过创建: tx=${semanticMatch.transactionId} score=${semanticMatch.score.toStringAsFixed(3)}${enrichReason ?? ''}');
         continue;
+      }
+
+      // 秒级指纹静默去重:金额完全一致且消费时间精确到秒一致(秒值可信)
+      // 的重复上报,与已有交易或已有待确认候选命中时直接判重——不创建、
+      // 不进待确认、也不计入 duplicateTransactionIds/duplicateBills(合并
+      // 轻通知只覆盖商户语义判重;秒级指纹是确定性重复,提示反而是打扰)。
+      // 事件子项仍记 duplicate + 关联目标,历史页可查、可撤销语义不受影响。
+      if (autoBookFlow != null) {
+        final secondExactTxId = semanticMatch != null &&
+                semanticMatch.reason.contains('time_second_exact')
+            ? semanticMatch.transactionId
+            : null;
+        final secondExactPending = secondExactTxId == null &&
+            SemanticDedupMatcher.hasSecondExactDuplicate(
+              bill,
+              pendingComparison,
+            );
+        if (secondExactTxId != null || secondExactPending) {
+          duplicateCount++;
+          await recordEventItem(
+            index: i,
+            bill: bill,
+            state: AutoBookState.duplicate.value,
+            transactionId: secondExactTxId,
+            reason: 'second_exact_fingerprint',
+          );
+          logger.info(
+            _tag,
+            '第 ${i + 1} 笔命中秒级指纹重复,静默跳过',
+            secondExactTxId != null
+                ? 'tx=$secondExactTxId'
+                : 'pending_candidate',
+          );
+          continue;
+        }
       }
 
       // M2 候选制:低置信 / 语义待确认 / 疑似重复 → 待确认队列,不入账。
@@ -827,6 +927,7 @@ class AiBookkeeper {
       ignoredCount: ignoredCount,
       duplicateCount: duplicateCount,
       duplicateTransactionIds: List.unmodifiable(duplicateTransactionIds),
+      duplicateBills: List.unmodifiable(duplicateBills),
       shadowCount: shadowCount,
       pendingAbsAmount: pendingAbsAmount,
     );
@@ -967,6 +1068,117 @@ class AiBookkeeper {
     } catch (e, st) {
       logger.error(_tag, '回填实际名称失败,使用 AI 原始名称', e, st);
       return bill;
+    }
+  }
+
+  /// A2:强判重合并时把后到捕获的增量信息补进已有交易(**只补缺,不覆盖**)。
+  ///
+  /// 背景:同一笔支付的 4 路上报里先落库的往往是银行短信——金额/账户准,
+  /// 但商户/分类/备注缺失或粗糙;后到的账单页/电商通知保真度更高。原行为
+  /// 直接丢弃后到者,记录质量被「谁先到」决定。
+  ///
+  /// 富化字段与规则:
+  /// - note:原交易为空时补 bill 的商户/备注;
+  /// - categoryId:原交易分类缺失(含兜底「其他」)且 bill 有更具体分类时,
+  ///   用入账路径同一套匹配换上;
+  /// - accountId:仅原交易**没有**账户时按来源渠道映射/账户名匹配补,
+  ///   已有账户不动(银行侧账户信息最权威);
+  /// - type/amount/happenedAt/currency:绝不改 —— 这些是判重闸门的
+  ///   锚点,改了会破坏既有口径与用户已见数据。
+  ///
+  /// 返回决策日志后缀(如 `,enriched:note,account`),无富化返回 null。
+  /// 任何失败都不影响合并本身(交易保持原样),富化只是增强。
+  Future<String?> _enrichMergedTransaction({
+    required int transactionId,
+    required BillInfo bill,
+    String? sourceChannel,
+    BillCreationContext? context,
+  }) async {
+    try {
+      final tx = await _repo.getTransactionById(transactionId);
+      if (tx == null) return null;
+
+      final enriched = <String>[];
+      var note = tx.note;
+      var categoryId = tx.categoryId;
+      var accountId = tx.accountId;
+
+      // 备注:只补空。已有备注(哪怕很短)是用户或先到渠道的既定信息。
+      if ((note == null || note.trim().isEmpty)) {
+        final candidateNote =
+            (bill.merchant ?? bill.note)?.trim() ?? '';
+        if (candidateNote.isNotEmpty) {
+          note = candidateNote;
+          enriched.add('note');
+        }
+      }
+
+      // 分类:原交易无分类,或挂在「其他」兜底分类上,而 bill 有更具体分类。
+      final ctx = context ?? BillCreationContext();
+      if (categoryId == null || await _isFallbackCategory(categoryId, ctx)) {
+        final matched = await _persister.matchCategoryId(bill);
+        if (matched != null && matched != categoryId) {
+          categoryId = matched;
+          enriched.add('category');
+        }
+      }
+
+      // 账户:仅原交易完全没有账户时补。银行短信(先到)的账户最权威,
+      // 后到的电商通知账户名(「微信支付」)反而可能是支付通道而非资金账户。
+      if (accountId == null && (tx.accountSyncIdOverride == null)) {
+        final txCurrency = tx.currencyCode?.toUpperCase();
+        int? matched;
+        if (bill.account != null && bill.account!.trim().isNotEmpty) {
+          matched = await _persister.matchAccountIdByName(
+            bill.account!,
+            txCurrency,
+            ctx,
+          );
+        }
+        // AI 没给账户名 → 按来源渠道映射(95555→招行储蓄卡 等)。
+        matched ??= await _persister.matchAccountIdForChannel(
+          sourceChannel,
+          ledgerId: tx.ledgerId,
+          currency: txCurrency,
+          ctx: ctx,
+        );
+        if (matched != null) {
+          accountId = matched;
+          enriched.add('account');
+        }
+      }
+
+      if (enriched.isEmpty) return null;
+      await _repo.updateTransaction(
+        id: transactionId,
+        type: tx.type,
+        amount: tx.amount,
+        categoryId: categoryId,
+        note: note,
+        accountId: accountId,
+      );
+      logger.info(_tag, '合并富化已补进已有交易',
+          'tx=$transactionId fields=${enriched.join(',')}');
+      return ',enriched:${enriched.join(',')}';
+    } catch (e, st) {
+      logger.warning(_tag, '合并富化失败(不影响判重合并)', '$e');
+      logger.debug(_tag, '合并富化堆栈', st);
+      return null;
+    }
+  }
+
+  /// 分类 id 是否为入账路径的兜底分类(「其他」系列)。兜底分类意味着先到
+  /// 渠道没有提供有效分类信号,允许后到渠道覆盖。
+  Future<bool> _isFallbackCategory(
+      int categoryId, BillCreationContext ctx) async {
+    try {
+      final cat = await _repo.getCategoryById(categoryId);
+      if (cat == null) return false;
+      final name = cat.name.toLowerCase();
+      return BillCreationService.fallbackCategoryKeywords
+          .any((k) => name.contains(k.toLowerCase()));
+    } catch (_) {
+      return false;
     }
   }
 }

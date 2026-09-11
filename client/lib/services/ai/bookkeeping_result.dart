@@ -27,6 +27,11 @@ class BookkeepingResult {
   /// 强语义判重命中的已有交易 ID，按识别顺序排列。
   final List<int> duplicateTransactionIds;
 
+  /// 命中账单级指纹去重(skipIfProcessed)的账单本体 —— 该路径没有关联的
+  /// 交易 ID,但金额/时间可用于判重合并轻通知(与 duplicateTransactionIds
+  /// 互补,二者命中都计入 [duplicateCount])。
+  final List<BillInfo> duplicateBills;
+
   /// 影子模式下识别到、但刻意没有写入交易的账单数。
   final int shadowCount;
 
@@ -64,6 +69,7 @@ class BookkeepingResult {
     this.ignoredCount = 0,
     this.duplicateCount = 0,
     this.duplicateTransactionIds = const [],
+    this.duplicateBills = const [],
     this.shadowCount = 0,
     this.pendingAbsAmount = 0,
     this.retryable = false,

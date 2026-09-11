@@ -127,15 +127,19 @@ class PendingCandidate {
 /// - "疑似重复"是硬规则,一定能拦下来。
 class AutoBookRule {
   static const double confidenceThreshold = 0.9;
-  static const double duplicateTolerance = 0.05; // 金额 ±5%
-  static const Duration duplicateWindow = Duration(minutes: 10);
+  // 2026-09-10 收紧:与 SemanticDedupMatcher 硬闸门同口径(金额完全相等+
+  // 时间差<=1 分钟)。旧口径(±5% 容差、10 分钟窗、同备注无时限)会把
+  // 「每天在同一家店买同款」的正常第二笔持续打成疑似重复,自动记账退化
+  // 为半自动。更宽的相似性判断交给语义判重(possible 线 0.60)。
+  static const Duration duplicateWindow = Duration(minutes: 1);
 
   static bool isLowConfidence(BillInfo bill) {
     return bill.confidence < confidenceThreshold;
   }
 
-  /// 疑似重复:同账本、同类型、金额 ±5%(+0.01 容差)且时间差 <= 10 分钟;
-  /// 或同备注(同一商户)且金额一致。全为纯函数,便于单测。
+  /// 疑似重复硬闸门:同账本、同类型、金额完全相等(无容差)且时间差 <= 1 分钟。
+  /// 与 [SemanticDedupMatcher] 的硬闸门口径一致(其可能重复的宽匹配仍由
+  /// 语义判重负责)。全为纯函数,便于单测。
   static bool looksLikeDuplicate(BillInfo bill, Iterable<BillInfo> others) {
     final amount = bill.amount;
     if (amount == null || amount.abs() <= 0) return false;
@@ -147,16 +151,11 @@ class AutoBookRule {
           other.ledgerId != bill.ledgerId) {
         continue;
       }
-      if ((otherAmount.abs() - amount.abs()).abs() >
-          amount.abs() * duplicateTolerance + 0.01) {
-        continue;
-      }
-      final sameNote =
-          bill.note != null && bill.note!.isNotEmpty && bill.note == other.note;
+      if (otherAmount.abs() != amount.abs()) continue;
       final diff = (bill.time == null || other.time == null)
           ? Duration.zero
           : bill.time!.difference(other.time!).abs();
-      if (diff <= duplicateWindow || sameNote) return true;
+      if (diff <= duplicateWindow) return true;
     }
     return false;
   }

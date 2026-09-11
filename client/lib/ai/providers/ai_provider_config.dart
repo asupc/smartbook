@@ -26,8 +26,10 @@ class AIServiceProviderConfig {
   /// 语音模型
   final String audioModel;
 
-  /// 一次多图批量识别(/relay/vision-batch)时,该服务商最多并行处理的图片数。
-  /// 只对 vision 相关调用生效;各服务商能安全并行的请求量不同。
+  /// 该服务商对同一用户的 LLM 并发调用上限(1-32)。文字与视觉统一生效:
+  /// 客户端 AutoBookCoordinator 按它并行分发自动事件,服务端 relay 按同一
+  /// 字段对 (user, provider) 限流。字段名保留 visionConcurrency 是存量
+  /// JSON/服务端兼容,语义已不限于视觉。
   final int visionConcurrency;
 
   /// 接口协议:'openai'(OpenAI-compatible /chat/completions,缺省)或

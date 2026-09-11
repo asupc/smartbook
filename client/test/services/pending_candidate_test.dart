@@ -31,11 +31,11 @@ void main() {
       );
     });
 
-    test('疑似重复:同账本同类型金额 ±5% 且 10 分钟内 → 待确认', () {
-      final recent = bill(amount: -45.2, time: DateTime(2026, 9, 2, 12, 5));
+    test('疑似重复:同账本同类型金额完全相等且 1 分钟内 → 待确认', () {
+      final recent = bill(amount: -45, time: DateTime(2026, 9, 2, 12, 5));
       expect(
         AutoBookRule.requiresConfirmation(
-          bill: bill(amount: -45, time: DateTime(2026, 9, 2, 12, 8)),
+          bill: bill(amount: -45, time: DateTime(2026, 9, 2, 12, 5, 30)),
           recentBills: [recent],
           pendingBills: const [],
         ),
@@ -43,8 +43,20 @@ void main() {
       );
     });
 
-    test('金额相近但间隔 30 分钟 → 不算重复', () {
-      final recent = bill(amount: -45.2, time: DateTime(2026, 9, 2, 11, 30));
+    test('金额相近(±5%容差)不再判重(2026-09-10 收紧:交给语义判重)', () {
+      final recent = bill(amount: -45.2, time: DateTime(2026, 9, 2, 12, 5));
+      expect(
+        AutoBookRule.requiresConfirmation(
+          bill: bill(amount: -45, time: DateTime(2026, 9, 2, 12, 5, 30)),
+          recentBills: [recent],
+          pendingBills: const [],
+        ),
+        isFalse,
+      );
+    });
+
+    test('金额相等但间隔 30 分钟 → 不算重复', () {
+      final recent = bill(amount: -45, time: DateTime(2026, 9, 2, 11, 30));
       expect(
         AutoBookRule.looksLikeDuplicate(
           bill(amount: -45, time: DateTime(2026, 9, 2, 12)),
@@ -67,14 +79,14 @@ void main() {
       );
     });
 
-    test('同一商户(备注一致)且金额一致 → 判重(无时间也判)', () {
+    test('同商户同金额但间隔 1 小时 → 不再判重(2026-09-10 收紧:每天同店同款是正常消费)', () {
       final recent = bill(amount: -30, note: '星巴克', time: DateTime(2026, 9, 2, 11));
       expect(
         AutoBookRule.looksLikeDuplicate(
           bill(amount: -30, note: '星巴克', time: DateTime(2026, 9, 2, 12)),
           [recent],
         ),
-        isTrue,
+        isFalse,
       );
     });
 

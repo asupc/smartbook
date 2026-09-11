@@ -163,21 +163,13 @@ class _CategorySelectorDialogState extends ConsumerState<CategorySelectorDialog>
     return allCategories;
   }
 
-  /// 加载每个分类的交易笔数
+  /// 加载每个分类的交易笔数(C12:SQL GROUP BY,不再全量 JOIN 物化整账本)
   Future<void> _loadTransactionCounts() async {
     try {
       final repo = ref.read(repositoryProvider);
-
-      // 获取交易（ledgerId 可选，不传则获取所有账本）
-      final transactions = await repo.transactionsWithCategoryAll(ledgerId: widget.ledgerId).first;
-
-      // 统计每个分类的笔数
-      final counts = <int, int>{};
-      for (final item in transactions) {
-        if (item.category != null) {
-          counts[item.category!.id] = (counts[item.category!.id] ?? 0) + 1;
-        }
-      }
+      final counts = await repo.getTransactionCountsByCategory(
+        ledgerId: widget.ledgerId,
+      );
 
       if (mounted) {
         setState(() {

@@ -1,14 +1,50 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'database_providers.dart';
 import 'ui_state_providers.dart';
 import 'currency_providers.dart';
 import '../services/system/logger_service.dart';
 
+// C9:统计刷新 tick 的去抖视图。43 个触发点(记账/批量导入/自动记账…)在
+// 短时间内会多次 state++,每个统计 provider 直接 watch tick 会导致一次
+// 记账触发十余个 provider 全量重算 × 重复触发。这里 300ms 窗口合并:
+// tick 连续变化只发射最后一次,下游统计 provider 全部改 watch 本 provider。
+class _StatsRefreshDebounce extends AsyncNotifier<int> {
+  Timer? _timer;
+  int _lastTick = 0;
+
+  @override
+  Future<int> build() async {
+    final tick = ref.watch(statsRefreshProvider);
+    final link = ref.keepAlive();
+    ref.onDispose(() {
+      link.close();
+      _timer?.cancel();
+    });
+    if (tick == _lastTick && state.hasValue) {
+      return state.value!;
+    }
+    _lastTick = tick;
+    // 同一事件循环内的多次 ++ 合并为一次发射。
+    _timer?.cancel();
+    final completer = Completer<int>();
+    _timer = Timer(const Duration(milliseconds: 300), () {
+      if (!completer.isCompleted) completer.complete(tick);
+    });
+    return completer.future;
+  }
+}
+
+final statsRefreshDebouncedProvider =
+    AsyncNotifierProvider<_StatsRefreshDebounce, int>(
+        _StatsRefreshDebounce.new);
+
 // 统计：账本数量
 final ledgerCountProvider = FutureProvider.autoDispose<int>((ref) async {
   final repo = ref.watch(repositoryProvider);
-  // 依赖全局统计刷新 tick，确保手动刷新或恢复后能重新计算
-  ref.watch(statsRefreshProvider);
+  // 依赖全局统计刷新 tick(去抖),确保手动刷新或恢复后能重新计算
+  await ref.watch(statsRefreshDebouncedProvider.future);
   final link = ref.keepAlive();
   ref.onDispose(() => link.close());
   return repo.ledgerCount();
@@ -18,8 +54,8 @@ final ledgerCountProvider = FutureProvider.autoDispose<int>((ref) async {
 final countsForLedgerProvider = FutureProvider.family
     .autoDispose<({int dayCount, int txCount}), int>((ref, ledgerId) async {
   final repo = ref.watch(repositoryProvider);
-  // 依赖 tick 触发刷新
-  ref.watch(statsRefreshProvider);
+  // 依赖 tick 触发刷新(去抖)
+  await ref.watch(statsRefreshDebouncedProvider.future);
   final link = ref.keepAlive();
   ref.onDispose(() => link.close());
   return repo.getCountsForLedger(ledgerId: ledgerId);
@@ -35,8 +71,8 @@ final lastCountsAllProvider =
 final countsAllProvider =
     FutureProvider.autoDispose<({int dayCount, int txCount})>((ref) async {
   final repo = ref.watch(repositoryProvider);
-  // 依赖 tick 触发手动刷新
-  ref.watch(statsRefreshProvider);
+  // 依赖 tick 触发手动刷新(去抖)
+  await ref.watch(statsRefreshDebouncedProvider.future);
   final link = ref.keepAlive();
   ref.onDispose(() => link.close());
   final res = await repo.getCountsAll();
@@ -49,8 +85,8 @@ final countsAllProvider =
 final currentBalanceProvider =
     FutureProvider.family.autoDispose<double, int>((ref, ledgerId) async {
   final repo = ref.watch(repositoryProvider);
-  // 依赖 tick 触发刷新
-  ref.watch(statsRefreshProvider);
+  // 依赖 tick 触发刷新(去抖)
+  await ref.watch(statsRefreshDebouncedProvider.future);
   final link = ref.keepAlive();
   ref.onDispose(() => link.close());
 
@@ -73,7 +109,7 @@ final monthlyTotalsProvider = FutureProvider.family
         (ref, params) async {
   final repo = ref.watch(repositoryProvider);
   // 依赖 tick 触发刷新
-  ref.watch(statsRefreshProvider);
+  await ref.watch(statsRefreshDebouncedProvider.future);
   final link = ref.keepAlive();
   ref.onDispose(() => link.close());
   final res = await repo.monthlyTotals(ledgerId: params.ledgerId, month: params.month);
@@ -88,7 +124,7 @@ final accountStatsProvider = FutureProvider.family
         (ref, accountId) async {
   final repo = ref.watch(repositoryProvider);
   // 依赖 tick 触发刷新
-  ref.watch(statsRefreshProvider);
+  await ref.watch(statsRefreshDebouncedProvider.future);
   final link = ref.keepAlive();
   ref.onDispose(() => link.close());
   return repo.getAccountStats(accountId);
@@ -101,7 +137,7 @@ final allAccountStatsProvider = FutureProvider.autoDispose<Map<int, ({double bal
   final repo = ref.watch(repositoryProvider);
   logger.info('AllAccountStats', '使用的 Repository 类型: ${repo.runtimeType}');
   // 依赖 tick 触发刷新
-  ref.watch(statsRefreshProvider);
+  await ref.watch(statsRefreshDebouncedProvider.future);
   final link = ref.keepAlive();
   ref.onDispose(() => link.close());
   final stats = await repo.getAllAccountStats();
@@ -116,7 +152,7 @@ final allAccountsTotalStatsProvider = FutureProvider.autoDispose<({double totalB
   final repo = ref.watch(repositoryProvider);
   logger.info('AllAccountsTotalStats', '使用的 Repository 类型: ${repo.runtimeType}');
   // 依赖 tick 触发刷新
-  ref.watch(statsRefreshProvider);
+  await ref.watch(statsRefreshDebouncedProvider.future);
   final link = ref.keepAlive();
   ref.onDispose(() => link.close());
   final stats = await repo.getAllAccountsTotalStats();
@@ -128,7 +164,7 @@ final allAccountsTotalStatsProvider = FutureProvider.autoDispose<({double totalB
 final netWorthBreakdownProvider = FutureProvider.autoDispose<({double totalAssets, double totalLiabilities, double netWorth})>(
         (ref) async {
   final repo = ref.watch(repositoryProvider);
-  ref.watch(statsRefreshProvider);
+  await ref.watch(statsRefreshDebouncedProvider.future);
   final link = ref.keepAlive();
   ref.onDispose(() => link.close());
   return repo.getNetWorthBreakdown();
@@ -139,7 +175,7 @@ final netWorthBreakdownByCurrencyProvider = FutureProvider.autoDispose<
     Map<String, ({double totalAssets, double totalLiabilities, double netWorth})>>(
   (ref) async {
     final repo = ref.watch(repositoryProvider);
-    ref.watch(statsRefreshProvider);
+    await ref.watch(statsRefreshDebouncedProvider.future);
     final link = ref.keepAlive();
     ref.onDispose(() => link.close());
     return repo.getNetWorthBreakdownByCurrency();
@@ -151,7 +187,7 @@ final netWorthTrendProvider = FutureProvider.family
     .autoDispose<List<({DateTime date, double balance})>, ({DateTime startDate, DateTime endDate})>(
         (ref, params) async {
   final repo = ref.watch(repositoryProvider);
-  ref.watch(statsRefreshProvider);
+  await ref.watch(statsRefreshDebouncedProvider.future);
   final link = ref.keepAlive();
   ref.onDispose(() => link.close());
   return repo.getNetWorthDailyBalances(startDate: params.startDate, endDate: params.endDate);
@@ -162,7 +198,7 @@ final netWorthTrendSeriesProvider = FutureProvider.family.autoDispose<
     List<({DateTime date, double assets, double liabilities, double net})>,
     ({DateTime startDate, DateTime endDate})>((ref, params) async {
   final repo = ref.watch(repositoryProvider);
-  ref.watch(statsRefreshProvider);
+  await ref.watch(statsRefreshDebouncedProvider.future);
   // 折算到主币种,与净资产卡(convertedNetWorthProvider)同口径:各币种 → base 汇率,
   // base 自身 1.0;缺汇率的币种在 repo 内整条剔除。这样趋势末点 = 当前净资产。
   final base = ref.watch(baseCurrencyProvider).toUpperCase();
@@ -182,7 +218,7 @@ final netWorthTrendSeriesProvider = FutureProvider.family.autoDispose<
 final earliestTransactionDateProvider =
     FutureProvider.autoDispose<DateTime?>((ref) async {
   final repo = ref.watch(repositoryProvider);
-  ref.watch(statsRefreshProvider);
+  await ref.watch(statsRefreshDebouncedProvider.future);
   return repo.getEarliestTransactionDate();
 });
 
@@ -190,7 +226,7 @@ final earliestTransactionDateProvider =
 final assetCompositionProvider = FutureProvider.autoDispose<List<({String type, double totalBalance})>>(
         (ref) async {
   final repo = ref.watch(repositoryProvider);
-  ref.watch(statsRefreshProvider);
+  await ref.watch(statsRefreshDebouncedProvider.future);
   final link = ref.keepAlive();
   ref.onDispose(() => link.close());
   return repo.getAssetCompositionByType();
