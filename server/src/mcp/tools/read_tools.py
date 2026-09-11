@@ -148,7 +148,10 @@ def list_transactions(
         if led is None:
             return {"items": [], "total": 0}
 
-        query = select(ReadTxProjection).where(ReadTxProjection.ledger_id == led.id)
+        query = select(ReadTxProjection).where(
+            ReadTxProjection.ledger_id == led.id,
+            ReadTxProjection.deleted_at.is_(None),
+        )
         if date_from:
             query = query.where(ReadTxProjection.happened_at >= _parse_dt(date_from))
         if date_to:
@@ -192,6 +195,8 @@ def get_transaction(user: User, sync_id: str) -> dict[str, Any] | None:
             select(ReadTxProjection).where(
                 ReadTxProjection.user_id == user.id,
                 ReadTxProjection.sync_id == sync_id,
+                # 软删行按「不存在」处理(回收站中不可经 MCP 读写)
+                ReadTxProjection.deleted_at.is_(None),
             )
         )
         if row is None:
@@ -293,6 +298,7 @@ def list_budgets(user: User, *, ledger_id: str | None = None) -> list[dict[str, 
                 ReadTxProjection.ledger_id == led.id,
                 ReadTxProjection.tx_type == "expense",
                 ReadTxProjection.happened_at >= month_start,
+                ReadTxProjection.deleted_at.is_(None),
             )
             .group_by(ReadTxProjection.category_sync_id)
         ).all()
@@ -326,7 +332,7 @@ def get_ledger_stats(user: User, *, ledger_id: str | None = None) -> dict[str, A
             return None
         tx_count = int(db.scalar(
             select(func.count()).select_from(ReadTxProjection)
-            .where(ReadTxProjection.ledger_id == led.id)
+            .where(ReadTxProjection.ledger_id == led.id, ReadTxProjection.deleted_at.is_(None))
         ) or 0)
         category_count = int(db.scalar(
             select(func.count(func.distinct(UserCategoryProjection.sync_id)))
@@ -370,7 +376,10 @@ def get_analytics_summary(
         if led is None:
             return {}
 
-        query = select(ReadTxProjection).where(ReadTxProjection.ledger_id == led.id)
+        query = select(ReadTxProjection).where(
+            ReadTxProjection.ledger_id == led.id,
+            ReadTxProjection.deleted_at.is_(None),
+        )
         now = datetime.now(timezone.utc)
         if scope == "month":
             year, month = now.year, now.month
@@ -437,6 +446,7 @@ def search(user: User, *, q: str, limit: int = 20) -> list[dict[str, Any]]:
             select(ReadTxProjection)
             .where(
                 ReadTxProjection.user_id == user.id,
+                ReadTxProjection.deleted_at.is_(None),
                 or_(
                     ReadTxProjection.note.ilike(f"%{q}%"),
                     ReadTxProjection.category_name.ilike(f"%{q}%"),

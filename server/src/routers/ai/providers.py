@@ -71,7 +71,8 @@ class ProviderUpsertIn(BaseModel):
     visionModel: str = Field(default="", max_length=128)
     audioModel: str = Field(default="", max_length=128)
     protocol: str | None = Field(default=None, max_length=32)
-    # 一次多图批量识别(/relay/vision-batch)时,该服务商最多并行处理的图片数。
+    # 该服务商对同一用户的 LLM 并发调用上限(文字与视觉统一生效,见 relay
+    # 的 (user, provider) 并发闸)。
     visionConcurrency: int | None = Field(default=None, ge=1, le=32)
     createdAt: str | None = Field(default=None, max_length=40)
 
@@ -84,6 +85,7 @@ class ProviderPatchIn(BaseModel):
     visionModel: str | None = Field(default=None, max_length=128)
     audioModel: str | None = Field(default=None, max_length=128)
     protocol: str | None = Field(default=None, max_length=32)
+    # 该服务商对同一用户的 LLM 并发调用上限(文字与视觉统一生效)。
     visionConcurrency: int | None = Field(default=None, ge=1, le=32)
 
 

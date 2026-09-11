@@ -71,6 +71,19 @@ def test_disabled_thinking_is_only_added_for_glm_45_or_46():
     assert supports_disabled_thinking("glm-4v-flash") is False
     assert supports_disabled_thinking("Qwen/Qwen3-VL-8B") is False
 
+    # MiniMax M3 同字段关闭思考(官方文档);M2.x 官方明确无法关闭,不发送。
+    assert supports_disabled_thinking("MiniMax-M3") is True
+    assert supports_disabled_thinking("minimax/MiniMax-M3") is True
+    assert supports_disabled_thinking("MiniMax-M2.1") is False
+    assert supports_disabled_thinking("MiniMax-Text-01") is False
+
+    # DeepSeek 默认开启思考(effort=high),disabled 是官方关闭写法;
+    # 旧 deepseek-reasoner(R1)强制思考,不发送。
+    assert supports_disabled_thinking("deepseek-flash") is True
+    assert supports_disabled_thinking("deepseek-v4-pro") is True
+    assert supports_disabled_thinking("deepseek-chat") is True
+    assert supports_disabled_thinking("deepseek-reasoner") is False
+
     payload = {"model": "glm-4.6v", "messages": []}
     assert with_disabled_thinking(
         payload, model="glm-4.6v", disable_thinking=True
@@ -79,6 +92,11 @@ def test_disabled_thinking_is_only_added_for_glm_45_or_46():
     assert "thinking" not in with_disabled_thinking(
         payload, model="glm-4v-flash", disable_thinking=True
     )
+    assert with_disabled_thinking(
+        {"model": "MiniMax-M3", "messages": []},
+        model="MiniMax-M3",
+        disable_thinking=True,
+    )["thinking"] == {"type": "disabled"}
 
 
 # ──────────────── call_chat_json 真实解析路径 ────────────────

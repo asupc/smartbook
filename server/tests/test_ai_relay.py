@@ -891,3 +891,107 @@ def test_relay_upstream_timeout_per_capability(monkeypatch, tmp_path) -> None:
         assert _seen["stt"] == 60.0
     finally:
         app.dependency_overrides.clear()
+
+
+# ──────────────── (user, provider) 并发闸 ────────────────
+#
+# chat / 单图 vision / vision-batch 逐张共享同一并发闸,上限 = 服务商的
+# visionConcurrency(「并发数」,文字与视觉统一生效)。用 anyio 并发打
+# /relay/chat,上游 mock 里挂一个 barrier 验证至多 K 个同时在上游。
+
+
+@pytest.mark.anyio
+async def test_relay_chat_concurrency_gate(monkeypatch, tmp_path) -> None:
+    import asyncio
+
+    from httpx import ASGITransport, AsyncClient
+
+    # 并发测试不能用内存库 + StaticPool(全测试共用单条连接,6 个并发请求的
+    # session 在同一连接上交错事务会互相回滚)—— 用文件库让每个 session 拿
+    # 自己的连接,与生产并发形态一致。
+    db_file = tmp_path / "relay-conc.sqlite"
+    engine = create_engine(
+        f"sqlite:///{db_file}",
+        connect_args={"check_same_thread": False},
+    )
+    Base.metadata.create_all(bind=engine)
+    Session = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+
+    def override_get_db():
+        db = Session()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+    monkeypatch.setattr(analysis_log_module, "SessionLocal", Session)
+    from src.config import get_settings
+    monkeypatch.setattr(get_settings(), "ai_log_image_dir", str(tmp_path))
+    from src.routers.ai import relay as relay_module
+    relay_module._RATE_WINDOWS.clear()
+    relay_module._PROVIDER_SEMS.clear()
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as client:
+            r = await client.post(
+                "/api/v1/auth/register",
+                json={
+                    "email": "relay-conc@example.com",
+                    "password": "Pa$$word1!",
+                    "device_id": "relay-conc",
+                    "client_type": "web",
+                    "device_name": "pytest",
+                    "platform": "test",
+                },
+            )
+            assert r.status_code in (200, 201), r.text
+            r = await client.post(
+                "/api/v1/auth/login",
+                json={
+                    "email": "relay-conc@example.com",
+                    "password": "Pa$$word1!",
+                    "device_id": "relay-conc",
+                    "client_type": "web",
+                    "device_name": "pytest",
+                    "platform": "test",
+                },
+            )
+            token = r.json()["access_token"]
+            _seed_ai_config(
+                _get_user_id(Session, "relay-conc@example.com"), Session,
+                vision_concurrency=2,
+            )
+
+            state = {"active": 0, "peak": 0}
+
+            async def fake_call(*, config, messages, temperature, disable_thinking, timeout=None):
+                state["active"] += 1
+                state["peak"] = max(state["peak"], state["active"])
+                try:
+                    await asyncio.sleep(0.05)
+                    return type("R", (), {
+                        "content": '{"tx_drafts": []}', "usage": None,
+                    })()
+                finally:
+                    state["active"] -= 1
+
+            monkeypatch.setattr("src.routers.ai.relay.call_chat_text", fake_call)
+
+            headers = {"Authorization": f"Bearer {token}"}
+            payload = {
+                "messages": [{"role": "user", "content": "买了一瓶水3元"}],
+                "entry_type": "parse_tx_text",
+            }
+            results = await asyncio.gather(*(
+                client.post("/api/v1/ai/relay/chat", headers=headers, json=payload)
+                for _ in range(6)
+            ))
+            for r in results:
+                assert r.status_code == 200, r.text
+            # 上限 2:6 个并发请求同时进入,峰值恰好为 2(不会更少 —— 每次上游
+            # 调用睡 50ms,六个请求两两放行,峰值必达上限)。
+            assert state["peak"] == 2
+    finally:
+        app.dependency_overrides.clear()

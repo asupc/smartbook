@@ -255,6 +255,8 @@ async def update_transaction(
             select(ReadTxProjection).where(
                 ReadTxProjection.user_id == user.id,
                 ReadTxProjection.sync_id == sync_id,
+                # 软删行按「不存在」处理(回收站中不可经 MCP 读写)
+                ReadTxProjection.deleted_at.is_(None),
             )
         )
         if existing is None:
@@ -327,6 +329,8 @@ async def delete_transaction(
             select(ReadTxProjection).where(
                 ReadTxProjection.user_id == user.id,
                 ReadTxProjection.sync_id == sync_id,
+                # 软删行按「不存在」处理(回收站中不可经 MCP 读写)
+                ReadTxProjection.deleted_at.is_(None),
             )
         )
         if existing is None:

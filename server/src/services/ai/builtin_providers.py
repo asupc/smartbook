@@ -28,9 +28,10 @@ KNOWN_PROTOCOLS = {PROTOCOL_OPENAI, PROTOCOL_ANTHROPIC}
 #   无 /audio/transcriptions,语音留空。
 # - 小米 MiMo:开放平台 OpenAI 兼容入口;仅文本。
 #
-# `visionConcurrency`:一次多图批量识别(/relay/vision-batch)时,服务端同一
-# 时刻最多并行发给该模型的图片数(有上限并发队列,超出排队)。只对 vision 相关
-# 调用生效;各家能安全并行请求的量不同,由此字段按服务商控制。
+# `visionConcurrency`:该服务商对同一用户的 LLM 并发调用上限(有上限并发
+# 队列,超出排队)。文字(chat)与视觉(vision/vision-batch)统一生效,详见
+# relay 的 (user, provider) 并发闸;各家能安全并行请求的量不同,由此字段按
+# 服务商控制。
 BUILTIN_PROVIDER_TEMPLATES: list[dict[str, Any]] = [
     {
         "id": "zhipu_glm",

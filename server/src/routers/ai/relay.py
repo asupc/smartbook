@@ -25,6 +25,10 @@ prompt 拼装与输出 JSON 解析都在 App 端,server 只负责鉴权、选 pr
 - AI_RELAY_PAYLOAD_TOO_LARGE (413):messages 总字符超限
 - AI_RELAY_RATE_LIMITED (429):单 user 60s 内超过上限
 - AI_PROVIDER_ERROR (502):上游 LLM 调用失败(透传截断的错误信息)
+
+并发:chat / 单图 vision / vision-batch 逐张共享同一 (user, provider)
+并发闸,上限 = 服务商的 `visionConcurrency`(UI 已改名「并发数」,对文字与
+视觉统一生效)。
 """
 from __future__ import annotations
 
@@ -88,6 +92,23 @@ _RELAY_SCOPE_DEP = require_any_scopes(SCOPE_APP_WRITE, SCOPE_WEB_WRITE)
 _RATE_WINDOWS: dict[str, deque[float]] = defaultdict(deque)
 _RATE_LIMIT_WINDOW_S = 60.0
 _RATE_LIMIT_MAX = 60
+
+# 上游并发闸:同一 (user, provider) 的 LLM 调用(chat / 单图 vision /
+# vision-batch 逐张)共享,上限 = 该服务商的 `visionConcurrency`(UI 已改名
+# 「并发数」,对文字与视觉统一生效)。跨请求持有,天然覆盖「App 端多个事件
+# 同时打 /relay/chat」的场景;不同 provider / 不同 user 互不阻塞。
+# asyncio.Semaphore 非 reentrant,上限 1 时同请求内不得再嵌套 acquire。
+_PROVIDER_SEMS: dict[tuple[str, str], asyncio.Semaphore] = {}
+
+
+def _provider_sem(user_id: str, provider_id: str, limit: int) -> asyncio.Semaphore:
+    """按 (user_id, provider_id) 取/建并发信号量;limit 只在建仓时生效。"""
+    key = (user_id, provider_id)
+    sem = _PROVIDER_SEMS.get(key)
+    if sem is None:
+        sem = asyncio.Semaphore(max(1, limit))
+        _PROVIDER_SEMS[key] = sem
+    return sem
 
 _MAX_IMAGE_BYTES = 5 * 1024 * 1024  # 5MB,与 /ai/parse-tx-image 同口径
 _ALLOWED_IMAGE_MIMES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
@@ -291,19 +312,24 @@ async def relay_chat(
     usage: dict | None = None
     try:
         try:
-            result = await call_chat_text(
-                config=cfg,
-                messages=messages,  # type: ignore[arg-type]
-                temperature=req.temperature,
-                disable_thinking=req.disable_thinking,
-                # 自动记账提取要抢在客户端 40s deadline 之前失败;自由聊天/问 AI
-                # 允许慢(长推理),用 120s 档。
-                timeout=(
-                    _UPSTREAM_TIMEOUT_PARSE_TEXT
-                    if req.entry_type == "parse_tx_text"
-                    else _UPSTREAM_TIMEOUT_CHAT
-                ),
-            )
+            # 同 (user, provider) 的文字调用与视觉共用「并发数」上限:App 端
+            # 多个自动事件并行提取时在这里排队,避免瞬间打满上游配额。
+            async with _provider_sem(
+                current_user.id, cfg.provider_id, cfg.vision_concurrency,
+            ):
+                result = await call_chat_text(
+                    config=cfg,
+                    messages=messages,  # type: ignore[arg-type]
+                    temperature=req.temperature,
+                    disable_thinking=req.disable_thinking,
+                    # 自动记账提取要抢在客户端 40s deadline 之前失败;自由聊天/问 AI
+                    # 允许慢(长推理),用 120s 档。
+                    timeout=(
+                        _UPSTREAM_TIMEOUT_PARSE_TEXT
+                        if req.entry_type == "parse_tx_text"
+                        else _UPSTREAM_TIMEOUT_CHAT
+                    ),
+                )
             usage = result.usage
             output_text = result.content
             # 收割账单唯一标识入库,供后续请求识别前判重(失败不影响响应)
@@ -386,13 +412,16 @@ async def relay_vision(
     usage: dict | None = None
     try:
         try:
-            result = await call_chat_text(
-                config=cfg,
-                messages=messages,
-                temperature=0.3,
-                disable_thinking=disable_thinking,
-                timeout=_UPSTREAM_TIMEOUT_VISION,
-            )
+            async with _provider_sem(
+                current_user.id, cfg.provider_id, cfg.vision_concurrency,
+            ):
+                result = await call_chat_text(
+                    config=cfg,
+                    messages=messages,
+                    temperature=0.3,
+                    disable_thinking=disable_thinking,
+                    timeout=_UPSTREAM_TIMEOUT_VISION,
+                )
             usage = result.usage
             output_text = result.content
             # 截图/选图没有"识别前"的文本可比对,识别后收割标识入库,
@@ -454,10 +483,11 @@ async def relay_vision_batch(
 
     与 /relay/vision 不同:一次收 N 张图,按该用户 vision provider 的
     `visionConcurrency`(有上限并发队列)至多 K 张并行调用大模型,其余排队;
-    每张图仍是一次独立的 LLM 调用(每张只见自己的图 + 同一 prompt,不跨图
-    合并),逐张落一条 ai_analysis_logs(原图落盘)。返回逐张结果数组,按
-    `image_index` 保序;单张上游失败只记该张 `error`,整批仍 200(整批级的
-    config / 大小 / mime 问题才 4xx)。
+    并发闸与 chat / 单图 vision 共享(同一 (user, provider)),整批与其它
+    请求之间也互相限流。每张图仍是一次独立的 LLM 调用(每张只见自己的图 +
+    同一 prompt,不跨图合并),逐张落一条 ai_analysis_logs(原图落盘)。返回
+    逐张结果数组,按 `image_index` 保序;单张上游失败只记该张 `error`,整批
+    仍 200(整批级的 config / 大小 / mime 问题才 4xx)。
     """
     _rate_limited(current_user.id)
 
@@ -476,7 +506,9 @@ async def relay_vision_batch(
             detail={"error_code": "AI_NO_VISION_PROVIDER", "message": str(exc)},
         )
 
-    sem = asyncio.Semaphore(cfg.vision_concurrency)
+    sem = _provider_sem(
+        current_user.id, cfg.provider_id, cfg.vision_concurrency,
+    )
     results: list[dict[str, object]] = [{} for _ in prepared]
 
     async def recognize(index: int, mime: str, image_bytes: bytes) -> None:

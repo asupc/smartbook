@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -124,13 +125,38 @@ def find_duplicate_identifier(
     *,
     now: datetime | None = None,
 ) -> str | None:
-    """新请求文本是否包含该用户已识别过的标识;命中返回归一化标识。"""
+    """新请求文本是否包含该用户已识别过的标识;命中返回归一化标识。
+
+    F19:标识集按 user 进程内缓存(30s TTL,register 后失效)—— 高频通知
+    场景每次中转都要拉 ≤2000 行做 Python 子串匹配,现在 30 秒内只拉一次。
+    """
     if not text:
         return None
     normalized_text = normalize_text_for_match(text)
     if len(normalized_text) < _MIN_IDENTIFIER_LEN:
         return None
     now = now or datetime.now(timezone.utc)
+    rows = _cached_identifiers(db, user, now)
+    if not rows:
+        return None
+    # 长标识优先:更具体,减少短标识误命中面
+    for identifier in rows:
+        if identifier in normalized_text:
+            return identifier
+    return None
+
+
+_CACHE_TTL_SECONDS = 30.0
+_id_cache: dict[str, tuple[float, list[str]]] = {}
+
+
+def _cached_identifiers(db: Session, user: User, now: datetime) -> list[str]:
+    """标识列表进程内缓存(按 user,30s TTL,长序优先)。"""
+    key = user.id
+    hit = _id_cache.get(key)
+    cache_now = time.monotonic()
+    if hit is not None and cache_now - hit[0] < _CACHE_TTL_SECONDS:
+        return hit[1]
     rows = db.scalars(
         select(AIBillIdentifier.identifier)
         .where(
@@ -140,13 +166,13 @@ def find_duplicate_identifier(
         .order_by(AIBillIdentifier.id.desc())
         .limit(_MAX_MATCH_SCAN)
     ).all()
-    if not rows:
-        return None
-    # 长标识优先:更具体,减少短标识误命中面
-    for identifier in sorted(rows, key=len, reverse=True):
-        if identifier in normalized_text:
-            return identifier
-    return None
+    ordered = sorted(rows, key=len, reverse=True)
+    _id_cache[key] = (cache_now, ordered)
+    return ordered
+
+
+def _invalidate_id_cache(user_id: str) -> None:
+    _id_cache.pop(user_id, None)
 
 
 def register_identifiers(
@@ -158,22 +184,27 @@ def register_identifiers(
     now: datetime | None = None,
 ) -> None:
     """登记一次成功识别里出现的标识(幂等:已存在只刷新 last_seen_at)。
-    提交由本函数负责;失败只打日志,不影响中转响应。"""
+    提交由本函数负责;失败只打日志,不影响中转响应。
+
+    F19:过期清理不再在每次成功解析的请求路径上跑 DELETE(已有 main.py 的
+    prune_expired 保留期循环兜底);批内 upsert 改为先一次查已有集合,再批量
+    insert / update,替代逐标识点查。
+    """
     if not identifiers:
         return
     now = now or datetime.now(timezone.utc)
     ttl_days = get_settings().ai_bill_identifier_ttl_days
     expires = now + timedelta(days=ttl_days)
     try:
-        # 顺手清过期,控制表体积(有索引,单行 DELETE 很便宜)
-        db.execute(delete(AIBillIdentifier).where(AIBillIdentifier.expires_at <= now))
-        for identifier in identifiers:
-            row = db.scalar(
-                select(AIBillIdentifier).where(
-                    AIBillIdentifier.user_id == user.id,
-                    AIBillIdentifier.identifier == identifier,
-                )
+        existing_rows = db.scalars(
+            select(AIBillIdentifier).where(
+                AIBillIdentifier.user_id == user.id,
+                AIBillIdentifier.identifier.in_(list(identifiers)),
             )
+        ).all()
+        existing_by_id = {r.identifier: r for r in existing_rows}
+        for identifier in identifiers:
+            row = existing_by_id.get(identifier)
             if row is None:
                 db.add(AIBillIdentifier(
                     user_id=user.id,
@@ -186,6 +217,7 @@ def register_identifiers(
             else:
                 row.last_seen_at = now
         db.commit()
+        _invalidate_id_cache(user.id)
         logger.info(
             "ai.bill_identifier registered user=%s source=%s count=%d",
             user.id, source, len(identifiers),

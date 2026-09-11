@@ -273,7 +273,9 @@ class ChatProviderConfig:
     name: str | None = None
     is_built_in: bool = False  # 内置智谱(音频走 input_audio 消息,非 /audio/transcriptions)
     protocol: str = "openai"   # "openai"(OpenAI-compatible) | "anthropic"(/v1/messages)
-    # 一次多图批量识别(/relay/vision-batch)时,该服务商最多并行处理多少张图。
+    # 该服务商对同一用户的 LLM 并发调用上限:文字(chat)与视觉(vision/
+    # vision-batch)统一生效(relay 的 (user, provider) 并发闸)。字段名保留
+    # visionConcurrency 是存量 ai_config_json 兼容,语义已不限于视觉。
     vision_concurrency: int = 3
 
 
@@ -282,12 +284,13 @@ class ChatProviderError(RuntimeError):
 
 
 def supports_disabled_thinking(model: str) -> bool:
-    """Return whether the model supports disabling GLM thinking.
+    """Return whether the model supports disabling thinking via
+    ``thinking={"type": "disabled"}``.
 
-    GLM-4.5 (non-V), GLM-4.6, and supported GLM-5.x models can receive
-    ``thinking={\"type\": \"disabled\"}``.
-    Do not add the provider-specific field to older GLM models or unrelated
-    OpenAI-compatible models: several gateways reject unknown request fields.
+    GLM-4.5 (non-V), GLM-4.6, supported GLM-5.x models and MiniMax M3 can
+    receive the field. Do not add the provider-specific field to older GLM
+    models or unrelated OpenAI-compatible models: several gateways reject
+    unknown request fields.
     """
     normalized = (model or "").strip().lower().replace("_", "-")
     # GLM-4.7 / GLM-4.5V / GLM-5.3 are forced-thinking or do not support
@@ -298,7 +301,27 @@ def supports_disabled_thinking(model: str) -> bool:
         marker in normalized
         for marker in ("glm-5.2", "glm-5.1", "glm-5-turbo", "glm-5v-turbo")
     ) or normalized in {"glm-5"} or normalized.endswith("/glm-5")
-    return "glm-4.5" in normalized or "glm-4.6" in normalized or supports_glm5
+    # MiniMax M3 uses the same `thinking={"type": "disabled"}` field
+    # (official docs: omitted → thinking on; disabled → answer directly).
+    # M2.x "thinking cannot be disabled" per docs — excluded.
+    supports_minimax_m3 = "minimax" in normalized and (
+        "/m3" in normalized
+        or normalized.endswith("m3")
+        or "minimax-m3" in normalized
+    )
+    # DeepSeek: thinking is ON by default (effort=high) and
+    # `thinking={"type": "disabled"}` is the documented way to turn it off
+    # (V4-era models deepseek-flash / deepseek-v4-pro, incl. legacy aliases
+    # like deepseek-chat). Legacy deepseek-reasoner (R1) is forced-thinking
+    # and cannot be disabled — excluded.
+    supports_deepseek = "deepseek" in normalized and "reasoner" not in normalized
+    return (
+        "glm-4.5" in normalized
+        or "glm-4.6" in normalized
+        or supports_glm5
+        or supports_minimax_m3
+        or supports_deepseek
+    )
 
 
 def with_disabled_thinking(
