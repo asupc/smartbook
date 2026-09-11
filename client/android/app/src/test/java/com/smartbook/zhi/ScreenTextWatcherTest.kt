@@ -386,12 +386,26 @@ class ScreenTextWatcherTest {
 
     @Test
     fun `微信账单详情页通过强约束`() {
-        // 微信支付账单详情的标准字段行:状态区「支付状态 已支付/支付成功」
-        val text = "账单详情\n京东平台商户\n-529.00\n支付状态 支付成功\n" +
-            "支付方式 招商银行信用卡 (1467)\n创建时间 2026-09-05 20:28:42\n" +
-            "总订单编号 3612495000067592"
+        // 2026-09-11 真机 uiautomator dump 抓取的微信账单详情原文(牛腩面
+        // -7.12):状态字段行是「当前状态 支付成功」——不是「支付状态」。
+        // 首版约束误写「支付状态」,真账单页整页被拦死(微信全部漏记)。
+        val text = "牛腩面黄焖鸡米饭\n-7.12\n原价\n￥13.00\n优惠\n成都工行5.88元优惠￥5.88\n" +
+            "当前状态\n支付成功\n支付时间\n2026年9月4日 11:49:05\n商品\n" +
+            "牛腩面黄焖鸡米饭成都锦南玺店\n商户全称\n商户_戴爱妹\n收单机构\n" +
+            "拉卡拉支付股份有限公司\n支付方式\n工商银行储蓄卡(9173)\n交易单号\n商户单号\n" +
+            "可在支持的商户扫码退款\n账单服务"
         assertTrue(watcher.isWechatBillPage("com.tencent.mm", text))
         assertTrue(watcher.isWechatBillPage("com.tencent.mm:tools", text))
+        // 「支付状态」字样不在新版页面上;旧版/部分场景的账单详情用该字段
+        // 名,两种写法都放行(用户确认微信多代账单 UI 并存)
+        assertFalse(text.contains("支付状态"))
+        val legacyText = "账单详情\n京东平台商户\n-529.00\n支付状态 支付成功\n" +
+            "支付方式 招商银行信用卡 (1467)\n创建时间 2026-09-05 20:28:42"
+        assertTrue(watcher.isWechatBillPage("com.tencent.mm", legacyText))
+        // 收款方向:状态值为「已存入零钱」(用户确认),不能只认「支付成功」
+        val receivedText = "收付款\n+¥200.00\n当前状态\n已存入零钱\n" +
+            "到账时间 2026-09-11 10:30:00\n收款方式 零钱\n转账单号 10000500012345"
+        assertTrue(watcher.isWechatBillPage("com.tencent.mm", receivedText))
         // 其它 App 不受强约束影响
         assertTrue(watcher.isWechatBillPage("com.eg.android.AlipayGphone", "任意文本"))
         assertTrue(watcher.isWechatBillPage("com.ss.android.ugc.aweme", "任意文本"))

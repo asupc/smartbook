@@ -185,8 +185,12 @@ class ScreenTextMonitorService {
     // 微信账单页强约束(与 native isWechatBillPage 同口径):旧版本已入队的
     // 微信聊天列表文本(会话预览「已支付¥8.00」命中强锚点)在 drain 时也
     // 要拦下,直接 ACK 丢弃,不再送 AI —— 既省一次识别,也杜绝复发。
+    // 状态字段行「当前状态/支付状态」任一命中 + 状态值「支付成功/已存入
+    // 零钱」(支出/收款两向;微信多代账单 UI 字段名并存,2026-09-11 真机
+    // dump 实测新版支出页为「当前状态 支付成功」)。
     if (pkg.contains('com.tencent.mm') &&
-        !(text.contains('支付状态') && text.contains('支付成功'))) {
+        !((text.contains('当前状态') || text.contains('支付状态')) &&
+            (text.contains('支付成功') || text.contains('已存入零钱')))) {
       await _logDecision(
         'wechat_not_bill_page',
         'pkg=$pkg len=${text.length}(缺少 支付状态+支付成功 双特征)',

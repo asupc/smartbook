@@ -411,13 +411,19 @@ open class ScreenTextWatcher : AccessibilityService() {
      * 文本的场景几乎全是聊天列表/会话页 —— 列表里「微信支付」服务号会话
      * 预览「已支付¥8.00」同时命中强锚点「已支付」与金额闸,整页聊天列表被
      * 送进 AI 记账(类名黑名单依赖 lastPageClass,浮窗/面板场景下失守)。
-     * 因此微信页面只在「确认是账单详情页」时才放行:文本同时含
-     * 「支付状态」与「支付成功」(微信账单详情的状态字段行)。
+     * 因此微信页面只在「确认是账单详情页」时才放行:
+     *  - 状态字段行:「当前状态」(2026-09 真机 dump 实测新版)或「支付状态」
+     *    (旧版/部分场景),任一命中;
+     *  - 状态值:「支付成功」(支出)或「已存入零钱」(收款/转账收入)。
      * 其余 App 不受影响(内容启发式照旧)。
      */
     fun isWechatBillPage(pkg: String, text: String): Boolean {
         if (!pkg.contains("com.tencent.mm")) return true
-        return text.contains("支付状态") && text.contains("支付成功")
+        val hasStatusField =
+            text.contains("当前状态") || text.contains("支付状态")
+        val hasSettledValue =
+            text.contains("支付成功") || text.contains("已存入零钱")
+        return hasStatusField && hasSettledValue
     }
 
     /**
