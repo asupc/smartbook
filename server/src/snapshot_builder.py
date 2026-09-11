@@ -37,16 +37,22 @@ def _to_iso_utc(dt) -> str | None:
     return dt.isoformat()
 
 
-def build(db: Session, ledger: Ledger) -> dict[str, Any]:
+def build(db: Session, ledger: Ledger, *, include_items: bool = True) -> dict[str, Any]:
     """从 projection 5 张表 + Ledger 元数据拼装完整 snapshot dict。
 
     热路径 —— 用 SQL Core 跳过 ORM hydration(ORM 5000 行 ~65ms,Core ~20ms)。
     调用点:`/sync/full`、`_commit_write` 取 prev 快照做 diff、admin debug。
+
+    include_items=False:小实体(account/category/tag/budget/adjustment)的
+    web 写快路径只喂 mutator 做实体级校验/改名,不需要全量 items(10 万 tx =
+    全表 SELECT + 10 万 dict + 每行 2 次 json.loads)。级联改名由
+    rename_cascade_* SQL 和 _find_cascade_tx_rows 定向补发处理,不经 items[]。
     """
     ledger_id = ledger.id
     user_id = ledger.user_id
 
-    # Items —— SQL Core,按列顺序取 tuple,比 ORM 快 3 倍
+    # Items —— SQL Core,按列顺序取 tuple,比 ORM 快 3 倍。
+    # stmt 是惰性的,include_items=False 时只跳过执行。
     items: list[dict[str, Any]] = []
     tx_stmt = select(
         ReadTxProjection.sync_id,
@@ -73,74 +79,80 @@ def build(db: Session, ledger: Ledger) -> dict[str, Any]:
         # 全量同步后外币折算全部丢失(apply 缺省 nativeAmount=amount 退化 1:1)。
         ReadTxProjection.currency_code,
         ReadTxProjection.native_amount,
-    ).where(ReadTxProjection.ledger_id == ledger_id).order_by(
+    ).where(
+        ReadTxProjection.ledger_id == ledger_id,
+        # 0030 软删:回收站中的行不进 snapshot(mobile full pull / web 全量
+        # diff 均不感知);客户端删除的本地 tombstone 语义不变。
+        ReadTxProjection.deleted_at.is_(None),
+    ).order_by(
         ReadTxProjection.happened_at.desc(),
         ReadTxProjection.tx_index.desc(),
     )
-    for row in db.execute(tx_stmt).all():
-        (sync_id, tx_type, amount, happened_at, created_at, note,
-         cat_sid, cat_name, cat_kind,
-         acc_sid, acc_name,
-         from_sid, from_name,
-         to_sid, to_name,
-         tags_csv, tag_ids_json, attachments_json,
-         tx_index, created_by,
-         currency_code, native_amount) = row
-        item: dict[str, Any] = {
-            "syncId": sync_id,
-            "type": tx_type,
-            "amount": amount,
-            "happenedAt": _to_iso_utc(happened_at),
-        }
-        # 记录时间(0024):存量迁移行可能为 NULL,不产生 key(客户端保持 absent)。
-        if created_at is not None:
-            item["createdAt"] = _to_iso_utc(created_at)
-        if note is not None:
-            item["note"] = note
-        if cat_sid:
-            item["categoryId"] = cat_sid
-        if cat_name:
-            item["categoryName"] = cat_name
-        if cat_kind:
-            item["categoryKind"] = cat_kind
-        if acc_sid:
-            item["accountId"] = acc_sid
-        if acc_name:
-            item["accountName"] = acc_name
-        if from_sid:
-            item["fromAccountId"] = from_sid
-        if from_name:
-            item["fromAccountName"] = from_name
-        if to_sid:
-            item["toAccountId"] = to_sid
-        if to_name:
-            item["toAccountName"] = to_name
-        if tags_csv:
-            item["tags"] = tags_csv
-        if tag_ids_json:
-            try:
-                tag_ids = json.loads(tag_ids_json)
-                if isinstance(tag_ids, list) and tag_ids:
-                    item["tagIds"] = tag_ids
-            except json.JSONDecodeError:
-                pass
-        if attachments_json:
-            try:
-                atts = json.loads(attachments_json)
-                if isinstance(atts, list) and atts:
-                    item["attachments"] = atts
-            except json.JSONDecodeError:
-                pass
-        if tx_index:
-            item["txIndex"] = tx_index
-        if created_by:
-            item["createdByUserId"] = created_by
-        # NULL(旧数据)不产生 key,payload 保持干净;统计端 COALESCE 兜底。
-        if currency_code:
-            item["currencyCode"] = currency_code
-        if native_amount is not None:
-            item["nativeAmount"] = native_amount
-        items.append(item)
+    if include_items:
+        for row in db.execute(tx_stmt).all():
+            (sync_id, tx_type, amount, happened_at, created_at, note,
+             cat_sid, cat_name, cat_kind,
+             acc_sid, acc_name,
+             from_sid, from_name,
+             to_sid, to_name,
+             tags_csv, tag_ids_json, attachments_json,
+             tx_index, created_by,
+             currency_code, native_amount) = row
+            item: dict[str, Any] = {
+                "syncId": sync_id,
+                "type": tx_type,
+                "amount": amount,
+                "happenedAt": _to_iso_utc(happened_at),
+            }
+            # 记录时间(0024):存量迁移行可能为 NULL,不产生 key(客户端保持 absent)。
+            if created_at is not None:
+                item["createdAt"] = _to_iso_utc(created_at)
+            if note is not None:
+                item["note"] = note
+            if cat_sid:
+                item["categoryId"] = cat_sid
+            if cat_name:
+                item["categoryName"] = cat_name
+            if cat_kind:
+                item["categoryKind"] = cat_kind
+            if acc_sid:
+                item["accountId"] = acc_sid
+            if acc_name:
+                item["accountName"] = acc_name
+            if from_sid:
+                item["fromAccountId"] = from_sid
+            if from_name:
+                item["fromAccountName"] = from_name
+            if to_sid:
+                item["toAccountId"] = to_sid
+            if to_name:
+                item["toAccountName"] = to_name
+            if tags_csv:
+                item["tags"] = tags_csv
+            if tag_ids_json:
+                try:
+                    tag_ids = json.loads(tag_ids_json)
+                    if isinstance(tag_ids, list) and tag_ids:
+                        item["tagIds"] = tag_ids
+                except json.JSONDecodeError:
+                    pass
+            if attachments_json:
+                try:
+                    atts = json.loads(attachments_json)
+                    if isinstance(atts, list) and atts:
+                        item["attachments"] = atts
+                except json.JSONDecodeError:
+                    pass
+            if tx_index:
+                item["txIndex"] = tx_index
+            if created_by:
+                item["createdByUserId"] = created_by
+            # NULL(旧数据)不产生 key,payload 保持干净;统计端 COALESCE 兜底。
+            if currency_code:
+                item["currencyCode"] = currency_code
+            if native_amount is not None:
+                item["nativeAmount"] = native_amount
+            items.append(item)
 
     # Accounts —— user-global per-user 表,按 user_id 取。snapshot 内仍把全用户
      # 的账户都铺出来:mobile 早期版本依赖 snapshot.accounts 完整 — 用户多账本

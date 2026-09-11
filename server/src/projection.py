@@ -15,7 +15,7 @@ import logging
 from pathlib import Path
 from typing import Any, Iterable
 
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
@@ -213,34 +213,32 @@ def upsert_tx(
         or "expense"
     )
 
-    # Upsert 前抓 prev 附件 fileIds,跟 new 做 diff 找到被移除的那些。
-    # 覆盖"一张交易有 N 个附件,只删掉其中一个"的场景 —— 老逻辑只管写新的
-    # attachments_json,没清理从列表里被剔除的 AttachmentFile 行 + 物理文件。
-    prev_file_ids = collect_tx_attachment_fileids(
-        db, ledger_id=ledger_id, sync_id=sync_id
-    )
-
-    # 共享账本:created_by_user_id 一旦写入就不能被后续 upsert 覆盖
-    # (B 编辑 A 创建的 tx 时,payload 不带 createdByUserId,如果 _upsert
-    # 把列设成 NULL,server 端 created_by 信息就丢了)。先查 existing row,
-    # payload 没带 created → 保留 existing.created_by_user_id。
-    existing_creator = db.scalar(
-        select(ReadTxProjection.created_by_user_id).where(
+    # F11:prev 行只查一次,三个用途共用 —— (1) 附件 GC diff;(2) created_by
+    # first-write-wins;(3) created_at 首插盖章。旧实现对同一行做了 3 次独立
+    # SELECT + collect_tx_attachment_fileids 再 1 次,push 500 条 = 2500 次点查。
+    prev_row = db.execute(
+        select(
+            ReadTxProjection.attachments_json,
+            ReadTxProjection.created_by_user_id,
+            ReadTxProjection.created_at,
+        ).where(
             ReadTxProjection.ledger_id == ledger_id,
             ReadTxProjection.sync_id == sync_id,
         )
-    )
+    ).first()
+    prev_file_ids = _extract_tx_cloud_file_ids(prev_row[0]) if prev_row else set()
+    existing_creator = prev_row[1] if prev_row else None
+    existing_created_at = prev_row[2] if prev_row else None
+
+    # 共享账本:created_by_user_id 一旦写入就不能被后续 upsert 覆盖
+    # (B 编辑 A 创建的 tx 时,payload 不带 createdByUserId,如果 _upsert
+    # 把列设成 NULL,server 端 created_by 信息就丢了)。prev_row 查过,
+    # payload 没带 created → 保留 existing.created_by_user_id。
     payload_creator = _as_str(payload.get("createdByUserId"))
 
     # 记录时间(0024):首次插入盖章为服务端当前时刻;已有行保留旧值(update
     # 不刷新)。客户端不提交,也不读 payload —— snapshot/pull 下发键为
     # createdAt。存量迁移行(0024 之前)保持 NULL。
-    existing_created_at = db.scalar(
-        select(ReadTxProjection.created_at).where(
-            ReadTxProjection.ledger_id == ledger_id,
-            ReadTxProjection.sync_id == sync_id,
-        )
-    )
 
     values = {
         "ledger_id": ledger_id,
@@ -487,7 +485,42 @@ def delete_entity(
 
 
 def delete_tx(db: Session, *, ledger_id: str, sync_id: str) -> None:
-    delete_entity(db, ReadTxProjection, ledger_id=ledger_id, sync_id=sync_id)
+    """交易删除 → 软删(0030 回收站):写 deleted_at,读路径/统计/导出统一
+    过滤;30 天后 cleaner 物理删除。恢复见 read/trash.py 的 restore。
+    行不存在时静默返回(幂等,与旧行为一致)。"""
+    db.execute(
+        update(ReadTxProjection)
+        .where(
+            ReadTxProjection.ledger_id == ledger_id,
+            ReadTxProjection.sync_id == sync_id,
+            ReadTxProjection.deleted_at.is_(None),
+        )
+        .values(deleted_at=func.now())
+    )
+
+
+def purge_tx(db: Session, *, ledger_id: str, sync_id: str) -> None:
+    """物理删除(回收站「彻底删除」/过期清理专用)。幂等。"""
+    db.execute(
+        delete(ReadTxProjection).where(
+            ReadTxProjection.ledger_id == ledger_id,
+            ReadTxProjection.sync_id == sync_id,
+        )
+    )
+
+
+def restore_tx(db: Session, *, ledger_id: str, sync_id: str) -> bool:
+    """回收站恢复:软删标记置回 NULL。返回是否确有恢复(行存在且在回收站)。"""
+    result = db.execute(
+        update(ReadTxProjection)
+        .where(
+            ReadTxProjection.ledger_id == ledger_id,
+            ReadTxProjection.sync_id == sync_id,
+            ReadTxProjection.deleted_at.is_not(None),
+        )
+        .values(deleted_at=None)
+    )
+    return bool(result.rowcount)
 
 
 def delete_account(db: Session, *, user_id: str, sync_id: str) -> None:
@@ -524,6 +557,76 @@ def delete_budget(db: Session, *, ledger_id: str, sync_id: str) -> None:
     delete_entity(db, ReadBudgetProjection, ledger_id=ledger_id, sync_id=sync_id)
 
 
+
+def _server_side_account_balance(
+    db: Session, *, ledger_id: str, account_sync_id: str
+) -> float | None:
+    """服务端视角的账户当前余额(调整写入前):初始余额 + Σ收支 ± 转账 + Σ此前调整。
+
+    与 /read/workspace accounts 的 balance 口径同源(初始值+流水+调整);
+    仅用于审计快照校验,失败/缺账户返回 None(不阻断写入)。
+    """
+    from .models import ReadAccountAdjustmentProjection, UserAccountProjection
+
+    if not account_sync_id:
+        return None
+    init = db.scalar(
+        select(UserAccountProjection.initial_balance).where(
+            UserAccountProjection.user_id
+            == db.scalar(
+                select(ReadTxProjection.user_id).where(
+                    ReadTxProjection.ledger_id == ledger_id
+                ).limit(1)
+            ),
+            UserAccountProjection.sync_id == account_sync_id,
+        )
+    )
+    if init is None:
+        # 账户不在 user 投影里(可能来自别的设备且未同步账户)——无法校验
+        return None
+    income = db.scalar(
+        select(func.coalesce(func.sum(ReadTxProjection.amount), 0.0)).where(
+            ReadTxProjection.ledger_id == ledger_id,
+            ReadTxProjection.deleted_at.is_(None),
+            ReadTxProjection.account_sync_id == account_sync_id,
+            ReadTxProjection.tx_type == "income",
+        )
+    ) or 0.0
+    expense = db.scalar(
+        select(func.coalesce(func.sum(ReadTxProjection.amount), 0.0)).where(
+            ReadTxProjection.ledger_id == ledger_id,
+            ReadTxProjection.deleted_at.is_(None),
+            ReadTxProjection.account_sync_id == account_sync_id,
+            ReadTxProjection.tx_type == "expense",
+        )
+    ) or 0.0
+    out_transfer = db.scalar(
+        select(func.coalesce(func.sum(ReadTxProjection.amount), 0.0)).where(
+            ReadTxProjection.ledger_id == ledger_id,
+            ReadTxProjection.deleted_at.is_(None),
+            ReadTxProjection.from_account_sync_id == account_sync_id,
+            ReadTxProjection.tx_type == "transfer",
+        )
+    ) or 0.0
+    in_transfer = db.scalar(
+        select(func.coalesce(func.sum(ReadTxProjection.amount), 0.0)).where(
+            ReadTxProjection.ledger_id == ledger_id,
+            ReadTxProjection.deleted_at.is_(None),
+            ReadTxProjection.to_account_sync_id == account_sync_id,
+            ReadTxProjection.tx_type == "transfer",
+        )
+    ) or 0.0
+    prior_adj = db.scalar(
+        select(func.coalesce(
+            func.sum(ReadAccountAdjustmentProjection.amount), 0.0
+        )).where(
+            ReadAccountAdjustmentProjection.ledger_id == ledger_id,
+            ReadAccountAdjustmentProjection.account_sync_id == account_sync_id,
+        )
+    ) or 0.0
+    return float(init) + float(income) - float(expense) - float(out_transfer) + float(in_transfer) + float(prior_adj)
+
+
 def upsert_account_adjustment(
     db: Session,
     *,
@@ -542,18 +645,17 @@ def upsert_account_adjustment(
     if sync_id is None:
         return
 
-    existing = db.scalar(
-        select(ReadAccountAdjustmentProjection.created_at).where(
+    existing_row = db.execute(
+        select(
+            ReadAccountAdjustmentProjection.created_at,
+            ReadAccountAdjustmentProjection.created_by_user_id,
+        ).where(
             ReadAccountAdjustmentProjection.ledger_id == ledger_id,
             ReadAccountAdjustmentProjection.sync_id == sync_id,
         )
-    )
-    existing_creator = db.scalar(
-        select(ReadAccountAdjustmentProjection.created_by_user_id).where(
-            ReadAccountAdjustmentProjection.ledger_id == ledger_id,
-            ReadAccountAdjustmentProjection.sync_id == sync_id,
-        )
-    )
+    ).first()
+    existing = existing_row[0] if existing_row else None
+    existing_creator = existing_row[1] if existing_row else None
 
     def _opt_float(raw: Any) -> float | None:
         if raw is None:
@@ -563,15 +665,44 @@ def upsert_account_adjustment(
         except (TypeError, ValueError):
             return None
 
+    account_sync_id = _as_str(payload.get("accountId")) or ""
+
+    # 批次4(审计快照校验):balance_before 是客户端自报的本地余额,离线多日
+    # 后补记时往往已过期,事后对账会误导。首次插入时按服务端投影现算一遍,
+    # 与自报差异 > 1 元则以服务端值为准(balanceAfter 同步平移差额),
+    # 让审计记录始终可与「服务端视角」对上。
+    amount_val = _as_float(payload.get("amount"))
+    balance_before_val = _opt_float(payload.get("balanceBefore"))
+    balance_after_val = _opt_float(payload.get("balanceAfter"))
+    if existing is None and balance_before_val is not None:
+        try:
+            server_before = _server_side_account_balance(
+                db, ledger_id=ledger_id, account_sync_id=account_sync_id,
+            )
+        except Exception:  # noqa: BLE001 — 审计校验失败不阻断调整写入
+            server_before = None
+        if server_before is not None and abs(server_before - balance_before_val) > 1.0:
+            delta = (
+                balance_after_val - balance_before_val
+                if balance_after_val is not None
+                else amount_val
+            )
+            balance_before_val = server_before
+            balance_after_val = (
+                round(server_before + delta, 2)
+                if balance_after_val is not None
+                else balance_after_val
+            )
+
     values = {
         "ledger_id": ledger_id,
         "sync_id": sync_id,
         "user_id": user_id,
-        "account_sync_id": _as_str(payload.get("accountId")) or "",
+        "account_sync_id": account_sync_id,
         "account_name": _as_str(payload.get("accountName")),
-        "amount": _as_float(payload.get("amount")),
-        "balance_before": _opt_float(payload.get("balanceBefore")),
-        "balance_after": _opt_float(payload.get("balanceAfter")),
+        "amount": amount_val,
+        "balance_before": balance_before_val,
+        "balance_after": balance_after_val,
         "happened_at": _parse_happened_at(payload.get("happenedAt")),
         "created_at": existing or utcnow(),
         "note": _as_str(payload.get("note")),
@@ -681,8 +812,13 @@ def rename_cascade_tag(
     """Tag rename 走 tags_csv 字符串替换。tag 是 user-global,刷该用户所有 tx 行。
     用 Python 做字符串替换比纯 SQL 的 REPLACE 更安全(避免 name 是别的 tag 的
     substring 时误伤)。
+
+    F13:只取 (ledger_id, sync_id, tags_csv) 三列(旧版水化整行 ORM 实体,
+    2 万行 = 2 万个全列对象),更新走轻量 Core UPDATE(逐行,SQLite 单连接
+    下无批收益,省的是 ORM 脏跟踪开销)。
     """
     from sqlalchemy import select as sql_select
+    from sqlalchemy import update as sql_update
 
     if not old_name or not new_name or old_name == new_name:
         return
@@ -690,8 +826,9 @@ def rename_cascade_tag(
     #   1) tag_sync_ids_json 精确引用了该 tag sync_id (mobile/web 完整数据)
     #   2) tags_csv 包含旧名称但没有 tag_sync_ids_json (legacy/不完整数据)
     like_pat = f'%"{tag_sync_id}"%'
-    rows_by_id = db.scalars(
-        sql_select(ReadTxProjection).where(
+    rows_by_id = db.execute(
+        sql_select(ReadTxProjection.ledger_id, ReadTxProjection.sync_id, ReadTxProjection.tags_csv)
+        .where(
             ReadTxProjection.user_id == user_id,
             ReadTxProjection.tag_sync_ids_json.like(like_pat),
         )
@@ -699,8 +836,9 @@ def rename_cascade_tag(
     # tags_csv 可能是 "旧标签" 或 "A,旧标签,B" 等逗号分隔形式;
     # 用 LIKE 做粗筛,Python 侧按逗号拆分精确匹配防 substring 误伤。
     like_name = f"%{old_name}%"
-    rows_by_name = db.scalars(
-        sql_select(ReadTxProjection).where(
+    rows_by_name = db.execute(
+        sql_select(ReadTxProjection.ledger_id, ReadTxProjection.sync_id, ReadTxProjection.tags_csv)
+        .where(
             ReadTxProjection.user_id == user_id,
             ReadTxProjection.tags_csv.like(like_name),
             ReadTxProjection.tag_sync_ids_json.is_(None),
@@ -708,19 +846,22 @@ def rename_cascade_tag(
     ).all()
     # 去重 (理论上不会重叠,但防御性合并)
     seen: set[tuple[str, str]] = set()
-    all_rows = []
-    for row in (*rows_by_id, *rows_by_name):
-        key = (row.ledger_id, row.sync_id)
-        if key not in seen:
-            seen.add(key)
-            all_rows.append(row)
-    for row in all_rows:
-        if not row.tags_csv:
+    for ledger_id_v, sync_id_v, tags_csv in (*rows_by_id, *rows_by_name):
+        key = (ledger_id_v, sync_id_v)
+        if key in seen or not tags_csv:
             continue
-        parts = [p.strip() for p in row.tags_csv.split(",") if p.strip()]
+        seen.add(key)
+        parts = [p.strip() for p in tags_csv.split(",") if p.strip()]
         replaced = [new_name if p == old_name else p for p in parts]
         if replaced != parts:
-            row.tags_csv = ",".join(replaced)
+            db.execute(
+                sql_update(ReadTxProjection)
+                .where(
+                    ReadTxProjection.ledger_id == ledger_id_v,
+                    ReadTxProjection.sync_id == sync_id_v,
+                )
+                .values(tags_csv=",".join(replaced))
+            )
 
 
 # --------------------------------------------------------------------------- #
@@ -893,6 +1034,43 @@ def _extract_tx_cloud_file_ids(attachments_json: str | None) -> set[str]:
     return out
 
 
+def _batch_referenced_file_ids(
+    db: Session, *, user_id: str | None = None, ledger_id: str | None = None,
+    candidates: set[str],
+) -> set[str]:
+    """F14:一次拉取范围(user 或 ledger)内所有非空 attachments_json,Python
+    侧一次性匹配 candidates 里仍被引用的 fileId。替代逐 fileId 的 LIKE 全表
+    扫(删一笔带 3 附件的 tx = 3 次全表扫)。categories 表的 icon 引用一并查。
+
+    行数 = 范围内带附件的 tx 行(远小于全表),LIKE 由 SQL 粗筛到
+    attachments_json IS NOT NULL 后整列带回。
+    """
+    if not candidates:
+        return set()
+    stmt = select(ReadTxProjection.attachments_json).where(
+        ReadTxProjection.attachments_json.isnot(None),
+    )
+    if user_id is not None:
+        stmt = stmt.where(ReadTxProjection.user_id == user_id)
+    if ledger_id is not None:
+        stmt = stmt.where(ReadTxProjection.ledger_id == ledger_id)
+    referenced: set[str] = set()
+    for (raw,) in db.execute(stmt):
+        referenced |= _extract_tx_cloud_file_ids(raw)
+    hit = referenced & candidates
+    # category icon 引用(等值列,IN 点查)。必须对全量 candidates 查 —— 只被
+    # category 引用、不被任何 tx 引用的 fileId 也算"仍被引用"(GC 保留)。
+    cat_stmt = select(UserCategoryProjection.icon_cloud_file_id).where(
+        UserCategoryProjection.icon_cloud_file_id.in_(list(candidates)),
+    )
+    if user_id is not None:
+        cat_stmt = cat_stmt.where(UserCategoryProjection.user_id == user_id)
+    for (fid,) in db.execute(cat_stmt):
+        if fid:
+            hit.add(fid.strip())
+    return hit
+
+
 def _fileid_still_referenced(db: Session, *, user_id: str, file_id: str) -> bool:
     """某个 AttachmentFile 在该用户的 projection 里还有引用吗?
 
@@ -902,31 +1080,9 @@ def _fileid_still_referenced(db: Session, *, user_id: str, file_id: str) -> bool
         化习惯差异。tx 是 ledger-scoped,但带 user_id denorm 列。
       - user_category_projection.icon_cloud_file_id = <id>(per-user 表)
     """
-    pat_no_space = f'%"cloudFileId":"{file_id}"%'
-    pat_with_space = f'%"cloudFileId": "{file_id}"%'
-    tx_hit = db.scalar(
-        select(func.count())
-        .select_from(ReadTxProjection)
-        .where(
-            ReadTxProjection.user_id == user_id,
-            or_(
-                ReadTxProjection.attachments_json.like(pat_no_space),
-                ReadTxProjection.attachments_json.like(pat_with_space),
-            ),
-        )
+    return file_id in _batch_referenced_file_ids(
+        db, user_id=user_id, candidates={file_id},
     )
-    if tx_hit:
-        return True
-
-    cat_hit = db.scalar(
-        select(func.count())
-        .select_from(UserCategoryProjection)
-        .where(
-            UserCategoryProjection.user_id == user_id,
-            UserCategoryProjection.icon_cloud_file_id == file_id,
-        )
-    )
-    return bool(cat_hit)
 
 
 def _fileid_still_referenced_in_ledger(
@@ -943,20 +1099,9 @@ def _fileid_still_referenced_in_ledger(
 
     category icon 不是 ledger-scope,继续走原 [_fileid_still_referenced]。
     """
-    pat_no_space = f'%"cloudFileId":"{file_id}"%'
-    pat_with_space = f'%"cloudFileId": "{file_id}"%'
-    tx_hit = db.scalar(
-        select(func.count())
-        .select_from(ReadTxProjection)
-        .where(
-            ReadTxProjection.ledger_id == ledger_id,
-            or_(
-                ReadTxProjection.attachments_json.like(pat_no_space),
-                ReadTxProjection.attachments_json.like(pat_with_space),
-            ),
-        )
+    return file_id in _batch_referenced_file_ids(
+        db, ledger_id=ledger_id, candidates={file_id},
     )
-    return bool(tx_hit)
 
 
 def gc_orphan_attachments_for_ledger(
@@ -982,16 +1127,17 @@ def gc_orphan_attachments_for_ledger(
     cleaned = 0
     seen: set[str] = set()
     for fid in file_ids:
-        if not fid:
-            continue
-        file_id = fid.strip()
-        if not file_id or file_id in seen:
-            continue
-        seen.add(file_id)
+        if fid:
+            t = fid.strip()
+            if t:
+                seen.add(t)
+    # F14:一次批查引用集(替代逐 fileId 全表扫)。
+    referenced = _batch_referenced_file_ids(
+        db, ledger_id=ledger_id, candidates=seen,
+    )
 
-        if _fileid_still_referenced_in_ledger(
-            db, ledger_id=ledger_id, file_id=file_id,
-        ):
+    for file_id in seen:
+        if file_id in referenced:
             continue
 
         att = db.scalar(
@@ -1048,14 +1194,15 @@ def gc_orphan_attachments(
     cleaned = 0
     seen: set[str] = set()
     for fid in file_ids:
-        if not fid:
-            continue
-        file_id = fid.strip()
-        if not file_id or file_id in seen:
-            continue
-        seen.add(file_id)
+        if fid:
+            t = fid.strip()
+            if t:
+                seen.add(t)
+    # F14:一次批查引用集(替代逐 fileId 全表扫),循环里只做点查 + 删除。
+    referenced = _batch_referenced_file_ids(db, user_id=user_id, candidates=seen)
 
-        if _fileid_still_referenced(db, user_id=user_id, file_id=file_id):
+    for file_id in seen:
+        if file_id in referenced:
             continue
 
         att = db.scalar(

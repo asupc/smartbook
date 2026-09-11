@@ -292,24 +292,11 @@ def _compact_entity_upsert_events(
 
 
 def _delete_tx(db: Session, ledger_id: str, sync_id: str, user_id: str) -> None:
-    # 先收集附件 fileId(删行后 attachments_json 就没了)再删 tx,然后 GC
-    # 孤立附件。共享引用(同图多 tx)的会自动保留。
-    tx_file_ids = projection.collect_tx_attachment_fileids(
-        db, ledger_id=ledger_id, sync_id=sync_id,
-    )
+    # 0030 软删(回收站):只写 deleted_at,不删行/不 GC 附件 —— 附件物理删除
+    # 延后到「彻底删除/30 天过期清理」(read/trash.py + data_cleanup cleaner)。
+    # upsert 历史也不清:恢复(restore)靠重放最新 upsert payload 重建。
+    # 幂等:已软删的行 update 条件不命中,无副作用。
     projection.delete_tx(db, ledger_id=ledger_id, sync_id=sync_id)
-    # 共享账本场景:attachment.user_id 可能是 Editor 而 SyncChange.user_id 是
-    # ledger owner,GC 必须按 ledger_id scope 而不是 user_id —— 否则 Editor 上传
-    # 的附件永远被静默跳过留作孤儿。详见 projection.gc_orphan_attachments_for_ledger
-    # 的 doc。
-    projection.gc_orphan_attachments_for_ledger(
-        db, ledger_id=ledger_id, file_ids=tx_file_ids,
-    )
-    # 实体彻底下线,清 upsert 历史(详见 _compact_entity_upsert_events)
-    _compact_entity_upsert_events(
-        db, user_id=user_id, entity_type="transaction",
-        entity_sync_id=sync_id,
-    )
 
 
 def _delete_user_category(db: Session, user_id: str, sync_id: str) -> None:
@@ -429,6 +416,32 @@ def _delete_account_adjustment(
 
 
 def _delete_user_account(db: Session, user_id: str, sync_id: str) -> None:
+    """user-global account delete(mobile push 路径)。
+
+    批次3 guard(与 web snapshot_mutator.delete_account 口径对齐):该账户
+    仍被任何活跃交易引用时**拒绝删除**。旧行为只删 UserAccountProjection 行,
+    留下悬挂的 account_sync_id —— 净资产回放按 `acc in bal` 静默跳过这些
+    交易,与 /summary 口径分裂,且账户列表分桶里这些交易随桶一起消失。
+
+    拒绝 = 抛 ValueError → push 端 savepoint 隔离记 failed_samples,App 端
+    提示「该账户仍有交易」;用户先迁/删交易后重推即成功。
+    """
+    linked = db.scalar(
+        select(ReadTxProjection.sync_id).where(
+            ReadTxProjection.user_id == user_id,
+            ReadTxProjection.deleted_at.is_(None),
+            or_(
+                ReadTxProjection.account_sync_id == sync_id,
+                ReadTxProjection.from_account_sync_id == sync_id,
+                ReadTxProjection.to_account_sync_id == sync_id,
+            ),
+        ).limit(1)
+    )
+    if linked is not None:
+        raise ValueError(
+            "account has linked transactions: "
+            f"account_sync_id={sync_id} linked_tx={linked}"
+        )
     projection.delete_account(db, user_id=user_id, sync_id=sync_id)
     _compact_entity_upsert_events(
         db, user_id=user_id, entity_type="account", entity_sync_id=sync_id,

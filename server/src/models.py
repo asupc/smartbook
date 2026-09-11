@@ -748,6 +748,11 @@ class ReadTxProjection(Base):
     # 统计端 COALESCE 回退 amount)。账本维度统计读 native_amount,账户维度仍 amount。
     currency_code: Mapped[str | None] = mapped_column(String(16), nullable=True)
     native_amount: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # 软删标记(0030 回收站):非 NULL = 已进回收站,读路径/统计/导出一律
+    # 过滤;30 天后由 data_cleanup cleaner 物理删除(含附件文件)。恢复=置回 NULL。
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 Index(

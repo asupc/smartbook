@@ -182,6 +182,11 @@ class SyncPushResponse(BaseModel):
     rejected: int
     conflict_count: int = 0
     conflict_samples: list[dict[str, Any]] = Field(default_factory=list)
+    # 0031(批次3):apply 抛异常的 change 被隔离跳过(不再整批 500 死循环),
+    # 每条带 entity/action/sync_id/error。客户端应把这些 change 标记为
+    # poisoned 并提示用户,不再重推同一批。
+    failed_count: int = 0
+    failed_samples: list[dict[str, Any]] = Field(default_factory=list)
     server_cursor: int
     server_timestamp: datetime
 
@@ -900,6 +905,9 @@ class WorkspaceAnalyticsOut(BaseModel):
     # 仅在 scope=year 填;月份数 < 3 时返回空 list(baseline 不稳)。
     anomaly_months: list[WorkspaceAnalyticsAnomalyMonthOut] = Field(default_factory=list)
     range: WorkspaceAnalyticsRangeOut
+    # 批次4:多账本多币种且有币种缺汇率 → 折算不完整,前端复用净值页
+    # needsBase 引导(设主币种/补汇率),避免与净值数字互相打架。
+    multi_currency_incomplete: bool = False
 
 
 class ReadSummaryOut(BaseModel):
