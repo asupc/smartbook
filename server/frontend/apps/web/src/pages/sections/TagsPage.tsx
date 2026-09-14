@@ -148,16 +148,9 @@ export function TagsPage() {
           fetchWorkspaceTransactions(token, { tagSyncId, limit: 20, offset })
         }
         onDelete={(row) => {
-          // 关联交易 > 0 直接拦,不让走 confirm dialog,跟 app 端行为对齐。
-          // server 也有兜底校验(snapshot_mutator.delete_tag)防止漏网。
-          const linkedCount = tagStatsById[row.id]?.count ?? 0
-          if (linkedCount > 0) {
-            toast.error(
-              t('tags.error.hasTransactions').replace('{count}', String(linkedCount)),
-              t('notice.error')
-            )
-            return
-          }
+          // 有关联交易也直接删:server 会自动把标签从关联交易里剥离
+          // (snapshot_mutator.delete_tag + detach_cascade_tag),确认框按
+          // 是否有关联交易切换文案提醒用户。
           setPendingDelete({ id: row.id, name: row.name })
         }}
         onClickTag={(row) =>
@@ -169,7 +162,16 @@ export function TagsPage() {
         open={!!pendingDelete}
         title={t('confirm.deleteTag.title')}
         description={
-          pendingDelete ? t('confirm.deleteTag.desc').replace('{name}', pendingDelete.name) : ''
+          pendingDelete
+            ? (tagStatsById[pendingDelete.id]?.count ?? 0) > 0
+              ? t('confirm.deleteTag.descWithTx')
+                  .replace('{name}', pendingDelete.name)
+                  .replace(
+                    '{count}',
+                    String(tagStatsById[pendingDelete.id]?.count ?? 0)
+                  )
+              : t('confirm.deleteTag.desc').replace('{name}', pendingDelete.name)
+            : ''
         }
         confirmText={t('confirm.delete')}
         cancelText={t('confirm.cancel')}

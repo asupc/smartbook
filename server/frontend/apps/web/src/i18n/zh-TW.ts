@@ -1446,7 +1446,6 @@ const zhTW = {
   'tags.error.ledgerRequired': '請先選擇帳本。',
   'tags.error.nameRequired': '標籤名稱不能為空。',
   'tags.error.nameDuplicate': '已經有同名標籤,請換一個。',
-  'tags.error.hasTransactions': '此標籤下還有 {count} 筆交易,先把交易移除標籤或刪除後再來刪除標籤。',
   'tags.table.id': 'ID',
   'tags.table.name': '名稱',
   'tags.table.color': '顏色',
@@ -1463,6 +1462,8 @@ const zhTW = {
   'confirm.cancel': '取消',
   'confirm.deleteTag.title': '刪除標籤',
   'confirm.deleteTag.desc': '確定要刪除標籤「{name}」嗎?此操作無法復原。',
+  'confirm.deleteTag.descWithTx':
+    '標籤「{name}」已關聯 {count} 筆交易,刪除後會自動從這些交易中移除該標籤,交易記錄本身不受影響。此操作無法復原。',
   'confirm.deleteCategory.title': '刪除分類',
   'confirm.deleteCategory.desc': '確定要刪除分類「{name}」嗎?此操作無法復原。',
 

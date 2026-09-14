@@ -1448,7 +1448,6 @@ const en = {
   'tags.error.ledgerRequired': 'Please select a ledger.',
   'tags.error.nameRequired': 'Tag name is required.',
   'tags.error.nameDuplicate': 'A tag with this name already exists.',
-  'tags.error.hasTransactions': 'This tag still has {count} linked transactions. Remove the tag from those transactions first.',
   'tags.table.id': 'id',
   'tags.table.name': 'name',
   'tags.table.color': 'color',
@@ -1465,6 +1464,8 @@ const en = {
   'confirm.cancel': 'Cancel',
   'confirm.deleteTag.title': 'Delete tag',
   'confirm.deleteTag.desc': 'Delete tag "{name}"? This cannot be undone.',
+  'confirm.deleteTag.descWithTx':
+    'Tag "{name}" is linked to {count} transactions. Deleting it will automatically remove the tag from those transactions; the transactions themselves are kept. This cannot be undone.',
   'confirm.deleteCategory.title': 'Delete category',
   'confirm.deleteCategory.desc': 'Delete category "{name}"? This cannot be undone.',
 

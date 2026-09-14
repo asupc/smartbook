@@ -1489,7 +1489,6 @@ const zhCN = {
   'tags.error.ledgerRequired': '请先选择账本。',
   'tags.error.nameRequired': '标签名称不能为空。',
   'tags.error.nameDuplicate': '已经有同名标签,请换一个。',
-  'tags.error.hasTransactions': '该标签下还有 {count} 条交易,先把交易移除标签或者删掉再来删标签。',
   'tags.table.id': 'ID',
   'tags.table.name': '名称',
   'tags.table.color': '颜色',
@@ -1507,6 +1506,8 @@ const zhCN = {
   'confirm.cancel': '取消',
   'confirm.deleteTag.title': '删除标签',
   'confirm.deleteTag.desc': '确定要删除标签"{name}"吗?此操作不可撤销。',
+  'confirm.deleteTag.descWithTx':
+    '标签"{name}"已关联 {count} 条交易,删除后会自动从这些交易中移除该标签,交易记录本身不受影响。此操作不可撤销。',
   'confirm.deleteCategory.title': '删除分类',
   'confirm.deleteCategory.desc': '确定要删除分类"{name}"吗?此操作不可撤销。',
 
