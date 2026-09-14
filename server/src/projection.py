@@ -864,6 +864,74 @@ def rename_cascade_tag(
             )
 
 
+def detach_cascade_tag(
+    db: Session,
+    *,
+    user_id: str,
+    tag_sync_id: str,
+    tag_name: str,
+) -> None:
+    """Tag 删除后从所有 tx 投影行剥离引用:tag_sync_ids_json 移除该 sync_id、
+    tags_csv 移除该名(两维度独立,与 snapshot_mutator._strip_tag_from_tx 同构,
+    容忍名字/id 不同步的脏数据)。
+
+    谓词与 rename_cascade_tag / web 写路径 cascade 点查同源:
+      1) tag_sync_ids_json 精确引用该 sync_id (mobile/web 完整数据)
+      2) tags_csv 包含旧名但没有 tag_sync_ids_json (legacy/不完整数据)
+    只做投影 UPDATE,不发 SyncChange —— cascade 事件由调用方定向补发
+    (web 快路径)或由 tag:delete 事件在客户端级联(mobile push 路径)。
+    """
+    from sqlalchemy import and_
+    from sqlalchemy import select as sql_select
+    from sqlalchemy import update as sql_update
+
+    like_pat = f'%"{tag_sync_id}"%'
+    predicates = [ReadTxProjection.tag_sync_ids_json.like(like_pat)]
+    if tag_name:
+        predicates.append(
+            and_(
+                ReadTxProjection.tags_csv.like(f"%{tag_name}%"),
+                ReadTxProjection.tag_sync_ids_json.is_(None),
+            )
+        )
+    rows = db.execute(
+        sql_select(
+            ReadTxProjection.ledger_id,
+            ReadTxProjection.sync_id,
+            ReadTxProjection.tags_csv,
+            ReadTxProjection.tag_sync_ids_json,
+        ).where(
+            ReadTxProjection.user_id == user_id,
+            or_(*predicates),
+        )
+    ).all()
+    for ledger_id_v, sync_id_v, tags_csv, tag_ids_json in rows:
+        new_csv = tags_csv
+        if tags_csv and tag_name:
+            parts = [p.strip() for p in tags_csv.split(",") if p.strip()]
+            stripped = [p for p in parts if p != tag_name]
+            if stripped != parts:
+                new_csv = ",".join(stripped) if stripped else None
+        new_ids_json = tag_ids_json
+        if tag_ids_json:
+            try:
+                ids = json.loads(tag_ids_json)
+            except json.JSONDecodeError:
+                ids = None
+            if isinstance(ids, list) and tag_sync_id in ids:
+                remaining = [i for i in ids if i != tag_sync_id]
+                new_ids_json = json.dumps(remaining) if remaining else None
+        if new_csv != tags_csv or new_ids_json != tag_ids_json:
+            db.execute(
+                sql_update(ReadTxProjection)
+                .where(
+                    ReadTxProjection.ledger_id == ledger_id_v,
+                    ReadTxProjection.sync_id == sync_id_v,
+                )
+                .values(tags_csv=new_csv, tag_sync_ids_json=new_ids_json)
+            )
+
+
 # --------------------------------------------------------------------------- #
 # 整表重建:回填 / 恢复备份                                                     #
 # --------------------------------------------------------------------------- #

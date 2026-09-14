@@ -812,6 +812,32 @@ def update_tag(snapshot: dict, tag_id: str, payload: dict) -> dict:
     return target
 
 
+def _strip_tag_from_tx(tx: dict, old_name: str, tag_id: str) -> bool:
+    """从单个 tx dict 剥离指定 tag:tags(逗号名字串)按名精确匹配,tagIds
+    (sync id 列表)按 id 精确匹配,两维度独立(容忍名字/id 不同步的脏数据)。
+    返回是否有改动。"""
+    changed = False
+    if old_name:
+        tx_tags = _split_tags(tx.get("tags"))
+        if old_name in tx_tags:
+            remaining = [t for t in tx_tags if t != old_name]
+            merged = _join_tags(remaining)
+            if merged is None:
+                tx.pop("tags", None)
+            else:
+                tx["tags"] = merged
+            changed = True
+    tag_ids = tx.get("tagIds")
+    if isinstance(tag_ids, list) and tag_id in tag_ids:
+        remaining_ids = [i for i in tag_ids if i != tag_id]
+        if remaining_ids:
+            tx["tagIds"] = remaining_ids
+        else:
+            tx.pop("tagIds", None)
+        changed = True
+    return changed
+
+
 def delete_tag(snapshot: dict, tag_id: str, payload: dict | None = None) -> dict:
     target = ensure_snapshot_v2(snapshot)
     tags = _ensure_list(target, "tags")
@@ -819,21 +845,14 @@ def delete_tag(snapshot: dict, tag_id: str, payload: dict | None = None) -> dict
     _assert_actor_can_modify(tag, payload or {})
     old_name = str(tag.get("name") or "").strip()
 
-    # 拦截关联交易:有交易引用此 tag 时禁止删除,让用户先把标签从交易里
-    # 摘掉(或删交易)再来删标签。之前是"静默把 tag 从所有引用它的 tx
-    # 里抽走",数据上可恢复但用户无感知,跟 app 行为(确认对话框 + 阻止)
-    # 不一致,容易误删。
-    # ValueError 由路由层抓出来翻译成 4xx 响应,error message 走 i18n。
-    if old_name:
-        in_use = sum(
-            1
-            for tx in _ensure_list(target, "items")
-            if old_name in _split_tags(tx.get("tags"))
-        )
-        if in_use > 0:
-            raise ValueError(
-                f"write validation failed: tag has {in_use} linked transactions"
-            )
+    # 有关联交易时自动剥离:把该 tag 从所有引用它的 tx 里抽走再删,与 app 端
+    # 行为一致(本地删除就是先删 transactionTags 关联再删 tag)。web 快路径
+    # 喂进来的 items 只是引用行子集,全量路径则是全量 items —— 两条路径都
+    # 靠这里改 snapshot;投影与 cascade SyncChange 由路由层配套
+    # (projection.detach_cascade_tag + 定向补发,见 _commit_write_fast_entity)。
+    if old_name or tag_id:
+        for tx in _ensure_list(target, "items"):
+            _strip_tag_from_tx(tx, old_name, tag_id)
 
     tags.pop(idx)
     return target

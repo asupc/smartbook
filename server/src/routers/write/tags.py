@@ -5,12 +5,13 @@ POST / PATCH / DELETE for /ledgers/{ledger_id}/tags(ledgers 自身除外)。
 helper / WRITE 响应表。Endpoint 自身只管参数校验 + mutate lambda 的构造。
 
 全部走小实体快路径(F1)。DELETE 前定向点查引用该 tag 的交易(tag_sync_ids_json
-精确 + legacy tags_csv 名字匹配),喂给 mutator 做 in-use 校验。
+精确 + legacy tags_csv 名字匹配),喂给 mutator 做自动剥离(有关联交易时把 tag
+从这些 tx 的 tags/tagIds 里抽走),并供快路径 detach 分支映射跨账本 ledger_id。
 """
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
-from sqlalchemy import and_, select as sa_select
+from sqlalchemy import and_, or_, select as sa_select
 
 from ._shared import *  # noqa: F401,F403 — 集中从 _shared 取所有 symbol
 from ...models import ReadTxProjection, UserTagProjection
@@ -19,7 +20,8 @@ router = APIRouter()
 
 
 def _cascade_items_for_tag_delete(db, current_user, tag_id: str):
-    """删除标签前定向点查引用交易,喂给快路径做 mutator 的 in_use 校验。
+    """删除标签前定向点查引用交易,喂给快路径:mutator 在这个子集上自动剥离
+    tags/tagIds,快路径 detach 分支用它映射行的跨账本 ledger_id。
     谓词 = tag_sync_ids_json 含该 sync_id(精确)+ tags_csv LIKE 名字粗筛
     (Python 拆分精确匹配在 mutator 内完成)。返回 None 时走全量路径兜底
     (tag 行不存在 → mutator 会 KeyError 404,统一从全量路径出)。"""

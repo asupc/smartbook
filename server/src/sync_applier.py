@@ -449,7 +449,23 @@ def _delete_user_account(db: Session, user_id: str, sync_id: str) -> None:
 
 
 def _delete_user_tag(db: Session, user_id: str, sync_id: str) -> None:
+    # App 端删除是级联(先删本地 transactionTags 关联再删 tag),但 push 只
+    # 上报 tag:delete,不带受影响 tx 的变更 —— 服务端投影同样要把 tx 行上
+    # 的 tags/tagIds 引用剥离掉,否则残留悬挂 id/名字。其它设备靠 tag:delete
+    # 事件在客户端级联删关联,无需补发 tx 事件。名字要在删行前查,删后即丢。
+    tag_name = db.scalar(
+        select(UserTagProjection.name).where(
+            UserTagProjection.user_id == user_id,
+            UserTagProjection.sync_id == sync_id,
+        )
+    )
     projection.delete_tag(db, user_id=user_id, sync_id=sync_id)
+    projection.detach_cascade_tag(
+        db,
+        user_id=user_id,
+        tag_sync_id=sync_id,
+        tag_name=(tag_name or "").strip(),
+    )
     _compact_entity_upsert_events(
         db, user_id=user_id, entity_type="tag", entity_sync_id=sync_id,
     )

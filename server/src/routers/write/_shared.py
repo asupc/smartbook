@@ -963,25 +963,35 @@ def _emit_cascade_tx_changes(
     current_user: User,
     device_id: str,
     now: datetime,
-    rows: list[ReadTxProjection],
+    rows: list[ReadTxProjection] | None = None,
+    item_pairs: list[tuple[str, dict[str, Any]]] | None = None,
 ) -> list[int]:
-    """rename cascade 后,把受影响 tx 行以 cascade-only SyncChange 形式 bulk
+    """cascade 后,把受影响 tx 行以 cascade-only SyncChange 形式 bulk
     insert(一条 executemany),供 mobile pull 刷本地冗余字段。投影已由
-    rename_cascade_* SQL 刷过 —— 这里把投影行序列化成 payload(与全量 diff
-    路径里 next items 的对应项同源)。返回本批新 change_id(max)。"""
-    if not rows:
+    rename_cascade_* / detach_cascade_tag SQL 刷过 —— payload 要么取投影行
+    (rows,序列化与全量 diff 路径同源),要么直接给 (ledger_id, payload_dict)
+    对(item_pairs,tag 删除剥离用 mutator 输出,行状态与 detach SQL 同构)。
+    返回本批新 change_id(max)。"""
+    pairs: list[tuple[str, dict[str, Any]]]
+    if item_pairs is not None:
+        pairs = item_pairs
+    else:
+        pairs = [
+            (r.ledger_id, _projection_row_to_tx_dict(r)) for r in (rows or [])
+        ]
+    if not pairs:
         return []
     from sqlalchemy import insert as sa_insert
     bulk_rows = []
-    for row in rows:
+    for row_ledger_id, payload in pairs:
         bulk_rows.append({
-            "user_id": row.user_id,
-            "ledger_id": row.ledger_id,
+            "user_id": current_user.id,
+            "ledger_id": row_ledger_id,
             "scope": "ledger",
             "entity_type": "transaction",
-            "entity_sync_id": row.sync_id,
+            "entity_sync_id": payload.get("syncId"),
             "action": "upsert",
-            "payload_json": _projection_row_to_tx_dict(row),
+            "payload_json": payload,
             "updated_at": now,
             "updated_by_device_id": device_id,
             "updated_by_user_id": current_user.id,
@@ -1017,7 +1027,9 @@ def _cascade_rows_for_entity(
         )
     if entity_type == "tag":
         if not renamed:
-            # tag 删除被 in_use 校验拦截,理论到不了这里;防御性返回空。
+            # tag 删除的剥离/补发在 _commit_write_fast_entity 的 detach 分支
+            # 单独处理(payload 来自 mutator 输出而非投影行),这里只服务
+            # rename;防御性返回空。
             return []
         return _cascade_tx_rows_for_tag(
             db, user_id=current_user.id, tag_sync_id=entity_sync_id,
@@ -1067,7 +1079,8 @@ async def _commit_write_fast_entity(
                 )
 
         # include_items=False 跳过全量 tx。带 cascade_tx_items 的删除路径例外:
-        # 那是精确点查出来的关联行子集,喂给 mutator 做 in-use 关联校验。
+        # 那是精确点查出来的关联行子集,喂给 mutator 做自动剥离(把 tag 从
+        # 这些 tx 的 tags/tagIds 里抽走),也是 detach 分支 ledger_id 的来源。
         include_items = cascade_tx_items is not None
         snapshot = snapshot_builder.build(db, ledger, include_items=include_items)
         if include_items:
@@ -1137,6 +1150,40 @@ async def _commit_write_fast_entity(
                     renamed=True,
                     deleted=False,
                 )
+        elif deleted and entity_type == "tag" and entity_id:
+            # tag 删除:mutator 已在 cascade 子集(snapshot items)上把该 tag
+            # 从 tags/tagIds 里剥离,投影由 detach_cascade_tag SQL 同构剥离
+            # (名字 + sync id 两维度);受影响 tx 以 cascade-only SyncChange
+            # 定向补发,payload 直接用 mutator 的剥离后输出(与投影终态一致)。
+            # 行的 ledger_id 从点查行集合映射 —— tag 是 user-global,引用可
+            # 跨账本。老数据(仅名字、无 id)的剥离走全量路径才有,罕见。
+            old_tag_name = ""
+            for e in prev_list:
+                if e.get("syncId") == entity_id:
+                    old_tag_name = str(e.get("name") or "").strip()
+                    break
+            projection.detach_cascade_tag(
+                db,
+                user_id=current_user.id,
+                tag_sync_id=entity_id,
+                tag_name=old_tag_name,
+            )
+            next_items = [
+                it for it in (next_snapshot.get("items") or [])
+                if isinstance(it, dict) and it.get("syncId")
+            ]
+            if next_items:
+                ledger_by_sync = {
+                    r.sync_id: r.ledger_id for r in (cascade_tx_items or [])
+                }
+                emitted_change_ids.extend(_emit_cascade_tx_changes(
+                    db, ledger=ledger, current_user=current_user,
+                    device_id=device_id, now=now,
+                    item_pairs=[
+                        (ledger_by_sync.get(str(it.get("syncId")), ledger.id), it)
+                        for it in next_items
+                    ],
+                ))
         elif deleted and entity_type == "account" and entity_id:
             # 删除路径:mutator 已经用 cascade_tx_items 子集做过关联校验(有
             # 关联交易会 400),能走到这里说明子集为空 → 投影无需剥离,也无需
