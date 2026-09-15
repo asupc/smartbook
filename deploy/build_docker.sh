@@ -80,8 +80,11 @@ done
 
 # ── 版本号:首次 1.0.0,每次构建 +1(工作区根 .build-version-server 记录)──
 # 未传版本号时自动递增(1.0.0 → 1.0.1 → …);显式传位置参数版本则使用该值、不写记录。
+# 记录在**构建成功后**才落盘(见脚本末尾)—— 中途失败不烧掉版本号,重跑沿用同一版本。
 VERSION_FILE="$REPO_ROOT/.build-version-server"
+AUTO_VERSION=0
 if [[ -z "$VERSION" ]]; then
+  AUTO_VERSION=1
   if [[ -f "$VERSION_FILE" ]]; then
     VERSION="$(cat "$VERSION_FILE")"
     if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -92,8 +95,7 @@ if [[ -z "$VERSION" ]]; then
   else
     VERSION="1.0.0"
   fi
-  echo "$VERSION" > "$VERSION_FILE"
-  echo "ℹ 版本自动递增: $VERSION(记录 $VERSION_FILE)"
+  echo "ℹ 版本自动递增: $VERSION(构建成功后写入 $VERSION_FILE)"
 else
   echo "ℹ 版本(显式): $VERSION"
 fi
@@ -185,12 +187,19 @@ if [[ "$PUSH" -eq 1 ]]; then
   fi
 fi
 
+# ── 版本落盘:构建(含导出/推送)全部成功后才写记录 ───────────────────────────
+# 提前落盘会在中途失败时"烧掉"版本号(下次自动 +1 跳过该版本)。
+if [[ "$AUTO_VERSION" -eq 1 ]]; then
+  echo "$VERSION" > "$VERSION_FILE"
+  echo "→ 版本记录已更新: $VERSION → $VERSION_FILE"
+fi
+
 # ── 摘要 ────────────────────────────────────────────────────────────────────
 SIZE_MB="$(docker image inspect --format '{{.Size}}' "$REPO:$TAG" | awk '{printf "%.1f", $1/1024/1024}')"
 echo ""
 echo "✅ 构建完成:$REPO:$TAG (${SIZE_MB} MB)"
 echo "   镜像 tar:$TAR_PATH"
-echo "   镜像内已包含 0019_ai_analysis_logs 等最新 migration,容器启动时自动 alembic upgrade head。"
+echo "   镜像内已包含全部最新 migration(当前 head: 0030_tx_soft_delete),容器启动时自动 alembic upgrade head。"
 echo ""
 echo "  本地试跑:"
 echo "    docker run -p 8080:8080 -v smartbook_data:/data \\"

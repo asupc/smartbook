@@ -18,7 +18,8 @@
 #
 # 依赖（脚本会尽力自检，缺失即报错退出）：
 #   - Flutter SDK  (默认 $HOME/devtools/flutter-3.27.3-sdk，可用 FLUTTER_HOME 覆盖)
-#   - JDK 17      (默认 $HOME/devtools/jdk-17，可用 JAVA_HOME 覆盖)
+#   - JDK 17      (默认 $HOME/devtools/jdk-17，可用 JAVA_HOME_OVERRIDE 或 JAVA_HOME 覆盖，
+#                  前者优先 —— 只设 JAVA_HOME 也能生效，版本不足 17 会被下方校验拦下)
 #   - Android SDK (默认 %LOCALAPPDATA%/Android/Sdk，可用 ANDROID_HOME 覆盖)
 #   - sdkmanager 已装 platforms;android-36 与 build-tools;35.0.0（脚本会校验）
 
@@ -101,8 +102,11 @@ esac
 # ---------------------------------------------------------------- 版本号(自动递增)
 # 缺省时：首次从 1.0.0 开始，每次构建末位 +1（1.0.0 → 1.0.1 → …），记录于工作区根
 # .build-version-client；显式 --app-version 覆盖且不写记录。
+# 记录在**构建成功后**才落盘（见脚本末尾）—— 中途失败不烧掉版本号，重跑沿用同一版本。
 VERSION_FILE="$REPO_ROOT/.build-version-client"
+AUTO_VERSION=0
 if [[ -z "$APP_VERSION" ]]; then
+  AUTO_VERSION=1
   if [[ -f "$VERSION_FILE" ]]; then
     PREV="$(cat "$VERSION_FILE")"
     if [[ ! "$PREV" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -113,8 +117,7 @@ if [[ -z "$APP_VERSION" ]]; then
   else
     APP_VERSION="1.0.0"
   fi
-  echo "$APP_VERSION" > "$VERSION_FILE"
-  log_info "版本自动递增: $APP_VERSION（记录 $VERSION_FILE；BUILD_NUMBER=$BUILD_NUMBER）"
+  log_info "版本自动递增: $APP_VERSION（构建成功后写入 $VERSION_FILE；BUILD_NUMBER=$BUILD_NUMBER）"
 else
   log_info "版本(显式): $APP_VERSION（--app-version，未写版本记录）"
 fi
@@ -123,8 +126,11 @@ if [[ -z "$TAG" ]]; then TAG="dev-$APP_VERSION"; fi
 
 # ---------------------------------------------------------------- 工具链探测
 # 允许用户通过环境变量覆盖，否则回退到本机默认安装位置。
+# JDK 取值优先级:JAVA_HOME_OVERRIDE > JAVA_HOME > 默认路径
+# (历史上只认 JAVA_HOME_OVERRIDE,与帮助文案说的 JAVA_HOME 不一致 ——
+#  现两者都认,OVERRIDE 优先,行为向下兼容)。
 FLUTTER_HOME="${FLUTTER_HOME:-$HOME/devtools/flutter-3.27.3-sdk}"
-JAVA_HOME="${JAVA_HOME_OVERRIDE:-$HOME/devtools/jdk-17}"
+JAVA_HOME="${JAVA_HOME_OVERRIDE:-${JAVA_HOME:-$HOME/devtools/jdk-17}}"
 ANDROID_HOME="${ANDROID_HOME:-$LOCALAPPDATA/Android/Sdk}"
 
 FLUTTER_BIN="$FLUTTER_HOME/bin/flutter"
@@ -140,14 +146,14 @@ log_info "JDK          : $JAVA_HOME"
 log_info "Android SDK  : $ANDROID_HOME"
 
 [[ -x "$FLUTTER_BIN" ]] || die "找不到 Flutter：$FLUTTER_BIN（可用 FLUTTER_HOME 覆盖，或先装 Flutter SDK）"
-[[ -x "$JAVA_HOME/bin/java.exe" || -x "$JAVA_HOME/bin/java" ]] || die "找不到 JDK17：$JAVA_HOME（可用 JAVA_HOME 覆盖）"
+[[ -x "$JAVA_HOME/bin/java.exe" || -x "$JAVA_HOME/bin/java" ]] || die "找不到 JDK17：$JAVA_HOME（可用 JAVA_HOME_OVERRIDE 或 JAVA_HOME 覆盖）"
 [[ -d "$ANDROID_HOME/platforms/android-36" ]] || die "Android SDK 缺 android-36：请先 sdkmanager --install 'platforms;android-36' 'build-tools;35.0.0'"
 [[ -d "$CLIENT_DIR/lib" ]] || die "客户端源码不完整：无 $CLIENT_DIR/lib（请确认 client/ 已就位）"
 
 # 编译期需要 JDK17，检查当前 java 是否够版本
 JAVA_VER="$("$JAVA_HOME/bin/java.exe" -version 2>&1 | head -1 | sed -E 's/.*version "([0-9]+).*/\1/')"
 if (( JAVA_VER < 17 )); then
-  die "JDK 需 17+，当前主版本为 $JAVA_VER（请设置 JAVA_HOME 指向 JDK17）"
+  die "JDK 需 17+，当前主版本为 $JAVA_VER（请设置 JAVA_HOME_OVERRIDE 或 JAVA_HOME 指向 JDK17）"
 fi
 log_ok "工具链校验通过（JDK $JAVA_VER）"
 
@@ -176,9 +182,22 @@ flutter pub get >/dev/null 2>&1 || { flutter pub get; die "flutter pub get 失�
 log_ok "依赖解析完成"
 
 # ---------------------------------------------------------------- 写入版本号
+# pubspec.yaml 是 git 跟踪文件 —— 版本号只应在构建期间临时写入:
+# 失败(含 Ctrl+C)由 trap 还原,成功路径在脚本末尾构建完成后还原,
+# 不脏化工作区。sed 备份保留在 pubspec.yaml.bak,由 restore_pubspec 消费。
 log_info "设置版本 $APP_VERSION+$BUILD_NUMBER ..."
 sed -i.bak "s/^version: .*/version: ${APP_VERSION}+${BUILD_NUMBER}/" pubspec.yaml
-rm -f pubspec.yaml.bak
+
+restore_pubspec() {
+  if [[ -f pubspec.yaml.bak ]]; then
+    mv -f pubspec.yaml.bak pubspec.yaml
+    log_info "pubspec.yaml 已还原（版本号仅构建期间临时写入）"
+  fi
+}
+trap restore_pubspec EXIT
+trap 'trap - INT TERM; restore_pubspec; exit 130' INT
+trap 'trap - INT TERM; restore_pubspec; exit 143' TERM
+
 log_ok "pubspec 已更新：$(grep '^version:' pubspec.yaml)"
 
 # ---------------------------------------------------------------- analyze
@@ -219,12 +238,18 @@ BUILD_APK_DIR="$CLIENT_DIR/build/app/outputs/flutter-apk"
 # ---------------------------------------------------------------- 构建 AAB（可选）
 if (( WITH_AAB )); then
   log_info "构建 AAB ..."
-  flutter build appbundle --release --flavor "$FLAVOR" \
+  # --with-aab 即要求 AAB 产出:失败如实退出非零,不再 warn 后照样打印"构建完成"。
+  # (AAB 需 PLAY 权限/签名配置齐全;不需要 AAB 时去掉 --with-aab 即可。)
+  if ! flutter build appbundle --release --flavor "$FLAVOR" \
     --dart-define=CI_VERSION="$TAG" \
     --dart-define=GIT_COMMIT="$GIT_COMMIT" \
     --dart-define=BUILD_TIME="$BUILD_TIME" \
-    >/dev/null 2>&1 || { log_warn "flutter build appbundle 失败（可能因 PLAY 权限裁剪，可忽略）"; }
-  log_ok "AAB 构建完成（如有）"
+    >/dev/null 2>&1; then
+    restore_pubspec
+    trap - EXIT
+    die "flutter build appbundle 失败（--with-aab 要求 AAB 必须成功；详情去掉本脚本对 appbundle 的输出重定向重跑）"
+  fi
+  log_ok "AAB 构建完成"
 fi
 
 # ---------------------------------------------------------------- 收拢产物
@@ -258,6 +283,14 @@ esac
 if (( WITH_AAB )); then
   SRC_AAB="$CLIENT_DIR/build/app/outputs/bundle/$FLAVORRelease/app-$FLAVOR-release.aab"
   [[ -f "$SRC_AAB" ]] && copy_apk "$SRC_AAB" "$DEPLOY_DIR/smartbook-$FLAVOR-${TAG}.aab"
+fi
+
+# ---------------------------------------------------------------- 版本落盘
+# 构建与产物收拢全部成功后才写记录 —— 失败时版本号不被"烧掉",重跑沿用同一版本。
+# (EXIT trap 的 restore_pubspec 在脚本退出时还原 pubspec.yaml,无需在此处理。)
+if (( AUTO_VERSION )); then
+  echo "$APP_VERSION" > "$VERSION_FILE"
+  log_ok "版本记录已更新: $APP_VERSION → $VERSION_FILE"
 fi
 
 # ---------------------------------------------------------------- 汇总

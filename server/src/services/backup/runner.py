@@ -1,7 +1,10 @@
 """单次备份运行的编排。流程:
 
 1. 在 BackupRun 表里新建 run row(status='running')
-2. VACUUM INTO → staging/<run_id>/db.sqlite3
+2. DB 快照(按 DATABASE_URL 方言分支):
+   - SQLite → VACUUM INTO → staging/<run_id>/db.sqlite3
+   - PostgreSQL → pg_dump --format=custom → staging/<run_id>/db.dump
+     (密码经 PGPASSWORD 子进程 env 传入;restore 用 pg_restore)
 3. hardlink attachments → staging/<run_id>/attachments
 4. cp .jwt_secret(可选)
 5. 写 meta.json
@@ -39,7 +42,7 @@ from ...models import (
     BackupScheduleRemote,
 )
 from ...version import __version__ as APP_VERSION
-from .db_snapshot import vacuum_into
+from .db_snapshot import database_backend, pg_dump_snapshot, vacuum_into
 from .rclone_config import (
     RcloneConfigManager,
     get_age_passphrase,
@@ -255,16 +258,21 @@ def _run_with_remotes(
     encrypted_zips_to_cleanup: list[Path] = []
 
     try:
-        # ---- 1. SQLite VACUUM INTO ----
+        # ---- 1. DB 快照(按 DATABASE_URL 方言分支) ----
         _push({"type": "backup_progress", "phase": "snapshot_db"})
-        log_fn("VACUUM INTO ...")
-        # 用现成 db session 跑 VACUUM 会破坏后续提交;另开一个独立 session
-        # 跑这一条命令。
-        snap_db = SessionLocal()
-        try:
-            vacuum_into(snap_db, work_dir / "db.sqlite3")
-        finally:
-            snap_db.close()
+        backend = database_backend(settings.database_url)
+        if backend == "postgresql":
+            log_fn("pg_dump (custom format) ...")
+            pg_dump_snapshot(settings.database_url, work_dir / "db.dump")
+        else:
+            log_fn("VACUUM INTO ...")
+            # 用现成 db session 跑 VACUUM 会破坏后续提交;另开一个独立 session
+            # 跑这一条命令。
+            snap_db = SessionLocal()
+            try:
+                vacuum_into(snap_db, work_dir / "db.sqlite3")
+            finally:
+                snap_db.close()
 
         # ---- 2. attachments(hardlink) ----
         if include_attachments:
@@ -301,6 +309,10 @@ def _run_with_remotes(
             "scheduleName": schedule.name if schedule else None,
             "userId": user_id,
             "includeAttachments": include_attachments,
+            # 'sqlite' → 包内 db.sqlite3(VACUUM INTO 产物,直接换文件);
+            # 'postgresql' → 包内 db.dump(pg_dump custom 格式,restore 要走
+            # pg_restore,不能当 SQLite 文件用)。
+            "dbDialect": backend,
         }
         (work_dir / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
 

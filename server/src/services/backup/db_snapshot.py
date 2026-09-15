@@ -1,23 +1,26 @@
-"""SQLite 快照 —— 用 `VACUUM INTO` 拿一致的单文件输出。
+"""数据库快照 —— 按方言分支拿一致的单文件输出。
 
-WAL 模式下直接 `cp smartbook.db` 不安全:
+SQLite(WAL 模式)下直接 `cp smartbook.db` 不安全:
   - WAL 段还没 checkpoint,目标文件少事务
   - 备份过程中读到的内容半截
 
 `VACUUM INTO 'path'` 是原子的 + 已 checkpoint + 输出永远是单文件,无 -shm /
 -wal 噪音。需要短暂 read 锁(~ms~s 级),不阻塞写。
 
-PostgreSQL 后续再加(用 `pg_dump --format=custom`),目前只 SQLite。
+PostgreSQL 走 `pg_dump --format=custom`(`pg_dump_snapshot`,产物 `.dump`,
+restore 用 `pg_restore`)。方言选择由 runner.py 按 DATABASE_URL 分派。
 """
 from __future__ import annotations
 
 import logging
 import os
+import shutil
+import subprocess
 from pathlib import Path
 
 from sqlalchemy import text
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
-
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +32,9 @@ logger = logging.getLogger(__name__)
 #   - audit_logs:管理员操作日志,运维痕迹,不属于"账本数据"
 #   - refresh_tokens:登录 session,restore 后所有人都得重登,留着没用
 #   - mcp_call_logs:MCP tool 调用审计,30 天滚动遥测,跟账本数据无关
-#   - ai_analysis_logs:AI 分析调用审计(含全文输入输出),7 天滚动遥测
+#   - ai_analysis_logs:AI 分析调用审计(含全文输入输出)。**不设保留期**
+#     —— 数据清理任务不回收该表,体积会一直增长;备份里持续排除,既能控制
+#     备份体积,也避免把含 prompt/输出的敏感遥测推到对象存储。
 # **PAT 表 (personal_access_tokens) 要保留** — 用户的 LLM 客户端配置依赖
 # 这些 token,restore 后 LLM 仍然能连上,不用重新发 token。
 # 用户数据相关(必须保留):users / user_profiles / devices / ledgers /
@@ -107,3 +112,111 @@ def vacuum_into(
 
     size = target.stat().st_size
     logger.info("VACUUM INTO done: %s (%d bytes)", target, size)
+
+
+def database_backend(database_url: str) -> str:
+    """从 DATABASE_URL 提取 SQLAlchemy backend 名('sqlite' / 'postgresql')。
+
+    兼容 `postgresql+psycopg://...` 这类带 driver 后缀的 URL —— make_url 会
+    把 '+psycopg' 归一掉;legacy `postgres://` scheme 也归一成 'postgresql'
+    (make_url 对它返回字面 'postgres',不翻译)。
+    """
+    backend = make_url(database_url).get_backend_name()
+    return "postgresql" if backend in ("postgres", "postgresql") else backend
+
+
+def pg_dump_snapshot(
+    database_url: str,
+    target_path: str | Path,
+    *,
+    exclude_tables: tuple[str, ...] | None = DEFAULT_EXCLUDED_TABLES,
+    pg_dump_binary: str | None = None,
+) -> None:
+    """用 pg_dump(custom format)把 PostgreSQL 库快照到 target_path(.dump)。
+
+    与 vacuum_into 的对应关系:
+      - 产物:单一文件,restore 时用 `pg_restore --dbname=... <file>`;
+      - exclude_tables:走 `--exclude-table-data=<tbl>`(schema 保留、数据
+        不进 dump),语义与 SQLite 分支"DELETE 运维表数据"一致。
+
+    安全/健壮性约定:
+      - 密码**绝不落命令行**(ps 里可见),经 PGPASSWORD 环境变量传给子进程;
+      - 连接参数(host/port/user/dbname)从 DATABASE_URL 解析,不从 shell
+        拼接,避免特殊字符注入;
+      - pg_dump 二进制缺失时抛带修复指引的 RuntimeError(裸镜像没装
+        postgresql-client 的安全网;server/Dockerfile 已装 postgresql-client-16)。
+    """
+    target = Path(target_path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if target.exists():
+        target.unlink()
+
+    url = make_url(database_url)
+    if database_backend(database_url) != "postgresql":
+        raise RuntimeError(
+            f"pg_dump_snapshot only supports postgresql:// URLs, got: "
+            f"{url.drivername}"
+        )
+
+    binary = pg_dump_binary or shutil.which("pg_dump")
+    if binary is None:
+        logger.error(
+            "pg_dump binary not found on PATH — PostgreSQL backup requires "
+            "postgresql-client (the server image installs postgresql-client-16; "
+            "custom environments must install a client whose major version >= "
+            "the server's, see deploy notes / Dockerfile)"
+        )
+        raise RuntimeError(
+            "pg_dump not found on PATH: PostgreSQL 备份需要 postgresql-client"
+            "(镜像内已装 postgresql-client-16;自备环境请安装与服务端大版本"
+            "匹配(>=)的客户端)"
+        )
+
+    argv = [
+        binary,
+        "--format=custom",
+        "--no-owner",
+        "--no-privileges",
+        f"--file={target}",
+    ]
+    if exclude_tables:
+        for tbl in exclude_tables:
+            # 表名是常量白名单,无注入风险
+            argv.append(f"--exclude-table-data={tbl}")
+    if url.host:
+        argv.append(f"--host={url.host}")
+    if url.port:
+        argv.append(f"--port={url.port}")
+    if url.username:
+        argv.append(f"--username={url.username}")
+    if url.database:
+        argv.append(f"--dbname={url.database}")
+
+    env = os.environ.copy()
+    if url.password:
+        env["PGPASSWORD"] = url.password
+
+    logger.info(
+        "pg_dump started: host=%s port=%s db=%s user=%s -> %s",
+        url.host, url.port, url.database, url.username, target,
+    )
+    proc = subprocess.run(  # noqa: S603 — argv 列表形式,元素均来自受控解析
+        argv,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        stderr_tail = (proc.stderr or "")[-500:]
+        logger.error("pg_dump failed (rc=%d): %s", proc.returncode, stderr_tail)
+        raise RuntimeError(f"pg_dump failed with rc={proc.returncode}: {stderr_tail}")
+
+    if not target.exists() or target.stat().st_size == 0:
+        raise RuntimeError(f"pg_dump did not produce output file: {target}")
+
+    size = target.stat().st_size
+    logger.info(
+        "pg_dump done: %s (%d bytes, excluded %d tables' data)",
+        target, size, len(exclude_tables or ()),
+    )

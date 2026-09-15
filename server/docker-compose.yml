@@ -1,11 +1,24 @@
+# server/ 本地开发 compose(单服务,默认 SQLite)。
+# - 镜像为**自构建** `smartbook-server`,见 deploy/build_docker.sh;
+#   不再使用上游官方镜像(sunxiao0721/beecount-cloud 已脱离)。
+# - 正式部署以仓库根目录的 docker-compose.yml 为 canonical
+#   (SmartBook-Cloud + PostgreSQL,含卷/健康检查/端口插值),勿在本目录起生产栈。
 services:
   smartbook-cloud:
-    image: sunxiao0721/beecount-cloud:latest
+    image: smartbook-server:latest
     restart: unless-stopped
     ports:
       - "8869:8080"
     volumes:
       - ./data:/data
+    # 把 server/.env 整份带进容器(开放白名单):src/config.py settings 支持的
+    # 环境变量(EMBEDDING_* / AI_* / REGISTRATION_ENABLED / CORS_ORIGINS 等)
+    # 在 server/.env 里设置即可生效,无需逐项展开进 environment。
+    # 优先级:environment > env_file(显式覆盖保持不变);
+    # required: false —— 本地开发没有 server/.env 也能起(默认 SQLite + 默认配置)。
+    env_file:
+      - path: .env
+        required: false
     environment:
       # ===== 必填:JWT secret(改成你自己的 32+ 字节强随机串)=====
       # JWT_SECRET: change-me-please-32-bytes-strong-random
@@ -37,6 +50,9 @@ services:
       # CORS_ORIGINS: "https://your-domain.com"
       # REGISTRATION_ENABLED: "false"
       # TOTP_ISSUER_NAME: "SmartBook"
+      # 本地起反代时,uvicorn(CMD 已开 --proxy-headers)信任 X-Forwarded-For
+      # 的来源网段;不设默认只信 127.0.0.1(即忽略外部反代头):
+      # FORWARDED_ALLOW_IPS: "172.16.0.0/12"
 
 volumes:
   smartbook_data:

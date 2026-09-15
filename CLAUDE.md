@@ -55,10 +55,10 @@ make dev-web                                 # pnpm workspace 前端(frontend/ ,
 
 ```powershell
 Copy-Item .env.example .env   # 替换所有 CHANGE_ME(JWT_SECRET、DB 密码)
-docker compose up -d          # smartbook-cloud + smartbook-db(PostgreSQL);JWT_SECRET 缺失会快速失败
+docker compose up -d          # smartbook-cloud + smartbook-db(PostgreSQL);JWT_SECRET / SMARTBOOK_DB_PASSWORD 缺失会快速失败
 ```
 
-生产实例信息(域名/版本)不写入仓库(隐私);部署模板见 `deploy/docker-compose.yml`,env 模板见根目录 `.env.example`。
+生产实例信息(域名/版本)不写入仓库(隐私);部署模板见根目录 `docker-compose.yml`,env 模板见根目录 `.env.example`。
 
 ## 架构大图
 

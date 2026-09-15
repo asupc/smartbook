@@ -25,14 +25,14 @@ client/              SmartBook client SOURCE (Flutter; upstream BeeCount 二开)
 server/              SmartBook-Cloud SOURCE (FastAPI + React) — main codebase for 二开
 docker-compose.yml   SmartBook-Cloud + PostgreSQL deployment (root; canonical)
 .env.example         env template — copy to .env, replace CHANGE_ME
-deploy/              deployment copy (docker-compose.yml; root compose is canonical) + build scripts (build.sh 客户端 / build_docker.sh 服务端镜像)
-docs/                web-side plans & audits only (app-performance-audit / ux-performance-optimization-plan / asset-page-layout-plan 等 + icon/images 资源);早期选型/规划文档不在本仓,勿按旧引用查找
+deploy/              build scripts only (build.sh 客户端 / build_docker.sh 服务端镜像) — no compose copy here; deployment always uses the root docker-compose.yml
+docs/                web-side plans & audits only (app-performance-audit / ux-performance-optimization-plan / asset-page-layout-plan 等 + icon/images 资源);部署文档在 docs/deploy/(反代样例 reverse-proxy.md);早期选型/规划文档不在本仓,勿按旧引用查找
 ```
 
 ## Commands
 
 - **No workspace-root build/test** — no `package.json`/`pubspec` at the root. Backend tooling lives inside `server/`; e.g. server tests run `python -m pytest tests/` from there.
-- Deploy: build the image first (`./deploy/build_docker.sh`), then `docker compose up -d` at the root (copy `.env.example` to `.env` first). Fails fast if `JWT_SECRET` is unset.
+- Deploy: build the image first (`./deploy/build_docker.sh`), then `docker compose up -d` at the root (copy `.env.example` to `.env` first). Fails fast if `JWT_SECRET` or `SMARTBOOK_DB_PASSWORD` is unset.
 - The Flutter client is built from `client/` via `deploy/build.sh` (`bash deploy/build.sh` for prod APK; `--flavor dev` for dev; needs `FLUTTER_HOME`/`JAVA_HOME` per CLAUDE.md, and `flutter build` hits the known Kotlin incremental-cache cross-drive issue — clean `client/android/app/build` + `client/android/.gradle` first).
 
 ## SmartBook-Cloud — before 二开
@@ -51,7 +51,7 @@ Web (React) frontend is `server/frontend/`. **UI stack: antd 5** (PC 管理后�
 
 ## Key facts
 
-- **Deployed server (default):** set `SMARTBOOK_APP_URL` / `CORS_ORIGINS` in your own `.env` (see `.env.example`), HTTPS only (plain `http://` returns 400).
+- **Deployed server (default):** set `CORS_ORIGINS` in your own `.env` (see `.env.example`); HTTPS only 由外部反向代理实现(样例见 `docs/deploy/reverse-proxy.md`,plain `http://` returns 400)。`SMARTBOOK_APP_URL` 是已删除的死变量(服务端/compose 均不消费),勿再使用。
 - **Auth:** JWT + Personal Access Token (PAT). Transaction writes support `Idempotency-Key` for dedup.
 - **Custom LLM architecture (2026-09 中转改造后):**
   1. *App AI 记账全部经服务端中转* — 客户端不再直连 LLM;API Key 只存服务端(`UserProfile.ai_config_json`),任何接口不下发明文(`GET /profile/me` 与 `/ai/providers` 均掩码)。App 调 `/api/v1/ai/relay/{chat,vision,stt}`,服务商配置走 `/api/v1/ai/providers` CRUD;AI 调用日志由服务端在中转现场落 `ai_analysis_logs`,旧客户端自报通道 `POST /ai/logs*` 已删除。

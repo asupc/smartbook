@@ -1,23 +1,26 @@
+# 仅本地开发用 —— server/ 下给本地 smartbook-cloud 接 PostgreSQL 的 overlay:
+#   SMARTBOOK_DB_PASSWORD=xxx docker compose -f docker-compose.yml -f docker-compose.postgres.yml up
+# 正式部署用仓库根目录的 docker-compose.yml(canonical,服务名 smartbook-db)。
+# 安全取舍(相对根 compose):不向宿主机发布 5432(容器网络内互访即可);
+# 密码必填(fail-fast),沿用 SMARTBOOK_DB_PASSWORD 与根 compose 同名插值。
 services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: smartbook
-      POSTGRES_USER: smartbook
-      POSTGRES_PASSWORD: smartbook
-    ports:
-      - "5432:5432"
+      POSTGRES_DB: ${SMARTBOOK_DB_DATABASE:-smartbook}
+      POSTGRES_USER: ${SMARTBOOK_DB_USERNAME:-smartbook}
+      POSTGRES_PASSWORD: ${SMARTBOOK_DB_PASSWORD:?Set SMARTBOOK_DB_PASSWORD in the environment / server .env}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U smartbook -d smartbook"]
+      test: ["CMD-SHELL", "pg_isready -U ${SMARTBOOK_DB_USERNAME:-smartbook} -d ${SMARTBOOK_DB_DATABASE:-smartbook}"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   smartbook-cloud:
     environment:
-      DATABASE_URL: postgresql+psycopg://smartbook:smartbook@db:5432/smartbook
+      DATABASE_URL: postgresql+psycopg://${SMARTBOOK_DB_USERNAME:-smartbook}:${SMARTBOOK_DB_PASSWORD}@db:5432/${SMARTBOOK_DB_DATABASE:-smartbook}
     depends_on:
       db:
         condition: service_healthy

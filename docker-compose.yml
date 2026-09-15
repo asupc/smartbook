@@ -7,7 +7,7 @@ services:
     environment:
       POSTGRES_DB: ${SMARTBOOK_DB_DATABASE:-smartbook}
       POSTGRES_USER: ${SMARTBOOK_DB_USERNAME:-smartbook}
-      POSTGRES_PASSWORD: ${SMARTBOOK_DB_PASSWORD:-CHANGE_ME}
+      POSTGRES_PASSWORD: ${SMARTBOOK_DB_PASSWORD:?Set SMARTBOOK_DB_PASSWORD in .env}
     volumes:
       - smartbook-db-data:/var/lib/postgresql/data
     healthcheck:
@@ -24,11 +24,22 @@ services:
         condition: service_healthy
     ports:
       - "${SMARTBOOK_PORT:-8869}:8080"
+    # 把 .env 整份带进容器(开放白名单):AI_LOG_OUTBOX_* / AI_BILL_IDENTIFIER_DEDUP_* /
+    # AI_HTTP_VERIFY_SSL / STRICT_BASE_CHANGE_ID / BACKUP_SCHEDULER_ENABLED /
+    # ATTACHMENT_MAX_UPLOAD_BYTES / SCHEDULER_TIMEZONE / INVITE_SHARE_ORIGIN /
+    # EXCHANGE_RATE_* / EMBEDDING_* / REGISTRATION_ENABLED 等 settings 支持的
+    # 变量在 .env 里设置即可生效,无需逐项加进下面的 environment。
+    # 优先级:environment > env_file(compose 语义,显式覆盖保持不变);
+    # required: false —— .env 缺失时靠下面的 :? 插值 fail-fast 报错即可
+    # (纯 shell 环境变量部署不需要 .env 文件)。
+    env_file:
+      - path: .env
+        required: false
     environment:
       APP_ENV: production
       API_PREFIX: /api/v1
       WEB_STATIC_DIR: /app/static
-      DATABASE_URL: ${SMARTBOOK_DATABASE_URL:-postgresql+psycopg://${SMARTBOOK_DB_USERNAME:-smartbook}:${SMARTBOOK_DB_PASSWORD:-CHANGE_ME}@smartbook-db:5432/${SMARTBOOK_DB_DATABASE:-smartbook}}
+      DATABASE_URL: ${SMARTBOOK_DATABASE_URL:-postgresql+psycopg://${SMARTBOOK_DB_USERNAME:-smartbook}:${SMARTBOOK_DB_PASSWORD:?Set SMARTBOOK_DB_PASSWORD in .env}@smartbook-db:5432/${SMARTBOOK_DB_DATABASE:-smartbook}}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
       ACCESS_TOKEN_EXPIRE_MINUTES: 60
       REFRESH_TOKEN_EXPIRE_DAYS: 30
@@ -39,6 +50,16 @@ services:
       # DATA_DIR=/data 派生(见 server/src/config.py),统一落在下面的 volume。
       BACKUP_MAX_UPLOAD_BYTES: 67108864
       ALLOW_APP_RW_SCOPES: "true"
+      # uvicorn 信任 X-Forwarded-For 的来源网段(镜像 CMD 已开 --proxy-headers,
+      # 未设本变量时 uvicorn 默认只信 127.0.0.1,等于不认任何外部反代)。
+      # 默认 172.16.0.0/12 覆盖 Docker 默认 bridge / compose 网络地址池
+      # (172.17-172.31.x):宿主机 nginx/caddy 经发布端口进来的源 IP 是网桥
+      # 网关,同网容器反代的源 IP 是容器自身,都在网段内;而绕过反代直连发布
+      # 端口的外部来源保留真实 IP,不在网段内 —— 伪造 X-Forwarded-For 无效。
+      # 取舍:自定义过 default-address-pool 的按实际网段改;发布端口只供反代
+      # 使用时可改 "*" (单层可信反代前提) —— 但端口一旦可被直连,* 等于允许
+      # 任何人伪造来源 IP 绕过限流。详见 docs/deploy/reverse-proxy.md。
+      FORWARDED_ALLOW_IPS: 172.16.0.0/12
       # 可选：AI 文档 Q&A / 汇率代理。参考 .env.example 注释。
       # EMBEDDING_BASE_URL: https://api.siliconflow.cn/v1
       # EMBEDDING_MODEL: BAAI/bge-m3

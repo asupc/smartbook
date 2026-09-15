@@ -13,7 +13,10 @@ COPY frontend/packages/api-client/package.json /workspace/frontend/packages/api-
 COPY frontend/packages/ui/package.json /workspace/frontend/packages/ui/package.json
 COPY frontend/packages/web-features/package.json /workspace/frontend/packages/web-features/package.json
 
-RUN pnpm install --frozen-lockfile || pnpm install --no-frozen-lockfile
+# lockfile 与 manifest 必须一致(可复现构建):frozen 失败直接报错终止构建,
+# 不再静默降级 --no-frozen-lockfile(那会让镜像内容依赖构建当时网络解析结果,
+# 构建不可复现且无告警)。lock 变更请本地 pnpm install 后连 pnpm-lock.yaml 一起提交。
+RUN pnpm install --frozen-lockfile
 
 COPY frontend /workspace/frontend
 ARG VITE_API_BASE_URL=/api/v1
@@ -65,6 +68,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rclone \
     && rm -rf /var/lib/apt/lists/*
 
+# postgresql-client-16:备份模块 PG 方言走 pg_dump(custom format,见
+# src/services/backup/db_snapshot.py)。Debian 主仓库的客户端版本跟随 base
+# 发行版,固定 16 需 PGDG 官方仓库;suite 从 /etc/os-release 动态取 ——
+# python:3.12-slim 已切到 trixie,写死 bookworm-pgdg 会装出依赖冲突的
+# libpq。**大版本必须与 compose 里 postgres:16-alpine 的服务端大版本匹配
+# (客户端 >= 服务端)** —— pg_dump 老客户端会拒连新服务端,升级 compose
+# PG 大版本时这里要同步改。
+RUN set -eux; \
+    install -d -m 0755 /usr/share/postgresql-common/pgdg; \
+    curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+      -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc; \
+    . /etc/os-release; \
+    echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" \
+      > /etc/apt/sources.list.d/pgdg.list; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends postgresql-client-16; \
+    rm -rf /var/lib/apt/lists/*
+
 # 先装 Python 依赖（单独一层，改业务代码时不用重装）
 COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
@@ -115,4 +136,10 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
      || curl -fsSL http://localhost:8080/ \
      || exit 1
 
-CMD ["sh", "-c", "alembic upgrade head && uvicorn server:app --host 0.0.0.0 --port 8080"]
+# --proxy-headers:外部反代(nginx/caddy,最小样例见 docs/deploy/reverse-proxy.md)
+# 场景下,uvicorn 从 X-Forwarded-For / X-Forwarded-Proto 还原真实客户端 IP ——
+# 登录限流 key(src/routers/auth.py)与审计 client_ip 都依赖它;不开时所有请求
+# 的 client 都是反代/网桥网关 IP,限流退化为全站共享桶(一个来源可打满全站 429)。
+# 可信来源由 FORWARDED_ALLOW_IPS env 控制(compose 已设 docker 网段;不设则
+# uvicorn 默认只信任 127.0.0.1,即不认任何外部反代头,行为与旧版一致)。
+CMD ["sh", "-c", "alembic upgrade head && uvicorn server:app --host 0.0.0.0 --port 8080 --proxy-headers"]
