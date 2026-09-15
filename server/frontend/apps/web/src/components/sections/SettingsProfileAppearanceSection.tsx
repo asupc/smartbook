@@ -32,6 +32,7 @@ import {
 } from '@smartbook/ui'
 
 import { patchProfileMe, uploadProfileAvatar } from '@smartbook/api-client'
+import { useAvatarUrl } from '@smartbook/web-features'
 
 import { useAuth } from '../../context/AuthContext'
 import {
@@ -90,6 +91,9 @@ export function SettingsProfileAppearanceSection() {
   const [nameSaving, setNameSaving] = useState(false)
   const [idCopied, setIdCopied] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  // S5:头像端点已加鉴权,img 直连 401 —— fetch+blob;v(avatar_version)进
+  // 缓存 key,上传成功版本号 bump 后自动取新图。
+  const avatarSrc = useAvatarUrl(profileMe?.avatar_url, profileMe?.avatar_version)
 
   // 欢迎语随时段变化:每分钟刷一次 tick,刚好跨越 11/13/18/23 这些边界时
   // UI 自动更新。useState 持有 tick 数,变了就重新走 useMemo。
@@ -321,11 +325,11 @@ export function SettingsProfileAppearanceSection() {
                 aria-label={t('profile.avatar.upload.button') as string}
                 title={t('profile.avatar.upload.button') as string}
               >
-                {profileMe?.avatar_url ? (
+                {avatarSrc ? (
                   <img
                     alt={profileDisplayLabel}
                     className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
-                    src={profileMe.avatar_url}
+                    src={avatarSrc}
                   />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center bg-muted text-xl font-bold text-muted-foreground">

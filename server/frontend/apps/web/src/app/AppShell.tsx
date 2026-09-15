@@ -10,6 +10,7 @@ import {
   type ProfileMe,
   type ReadLedger,
 } from '@smartbook/api-client'
+import { AvatarTokenProvider } from '@smartbook/web-features'
 import { usePrimaryColor } from '@smartbook/ui'
 
 import { AboutDialog } from '../components/AboutDialog'
@@ -170,6 +171,7 @@ export function AppShell({ token, onLogout }: Props) {
   }, [isAdmin, isAdminResolved, location.pathname, navigate])
 
   return (
+    <AvatarTokenProvider token={token}>
     <AuthProvider
       token={token}
       profileMe={profileMe}
@@ -213,6 +215,7 @@ export function AppShell({ token, onLogout }: Props) {
         </SyncSocketProvider>
       </LedgersProvider>
     </AuthProvider>
+    </AvatarTokenProvider>
   )
 }
 

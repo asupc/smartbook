@@ -27,6 +27,7 @@ import {
 import type { UserAdmin } from '@smartbook/api-client'
 
 import { ListTableShell } from '../components/ListTableShell'
+import { useAvatarUrl } from '../lib/useAvatarUrl'
 import { formatIsoDateTime } from '../format'
 
 type AdminUsersPanelProps = {
@@ -98,7 +99,8 @@ export function AdminUsersPanel({
   const [createOpen, setCreateOpen] = useState(false)
   const [edit, setEdit] = useState<EditState | null>(null)
   const [passwordDialog, setPasswordDialog] = useState<PasswordDialogState | null>(null)
-  const [brokenAvatarUserIds, setBrokenAvatarUserIds] = useState<Set<string>>(new Set())
+  // S5:头像端点加鉴权后 img 直连 401 —— 失败兜底移入 useAvatarUrl(子组件
+  // AdminUserAvatar),原先按行记 broken id 的 state 不再需要。
   const textActionClass =
     'rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors disabled:pointer-events-none disabled:opacity-40'
   const textDangerActionClass =
@@ -260,25 +262,7 @@ export function AdminUsersPanel({
                   {/* mobile 上 min-w 设 160 够放头像 + 名字 + 邮箱,sm+ 恢复 220。
                       过宽会顶走 Ops sticky 列的可用空间。 */}
                   <div className="flex min-w-[160px] items-center gap-2.5 sm:min-w-[220px]">
-                    {row.avatar_url && !brokenAvatarUserIds.has(row.id) ? (
-                      <img
-                        alt={userDisplayName(row)}
-                        className="h-8 w-8 rounded-full border border-border/70 object-cover shadow-2xs"
-                        src={row.avatar_url}
-                        onError={() =>
-                          setBrokenAvatarUserIds((prev) => {
-                            if (prev.has(row.id)) return prev
-                            const next = new Set(prev)
-                            next.add(row.id)
-                            return next
-                          })
-                        }
-                      />
-                    ) : (
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full border border-border/70 bg-muted/60 text-xs font-bold text-muted-foreground shadow-2xs">
-                        {userAvatarInitial(row)}
-                      </div>
-                    )}
+                    <AdminUserAvatar avatarUrl={row.avatar_url} label={userDisplayName(row)} initial={userAvatarInitial(row)} />
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold tracking-tight text-foreground">{userDisplayName(row)}</p>
                       <p className="truncate text-xs text-muted-foreground">{row.email}</p>
@@ -554,5 +538,33 @@ export function AdminUsersPanel({
         </DialogContent>
       </Dialog>
     </ListTableShell>
+  )
+}
+
+/** 用户行头像(S5):avatar 端点已加鉴权,img 直连 401 —— 走 useAvatarUrl
+ *  fetch+blob(带 Bearer + 401 refresh 重放),失败/无头像回退首字母。 */
+function AdminUserAvatar({
+  avatarUrl,
+  label,
+  initial,
+}: {
+  avatarUrl: string | null | undefined
+  label: string
+  initial: string
+}) {
+  const url = useAvatarUrl(avatarUrl)
+  if (url) {
+    return (
+      <img
+        alt={label}
+        className="h-8 w-8 rounded-full border border-border/70 object-cover shadow-2xs"
+        src={url}
+      />
+    )
+  }
+  return (
+    <div className="flex h-8 w-8 items-center justify-center rounded-full border border-border/70 bg-muted/60 text-xs font-bold text-muted-foreground shadow-2xs">
+      {initial}
+    </div>
   )
 }

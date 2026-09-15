@@ -2,7 +2,9 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
+  useRef,
   useState,
   type Dispatch,
   type ReactNode,
@@ -51,6 +53,9 @@ export function PageDataCacheProvider({ children }: { children: ReactNode }) {
  *   - 只在 mount 的首次 render 读 cache(`useState` 初始化 lazy 函数),之后
  *     一切 setState 都走本地 React state,额外写 cache 一次 —— 避免每次 render
  *     都跟 cache 做比对的开销
+ *   - **key 变化时重置 state**(见下面的 useEffect):切账本等场景 Page 不
+ *     unmount(Outlet 复用),`useState` 初值只读一次,不重置的话首帧仍会
+ *     渲染旧 key(旧账本)的数据
  *   - key 应该带上决定数据分桶的维度(activeLedgerId / userId / filter 等),
  *     不同桶不该混用。例如 budgets 应当用 `budgets:${activeLedgerId}:rows`
  */
@@ -65,6 +70,26 @@ export function usePageCache<T>(
     }
     return typeof initial === 'function' ? (initial as () => T)() : initial
   })
+
+  // key 变化时从对应桶重新读初值(没命中回落 initial)。用 mounted ref 跳过
+  // 首次执行 —— mount 时 useState lazy init 已经读过一遍,再 set 一次只是
+  // 白白多一次 render(initial 通常是内联字面量,引用每次都不同)。
+  const mountedRef = useRef(false)
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true
+      return
+    }
+    setState(() => {
+      if (cache && cache.has(key)) {
+        return cache.get(key) as T
+      }
+      return typeof initial === 'function' ? (initial as () => T)() : initial
+    })
+    // 故意只依赖 key:cache 是 Provider 里 useMemo 的稳定引用;initial 通常是
+    // 内联字面量(每次 render 新引用),进了 deps 会导致每次 render 都重置。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key])
 
   const set: Dispatch<SetStateAction<T>> = useCallback(
     (next) => {

@@ -119,10 +119,6 @@ export async function fetchReadTransactions(
   }))
 }
 
-export async function fetchReadSummary(token: string, ledgerId: string): Promise<any> {
-  return authedGet<any>(`/read/summary?ledger_id=${encodeURIComponent(ledgerId)}`, token)
-}
-
 export async function fetchReadAccounts(token: string, ledgerId: string): Promise<ReadAccount[]> {
   return authedGet<ReadAccount[]>(`/read/ledgers/${encodeURIComponent(ledgerId)}/accounts`, token)
 }

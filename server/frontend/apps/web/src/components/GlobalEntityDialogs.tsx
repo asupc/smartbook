@@ -13,6 +13,7 @@ import {
 import { useAttachmentCache } from '../context/AttachmentCacheContext'
 import { useAuth } from '../context/AuthContext'
 import { useLedgers } from '../context/LedgersContext'
+import { useLatestFetch } from '../hooks/useLatestFetch'
 import {
   dispatchOpenEditCategory,
   dispatchOpenEditTx,
@@ -84,6 +85,15 @@ export function GlobalEntityDialogs() {
   // 共享 tags 字典 — 4 个详情弹窗里 TransactionList 渲染 tag chip 都要
   const [tagsDict, setTagsDict] = useState<WorkspaceTag[]>([])
 
+  // P0-6 竞态止血:account / category 列表 / category 统计 / tag 是四条独立
+  // 数据流(4 个弹窗可同时打开,不能共用一个守卫实例)。快速切 scope
+  // (current↔all)时旧一轮慢响应不再落地;onLoadMore 被 dialog 的
+  // `!loading` 守卫挡住,不会与本守卫冲突。
+  const beginAccountTxFetch = useLatestFetch()
+  const beginCategoryTxFetch = useLatestFetch()
+  const beginCategoryStatsFetch = useLatestFetch()
+  const beginTagTxFetch = useLatestFetch()
+
   // 监听 tx detail
   useEffect(() => {
     return onOpenDetailTx((next) => {
@@ -100,6 +110,7 @@ export function GlobalEntityDialogs() {
 
   const loadAccountTxs = useCallback(
     async (accountName: string, scope: DetailScope, offset: number) => {
+      const isStale = beginAccountTxFetch()
       setAccountLoading(true)
       try {
         const page = await fetchWorkspaceTransactions(token, {
@@ -108,16 +119,17 @@ export function GlobalEntityDialogs() {
           limit: DETAIL_PAGE_SIZE,
           offset,
         })
+        if (isStale()) return
         setAccountTxs((prev) => (offset === 0 ? page.items : [...prev, ...page.items]))
         setAccountTotal(page.total)
         setAccountOffset(offset + page.items.length)
       } catch {
         // 静默,弹窗里展示空 list 即可
       } finally {
-        setAccountLoading(false)
+        if (!isStale()) setAccountLoading(false)
       }
     },
-    [token, activeLedgerId],
+    [token, activeLedgerId, beginAccountTxFetch],
   )
 
   // 监听 account detail
@@ -150,6 +162,7 @@ export function GlobalEntityDialogs() {
 
   const loadCategoryTxs = useCallback(
     async (categorySyncId: string, scope: DetailScope, offset: number) => {
+      const isStale = beginCategoryTxFetch()
       setCategoryLoading(true)
       try {
         const page = await fetchWorkspaceTransactions(token, {
@@ -158,22 +171,24 @@ export function GlobalEntityDialogs() {
           limit: DETAIL_PAGE_SIZE,
           offset,
         })
+        if (isStale()) return
         setCategoryTxs((prev) => (offset === 0 ? page.items : [...prev, ...page.items]))
         setCategoryTotal(page.total)
         setCategoryOffset(offset + page.items.length)
       } catch {
         // ignore
       } finally {
-        setCategoryLoading(false)
+        if (!isStale()) setCategoryLoading(false)
       }
     },
-    [token, activeLedgerId],
+    [token, activeLedgerId, beginCategoryTxFetch],
   )
 
   /** 拉一次大批量用于客户端聚合 KPI / 趋势 / Top。scope=current 限定当前账本,
    *  scope=all 跨账本。cap=1000 — 超过显示截断提示,KPI 仍可用但精度下降。 */
   const loadCategoryStats = useCallback(
     async (categorySyncId: string, scope: DetailScope) => {
+      const isStale = beginCategoryStatsFetch()
       setCategoryStatsLoading(true)
       setCategoryStatsTruncated(false)
       try {
@@ -183,15 +198,16 @@ export function GlobalEntityDialogs() {
           limit: CATEGORY_STATS_LIMIT,
           offset: 0,
         })
+        if (isStale()) return
         setCategoryStatsTxs(page.items)
         setCategoryStatsTruncated(page.total > page.items.length)
       } catch {
-        setCategoryStatsTxs([])
+        if (!isStale()) setCategoryStatsTxs([])
       } finally {
-        setCategoryStatsLoading(false)
+        if (!isStale()) setCategoryStatsLoading(false)
       }
     },
-    [token, activeLedgerId],
+    [token, activeLedgerId, beginCategoryStatsFetch],
   )
 
   // 监听 category detail
@@ -229,6 +245,7 @@ export function GlobalEntityDialogs() {
 
   const loadTagTxs = useCallback(
     async (tagSyncId: string, scope: DetailScope, offset: number) => {
+      const isStale = beginTagTxFetch()
       setTagLoading(true)
       try {
         const page = await fetchWorkspaceTransactions(token, {
@@ -237,16 +254,17 @@ export function GlobalEntityDialogs() {
           limit: DETAIL_PAGE_SIZE,
           offset,
         })
+        if (isStale()) return
         setTagTxs((prev) => (offset === 0 ? page.items : [...prev, ...page.items]))
         setTagTotal(page.total)
         setTagOffset(offset + page.items.length)
       } catch {
         // ignore
       } finally {
-        setTagLoading(false)
+        if (!isStale()) setTagLoading(false)
       }
     },
-    [token, activeLedgerId],
+    [token, activeLedgerId, beginTagTxFetch],
   )
 
   // 监听 tag detail

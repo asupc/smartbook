@@ -10,7 +10,7 @@ import {
 
 import { getStoredDeviceId, getStoredUserId } from '@smartbook/api-client'
 
-import { useSyncSocket } from '../hooks/useSyncSocket'
+import { useSyncSocket, type SyncSocketStatus } from '../hooks/useSyncSocket'
 import { drainPull, startPoller, type SyncChangeEnvelope } from '../state/sync-client'
 import { useAuth } from './AuthContext'
 
@@ -65,18 +65,25 @@ interface Subscriber {
 }
 
 interface SyncSocketContextValue {
-  /** 内部:向所有订阅者广播一条事件。只给 Provider 自己用,不对外暴露。 */
+  /** 内部:向所有订阅者广播一条事件。Provider 自己与本文件的
+   *  useSyncBroadcast 用,不作为公开 API 直接消费。 */
   _emit: (payload: SyncEventPayload) => void
   /** 内部:注册/注销订阅。 */
   _subscribe: (sub: Subscriber) => () => void
+  /** W7/附录 B5:同步连接状态(connected / reconnecting / error 等),
+   *  AppShell 头部用它渲染断线提示。 */
+  status: SyncSocketStatus
 }
 
 const SyncSocketContext = createContext<SyncSocketContextValue | null>(null)
 
-function wsUrl(token: string): string {
+function wsUrl(_token: string): string {
+  // W7:token 不再进 URL query(会落反代/服务端 access log)—— 鉴权走
+  // 连接后首条 {"type":"auth"} 消息(见 useSyncSocket)。参数仅为兼容
+  // buildUrl 签名保留。
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
   const host = window.location.port === '5173' ? `${window.location.hostname}:8080` : window.location.host
-  return `${protocol}://${host}/ws?token=${encodeURIComponent(token)}`
+  return `${protocol}://${host}/ws`
 }
 
 /**
@@ -129,7 +136,7 @@ export function SyncSocketProvider({ children }: { children: ReactNode }) {
 
   const wsBuildUrl = useCallback((tok: string) => wsUrl(tok), [])
 
-  useSyncSocket({
+  const { status } = useSyncSocket({
     token,
     buildUrl: wsBuildUrl,
     onEvent: (payload: unknown) => {
@@ -170,8 +177,8 @@ export function SyncSocketProvider({ children }: { children: ReactNode }) {
   }, [token, syncDeviceId, emit])
 
   const value = useMemo<SyncSocketContextValue>(
-    () => ({ _emit: emit, _subscribe: subscribe }),
-    [emit, subscribe]
+    () => ({ _emit: emit, _subscribe: subscribe, status }),
+    [emit, subscribe, status]
   )
 
   return <SyncSocketContext.Provider value={value}>{children}</SyncSocketContext.Provider>
@@ -214,4 +221,32 @@ export function useSyncRefresh(handler: () => void): void {
   useSyncEvent('sync_change', wrapped)
   useSyncEvent('backup_restore', wrapped)
   useSyncEvent('sync_change_batch', wrapped)
+}
+
+/**
+ * 本地广播一条 `sync_change` 事件(P0-7)—— 不经 server,当前 tab 内立即
+ * 触发所有 useSyncRefresh 订阅者刷新。
+ *
+ * 场景:本端自己完成了 mutation(如 GlobalEditDialogs 保存交易/分类),
+ * 但不能只指望 WS 广播回流 —— WS 断开时兜底 poller 的 drainPull 带
+ * device_id,服务端会过滤「自己 push 的变更」,页面会长期陈旧。调用它
+ * 与「TransactionsPage 保存后显式 refreshSectionData」行为对齐;WS 健康时
+ * 服务端广播也会到,顶多多刷一次(与既有行为一致)。
+ */
+export function useSyncBroadcast(): () => void {
+  const ctx = useContext(SyncSocketContext)
+  if (!ctx) throw new Error('useSyncBroadcast must be used inside <SyncSocketProvider>')
+  const emit = ctx._emit
+  return useCallback(() => emit({ type: 'sync_change' }), [emit])
+}
+
+/**
+ * W7/附录 B5:同步连接状态。useSyncSocket 返回的 status 此前没有任何 UI
+ * 出口(Web 端看不到「同步断开/出错」);AppShell 头部的 SyncStatusBadge
+ * 消费它渲染 connected / reconnecting / error 三态提示。
+ */
+export function useSyncStatus(): SyncSocketStatus {
+  const ctx = useContext(SyncSocketContext)
+  if (!ctx) throw new Error('useSyncStatus must be used inside <SyncSocketProvider>')
+  return ctx.status
 }

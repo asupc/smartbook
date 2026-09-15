@@ -4,6 +4,7 @@ import type { AttachmentRef, ReadCategory, ReadTag, ReadTransaction } from '@sma
 import { EmptyState, useT } from '@smartbook/ui'
 
 import { buildTagColorMap } from '../lib/tagColorPalette'
+import { attachSentinelObserver } from '../lib/sentinelObserver'
 
 import {
   TransactionRow,
@@ -95,6 +96,12 @@ export function TransactionList({
 }: Props) {
   const t = useT()
   const sentinelRef = useRef<HTMLDivElement | null>(null)
+  // W6:onLoadMore 存 ref,effect 只依赖 hasMore —— 调用方传 inline 箭头
+  // (GlobalEntityDialogs / AccountDetailDialog)时 observer 不再每次 render
+  // 重建(重建会在弹窗打开瞬间对 sentinel 重算可见性,可能双发 page-0),
+  // 触发时读到的也永远是最新回调,不会有 stale closure。
+  const onLoadMoreRef = useRef(onLoadMore)
+  onLoadMoreRef.current = onLoadMore
   const tagColorByName = tags ? buildTagColorMap(tags) : undefined
   const categoryById = useMemo(() => {
     if (!categories || categories.length === 0) return undefined
@@ -106,22 +113,11 @@ export function TransactionList({
   }, [categories])
 
   useEffect(() => {
-    if (!hasMore || !onLoadMore) return
+    if (!hasMore) return
     const target = sentinelRef.current
     if (!target) return
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            onLoadMore()
-          }
-        }
-      },
-      { rootMargin: '80px' }
-    )
-    observer.observe(target)
-    return () => observer.disconnect()
-  }, [hasMore, onLoadMore])
+    return attachSentinelObserver(target, () => onLoadMoreRef.current)
+  }, [hasMore])
 
   return (
     <div className={className}>

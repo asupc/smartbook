@@ -4,6 +4,7 @@ import { Dropdown } from 'antd'
 import type { MenuProps } from 'antd'
 
 import { useLocale, useT, useTheme } from '@smartbook/ui'
+import { useAvatarUrl } from '@smartbook/web-features'
 
 /**
  * 头像悬浮下拉菜单 —— 只保留 chrome 级操作。
@@ -37,7 +38,10 @@ export function AvatarDropdown({ profileMe, isAdminUser, onLogout, onOpenAbout }
   const { locale, setLocale } = useLocale()
   const { mode: themeMode, setMode: setThemeMode } = useTheme()
 
-  const avatarSrc = withAvatarCacheBust(profileMe.avatar_url, profileMe.avatar_version)
+  // S5:avatar 端点已加鉴权,<img> 直连会 401 —— 走 fetch+blob(useAvatarUrl,
+  // 内部带 Bearer + 401 refresh 重放,失败回退首字母占位)。v(avatar_version)
+  // 语义保留:进 blob 缓存 key,版本 bump 即取新图。
+  const avatarSrc = useAvatarUrl(profileMe.avatar_url, profileMe.avatar_version)
 
   const menuItems: MenuProps['items'] = [
     {
@@ -160,21 +164,8 @@ export function AvatarDropdown({ profileMe, isAdminUser, onLogout, onOpenAbout }
   )
 }
 
-/** 头像 URL cache-bust:服务端 bump version 时拼 `?v=<version>` 让浏览器
- *  disk cache 失效(不走 `key={version}` 只是 React 层重挂,不一定能迫使
- *  浏览器重下资源;两层兜底才稳)。 */
-function withAvatarCacheBust(
-  url: string | null | undefined,
-  version: number | null | undefined,
-): string {
-  if (!url) return ''
-  if (version == null) return url
-  const separator = url.includes('?') ? '&' : '?'
-  if (/[?&]v=\d+/.test(url)) {
-    return url.replace(/([?&])v=\d+/, `$1v=${version}`)
-  }
-  return `${url}${separator}v=${version}`
-}
+/** 头像 URL cache-bust 逻辑已并入 useAvatarUrl 的 normalizeAvatarPath
+ *  (S5 鉴权改造后 img 直连不可用,本地函数随直连路径一并移除)。 */
 
 // --- 小工具组件,本文件内自用,不 export ---
 

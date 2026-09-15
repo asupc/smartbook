@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Select as AntSelect } from 'antd'
 
 import {
@@ -26,6 +26,7 @@ import { Plus } from 'lucide-react'
 import { CategoryIcon } from '../components/CategoryIcon'
 import { TransactionList } from '../components/TransactionList'
 import { getIconGroupsByKind, type CategoryIconItem } from '../lib/categoryIconGroups'
+import { requestDirtyClose, serializeFormSnapshot } from '../lib/dirtyCloseGuard'
 import { categoryDefaults, type CategoryForm } from '../forms'
 
 type CategoryKind = 'expense' | 'income' | 'transfer'
@@ -294,6 +295,43 @@ export function CategoriesPanel({
   const [iconPickerOpen, setIconPickerOpen] = useState(false)
   const [duplicateError, setDuplicateError] = useState<string | null>(null)
 
+  // W2 脏检查(与 TransactionsPanel 同一套):打开时快照,关闭(ESC/遮罩/X/
+  // 取消)时比对,有修改弹二次确认。baselinePending 兜底 form 晚于 open 一
+  // 帧到达的路径。
+  const formSnapshotRef = useRef<string | null>(null)
+  const baselinePendingRef = useRef(false)
+  useEffect(() => {
+    if (open) baselinePendingRef.current = true
+  }, [open])
+  useEffect(() => {
+    if (!open) {
+      formSnapshotRef.current = null
+      return
+    }
+    if (baselinePendingRef.current) {
+      formSnapshotRef.current = serializeFormSnapshot(form)
+      baselinePendingRef.current = false
+    }
+  }, [open, form])
+
+  const requestCloseDialog = (viaCancelButton: boolean) => {
+    requestDirtyClose({
+      snapshot: formSnapshotRef.current,
+      current: form,
+      texts: {
+        title: t('dialog.unsavedChanges.title'),
+        description: t('dialog.unsavedChanges.description'),
+        confirm: t('dialog.unsavedChanges.confirm'),
+        cancel: t('dialog.unsavedChanges.cancel'),
+      },
+      close: () => {
+        setDuplicateError(null)
+        if (viaCancelButton) onReset()
+        setOpen(false)
+      },
+    })
+  }
+
   // 父分类候选:跟当前编辑/新建的 kind 一致 + 必须是 level=1(顶级) + 排除自
   // 己(避免自己挂自己当父的死循环)。app 端 createSubCategory 只允许 level=2
   // 挂 level=1 父,这里同 contract。
@@ -458,8 +496,12 @@ export function CategoriesPanel({
       )}
 
       <Dialog open={open} onOpenChange={(next) => {
-        setOpen(next)
-        if (!next) setDuplicateError(null)
+        if (next) {
+          setOpen(true)
+          return
+        }
+        // W2:ESC / 遮罩 / X 统一走脏检查(有修改先二次确认)。
+        requestCloseDialog(false)
       }}>
         <DialogContent>
           <DialogHeader>
@@ -673,9 +715,8 @@ export function CategoriesPanel({
             <Button
               variant="outline"
               onClick={() => {
-                onReset()
-                setDuplicateError(null)
-                setOpen(false)
+                // W2:取消也走脏检查(有修改先确认再丢)。
+                requestCloseDialog(true)
               }}
             >
               {t('dialog.cancel')}

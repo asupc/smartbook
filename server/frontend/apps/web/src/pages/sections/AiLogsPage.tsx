@@ -25,6 +25,9 @@ import { ConfirmDialog } from '@smartbook/web-features'
 import { History } from 'lucide-react'
 
 import { useAuth } from '../../context/AuthContext'
+import { useSyncRefresh } from '../../context/SyncSocketContext'
+import { useLatestFetch } from '../../hooks/useLatestFetch'
+import { createObjectUrlWhenCurrent } from '../../lib/blobUrl'
 import { localizeError } from '../../i18n/errors'
 
 /**
@@ -71,20 +74,32 @@ export function AiLogsPage() {
   const [batchConfirmOpen, setBatchConfirmOpen] = useState(false)
   const [batchDeleting, setBatchDeleting] = useState(false)
 
+  // P0-6 竞态止血:列表 / 详情是两条独立数据流。快速翻页或切 status 过滤
+  // 时旧一轮慢响应不再落地;快速点开不同行时旧详情不再覆盖新详情。
+  const beginListFetch = useLatestFetch()
+  const beginDetailFetch = useLatestFetch()
+
   useEffect(() => {
     if (!detail?.has_image) {
       setImageUrl(null)
       return
     }
-    let revoke: string | null = null
-    getAIAnalysisLogImage(token, detail.id)
-      .then((blob) => {
-        revoke = URL.createObjectURL(blob)
-        setImageUrl(revoke)
-      })
-      .catch(() => setImageUrl(null))
+    // W5 竞态守卫:fetch resolve 晚于 effect 重跑/卸载时,不再 createObjectURL
+    // (旧代码此路径产生的 objectURL 无人 revoke + stale setImageUrl)。已创建
+    // 的 URL 由 cleanup revoke。
+    let cancelled = false
+    let createdUrl: string | null = null
+    void createObjectUrlWhenCurrent(
+      () => getAIAnalysisLogImage(token, detail.id),
+      () => cancelled,
+    ).then((url) => {
+      if (cancelled) return
+      createdUrl = url
+      setImageUrl(url)
+    })
     return () => {
-      if (revoke) URL.revokeObjectURL(revoke)
+      cancelled = true
+      if (createdUrl) URL.revokeObjectURL(createdUrl)
     }
   }, [detail, token])
 
@@ -94,6 +109,7 @@ export function AiLogsPage() {
   )
 
   const refresh = useCallback(async () => {
+    const isStale = beginListFetch()
     setLoading(true)
     try {
       const res = await listAIAnalysisLogs(token, {
@@ -101,31 +117,43 @@ export function AiLogsPage() {
         offset: page * HISTORY_PAGE_SIZE,
         status: statusFilter === 'all' ? undefined : statusFilter,
       })
+      if (isStale()) return
       setItems(res.items)
       setTotal(res.total)
     } catch (err) {
-      notifyError(err)
+      if (!isStale()) notifyError(err)
     } finally {
-      setLoading(false)
+      if (!isStale()) setLoading(false)
     }
-  }, [token, page, statusFilter, notifyError])
+  }, [token, page, statusFilter, notifyError, beginListFetch])
 
   useEffect(() => {
     void refresh()
   }, [refresh])
 
+  // W8:订阅 sync 事件刷新 —— 其它数据页都订,AI 日志页此前完全不随 sync
+  // 事件刷新。refresh 内部带 beginListFetch 守卫,与挂载/翻页触发的在途请求
+  // 不会竞态(旧一轮响应不落地)。useSyncRefresh 内部用 ref 持 handler,
+  // refresh 身份变化不会反复重订阅。
+  useSyncRefresh(() => {
+    void refresh()
+  })
+
   const openDetail = useCallback(
     async (id: number) => {
+      const isStale = beginDetailFetch()
       setDetailLoading(true)
       try {
-        setDetail(await getAIAnalysisLog(token, id))
+        const detailRow = await getAIAnalysisLog(token, id)
+        if (isStale()) return
+        setDetail(detailRow)
       } catch (err) {
-        notifyError(err)
+        if (!isStale()) notifyError(err)
       } finally {
-        setDetailLoading(false)
+        if (!isStale()) setDetailLoading(false)
       }
     },
-    [token, notifyError],
+    [token, notifyError, beginDetailFetch]
   )
 
   const confirmDelete = useCallback(async () => {

@@ -35,6 +35,7 @@ import { useT } from '@smartbook/ui'
 import { NAV_GROUPS, type AppSection } from '@smartbook/web-features'
 
 import { AvatarDropdown } from '../components/AvatarDropdown'
+import { SyncStatusBadge } from '../components/SyncStatusBadge'
 import { useAuth } from '../context/AuthContext'
 import { useLedgers } from '../context/LedgersContext'
 import { parseRoute, routePath } from '../state/router'
@@ -288,6 +289,8 @@ export function AdminLayout({ onOpenLogs, onOpenAbout }: Props) {
           </div>
 
           <div className="flex shrink-0 items-center gap-1">
+            {/* W7/附录 B5:同步连接状态指示(connected / reconnecting / error)。 */}
+            <SyncStatusBadge />
             <Button
               type="text"
               title={t('cmdk.headerButton')}

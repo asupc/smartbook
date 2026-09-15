@@ -17,12 +17,11 @@ import {
 
 import {
   fetchMemberStats,
-  resolveApiUrl,
   type MemberStatItem,
   type MemberStatScope,
   type MemberStatsResponse,
 } from '@smartbook/api-client'
-import { Amount } from '@smartbook/web-features'
+import { Amount, useAvatarUrl } from '@smartbook/web-features'
 import { useT, useToast } from '@smartbook/ui'
 import { localizeError } from '../i18n/errors'
 
@@ -316,7 +315,6 @@ export function SharedLedgerStatsDialog({
               </h3>
               <div className="space-y-1">
                 {items.map((s) => {
-                  const avatarUrl = resolveApiUrl(s.avatar_url)
                   const name = nameOf(s)
                   const sharePct =
                     summary.expense > 0
@@ -331,17 +329,7 @@ export function SharedLedgerStatsDialog({
                         className="block h-2 w-2 shrink-0 rounded-full"
                         style={{ background: colorForUserId(s.user_id) }}
                       />
-                      {avatarUrl ? (
-                        <img
-                          src={avatarUrl}
-                          alt={name}
-                          className="h-7 w-7 rounded-full object-cover"
-                        />
-                      ) : (
-                        <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary/20 text-xs font-semibold text-primary">
-                          {(name[0] || '?').toUpperCase()}
-                        </span>
-                      )}
+                      <MemberAvatar avatarUrl={s.avatar_url} name={name} />
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-sm font-medium">
                           {name}
@@ -452,5 +440,19 @@ function ChartCard({ title, children }: { title: string; children: React.ReactNo
       </div>
       {children}
     </div>
+  )
+}
+
+/** 成员头像(S5:map 循环里不能直接挂 hook,抽成子组件)—— 端点已加鉴权,
+ *  走 useAvatarUrl fetch+blob;失败/无头像回退首字母色块。 */
+function MemberAvatar({ avatarUrl, name }: { avatarUrl: string | null; name: string }) {
+  const url = useAvatarUrl(avatarUrl)
+  if (url) {
+    return <img src={url} alt={name} className="h-7 w-7 rounded-full object-cover" />
+  }
+  return (
+    <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary/20 text-xs font-semibold text-primary">
+      {(name[0] || '?').toUpperCase()}
+    </span>
   )
 }

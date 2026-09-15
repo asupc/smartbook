@@ -7,6 +7,7 @@ import { useT } from '@smartbook/ui'
 import { AppShell } from './app/AppShell'
 import { RequireAuth } from './app/router'
 import { LoginPage } from './pages/LoginPage'
+import { clearTxFilterStorage } from './lib/userScopedStorage'
 import { clearCursor } from './state/sync-client'
 
 // Section 页面全部懒加载 — 首屏只下载当前 route 需要的 chunk,显著降低
@@ -131,13 +132,9 @@ function clearUserScopedStorage(userId: string): void {
   if (typeof window === 'undefined' || !userId) return
   try {
     window.localStorage.removeItem(`smartbook.active-ledger.${userId}`)
-    const prefix = `smartbook:web:txFilter:v1:${userId}:`
-    const doomed: string[] = []
-    for (let i = 0; i < window.localStorage.length; i += 1) {
-      const key = window.localStorage.key(i)
-      if (key && key.startsWith(prefix)) doomed.push(key)
-    }
-    for (const key of doomed) window.localStorage.removeItem(key)
+    // W4:交易筛选 key 已升 v2,清理不能只认 v1 前缀 —— 走共享工具按
+    // `txFilter:<任何版本>:<userId>:` 通配,否则 v2 键永久残留(隐私残留)。
+    clearTxFilterStorage(userId)
   } catch {
     // localStorage 在 private mode / 超配额时可能抛异常,忽略即可。
   }

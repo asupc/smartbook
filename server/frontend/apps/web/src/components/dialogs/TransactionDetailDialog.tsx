@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { resolveApiUrl, type AttachmentRef, type WorkspaceTag, type WorkspaceTransaction } from '@smartbook/api-client'
+import { type AttachmentRef, type WorkspaceTag, type WorkspaceTransaction } from '@smartbook/api-client'
 import { Button, Drawer } from 'antd'
 import { useT } from '@smartbook/ui'
-import { buildTagColorMap, TagChip } from '@smartbook/web-features'
+import { buildTagColorMap, TagChip, useAvatarUrl } from '@smartbook/web-features'
 import { Calendar, ChevronLeft, ChevronRight, Edit3, Hash, ImageOff, Tag, User, Wallet, X } from 'lucide-react'
 
 import { useAttachmentCache } from '../../context/AttachmentCacheContext'
@@ -216,6 +216,7 @@ export function TransactionDetailDialog({
 /**
  * 共享账本 tx 创建人 / 最后编辑人 — 头像 + 名字,hover 显示邮箱。
  * 头像 fallback 到首字母色块,跟 SharedLedgerStatsDialog 风格一致。
+ * S5:avatar 端点已加鉴权,改走 useAvatarUrl fetch+blob(401/404 → 占位)。
  */
 function UserBadge({
   displayName,
@@ -227,7 +228,7 @@ function UserBadge({
   avatarUrl: string | null | undefined
 }) {
   const name = displayName || email?.split('@')[0] || ''
-  const resolved = resolveApiUrl(avatarUrl)
+  const resolved = useAvatarUrl(avatarUrl)
   return (
     <span
       className="inline-flex items-center gap-1.5"

@@ -29,6 +29,7 @@ import { useLedgerWrite } from '../app/useLedgerWrite'
 import { useAttachmentCache } from '../context/AttachmentCacheContext'
 import { useAuth } from '../context/AuthContext'
 import { useLedgers } from '../context/LedgersContext'
+import { useSyncBroadcast } from '../context/SyncSocketContext'
 import { localizeError } from '../i18n/errors'
 import { onOpenEditCategory, onOpenEditTx, onOpenNewTx } from '../lib/txDialogEvents'
 
@@ -42,7 +43,9 @@ import { onOpenEditCategory, onOpenEditTx, onOpenNewTx } from '../lib/txDialogEv
  *   - 监听 openEditTx / openEditCategory 全局事件
  *   - 按需 fetch 写权限的 ledger refs(accounts/categories/tags)
  *   - 调 create/updateTransaction API + 命中 useLedgerWrite 的 CAS 重试
- *   - 写成功后通过 SyncSocket bumpLedger 触发其它页 refresh
+ *   - 写成功后本地广播 sync_change(useSyncBroadcast),当前页立即刷新 ——
+ *     不依赖 WS 回流:WS 断开时兜底 poller 会过滤自己 push 的变更,
+ *     页面会长期陈旧(P0-7)
  *
  * 编辑分类暂时仍走 navigate 到 /app/categories(分类编辑表单依赖 inline form
  * 的 icon picker / parent picker,数据流复杂,后续单独再做全局化)。
@@ -54,6 +57,8 @@ export function GlobalEditDialogs() {
   const { ledgers, currency, activeLedgerId } = useLedgers()
   const { previewMap: iconPreviewByFileId } = useAttachmentCache()
   const { retryOnConflict, isWriteConflict } = useLedgerWrite()
+  // P0-7:保存成功后本地广播 sync_change,触发各页 useSyncRefresh 刷新。
+  const broadcastLocalChange = useSyncBroadcast()
 
   const [editTxOpen, setEditTxOpen] = useState(false)
   const [editTxForm, setEditTxForm] = useState<TxForm>(txDefaults())
@@ -107,14 +112,19 @@ export function GlobalEditDialogs() {
   }))
 
   const loadRefsForLedger = useCallback(
-    async (ledgerId: string) => {
-      if (!ledgerId) return
+    async (_ledgerId: string) => {
+      if (!_ledgerId) return
       setRefsLoading(true)
       try {
+        // W3 口径统一:账户/分类/标签是 user-global 实体(Flutter schema 无
+        // ledger_id),不带 ledgerId 拉全量 —— 与 TransactionsPage 的表单字典
+        // (loadTxDictionaries)一致。此前按 ledgerId 过滤会漏掉「该账本还没
+        // 用过」的账户/分类(它们没有该 ledger 的 projection 行,server 按
+        // ledger 过滤时直接不返回),编辑弹窗下拉凭空少选项。
         const [accts, cats, tagsList] = await Promise.all([
-          fetchWorkspaceAccounts(token, { ledgerId, limit: 500 }),
-          fetchWorkspaceCategories(token, { ledgerId, limit: 500 }),
-          fetchWorkspaceTags(token, { ledgerId, limit: 500 }),
+          fetchWorkspaceAccounts(token, { limit: 2000 }),
+          fetchWorkspaceCategories(token, { limit: 2000 }),
+          fetchWorkspaceTags(token, { limit: 2000 }),
         ])
         setEditTxAccounts(accts)
         setEditTxCategories(cats)
@@ -319,10 +329,14 @@ export function GlobalEditDialogs() {
         )
         notifySuccess(t('notice.transactionCreated'))
       }
+      // P0-7:保存成功后主动触发刷新 —— 本地广播 sync_change,当前页
+      // (交易列表 / 概览统计等)的 useSyncRefresh 订阅者立即重拉。不依赖
+      // WS 广播回流:WS 断开时兜底 poller 会过滤自己 push 的变更。
+      broadcastLocalChange()
       return true
     } catch (err) {
       if (isWriteConflict(err)) {
-        // 让其它页 refresh,这里只是关掉
+        // 写冲突重试已耗尽:本次没有写入成功,无需广播刷新。
       }
       notifyError(err)
       return false
@@ -336,6 +350,7 @@ export function GlobalEditDialogs() {
     t,
     notifyError,
     notifySuccess,
+    broadcastLocalChange,
   ])
 
   void currency
@@ -364,7 +379,9 @@ export function GlobalEditDialogs() {
         parent_name: cat.parent_name || '',
       })
       try {
-        const cats = await fetchWorkspaceCategories(token, { ledgerId, limit: 500 })
+        // W3:parent picker 的分类候选同样 user-global,不按 ledger 过滤
+        // (理由同上 loadRefsForLedger)。
+        const cats = await fetchWorkspaceCategories(token, { limit: 2000 })
         setEditCatRows(cats)
       } catch {
         setEditCatRows([])
@@ -402,6 +419,8 @@ export function GlobalEditDialogs() {
           ? t('notice.categoryUpdated')
           : t('notice.categoryCreated'),
       )
+      // P0-7:与 handleSaveTx 同理 —— 本地广播,分类页 / 各页分类字典立即刷新。
+      broadcastLocalChange()
       return true
     } catch (err) {
       notifyError(err)
@@ -415,6 +434,7 @@ export function GlobalEditDialogs() {
     t,
     notifyError,
     notifySuccess,
+    broadcastLocalChange,
   ])
 
   return (

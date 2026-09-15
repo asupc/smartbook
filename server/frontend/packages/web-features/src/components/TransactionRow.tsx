@@ -4,6 +4,7 @@ import { useT } from '@smartbook/ui'
 import { CategoryIcon } from './CategoryIcon'
 import { TagChip } from './TagChip'
 import { currencySymbol } from '../lib/currencies'
+import { useAvatarUrl } from '../lib/useAvatarUrl'
 import { composeTransactionRowTitle, type NoteDisplayMode } from '../lib/transactionRowTitle'
 
 export type TransactionRowVariant = 'default' | 'compact'
@@ -434,15 +435,19 @@ function UserMiniAvatar({
     height: size,
     fontSize: Math.round(size * 0.45),
   }
-  if (avatarUrl) {
+  // S5:avatar 端点已加鉴权,img 直连 401 —— 走 useAvatarUrl fetch+blob,
+  // 失败/无头像回退首字母色块(token 由 AppShell 的 AvatarTokenProvider 注入)。
+  const resolvedUrl = useAvatarUrl(avatarUrl)
+  if (resolvedUrl) {
     return (
       <img
-        src={avatarUrl}
+        src={resolvedUrl}
         alt={name}
         style={{ width: size, height: size }}
         className="rounded-full object-cover"
         onError={(e) => {
-          // 头像 404 时退化成首字母,避免 broken-image 图标
+          // blob URL 渲染失败(极端:revoke 后复用)时退化成首字母,避免
+          // broken-image 图标
           ;(e.currentTarget as HTMLImageElement).style.display = 'none'
         }}
       />

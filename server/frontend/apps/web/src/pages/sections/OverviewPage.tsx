@@ -21,6 +21,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useLedgers } from '../../context/LedgersContext'
 import { usePageCache } from '../../context/PageDataCacheContext'
 import { useSyncRefresh } from '../../context/SyncSocketContext'
+import { useLatestFetch } from '../../hooks/useLatestFetch'
 import { setAppBadge } from '../../lib/pwa-badge'
 import { dispatchOpenDetailCategory } from '../../lib/txDialogEvents'
 
@@ -36,10 +37,18 @@ export function OverviewPage() {
   const { token } = useAuth()
   const { activeLedgerId, currentLedger } = useLedgers()
 
-  // Overview 的所有数据按当前账本分桶 —— 切账本时读对应桶,没命中显示空
-  // 态后台 refetch。accounts / tags 实体本身是 user-global,但首页 Top 卡片
-  // 想看的是「当前账本里活跃的账户/标签」,所以 stats 用 ledger 过滤,
-  // 缓存也按账本分桶。资产页/标签页要跨账本时另外不带 ledgerId 拉。
+  // Overview 的所有数据按当前账本分桶 —— usePageCache 会在 key(账本)变化
+  // 时重置 state 到对应桶,切账本首帧即显示该账本的上次数据,没命中则回落
+  // 空态由 effect 后台 refetch。accounts / tags 实体本身是 user-global,但
+  // 首页 Top 卡片想看的是「当前账本里活跃的账户/标签」,所以 stats 用 ledger
+  // 过滤,缓存也按账本分桶。资产页/标签页要跨账本时另外不带 ledgerId 拉。
+  //
+  // [W3 口径决策] 这里带 ledgerId 是**有意的例外**,不随 W3 统一:
+  //   - Overview 的 accounts/tags 是「带使用统计的 Top 排行」数据(余额/
+  //     笔数/收支),不带 ledger 过滤会把其它账本的统计灌进来,排行失真,
+  //     还会出现零活跃条目;字典类下拉(表单 picker)才需要 user-global 全量。
+  //   - 与 GlobalEditDialogs / TransactionsPage 的「表单字典不带 ledgerId」
+  //     口径差异是设计使然,两处用途不同,勿「顺手统一」。
   const bucket = activeLedgerId || '__none__'
   const [accounts, setAccounts] = usePageCache<WorkspaceAccount[]>(`overview:${bucket}:accounts`, [])
   const [tags, setTags] = usePageCache<WorkspaceTag[]>(`overview:${bucket}:tags`, [])
@@ -112,34 +121,47 @@ export function OverviewPage() {
     Record<string, BudgetUsage>
   >(`overview:${bucket}:budgetUsage`, {})
 
+  // P0-6 竞态止血:四个 loader 是四条独立数据流(mount effect 与
+  // useSyncRefresh 会并行触发它们),各持一个「最新一轮」守卫实例 ——
+  // 切账本 A→B 时 A 的慢响应不再把旧账本的统计写进当前页。
+  const beginAccountsTagsFetch = useLatestFetch()
+  const beginCategoriesFetch = useLatestFetch()
+  const beginBudgetsFetch = useLatestFetch()
+  const beginAnalyticsFetch = useLatestFetch()
+
   const loadAccountsAndTags = useCallback(async () => {
     if (!activeLedgerId) return
+    const isStale = beginAccountsTagsFetch()
     try {
       const [a, tg] = await Promise.all([
         fetchWorkspaceAccounts(token, { ledgerId: activeLedgerId, limit: 500 }),
         fetchWorkspaceTags(token, { ledgerId: activeLedgerId, limit: 500 }),
       ])
+      if (isStale()) return
       setAccounts(a)
       setTags(tg)
     } catch {
       // dashboard 静默降级
     }
-  }, [token, activeLedgerId])
+  }, [token, activeLedgerId, beginAccountsTagsFetch])
 
   const loadCategories = useCallback(async () => {
     if (!activeLedgerId) {
       setCategories([])
       return
     }
+    const isStale = beginCategoriesFetch()
     try {
       const rows = await fetchWorkspaceCategories(token, {
         ledgerId: activeLedgerId,
         limit: 500,
       })
+      if (isStale()) return
       setCategories(rows)
     } catch {
       // 静默降级:Top 卡片点击拿不到 detail 时回退到 jump-to-tx-page,
       // 跟没装这个功能等价。
+      if (isStale()) return
       setCategories([])
     }
     // setCategories 是 usePageCache 稳定 setter
@@ -152,15 +174,18 @@ export function OverviewPage() {
       setBudgetUsageById({})
       return
     }
+    const isStale = beginBudgetsFetch()
     try {
       const { budgets: b, usageById } = await fetchBudgetsWithUsage(
         token,
         activeLedgerId,
       )
+      if (isStale()) return
       setBudgets(b)
       setBudgetUsageById(usageById)
     } catch {
       // 静默降级 — 预算面板空时整卡片不显示,失败也走同分支
+      if (isStale()) return
       setBudgets([])
       setBudgetUsageById({})
     }
@@ -169,6 +194,7 @@ export function OverviewPage() {
   }, [token, activeLedgerId])
 
   const loadAnalytics = useCallback(async () => {
+    const isStale = beginAnalyticsFetch()
     const now = new Date()
     const msd = Math.max(1, Math.min(28, currentLedger?.month_start_day ?? 1))
     const currentPeriod = periodLabel(now, msd)
@@ -213,6 +239,7 @@ export function OverviewPage() {
       }),
     ])
     const [rYearExpense, rYearIncome, rMonthly, rLastMonth, rAll, rCounts] = results
+    if (isStale()) return
     if (rYearExpense.status === 'fulfilled') {
       setAnalyticsData(rYearExpense.value)
       setCurrentYearSummary(rYearExpense.value.summary)
@@ -249,7 +276,7 @@ export function OverviewPage() {
         first_tx_at: s?.first_tx_at ?? null,
       })
     }
-  }, [token, activeLedgerId, currentLedger])
+  }, [token, activeLedgerId, currentLedger, beginAnalyticsFetch])
 
   useEffect(() => {
     void loadAccountsAndTags()

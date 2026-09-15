@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   Badge,
@@ -42,6 +42,7 @@ import { CategoryIcon } from '../components/CategoryIcon'
 import { CategoryTreeSelect } from '../components/CategoryTreeSelect'
 import { TagChip } from '../components/TagChip'
 import { buildTagColorMap, tagTextColorOn } from '../lib/tagColorPalette'
+import { requestDirtyClose, serializeFormSnapshot } from '../lib/dirtyCloseGuard'
 import { currencySymbol } from '../lib/currencies'
 import { composeTransactionRowTitle } from '../lib/transactionRowTitle'
 import type { TxForm } from '../forms'
@@ -487,6 +488,43 @@ export function TransactionsPanel({
   const open = dialogOpen
   const setOpen = onDialogOpenChange
 
+  // W2 脏检查:dialog 打开时对 form 做快照,关闭(ESC/遮罩/X/取消)时比对,
+  // 有修改弹二次确认,不再静默丢弃输入。baselinePending 兜底「form 晚于
+  // open 一帧才到」的路径(GlobalEditDialogs 先 set form、await 字典后再
+  // open);保存并再记一笔成功后也重置基线(留表的续记不是"未保存修改")。
+  const formSnapshotRef = useRef<string | null>(null)
+  const baselinePendingRef = useRef(false)
+  useEffect(() => {
+    if (open) baselinePendingRef.current = true
+  }, [open])
+  useEffect(() => {
+    if (!open) {
+      formSnapshotRef.current = null
+      return
+    }
+    if (baselinePendingRef.current) {
+      formSnapshotRef.current = serializeFormSnapshot(form)
+      baselinePendingRef.current = false
+    }
+  }, [open, form])
+
+  const requestCloseDialog = (viaCancelButton: boolean) => {
+    requestDirtyClose({
+      snapshot: formSnapshotRef.current,
+      current: form,
+      texts: {
+        title: t('dialog.unsavedChanges.title'),
+        description: t('dialog.unsavedChanges.description'),
+        confirm: t('dialog.unsavedChanges.confirm'),
+        cancel: t('dialog.unsavedChanges.cancel'),
+      },
+      close: () => {
+        if (viaCancelButton) onReset()
+        setOpen(false)
+      },
+    })
+  }
+
   const dedupSortNames = (names: string[]) =>
     names
       .filter((name) => name.length > 0)
@@ -667,7 +705,17 @@ export function TransactionsPanel({
         </div>
       )}
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog
+        open={open}
+        onOpenChange={(next) => {
+          if (next) {
+            setOpen(true)
+            return
+          }
+          // W2:ESC / 遮罩 / 右上角 X 都汇到这里,脏表单先过二次确认。
+          requestCloseDialog(false)
+        }}
+      >
         <DialogContent className="flex w-[560px] flex-col gap-0 overflow-hidden p-0">
           <DialogHeader className="border-b border-border/60 px-6 py-4">
             <DialogTitle>{form.editingId ? t('transactions.button.update') : t('transactions.button.create')}</DialogTitle>
@@ -1010,8 +1058,8 @@ export function TransactionsPanel({
             <Button
               variant="outline"
               onClick={() => {
-                onReset()
-                setOpen(false)
+                // W2:取消也走脏检查(有修改先确认再丢)。
+                requestCloseDialog(true)
               }}
             >
               {t('dialog.cancel')}
@@ -1020,11 +1068,14 @@ export function TransactionsPanel({
               <Button
                 variant="outline"
                 disabled={!canWrite || !canSubmit}
-                onClick={async () => {
-                  // 保存成功后不关弹窗,由父层清金额/备注继续记下一笔(固定
-                  // 支出/同店多笔场景少一半点击)。
-                  await onSaveAndNext()
-                }}
+              onClick={async () => {
+                // 保存成功后不关弹窗,由父层清金额/备注继续记下一笔(固定
+                // 支出/同店多笔场景少一半点击)。
+                await onSaveAndNext()
+                // W2:续记基线重置 —— 留在表单里的分类/账户是续记上下文,
+                // 不是"未保存修改",ESC 时不应再弹丢弃确认。
+                baselinePendingRef.current = true
+              }}
               >
                 {t('transactions.button.saveAndNext')}
               </Button>

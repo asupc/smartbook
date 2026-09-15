@@ -52,6 +52,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useLedgers } from '../../context/LedgersContext'
 import { usePageCache } from '../../context/PageDataCacheContext'
 import { useSyncRefresh } from '../../context/SyncSocketContext'
+import { useLatestFetch } from '../../hooks/useLatestFetch'
 import { localizeError } from '../../i18n/errors'
 import { useLedgerWrite } from '../../app/useLedgerWrite'
 
@@ -145,6 +146,10 @@ export function AccountsPage() {
     null,
   )
 
+  // P0-6 竞态止血:refresh 是本页唯一的数据流,快速切账本时旧一轮的慢响应
+  // 不再落地(kpiBucket 已换,旧 analytics 写进新桶会串号)。
+  const beginLatestFetch = useLatestFetch()
+
   // detail 弹窗已迁到 GlobalEntityDialogs(AppShell 顶层),本页只负责
   // dispatch openDetailAccount 事件,弹窗在全局渲染。
 
@@ -158,6 +163,7 @@ export function AccountsPage() {
   )
 
   const refresh = useCallback(async () => {
+    const isStale = beginLatestFetch()
     try {
       const now = new Date()
       const tzOffsetMinutes = -now.getTimezoneOffset()
@@ -186,6 +192,9 @@ export function AccountsPage() {
           tzOffsetMinutes,
         }).catch(() => null),
       ])
+      // 响应落地前先查竞态守卫:更晚的一轮(切账本触发 refresh)已发出的话,
+      // 本次响应属于旧 query,直接丢弃。
+      if (isStale()) return
       setRows(accountRows)
       setTags(tagRows)
       setNetWorthHistory(history)
@@ -204,6 +213,7 @@ export function AccountsPage() {
           fetchExchangeRates(token, base).catch(() => null),
           fetchExchangeRateOverrides(token).catch(() => [] as ExchangeRateOverride[]),
         ])
+        if (isStale()) return
         setRates(r)
         setRateOverrides(o)
       } else {
@@ -213,7 +223,7 @@ export function AccountsPage() {
     } catch (err) {
       notifyError(err)
     }
-  }, [token, base, activeLedgerId, currentLedger, notifyError])
+  }, [token, base, activeLedgerId, currentLedger, notifyError, beginLatestFetch])
 
   useEffect(() => {
     void refresh()

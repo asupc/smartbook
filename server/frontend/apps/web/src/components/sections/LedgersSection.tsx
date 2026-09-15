@@ -57,9 +57,11 @@ export function LedgersSection({ onEdit, onCreate, onDelete }: Props) {
 
   const handleSelectActive = (ledger: ReadLedger) => {
     setActiveLedgerId(ledger.ledger_id)
+    // W1:t() 缺 key 时返回 key 本身(非空),`|| fallback` 是死代码 —— 已补
+    // shell.ledgerSwitched key(三语),fallback 删除。
     toast.success(
-      t('shell.ledgerSwitched') || `已切换至「${ledger.ledger_name}」`,
-      t('notice.success') || '成功',
+      t('shell.ledgerSwitched', { name: ledger.ledger_name }),
+      t('notice.success'),
     )
   }
 

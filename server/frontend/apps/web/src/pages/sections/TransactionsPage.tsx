@@ -5,6 +5,7 @@ import { routePath, type AppRoute } from '../../state/router'
 
 import { usePageCache } from '../../context/PageDataCacheContext'
 import { useSyncRefresh } from '../../context/SyncSocketContext'
+import { useLatestFetch } from '../../hooks/useLatestFetch'
 // AvatarDropdown / ChangelogDialog / LogsDialog / MobileBottomNav 已搬到 AppShell。
 // AccountDetailDialog 现仅被 AccountsPage 使用。
 // TagDetailDialog 现仅被 TagsPage 使用。
@@ -83,6 +84,9 @@ import { useAttachmentCache } from '../../context/AttachmentCacheContext'
 import { BatchDeleteDialog } from '../../components/tx-batch/BatchDeleteDialog'
 import { SelectionToolbar } from '../../components/tx-batch/SelectionToolbar'
 import { localizeError } from '../../i18n/errors'
+import {
+  TX_FILTER_STORAGE_PREFIX,
+} from '../../lib/userScopedStorage'
 import { consumePendingShareText } from '../../lib/pwa-intake'
 import { dispatchOpenDetailTx } from '../../lib/txDialogEvents'
 // AppLayout 已搬到 AppShell。
@@ -145,9 +149,8 @@ type TxFilter = {
 }
 
 const TX_PAGE_SIZE_DEFAULT = 20
-// v1 → v2:加了 amount range / date range / category / tag 过滤,key 升版避免
-// 旧 storage 数据 partial 回填出空字段。
-const TX_FILTER_STORAGE_PREFIX = 'smartbook:web:txFilter:v2'
+// 筛选存储 key:前缀常量从 lib/userScopedStorage 引入(W4),与 App.tsx 登出
+// 清理同源;v1 → v2 的升版说明见那边注释。
 
 function defaultTxFilter(): TxFilter {
   return {
@@ -302,6 +305,12 @@ export function TransactionsPage() {
   const previewRequestSeqRef = useRef(0)
   const txFilterRestoreInProgressRef = useRef(false)
   const txAttachmentPreviewUrlByFileIdRef = useRef<Record<string, string>>({})
+  // P0-6 竞态止血:列表数据(refreshSectionData)与表单字典(loadTxDictionaries)
+  // 各持一个「最新一轮」守卫实例 —— 两条独立数据流,共用一个实例的话 mount
+  // 时后启动的流会把前面流的落地作废。切账本 / 改筛选 / WS 事件各自 begin
+  // 一轮,前一轮未落地的响应被丢弃,避免慢响应把旧账本数据写进当前账本。
+  const beginLatestFetch = useLatestFetch()
+  const beginDictFetch = useLatestFetch()
 
   // 原来用 Notice 顶栏显示成功/失败,改成 toast 后不再需要这个 state。
   const [baseChangeId, setBaseChangeId] = useState(0)
@@ -674,39 +683,9 @@ export function TransactionsPage() {
     toast.success(message, t('notice.success'))
   }
 
-  const isSessionError = (err: unknown): boolean => {
-    if (!(err instanceof ApiError)) return false
-    if (err.status === 401 || err.status === 403) return true
-    return err.code === 'AUTH_INVALID_TOKEN' || err.code === 'AUTH_INSUFFICIENT_SCOPE'
-  }
-
-  const handleTopLevelLoadError = (err: unknown) => {
-    setErrorNotice(renderError(err))
-    if (isSessionError(err)) {
-      onLogout()
-    }
-  }
-
-  const syncRouteWithLedgers = (rows: ReadLedger[]) => {
-    if (rows.length === 0) {
-      if (sectionNeedsLedger(route.section)) {
-        onNavigate({ kind: 'app', ledgerId: '', section: 'transactions' }, { replace: true })
-      }
-      setActiveLedgerId('')
-      setTxWriteLedgerId('')
-      return ''
-    }
-
-    if (activeLedgerId && rows.some((row) => row.ledger_id === activeLedgerId)) {
-      return activeLedgerId
-    }
-
-    const firstId = rows[0].ledger_id
-    const firstTxWritableId = rows.find((row) => canWriteTransactions(row.role))?.ledger_id || ''
-    setActiveLedgerId(firstId)
-    setTxWriteLedgerId((prev) => prev || firstTxWritableId)
-    return firstId
-  }
+  // W8:isSessionError / handleTopLevelLoadError / syncRouteWithLedgers 已随
+  // 挂载期 mount effect 删除(唯一调用方)—— 401 会话失效由 http 层全局
+  // 401→refresh→onLogout 兜底,列表 effect 自带错误 toast。
 
   // loadLedgers / loadProfile / applyIncomeColorScheme 已移到 AppShell。
   // 这里保留两个 thin adapter,让 AppPage 原有调用点(WS profile push /
@@ -730,7 +709,14 @@ export function TransactionsPage() {
     return detail.source_change_id
   }
 
-  const refreshSectionData = async (ledgerId: string, section: AppSection) => {
+  // isStale(P0-6):由调用方 beginLatestFetch() 发起的一轮守卫。同一轮内
+  // 并行的兄弟 section 调用(refreshAllSections)共享同一个 isStale,不要
+  // 在本函数内部再 begin —— 否则后启动的兄弟流会把前面的落地作废。
+  const refreshSectionData = async (
+    ledgerId: string,
+    section: AppSection,
+    isStale?: () => boolean
+  ) => {
     if (sectionNeedsLedger(section) && !ledgerId) {
       return
     }
@@ -740,6 +726,15 @@ export function TransactionsPage() {
     // overview 的 fetch 已由 OverviewPage 自持。
 
     if (section === 'transactions') {
+      // activeLedgerId 尚未 reconcile('')时不发 unscoped 的全 workspace 交易
+      // 查询 —— 它会和 reconcile 后的 scoped 查询竞争,慢的那个后落地会把
+      // 别的账本数据写进当前列表。reconcile 完成后 effect 会带真实 ledgerId
+      // 重跑,这里跳过只是把首拉延迟到那时。交易必须挂在账本上,无账本用户
+      // 跳过也不会漏数据。(accounts/categories/tags 是用户级字典,与账本
+      // 无关,不受此守卫影响。)
+      if (!ledgerId) {
+        return
+      }
       // 交易是账本内的,按 ledger 过滤;账户/分类/标签都是 **用户全局**
       // (Flutter schema:Categories/Accounts/Tags 表都没 ledger_id 字段,一套
       // 跨所有账本共享)—— 拉字典不要按 ledger 过滤,避免多账本下漏数据。
@@ -784,6 +779,9 @@ export function TransactionsPage() {
         fetchWorkspaceCategories(token, { userId: txUserId, limit: 500 }),
         fetchWorkspaceTags(token, { userId: txUserId, limit: 500 })
       ])
+      // 响应落地前先查竞态守卫:更晚的一轮(切账本/改筛选)已发出的话,
+      // 本次响应属于旧 query,直接丢弃,不能 setState。
+      if (isStale?.()) return
       setTransactions(txPageResult.items)
       setTxTotal(txPageResult.total)
       if (txPageResult.total > 0 && txPage > 1 && txPageResult.items.length === 0) {
@@ -796,6 +794,15 @@ export function TransactionsPage() {
       setAccounts(accountRows)
       setCategories(categoryRows)
       setTags(tagRows)
+      // W8(挂载期重复请求合一):同一轮拉回的账户/分类/标签同时喂给表单
+      // 字典(txDictionary*),下面的字典 effect 跳过首轮 —— 挂载时字典从
+      // 3 轮请求(loadTxDictionaries + 本 effect + 已删的 mount effect)
+      // 收敛到 1 轮。非 admin 两处口径完全一致;admin 下字典 effect 首轮
+      // (sessionUserId 口径)被本处(listUserFilter 口径)取代,编辑他人
+      // 交易时字典 effect 会按 editingOwnerUserId 重拉,不影响编辑场景。
+      setTxDictionaryAccounts(accountRows)
+      setTxDictionaryCategories(categoryRows)
+      setTxDictionaryTags(tagRows)
       return
     }
 
@@ -808,35 +815,35 @@ export function TransactionsPage() {
     const userGlobalUserId = isAdminUser && listUserFilter !== '__all__' ? listUserFilter : undefined
 
     if (section === 'accounts') {
-      setAccounts(
-        await fetchWorkspaceAccounts(token, {
-          userId: userGlobalUserId,
-          q: debouncedListQuery || undefined,
-          limit: 500
-        })
-      )
+      const accountRows = await fetchWorkspaceAccounts(token, {
+        userId: userGlobalUserId,
+        q: debouncedListQuery || undefined,
+        limit: 500
+      })
+      if (isStale?.()) return
+      setAccounts(accountRows)
       return
     }
 
     if (section === 'categories') {
-      setCategories(
-        await fetchWorkspaceCategories(token, {
-          userId: userGlobalUserId,
-          q: debouncedListQuery || undefined,
-          limit: 500
-        })
-      )
+      const categoryRows = await fetchWorkspaceCategories(token, {
+        userId: userGlobalUserId,
+        q: debouncedListQuery || undefined,
+        limit: 500
+      })
+      if (isStale?.()) return
+      setCategories(categoryRows)
       return
     }
 
     if (section === 'tags') {
-      setTags(
-        await fetchWorkspaceTags(token, {
-          userId: userGlobalUserId,
-          q: debouncedListQuery || undefined,
-          limit: 500
-        })
-      )
+      const tagRows = await fetchWorkspaceTags(token, {
+        userId: userGlobalUserId,
+        q: debouncedListQuery || undefined,
+        limit: 500
+      })
+      if (isStale?.()) return
+      setTags(tagRows)
       return
     }
 
@@ -854,6 +861,7 @@ export function TransactionsPage() {
   }
 
   const refreshCurrent = async (preferredSection?: AppSection) => {
+    const isStale = beginLatestFetch()
     const firstLedgerId = await loadLedgers()
     const section = preferredSection || route.section
     const effectiveLedgerId = activeLedgerId || firstLedgerId
@@ -862,14 +870,16 @@ export function TransactionsPage() {
     } else if (!sectionNeedsLedger(section)) {
       setBaseChangeId(0)
     }
-    await refreshSectionData(effectiveLedgerId, section)
+    await refreshSectionData(effectiveLedgerId, section, isStale)
   }
 
   // WS / polling 事件触发时用这个：不止刷当前 section，也把 tags/categories/accounts
   // 都重新拉一遍。否则用户停留在"交易"页看不到新建的标签，切过去时仍是旧缓存。
   // 交易数据在 section='transactions' 分支里已经并行 fetch 了四类；这里补齐非交易
-  // 活动页时其他三类的兜底。
+  // 活动页时其他三类的兜底。四个并行调用共用同一轮 isStale(见 useLatestFetch
+  // 注释),避免兄弟流互相作废。
   const refreshAllSections = async () => {
+    const isStale = beginLatestFetch()
     const firstLedgerId = await loadLedgers()
     const section = route.section
     const effectiveLedgerId = activeLedgerId || firstLedgerId
@@ -877,31 +887,18 @@ export function TransactionsPage() {
       await loadLedgerBase(effectiveLedgerId)
     }
     await Promise.all([
-      refreshSectionData(effectiveLedgerId, section),
-      section === 'tags' ? Promise.resolve() : refreshSectionData(effectiveLedgerId, 'tags'),
-      section === 'categories' ? Promise.resolve() : refreshSectionData(effectiveLedgerId, 'categories'),
-      section === 'accounts' ? Promise.resolve() : refreshSectionData(effectiveLedgerId, 'accounts'),
+      refreshSectionData(effectiveLedgerId, section, isStale),
+      section === 'tags' ? Promise.resolve() : refreshSectionData(effectiveLedgerId, 'tags', isStale),
+      section === 'categories' ? Promise.resolve() : refreshSectionData(effectiveLedgerId, 'categories', isStale),
+      section === 'accounts' ? Promise.resolve() : refreshSectionData(effectiveLedgerId, 'accounts', isStale),
     ])
   }
 
-  useEffect(() => {
-    let cancelled = false
-    const run = async () => {
-      try {
-        await refreshCurrent()
-      } catch (err) {
-        if (!cancelled) {
-          handleTopLevelLoadError(err)
-        }
-      }
-    }
-    void run()
-    return () => {
-      cancelled = true
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [route.section, route.ledgerId])
-
+  // W8(挂载期重复请求合一):删除原「mount effect → refreshCurrent()」——
+  // 它与下面的列表 effect 在挂载时各发一轮完全相同的请求(交易 + 三本字典
+  // 双发,且 loadLedgers 与 AppShell 的初拉重复);session 失效路径由
+  // http 层全局 401→refresh→onLogout 兜底,本页列表 effect 也有自己的错误
+  // toast,行为不回退。数据触发统一收敛到列表 effect。
 
   // profileMe 初次拉取已由 AppShell 负责,这里只在 isAdmin 解析完后
   // 同步 profileDisplayName(待 SettingsProfilePage 迁走后可连 displayName
@@ -1038,14 +1035,17 @@ export function TransactionsPage() {
 
     let cancelled = false
     const run = async () => {
+      // 每轮 effect 各自 begin 一轮守卫:deps 变化(切账本/改筛选)后,
+      // 上一轮 effect 的在途响应会被丢弃,不再无条件落地。
+      const isStale = beginLatestFetch()
       try {
         // 切账本 / 进页面时要更新 base_change_id 给写操作用。section 不需要
         // ledger 时(admin-users 等)不调,避免无意义请求。
         if (sectionNeedsLedger(section) && activeLedgerId) {
           await loadLedgerBase(activeLedgerId)
         }
-        if (cancelled) return
-        await refreshSectionData(activeLedgerId || '', section)
+        if (cancelled || isStale()) return
+        await refreshSectionData(activeLedgerId || '', section, isStale)
       } catch (err) {
         if (!cancelled) {
           setErrorNotice(renderError(err))
@@ -1077,12 +1077,23 @@ export function TransactionsPage() {
   }, [activeLedgerId, listUserFilter, listQuery, txFilterApplied.txType, txFilterApplied.accountName, route.section])
 
 
+  // W8:字典 effect 跳过挂载首轮 —— 列表 effect 的 transactions 分支已经把
+  // 同一批字典喂进 txDictionary*(见上)。后续轮次(admin 切查看用户 / 编辑
+  // 他人交易改变 target user)照常按 resolveTxDictionaryUserId 的口径重拉。
+  const dictFetchRanRef = useRef(false)
   useEffect(() => {
     if (route.section !== 'transactions' || !isAdminResolved) return
+    if (!dictFetchRanRef.current) {
+      dictFetchRanRef.current = true
+      return
+    }
     let cancelled = false
     const run = async () => {
+      // 每轮 effect 一轮守卫:admin 切换查看用户 / 编辑对象变化后,上一轮
+      // 在途的字典响应(别的用户的账户/分类/标签)不能再落地。
+      const isStale = beginDictFetch()
       try {
-        await loadTxDictionaries()
+        await loadTxDictionaries(isStale)
       } catch (err) {
         if (!cancelled) {
           setErrorNotice(renderError(err))
@@ -1125,7 +1136,7 @@ export function TransactionsPage() {
     return sessionUserId || undefined
   }
 
-  const loadTxDictionaries = async () => {
+  const loadTxDictionaries = async (isStale?: () => boolean) => {
     const targetUserId = resolveTxDictionaryUserId()
     // 账户 / 分类 / 标签在本产品里是"用户级"的 —— 一个用户的所有账本共享一套，
     // 所以这里拉全量，不按 ledger 过滤。具体哪些账户能在某个账本做交易的校验
@@ -1146,6 +1157,7 @@ export function TransactionsPage() {
           limit: 2000
         })
       ])
+      if (isStale?.()) return
       setTxDictionaryAccounts(accountRows)
       setTxDictionaryCategories(categoryRows)
       setTxDictionaryTags(tagRows)
@@ -1197,7 +1209,7 @@ export function TransactionsPage() {
     if (!(err instanceof ApiError) || err.code !== 'WRITE_CONFLICT') return false
     if (!ledgerId) return false
     await loadLedgerBase(ledgerId)
-    await refreshSectionData(ledgerId, refreshTo)
+    await refreshSectionData(ledgerId, refreshTo, beginLatestFetch())
     setErrorNotice(localizeError(err, t))
     return true
   }
@@ -1224,7 +1236,7 @@ export function TransactionsPage() {
       await patchProfileMe(token, { display_name: nextName })
       await refreshProfile()
       setSuccessNotice(t('notice.profileUpdated'))
-      await refreshSectionData(activeLedgerId || '', route.section)
+      await refreshSectionData(activeLedgerId || '', route.section, beginLatestFetch())
     } catch (err) {
       setErrorNotice(renderError(err))
     }
@@ -1614,7 +1626,7 @@ export function TransactionsPage() {
       }
       setTxForm(txDefaults())
       const refreshLedger = activeLedgerId || ledgerId
-      await refreshSectionData(refreshLedger, 'transactions')
+      await refreshSectionData(refreshLedger, 'transactions', beginLatestFetch())
       setSuccessNotice(txForm.editingId ? t('notice.txUpdated') : t('notice.txCreated'))
       return true
     } catch (err) {
@@ -1632,7 +1644,7 @@ export function TransactionsPage() {
     if (activeLedgerId === ledgerId) {
       setBaseChangeId(res.new_change_id)
     }
-    await refreshSectionData(activeLedgerId || ledgerId, 'transactions')
+    await refreshSectionData(activeLedgerId || ledgerId, 'transactions', beginLatestFetch())
     setSuccessNotice(t('notice.txDeleted'))
   }
 
