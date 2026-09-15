@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Guidance for ZCode agents working in `D:\gitee\auto-ledger`.
+Guidance for ZCode agents working in `D:\github\smartbook`.
 
 ## What this is
 
@@ -9,7 +9,7 @@ Workspace for **智记 SmartBook** — a vivo Android 自动记账 solution buil
 - **BeeCount** (Flutter 客户端;二开品牌 **SmartBook**) — reuses notification-listening, screenshot OCR, AI bookkeeping, local stats. The full working copy is at **`client/`** (tracked by the root repo; no separate `.git`).
 - **BeeCount-Cloud** (FastAPI + React, self-hosted;二开品牌 **SmartBook-Cloud**) — the chosen backend. **Source is cloned at `server/`; this is the 二开 (fork) target.** Deployments run a self-built image **`smartbook-server`** (built by `deploy/build_docker.sh`) — fully detached from the official `sunxiao0721/beecount-cloud`.
 
-Firefly III was the old choice, now **deprecated**. Rationale: `docs/backend-selection.md`.
+Firefly III was the old choice, now **deprecated** (selection notes lived in a previous workspace and are not in this repo).
 
 **Git:** the workspace root is a git repo (history re-initialized; **neither `client/` nor `server/` has a `.git` of its own** — everything is tracked via the root repo). Commit only after confirming with the user.
 
@@ -25,8 +25,8 @@ client/              SmartBook client SOURCE (Flutter; upstream BeeCount 二开)
 server/              SmartBook-Cloud SOURCE (FastAPI + React) — main codebase for 二开
 docker-compose.yml   SmartBook-Cloud + PostgreSQL deployment (root; canonical)
 .env.example         env template — copy to .env, replace CHANGE_ME
-deploy/              deployment copies (docker-compose.yml + .env) + build scripts (build.sh 客户端 / build_docker.sh 服务端镜像)
-docs/                design decisions for THIS workspace. See "Gotchas".
+deploy/              deployment copy (docker-compose.yml; root compose is canonical) + build scripts (build.sh 客户端 / build_docker.sh 服务端镜像)
+docs/                web-side plans & audits only (app-performance-audit / ux-performance-optimization-plan / asset-page-layout-plan 等 + icon/images 资源);早期选型/规划文档不在本仓,勿按旧引用查找
 ```
 
 ## Commands
@@ -45,9 +45,9 @@ docs/                design decisions for THIS workspace. See "Gotchas".
 - **Adding a sync entity**: the 6-step checklist.
 - **Logging** structured-format conventions.
 
-Web (React) frontend is `server/frontend/`. **UI stack: antd 5** (PC 管理后台风格;2026-09 完成 shadcn/ui + Tailwind → antd 重构,过程见 `docs/frontend-antd-refactor-plan.md`)。Tailwind 仍保留用于布局/间距 utility 类。Mobile (Flutter) source and the mobile↔server sync contracts live in `client/` (upstream `SmartBook` repo, cloned locally).
+Web (React) frontend is `server/frontend/`. **UI stack: antd 5** (PC 管理后台风格;2026-09 完成 shadcn/ui + Tailwind → antd 重构)。Tailwind 仍保留用于布局/间距 utility 类。Mobile (Flutter) source and the mobile↔server sync contracts live in `client/` (upstream `SmartBook` repo, cloned locally).
 
-⚠️ **Web build caveat (2026-09):** the workspace packages `server/frontend/packages/{api-client,ui,web-features}` are **not git-tracked** (directories empty; sources exist only in gitignored `node_modules/@smartbook/*` copies). A clean clone cannot resolve `@smartbook/*` imports — fix/populate before trusting any web build/test run.
+**Web packages (2026-09, caveat resolved):** `server/frontend/packages/{api-client,ui,web-features}` 源码已完整入库(git 跟踪),pnpm workspace + tsconfig alias 直接解析 `@smartbook/*`,干净克隆可正常构建。
 
 ## Key facts
 
@@ -62,7 +62,5 @@ Web (React) frontend is `server/frontend/`. **UI stack: antd 5** (PC 管理后�
 
 ## Gotchas
 
-- **Obsoleted workspace docs** (must NOT be treated as current): `docs/android-technical-architecture.md`, `docs/data-model-and-parser-pipeline.md`, `docs/ui-and-mvp-plan.md` (all marked 原自研方案/已废止). Authoritative: `backend-selection.md`, `app-feature-plan.md`, `ai-custom-model.md`, `development-plan.md`.
-- **`development-plan.md` is the main plan** — read before planning implementation; it lists the gap vs what SmartBook already does + milestone ordering (M0 → M0.5 → M1…).
-- **Planned customizations are new, not upstream:** SMS listening, a "待确认/疑似重复" confirmation queue, and large/abnormal-spend alerts — these are the actual 二开 fork work.
+- **Custom fork work status:** 已实现的二开功能 —— 短信监听、自动记账四路(截图/支付通知/短信/账单详情页无障碍)、"待确认/疑似重复"确认队列。上游的大额/异常支出提醒在二开时**主动移除**,勿当作待办重新引入(见 CLAUDE.md「有意移除的既有功能」)。
 - Client paths ARE present here: `client/lib/ai/...`, `client/android/.../NotificationReceiver.kt` etc. resolve under `client/` (full upstream source). Paths **inside `server/`** (`src/routers/sync/`, `src/sync_applier.py`, `docs/SYNC_ARCHITECTURE.md`) are likewise real and resolvable within that subtree. The `server/docs/SYNC_ARCHITECTURE.md` contract reference still points into `server/`.

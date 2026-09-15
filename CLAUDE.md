@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **客户端** `client/` — SmartBook(Flutter + Riverpod + Drift/SQLite),克隆自上游远端,**无独立 `.git`,由根仓库跟踪**。
 - **服务端** `server/`(原目录名 `beecount-cloud`)— SmartBook-Cloud(FastAPI + React),源码在本地、无独立 `.git`;部署用本地自建镜像(`smartbook-server`,由 `deploy/build_docker.sh` 构建),已完全脱离官方镜像。
-- 旧选型 Firefly III 已弃用(理由见 `docs/backend-selection.md`);原自研 App/解析器方案已废止。
+- 旧选型 Firefly III 已弃用;原自研 App/解析器方案已废止(选型与旧规划文档在先前工作区,不在本仓)。
 
 工作区根目录是 git 仓库(初始历史已清,当前已正常提交);`client/` 与 `server/` 均无独立 `.git`,由根仓库跟踪。提交前先与用户确认。
 
@@ -47,7 +47,7 @@ make dev-web                                 # pnpm workspace 前端(frontend/ ,
 ```
 
 - 本地 DB 默认 SQLite(`smartbook.db` 在仓根),`make wipe-local` 清理本地开发数据。
-- 前端(React)在 `server/frontend/`(pnpm workspace,`apps/web`)。⚠️ **web 构建验证受限**:workspace 包 `server/frontend/packages/{api-client,ui,web-features}` 源码未被 git 跟踪(目录为空),仅存在于 gitignored 的 `node_modules/@smartbook/*` 副本中;干净克隆需先补回这三个包源码,否则 alias/tsconfig 指向的 `../../packages/*/src` 为空,`make dev-web`/build 无法解析 `@smartbook/*`(2026-09 时点已确认,待处理)。
+- 前端(React)在 `server/frontend/`(pnpm workspace,`apps/web`)。`server/frontend/packages/{api-client,ui,web-features}` 源码已完整入库(2026-09 caveat 已解除),pnpm workspace + tsconfig alias 直接解析 `@smartbook/*`,干净克隆可正常 `make dev-web`/build。
 
 ### 生产部署(根目录)
 
@@ -91,7 +91,7 @@ docker compose up -d          # smartbook-cloud + smartbook-db(PostgreSQL);JWT_S
 ## 注意
 
 - **品牌残留说明**:代码中仍会出现 `beecount` 字样,均为**有意保留**:(1) 客户端/服务端里的旧 key 兼容迁移(SharedPreferences、localStorage、YAML、SQLite 文件搬移等,一般带「品牌更名前」注释);(2) 上游出处与真实资产(URL、域名、官方镜像名、Supabase 桶默认值 `beecount-backups`)。新增代码一律用 `smartbook` / SmartBook,不要动这些兼容点。
-- **已废止文档(勿当现行)**: `docs/android-technical-architecture.md`、`docs/data-model-and-parser-pipeline.md`、`docs/ui-and-mvp-plan.md`(原自研方案)。现行: `docs/backend-selection.md`、`app-feature-plan.md`、`ai-custom-model.md`、**`development-plan.md`(主计划,M0 → M0.5 → M1 里程碑,实施前先读)**。
+- **`docs/` 现存内容**:仅 Web 侧计划/审计(`app-performance-audit-2026-09-08.md`、`performance-followup-implementation-plan.md`、`ux-performance-optimization-plan.md`、`asset-page-layout-plan.md` + `icon/`、`images/` 资源)。早期选型/规划文档(`backend-selection.md`、`development-plan.md` 等)在先前工作区,不在本仓,勿按旧引用查找。
 - **计划中的二开是新功能,非上游已有**:已实现 —— 短信监听、自动记账四路(截图/支付通知/短信/账单详情页无障碍 `ScreenTextWatcher`)、"待确认/疑似重复"确认队列(自动入账校验候选制)。
 - **有意移除的既有功能**:上游的大额/异常支出提醒,二开时**主动删除**(l10n 仅残留 M3 文案 `autoBillingLargeAmount*`,无代码引用);勿将其当作未完成计划或重新引入。
 - **许可证 BSL**:个人/非营利/研究免费,商业用途需付费授权(见 `client/COMMERCIAL_LICENSE.md`)。
