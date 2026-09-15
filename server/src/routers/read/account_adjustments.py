@@ -27,7 +27,7 @@ def list_account_adjustments(
         db,
         user_id=current_user.id,
         ledger_external_id=ledger_id,
-        is_admin=_is_admin(current_user),
+        is_admin=_is_admin(),
     )
     stmt = (
         select(ReadAccountAdjustmentProjection)

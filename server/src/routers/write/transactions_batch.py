@@ -450,7 +450,9 @@ def _create_attachment_from_bytes(
     mime_type: str,
 ) -> AttachmentFile:
     """把 image bytes 转 AttachmentFile(写盘 + 入库)。dedup 用 sha256:已有相同
-    sha 的就复用,不重复存。"""
+    sha 的就复用,不重复存。并发同图撞 (ledger_id, sha256) 部分唯一索引
+    (S9)时 SAVEPOINT 内回滚本次插入,复用赢家行 —— 本函数不 commit,必须
+    用 begin_nested 隔离冲突以免污染外层 batch 事务。"""
     sha256 = hashlib.sha256(image_bytes).hexdigest()
     existing = db.scalar(
         select(AttachmentFile).where(
@@ -480,8 +482,28 @@ def _create_attachment_from_bytes(
         file_name=file_name,
         storage_path=str(storage_path),
     )
-    db.add(row)
-    db.flush()  # 拿 row.id,但还没 commit(跟 batch 一起 commit)
+    try:
+        with db.begin_nested():
+            db.add(row)
+            db.flush()  # 拿 row.id,但还没 commit(跟 batch 一起 commit)
+    except IntegrityError:
+        # 并发/前置唯一索引冲突:SAVEPOINT 已回滚,外层事务不受影响,
+        # 复用既有行;刚写出的磁盘文件回收。
+        winner = db.scalar(
+            select(AttachmentFile).where(
+                AttachmentFile.ledger_id == ledger.id,
+                AttachmentFile.sha256 == sha256,
+            )
+        )
+        if winner is not None:
+            try:
+                storage_path.unlink(missing_ok=True)
+            except OSError:
+                logger.warning(
+                    "tx.batch.attachment unlink_orphan_failed path=%s", storage_path,
+                )
+            return winner
+        raise
     return row
 
 

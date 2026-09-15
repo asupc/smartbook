@@ -125,6 +125,11 @@ def _apply_rate_limit(request: Request, action: str) -> None:
         bucket = _rate_limit_buckets.get(key, [])
         window = settings.rate_limit_window_seconds
         bucket = [ts for ts in bucket if now_ts - ts < window]
+        if bucket:
+            _rate_limit_buckets[key] = bucket
+        else:
+            # 窗口已滑空:顺手删 key,防长期运行下字典只增不减(S11)。
+            _rate_limit_buckets.pop(key, None)
         if len(bucket) >= settings.rate_limit_max_requests:
             raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many requests")
         bucket.append(now_ts)

@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from sqlalchemy.exc import IntegrityError
 
 from ._shared import *  # noqa: F401,F403 — 集中从 _shared 取所有 symbol
 from ...models import AttachmentFile
@@ -53,45 +54,56 @@ async def create_ledger(
         month_start_day=req.month_start_day,
     )
     db.add(ledger)
-    db.flush()
 
-    # 共享账本 Phase 1:创建者自动 owner — 否则 ledger_access 找不到 member,后续
-    # 所有 read/write/sync 路径都 404。
-    db.add(LedgerMember(
-        ledger_id=ledger.id,
-        user_id=current_user.id,
-        role="owner",
-        joined_at=now,
-    ))
-    db.flush()
+    # S8:并发同 (user_id, external_id) 撞唯一约束时,上面的 exists 预检
+    # (TOCTOU)拦不住 —— flush/commit 抛 IntegrityError 转 409,而非 500
+    # (模式同 _shared._commit_create_tx_fast 的幂等兜底)。
+    try:
+        db.flush()
 
-    # 方案 B:不写 ledger_snapshot 行。emit 一个 ledger entity SyncChange 个体事件,
-    # mobile /sync/pull 能收到这个 ledger 被创建的事件。
-    row_change = SyncChange(
-        user_id=current_user.id,
-        ledger_id=ledger.id,
-        entity_type="ledger",
-        entity_sync_id=external_id,
-        action="upsert",
-        payload_json={"ledgerName": name, "currency": currency, "monthStartDay": req.month_start_day},
-        updated_at=now,
-        updated_by_device_id="web-console",
-        updated_by_user_id=current_user.id,
-    )
-    db.add(row_change)
-    db.flush()
-    db.add(
-        AuditLog(
+        # 共享账本 Phase 1:创建者自动 owner — 否则 ledger_access 找不到 member,后续
+        # 所有 read/write/sync 路径都 404。
+        db.add(LedgerMember(
+            ledger_id=ledger.id,
+            user_id=current_user.id,
+            role="owner",
+            joined_at=now,
+        ))
+        db.flush()
+
+        # 方案 B:不写 ledger_snapshot 行。emit 一个 ledger entity SyncChange 个体事件,
+        # mobile /sync/pull 能收到这个 ledger 被创建的事件。
+        row_change = SyncChange(
             user_id=current_user.id,
             ledger_id=ledger.id,
-            action="web_ledger_create",
-            metadata_json={
-                "ledgerId": external_id,
-                "newChangeId": row_change.change_id,
-            },
+            entity_type="ledger",
+            entity_sync_id=external_id,
+            action="upsert",
+            payload_json={"ledgerName": name, "currency": currency, "monthStartDay": req.month_start_day},
+            updated_at=now,
+            updated_by_device_id="web-console",
+            updated_by_user_id=current_user.id,
         )
-    )
-    db.commit()
+        db.add(row_change)
+        db.flush()
+        db.add(
+            AuditLog(
+                user_id=current_user.id,
+                ledger_id=ledger.id,
+                action="web_ledger_create",
+                metadata_json={
+                    "ledgerId": external_id,
+                    "newChangeId": row_change.change_id,
+                },
+            )
+        )
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Ledger already exists",
+        ) from None
 
     await request.app.state.ws_manager.broadcast_to_user(
         current_user.id,

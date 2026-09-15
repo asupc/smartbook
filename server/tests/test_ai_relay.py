@@ -333,7 +333,8 @@ def test_relay_vision_happy_path_saves_image_log(monkeypatch, tmp_path) -> None:
         assert row.ledger_id == "7"
         assert row.image_path is not None
         from pathlib import Path
-        assert Path(row.image_path).read_bytes() == img_bytes
+        from src.services.ai.analysis_log import resolve_log_image_path
+        assert resolve_log_image_path(row.image_path).read_bytes() == img_bytes
     finally:
         app.dependency_overrides.clear()
 

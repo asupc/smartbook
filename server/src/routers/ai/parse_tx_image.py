@@ -29,7 +29,6 @@ from sqlalchemy.orm import Session
 from ...database import get_db
 from ...deps import get_current_user, require_any_scopes
 from ...models import (
-    Ledger,
     User,
     UserAccountProjection,
     UserCategoryProjection,
@@ -268,17 +267,29 @@ def _load_ledger_context(
     """
     fallback_currency = "CNY"
     if ledger_id:
-        ledger = db.scalar(
-            select(Ledger).where(
-                Ledger.external_id == ledger_id, Ledger.user_id == user_id,
-            )
+        # S2:共享账本 Editor 也要能拿到账本上下文 —— 权限按 LedgerMember
+        # (任意可读角色)而不是 Ledger.user_id;此处只做 LLM hint 上下文,
+        # 不构成任何数据访问放宽。找不到(不存在 / 非 member)行为不变:
+        # 空 hint + CNY 兜底。
+        from ...ledger_access import get_accessible_ledger_by_external_id
+
+        row = get_accessible_ledger_by_external_id(
+            db,
+            user_id=user_id,
+            ledger_external_id=ledger_id,
         )
+        ledger = row[0] if row is not None else None
         if ledger is None:
             return [], [], fallback_currency
         ledger_int_ids = [ledger.id]
         ledger_currency = (ledger.currency or fallback_currency).strip().upper()
     else:
-        all_ledgers = db.scalars(select(Ledger).where(Ledger.user_id == user_id)).all()
+        # 未指定账本:聚合「用户可见」的全部账本(owner 自有 + 被共享的),
+        # 与 docstring 的「跨账本聚合所有用户可见」口径一致 —— Editor 无
+        # ledger_id 时也能看到共享账本的分类/账户候选。
+        from ...ledger_access import list_accessible_ledgers
+
+        all_ledgers = list_accessible_ledgers(db, user_id=user_id)
         ledger_int_ids = [l.id for l in all_ledgers]
         ledger_currency = (
             (all_ledgers[0].currency or fallback_currency).strip().upper()

@@ -14,6 +14,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     false,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -69,6 +70,13 @@ class UserProfile(Base):
     # bill_extraction_enabled、use_vision。
     # API key 敏感,只在登录用户自己的 profile 上传下行,不对外暴露。
     ai_config_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # ai_config_json 的乐观锁版本(S3):整块 JSON 是 read-modify-write,无锁
+    # 并发写(App + Web 同时在线)会互相覆盖。写路径统一走
+    # `UPDATE ... WHERE ai_config_version = <读时版本>` + 版本 +1,rowcount=0
+    # 即并发冲突 → 409 让客户端重读重试。
+    ai_config_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     # 主币种(本位币):资产折算的目标币种,user-global 偏好。mobile prefs key
     # `baseCurrency`,PATCH /profile/me key `primary_currency`。大写 ISO 代码,
     # 预留 16 位对齐既有币种列宽。null = 客户端按自己的规则初始化,server 不猜。
@@ -183,10 +191,11 @@ class AIAnalysisLog(Base):
     """每一次 AI 分析调用(文档 Q&A / 截图记账 / 文字记账)的审计记录。
 
     跟 mcp_call_logs 的区别:**完整记录输入输出**(用户提问 / 文本、模型回复
-    全文),便于调试 prompt 与排查 provider 问题。隐私代价:
-      - 输入输出可能含交易内容 → **不设保留期限**(不再参与 main.py 自动
-        retention,永久保留);用户可在 Web「AI 调用记录」页手动删除单条
-        (DELETE /ai/logs/{id}),见 src/routers/ai/logs.py
+    全文),便于调试 prompt 与排查 provider 问题。隐私与体积的平衡:
+      - 输入输出可能含交易内容 → 默认 180 天保留期
+        (AI_LOG_RETENTION_DAYS,<= 0 关闭),main.py retention 循环每 24h
+        清理到期行并连带删除落盘图片;保留期内用户可在 Web「AI 调用记录」
+        页手动删除单条(DELETE /ai/logs/{id}),见 src/routers/ai/logs.py
       - 只支持 user 查自己的 + admin 查全部;列表只返截断预览,全文走
         详情 endpoint,避免大 payload 进列表响应
       - 图片输入**不存 base64**(5MB 上限会撑爆行),只存图片元信息摘要
@@ -570,6 +579,18 @@ Index(
     SyncChange.scope,
     SyncChange.change_id,
 )
+# user-scope LWW:/sync/push 对 user-global 实体按
+# (user_id, scope, entity_type, entity_sync_id) 取最新一条。与 alembic 0029
+# 建的 idx_sync_changes_user_scope_entity_latest 同定义(生产库已有该索引,
+# 此处补 models 定义让 create_all 的测试库与生产 schema 一致,勿再建迁移)。
+Index(
+    "idx_sync_changes_user_scope_entity_latest",
+    SyncChange.user_id,
+    SyncChange.scope,
+    SyncChange.entity_type,
+    SyncChange.entity_sync_id,
+    text("change_id DESC"),
+)
 
 
 class SyncCursor(Base):
@@ -640,6 +661,17 @@ class AttachmentFile(Base):
 
 Index("idx_attachment_files_sha256", AttachmentFile.sha256)
 Index("idx_attachment_files_ledger_created", AttachmentFile.ledger_id, AttachmentFile.created_at)
+# S9:交易附件按 (ledger_id, sha256) 去重的部分唯一索引 —— 代码里的
+# check-then-insert 在并发同图上传时会插入重复行(重复磁盘文件)。PG 用
+# postgresql_where / SQLite 用 sqlite_where,两边表达式一致。
+Index(
+    "uq_attachment_files_tx_ledger_sha",
+    AttachmentFile.ledger_id,
+    AttachmentFile.sha256,
+    unique=True,
+    sqlite_where=text("attachment_kind = 'transaction'"),
+    postgresql_where=text("attachment_kind = 'transaction'"),
+)
 
 
 class BackupArtifact(Base):
@@ -749,7 +781,9 @@ class ReadTxProjection(Base):
     currency_code: Mapped[str | None] = mapped_column(String(16), nullable=True)
     native_amount: Mapped[float | None] = mapped_column(Float, nullable=True)
     # 软删标记(0030 回收站):非 NULL = 已进回收站,读路径/统计/导出一律
-    # 过滤;30 天后由 data_cleanup cleaner 物理删除(含附件文件)。恢复=置回 NULL。
+    # 过滤;30 天后物理删除(含附件文件 + upsert 事件 compact)—— 由 main.py
+    # 的每日 retention 任务自动执行(data_cleanup scanner/cleaner),admin
+    # 也可经 /admin/data-cleanup 手动触发。恢复=置回 NULL。
     deleted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -776,6 +810,22 @@ Index(
     "ix_read_tx_user_time",
     ReadTxProjection.user_id,
     ReadTxProjection.happened_at.desc(),
+)
+# /workspace/transactions 按 created_at 排序(0024 新列):表达式与查询的
+# coalesce(created_at, happened_at) 逐字一致(SQLite/PG 表达式索引均按
+# 逐字匹配命中)。与 alembic 0029 建的 ix_read_tx_ledger_created 同定义
+# (生产库已有,此处补 models 定义,勿再建迁移)。
+Index(
+    "ix_read_tx_ledger_created",
+    ReadTxProjection.ledger_id,
+    text("coalesce(created_at, happened_at) DESC"),
+)
+# 回收站列表按删除时间倒序(0030)。与 alembic 0030 建的 ix_read_tx_deleted_at
+# 同定义(生产库已有,此处补 models 定义,勿再建迁移)。
+Index(
+    "ix_read_tx_deleted_at",
+    ReadTxProjection.user_id,
+    text("deleted_at DESC"),
 )
 
 

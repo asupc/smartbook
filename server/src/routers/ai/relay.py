@@ -51,12 +51,14 @@ from fastapi import (
     status,
 )
 from pydantic import BaseModel, Field
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
+from ...config import get_settings
 from ...database import get_db
 from ...deps import get_current_user, require_any_scopes
 from ...models import User, UserProfile
 from ...security import SCOPE_APP_WRITE, SCOPE_WEB_WRITE
-from ...config import get_settings
 from ...services.ai import (
     ChatProviderError,
     NoAudioProviderError,
@@ -68,19 +70,17 @@ from ...services.ai import (
     resolve_vision_provider,
     transcribe_audio,
 )
+from ...services.ai.analysis_log import (
+    token_count,
+    write_ai_analysis_log_async,
+    write_ai_analysis_log_with_image_async,
+)
 from ...services.ai.bill_identifier import (
     find_duplicate_identifier,
     harvest_identifiers,
     mark_duplicate_hit,
     register_identifiers,
 )
-from ...services.ai.analysis_log import (
-    token_count,
-    write_ai_analysis_log_async,
-    write_ai_analysis_log_with_image_async,
-)
-from sqlalchemy import select
-from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -102,13 +102,26 @@ _PROVIDER_SEMS: dict[tuple[str, str], asyncio.Semaphore] = {}
 
 
 def _provider_sem(user_id: str, provider_id: str, limit: int) -> asyncio.Semaphore:
-    """按 (user_id, provider_id) 取/建并发信号量;limit 只在建仓时生效。"""
+    """按 (user_id, provider_id) 取/建并发信号量;limit 只在建仓时生效。
+
+    S11:长期运行下字典只增不减(每个 (user, provider) 一个 entry);取/建
+    前顺手清掉闲置信号量(value>0 即无等待者 —— asyncio.Semaphore.release
+    会立即唤醒等待者,value>0 说明没人排队),防无界膨胀。清理阈值远高于
+    正常规模,单用户自部署几乎不会触发。"""
+    if len(_PROVIDER_SEMS) >= _PROVIDER_SEMS_PRUNE_THRESHOLD:
+        idle = [k for k, s in _PROVIDER_SEMS.items() if s.value > 0]
+        for k in idle:
+            if k != (user_id, provider_id):
+                del _PROVIDER_SEMS[k]
     key = (user_id, provider_id)
     sem = _PROVIDER_SEMS.get(key)
     if sem is None:
         sem = asyncio.Semaphore(max(1, limit))
         _PROVIDER_SEMS[key] = sem
     return sem
+
+
+_PROVIDER_SEMS_PRUNE_THRESHOLD = 256
 
 _MAX_IMAGE_BYTES = 5 * 1024 * 1024  # 5MB,与 /ai/parse-tx-image 同口径
 _ALLOWED_IMAGE_MIMES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
@@ -141,6 +154,10 @@ def _check_rate_limit(user_id: str) -> bool:
     window = _RATE_WINDOWS[user_id]
     while window and now - window[0] > _RATE_LIMIT_WINDOW_S:
         window.popleft()
+    if not window:
+        # S11:窗口清空即删 key,防长期运行下 defaultdict 只增不减。
+        _RATE_WINDOWS.pop(user_id, None)
+        window = _RATE_WINDOWS[user_id]
     if len(window) >= _RATE_LIMIT_MAX:
         return False
     window.append(now)
@@ -157,6 +174,52 @@ def _rate_limited(user_id: str) -> None:
 
 def _resolve_profile(db: Session, user_id: str) -> UserProfile | None:
     return db.scalar(select(UserProfile).where(UserProfile.user_id == user_id))
+
+
+# ──────────────── 账单标识判重/收割的线程池 DB 包装(S6) ────────────────
+# 这些函数内部含 SELECT / COMMIT(bill_identifier.register_identifiers
+# commit 在函数内),直接在事件循环线程同步打 DB —— SQLite busy_timeout
+# =5000 下一次写冲突就把整个进程挂起数秒。与 ai_analysis_logs 的写入路径
+# 同款:asyncio.to_thread + 独立 session(与请求 session 解耦)。
+#
+# 线程 session 的 bind 取自**请求 session 的 engine**(而不是 SessionLocal):
+# 生产两者同库;测试普遍用 dependency_overrides 换掉 get_db 的 engine,
+# 直接用 SessionLocal 会打到默认库(no such table)。
+
+def _find_duplicate_identifier_sync(bind, user_id: str, text: str | None) -> str | None:
+    with Session(bind=bind) as db:
+        user = db.get(User, user_id)
+        if user is None:
+            return None
+        return find_duplicate_identifier(db, user, text)
+
+
+def _mark_duplicate_hit_sync(bind, user_id: str, identifier: str) -> None:
+    with Session(bind=bind) as db:
+        user = db.get(User, user_id)
+        if user is None:
+            return
+        mark_duplicate_hit(db, user, identifier)
+
+
+def _register_identifiers_sync(bind, user_id: str, identifiers: list[str], source: str) -> None:
+    with Session(bind=bind) as db:
+        user = db.get(User, user_id)
+        if user is None:
+            return
+        register_identifiers(db, user, identifiers, source=source)
+
+
+async def _find_duplicate_identifier(bind, user_id: str, text: str | None) -> str | None:
+    return await asyncio.to_thread(_find_duplicate_identifier_sync, bind, user_id, text)
+
+
+async def _mark_duplicate_hit(bind, user_id: str, identifier: str) -> None:
+    await asyncio.to_thread(_mark_duplicate_hit_sync, bind, user_id, identifier)
+
+
+async def _register_identifiers(bind, user_id: str, identifiers: list[str], source: str) -> None:
+    await asyncio.to_thread(_register_identifiers_sync, bind, user_id, identifiers, source)
 
 
 def _resolve_image_mime(
@@ -273,9 +336,11 @@ async def relay_chat(
     # 返回 duplicate(空 content),App 端静默跳过(不记账不通知)。
     # 自由对话(entry_type='chat')永不判重 —— 用户可能在聊天里手打订单号。
     if req.entry_type == "parse_tx_text" and get_settings().ai_bill_identifier_dedup_enabled:
-        duplicate_of = find_duplicate_identifier(db, current_user, input_text)
+        duplicate_of = await _find_duplicate_identifier(
+            db.get_bind(), current_user.id, input_text,
+        )
         if duplicate_of:
-            mark_duplicate_hit(db, current_user, duplicate_of)
+            await _mark_duplicate_hit(db.get_bind(), current_user.id, duplicate_of)
             await write_ai_analysis_log_async(
                 user_id=current_user.id,
                 entry_type="parse_tx_text",
@@ -336,8 +401,9 @@ async def relay_chat(
             if req.entry_type == "parse_tx_text":
                 harvested = harvest_identifiers(result.content)
                 if harvested:
-                    register_identifiers(
-                        db, current_user, harvested, source="parse_tx_text",
+                    await _register_identifiers(
+                        db.get_bind(), current_user.id, harvested,
+                        source="parse_tx_text",
                     )
             return {
                 "content": result.content,
@@ -428,7 +494,10 @@ async def relay_vision(
             # 供之后的短信/通知文本请求前置判重(同一笔支付的跨通道重复)。
             harvested = harvest_identifiers(result.content)
             if harvested:
-                register_identifiers(db, current_user, harvested, source="parse_tx_image")
+                await _register_identifiers(
+                    db.get_bind(), current_user.id, harvested,
+                    source="parse_tx_image",
+                )
             return {
                 "content": result.content,
                 "provider_id": cfg.provider_id,
@@ -532,7 +601,10 @@ async def relay_vision_batch(
                 content = result.content
                 harvested = harvest_identifiers(result.content)
                 if harvested:
-                    register_identifiers(db, current_user, harvested, source="parse_tx_image")
+                    await _register_identifiers(
+                        db.get_bind(), current_user.id, harvested,
+                        source="parse_tx_image",
+                    )
             except ChatProviderError as exc:
                 error_message = str(exc)[:500]
             finally:

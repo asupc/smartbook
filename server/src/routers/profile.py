@@ -10,6 +10,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
@@ -23,6 +24,7 @@ from ..schemas import (
 )
 from ..security import SCOPE_APP_WRITE, SCOPE_OPS_WRITE, SCOPE_WEB_READ, SCOPE_WEB_WRITE
 from ..services.ai.ai_config_store import mask_ai_config, merge_ai_config_on_patch
+from .ai.providers import save_ai_config_guarded
 
 router = APIRouter()
 settings = get_settings()
@@ -191,7 +193,21 @@ async def patch_my_profile(
             primary_currency=(req.primary_currency.upper() if req.primary_currency is not None else None),
             updated_at=now,
         )
+        # S3:首建即带 ai_config → 版本从 1 起;否则 0(与迁移 default 一致)。
+        profile.ai_config_version = 1 if req.ai_config is not None else 0
         db.add(profile)
+        try:
+            db.commit()
+        except IntegrityError:
+            # 并发首建撞 user_id 唯一约束 → 409 让客户端重读重试(S3)。
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "error_code": "AI_CONFIG_CONFLICT",
+                    "message": "Profile was created concurrently; please refresh and retry",
+                },
+            ) from None
     else:
         # 只更新显式提供的字段，None 表示不改。这样 mobile 切单项配色时
         # 不会把其它字段清掉；反之亦然。appearance 例外:客户端传 {} 时视为
@@ -207,15 +223,26 @@ async def patch_my_profile(
             profile.theme_primary_color = req.theme_primary_color
         if req.appearance is not None:
             profile.appearance_json = _dump_appearance_json(req.appearance)
-        if req.ai_config is not None:
-            existing_ai = _parse_appearance_json(profile.ai_config_json)
-            profile.ai_config_json = _dump_appearance_json(
-                merge_ai_config_on_patch(existing_ai, req.ai_config)
-            )
         if req.primary_currency is not None:
             profile.primary_currency = req.primary_currency.upper()
         profile.updated_at = now
-    db.commit()
+        if req.ai_config is not None:
+            # S3:ai_config_json 走乐观锁 guarded UPDATE(版本不匹配 → 409,
+            # 同时回滚本次请求的其它字段改动,整体重试);helper 内部 commit,
+            # 其 autoflush 会把上面已设的 ORM 字段一并发出去。
+            merged_json = _dump_appearance_json(
+                merge_ai_config_on_patch(
+                    _parse_appearance_json(profile.ai_config_json), req.ai_config,
+                )
+            )
+            save_ai_config_guarded(
+                db,
+                user_id=current_user.id,
+                new_json=merged_json,
+                profile=profile,
+            )
+        else:
+            db.commit()
     db.refresh(profile)
     logger.info(
         "profile_patch: user=%s display_name=%s income_is_red=%s theme=%s appearance=%s ai_config_len=%s avatar_version=%s primary_currency=%s",
@@ -347,8 +374,17 @@ async def upload_my_avatar(
 def download_avatar(
     user_id: str,
     request: Request,
+    _user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> FileResponse:
+    """用户头像下载(S5:补鉴权 —— 原先完全无认证,任何匿名请求都能拉头像)。
+
+    只认证、不查关系:任何登录用户可看任意用户头像(共享账本成员列表 /
+    交易行的创建者头像需要跨用户展示)。注意 web 端 `<img>` 无法携带
+    Authorization 头,需走「fetch + blob URL」(同 AI 日志图片的模式)。
+    带缓存版本号 `v` 时可长缓存,但改为 `private`(响应已需认证,公共
+    CDN/代理缓存不合适)。
+    """
     profile = db.scalar(select(UserProfile).where(UserProfile.user_id == user_id))
     if profile is None or not (profile.avatar_file_id or "").strip():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile avatar not found")
@@ -358,7 +394,7 @@ def download_avatar(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile avatar not found")
 
     cache_control = (
-        "public, max-age=31536000, immutable"
+        "private, max-age=31536000, immutable"
         if (request.query_params.get("v") or "").strip()
         else "no-cache"
     )

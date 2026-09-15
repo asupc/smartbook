@@ -30,7 +30,7 @@ def list_ledgers(
     # 自己 owner 的 + 加入的共享账本)。admin 用户直接看所有(管理后台需求)。
     from ...ledger_access import list_accessible_memberships
 
-    if _is_admin(current_user):
+    if _is_admin():
         rows = list(db.scalars(select(Ledger).order_by(Ledger.created_at.desc())).all())
         memberships: list[tuple[Ledger, str | None]] = [(lg, None) for lg in rows]
     else:
@@ -143,7 +143,7 @@ def get_ledger_stats(
         db,
         user_id=current_user.id,
         ledger_external_id=ledger_external_id,
-        is_admin=_is_admin(current_user),
+        is_admin=_is_admin(),
     )
 
     # per-ledger count:单 SQL COUNT,不再 parse snapshot
@@ -268,7 +268,7 @@ def get_ledger(
         db,
         user_id=current_user.id,
         ledger_external_id=ledger_external_id,
-        is_admin=_is_admin(current_user),
+        is_admin=_is_admin(),
     )
     currency = ledger.currency or "CNY"
     ledger_name = _resolve_ledger_name(db, ledger=ledger)
@@ -312,7 +312,7 @@ def list_transactions(
     # CQRS 读路径:不再 parse snapshot,直接查 read_tx_projection + index。
     # account/category/tag 的 name 已在写入时 denormalized 到 projection 列,
     # rename 时同事务级联更新(见 projection.rename_cascade_*)。
-    is_admin = _is_admin(current_user)
+    is_admin = _is_admin()
     ledger, _ = _require_ledger(
         db,
         user_id=current_user.id,
@@ -418,7 +418,7 @@ def list_accounts(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[ReadAccountOut]:
-    is_admin = _is_admin(current_user)
+    is_admin = _is_admin()
     ledger, _ = _require_ledger(
         db,
         user_id=current_user.id,
@@ -473,7 +473,7 @@ def list_categories(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[ReadCategoryOut]:
-    is_admin = _is_admin(current_user)
+    is_admin = _is_admin()
     ledger, _ = _require_ledger(
         db,
         user_id=current_user.id,
@@ -528,7 +528,7 @@ def list_budgets(
     """预算只读列表。mobile Feature 3b 之后,snapshot.budgets 由 server
     materializer 维护,这里按 categoryId syncId 反查 category name 填上,
     跟 tx/tag 接口同一套 id→name 映射思路。"""
-    is_admin = _is_admin(current_user)
+    is_admin = _is_admin()
     ledger, _ = _require_ledger(
         db,
         user_id=current_user.id,
@@ -613,7 +613,7 @@ def list_budgets_usage(
     - 计算下沉到 SQL,不受 limit=1000 截断
     - 子分类展开在 server 完成,前端无需感知 parent_sync_id
     """
-    is_admin = _is_admin(current_user)
+    is_admin = _is_admin()
     ledger, _ = _require_ledger(
         db,
         user_id=current_user.id,
@@ -727,7 +727,7 @@ def list_tags(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[ReadTagOut]:
-    is_admin = _is_admin(current_user)
+    is_admin = _is_admin()
     ledger, _ = _require_ledger(
         db,
         user_id=current_user.id,

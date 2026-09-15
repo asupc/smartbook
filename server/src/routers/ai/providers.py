@@ -20,12 +20,14 @@ from __future__ import annotations
 
 import logging
 import time
+from datetime import datetime, timezone
 from typing import Any, Literal
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ...database import get_db
@@ -181,13 +183,76 @@ async def _broadcast_providers_changed(request: Request, *, user_id: str) -> Non
         logger.warning("ai.providers.broadcast: failed user=%s err=%s", user_id, exc)
 
 
-def _save_config(db: Session, profile: UserProfile | None, user_id: str, cfg: dict) -> UserProfile:
+def _ai_config_conflict() -> HTTPException:
+    """S3:ai_config_json 并发写冲突(乐观锁版本不匹配 / 首建撞唯一约束)。
+
+    客户端(app/web)收到 409 后应重新 GET 最新配置再重试整个写操作。"""
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "error_code": "AI_CONFIG_CONFLICT",
+            "message": "AI config was modified concurrently; please refresh and retry",
+        },
+    )
+
+
+def save_ai_config_guarded(
+    db: Session,
+    *,
+    user_id: str,
+    new_json: str | None,
+    profile: UserProfile | None,
+) -> UserProfile:
+    """乐观锁写 ai_config_json(S3,providers.py 与 profile.py 共用)。
+
+    `profile` 必须是**读出旧 JSON 时**加载的同一 ORM 对象 —— 版本号取其
+    `ai_config_version` 属性;UPDATE 带 `WHERE ai_config_version = <读时值>`,
+    rowcount=0 说明期间有并发写 → 409(回滚,不覆盖对方)。首次创建
+    (profile 为 None)并发撞 user_id 唯一约束同样转 409。
+
+    注意:调用方若在同一 session 上还有其它 ORM 待写字段,本函数的
+    db.execute 会先 autoflush 它们 —— 与本 UPDATE 同事务提交,冲突时一并
+    回滚(语义:整个请求重试)。"""
     if profile is None:
-        profile = UserProfile(user_id=user_id)
+        profile = UserProfile(
+            user_id=user_id,
+            ai_config_json=new_json,
+            ai_config_version=1,
+        )
         db.add(profile)
-    profile.ai_config_json = dump_ai_config(cfg)
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            raise _ai_config_conflict() from None
+        db.refresh(profile)
+        return profile
+
+    expected = int(profile.ai_config_version or 0)
+    result = db.execute(
+        update(UserProfile)
+        .where(
+            UserProfile.user_id == user_id,
+            UserProfile.ai_config_version == expected,
+        )
+        .values(
+            ai_config_json=new_json,
+            ai_config_version=expected + 1,
+            updated_at=datetime.now(timezone.utc),
+        )
+    )
+    if not result.rowcount:
+        db.rollback()
+        raise _ai_config_conflict()
     db.commit()
+    db.refresh(profile)
     return profile
+
+
+def _save_config(db: Session, profile: UserProfile | None, user_id: str, cfg: dict) -> UserProfile:
+    return save_ai_config_guarded(
+        db, user_id=user_id, new_json=dump_ai_config(cfg), profile=profile,
+    )
 
 
 # ──────────────── 查询
@@ -275,7 +340,8 @@ async def update_provider(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ProviderOut:
-    cfg = load_ai_config(_load_profile(db, current_user.id))
+    profile = _load_profile(db, current_user.id)
+    cfg = load_ai_config(profile)
     provider = find_provider(cfg, provider_id)
     if provider is None:
         raise HTTPException(
@@ -301,7 +367,7 @@ async def update_provider(
         provider["apiKey"] = payload.apiKey
 
     cfg["providers"] = get_providers(cfg)
-    _save_config(db, _load_profile(db, current_user.id), current_user.id, cfg)
+    _save_config(db, profile, current_user.id, cfg)
     await _broadcast_providers_changed(request, user_id=current_user.id)
     return _to_out(provider)
 
@@ -317,7 +383,8 @@ async def delete_provider(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict[str, bool]:
-    cfg = load_ai_config(_load_profile(db, current_user.id))
+    profile = _load_profile(db, current_user.id)
+    cfg = load_ai_config(profile)
     # 内置 id 保护优先于存在性检查:目录还没被 GET 种进 DB 时也拒绝(不是 404)
     if provider_id in BUILTIN_PROVIDER_IDS:
         raise HTTPException(
@@ -344,7 +411,7 @@ async def delete_provider(
             binding[key] = BUILTIN_PROVIDER_ID
     if binding:
         cfg["binding"] = binding
-    _save_config(db, _load_profile(db, current_user.id), current_user.id, cfg)
+    _save_config(db, profile, current_user.id, cfg)
     await _broadcast_providers_changed(request, user_id=current_user.id)
     return {"ok": True}
 
@@ -360,14 +427,33 @@ async def update_binding(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    cfg = load_ai_config(_load_profile(db, current_user.id))
+    profile = _load_profile(db, current_user.id)
+    cfg = load_ai_config(profile)
+    # S12-④:绑定的 provider 必须真实存在 —— 否则会把 binding 指向悬空 id,
+    # 之后 resolve_*_provider 全部静默回退内置,用户看不出原因。内置目录
+    # (BUILTIN_PROVIDER_IDS)即使还没被 GET 种进 ai_config 也算有效 ——
+    # 它们必然存在(列表时会补齐)。
+    existing_ids = {p.get("id") for p in get_providers(cfg)} | set(BUILTIN_PROVIDER_IDS)
+    for cap, pid in (
+        ("textProviderId", payload.textProviderId),
+        ("visionProviderId", payload.visionProviderId),
+        ("speechProviderId", payload.speechProviderId),
+    ):
+        if pid is not None and pid not in existing_ids:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "error_code": "AI_PROVIDER_NOT_FOUND",
+                    "message": f"provider {pid!r} referenced by {cap} does not exist",
+                },
+            )
     binding = {
         "textProviderId": payload.textProviderId,
         "visionProviderId": payload.visionProviderId,
         "speechProviderId": payload.speechProviderId,
     }
     cfg["binding"] = binding
-    _save_config(db, _load_profile(db, current_user.id), current_user.id, cfg)
+    _save_config(db, profile, current_user.id, cfg)
     await _broadcast_providers_changed(request, user_id=current_user.id)
     return {"binding": binding}
 

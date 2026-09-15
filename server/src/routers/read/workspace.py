@@ -58,7 +58,7 @@ def list_workspace_transactions(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> WorkspaceTransactionPageOut:
-    is_admin = _is_admin(current_user)
+    is_admin = _is_admin()
 
     # 账本筛选 → 内部 id 列表(已排除软删账本,issue #31)
     ledgers = _visible_workspace_ledgers(
@@ -72,10 +72,11 @@ def list_workspace_transactions(
     ledger_meta: dict[str, tuple[str, str]] = {
         l.id: (l.external_id, _resolve_ledger_name(db, ledger=l)) for l in ledgers
     }
-    # 各账本的最新 change_id —— 客户端比对用
-    change_id_by_ledger: dict[str, int] = {}
-    for l in ledgers:
-        change_id_by_ledger[l.id] = _get_latest_change_id(db, ledger_id=l.id)
+    # 各账本的最新 change_id —— 客户端比对用(S12-②:一条 GROUP BY 批量取,
+    # 不再逐账本点查 N+1)
+    change_id_by_ledger: dict[str, int] = _latest_change_ids(
+        db, ledger_ids=ledger_internal_ids
+    )
 
     owner_map = _owner_map_for_ledgers(db, ledgers)
 
@@ -348,7 +349,7 @@ def export_workspace_transactions_csv(
     from sqlalchemy.orm import aliased
     from fastapi.responses import StreamingResponse
 
-    is_admin = _is_admin(current_user)
+    is_admin = _is_admin()
     lang_key = _normalize_lang(lang)
     headers = _CSV_HEADERS_BY_LANG[lang_key]
     type_labels = _TX_TYPE_LABELS_BY_LANG[lang_key]
@@ -572,7 +573,7 @@ def list_workspace_accounts(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[WorkspaceAccountOut]:
-    is_admin = _is_admin(current_user)
+    is_admin = _is_admin()
 
     # --- 1. 从 snapshot 聚合账户（手机同步写入的数据，已排除软删账本 issue #31） ---
     ledgers = _visible_workspace_ledgers(
@@ -583,7 +584,7 @@ def list_workspace_accounts(
         return []
     ledger_internal_ids = [l.id for l in ledgers]
     ledger_meta = {l.id: (l.external_id, _resolve_ledger_name(db, ledger=l)) for l in ledgers}
-    change_id_by_ledger = {l.id: _get_latest_change_id(db, ledger_id=l.id) for l in ledgers}
+    change_id_by_ledger = _latest_change_ids(db, ledger_ids=ledger_internal_ids)
 
     # account 是 **user-global** 实体(Flutter 侧 Accounts 表没 ledger_id),但
     # projection 历史上 per-ledger 重复存(snapshot 每 ledger 各一份)。所以 tx
@@ -748,7 +749,7 @@ def list_workspace_categories(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[WorkspaceCategoryOut]:
-    is_admin = _is_admin(current_user)
+    is_admin = _is_admin()
 
     # --- 1. 从 snapshot 聚合分类（手机同步写入的数据，已排除软删账本 issue #31） ---
     ledgers = _visible_workspace_ledgers(
@@ -759,7 +760,7 @@ def list_workspace_categories(
         return []
     ledger_internal_ids = [l.id for l in ledgers]
     ledger_meta = {l.id: (l.external_id, _resolve_ledger_name(db, ledger=l)) for l in ledgers}
-    change_id_by_ledger = {l.id: _get_latest_change_id(db, ledger_id=l.id) for l in ledgers}
+    change_id_by_ledger = _latest_change_ids(db, ledger_ids=ledger_internal_ids)
 
     # user-global 重构:category 是 per-user 表。target_user 跟 accounts 一致。
     target_user_id = user_id if (is_admin and user_id) else current_user.id
@@ -848,7 +849,7 @@ def list_workspace_tags(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[WorkspaceTagOut]:
-    is_admin = _is_admin(current_user)
+    is_admin = _is_admin()
 
     # --- 1. 从 snapshot 聚合标签（手机同步写入的数据，已排除软删账本 issue #31） ---
     ledgers = _visible_workspace_ledgers(
@@ -978,7 +979,7 @@ def workspace_ledger_counts(
     """账本级全量记账统计：对齐 mobile `getCountsForLedger` (SQL:
     `COUNT(*) + julianday(now) - julianday(MIN(happened_at))`)。不限时间范围。
     首页 Hero 用来展示"记账笔数 / 记账天数"，与 analytics 的 scope=year 脱钩。"""
-    is_admin = _is_admin(current_user)
+    is_admin = _is_admin()
     ledgers = _visible_workspace_ledgers(
         db, current_user=current_user, is_admin=is_admin,
         ledger_id=ledger_id, user_id=user_id,
@@ -1053,7 +1054,7 @@ def workspace_analytics(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> WorkspaceAnalyticsOut:
-    is_admin = _is_admin(current_user)
+    is_admin = _is_admin()
     ledgers = _visible_workspace_ledgers(
         db, current_user=current_user, is_admin=is_admin,
         ledger_id=ledger_id, user_id=user_id,
@@ -1469,7 +1470,7 @@ def workspace_net_worth_history(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> NetWorthHistoryOut:
-    is_admin = _is_admin(current_user)
+    is_admin = _is_admin()
     ledgers = _visible_workspace_ledgers(
         db, current_user=current_user, is_admin=is_admin,
         ledger_id=ledger_id, user_id=user_id,
@@ -1572,6 +1573,10 @@ def workspace_net_worth_history(
     ).all()
 
     # 合并成月度事件流(tx 流 + 调整流),按月升序回放。
+    # S12-③ 已知口径限制:回放全程用的是**查询时刻**的汇率(rates_to_base
+    # 在函数开头一次性解析),不回放历史时点汇率 —— 多币种用户的历史净值
+    # 曲线会随当日汇率整体漂移。与交易级统计(native_amount 落库快照)不同,
+    # 属接受的简化;详见 docs/deploy/deployment-notes.md「已知行为限制」。
     monthly: dict[str, dict[str, float]] = {}
     for ym, acc, delta in monthly_rows:
         if ym is None or acc is None:

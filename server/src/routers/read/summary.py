@@ -11,7 +11,7 @@ def get_summary(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ReadSummaryOut:
-    is_admin = _is_admin(current_user)
+    is_admin = _is_admin()
     ledger, _ = _require_ledger(
         db,
         user_id=current_user.id,

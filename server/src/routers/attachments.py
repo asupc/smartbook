@@ -8,6 +8,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
@@ -79,6 +80,26 @@ def _to_upload_out(row: AttachmentFile, ledger_external_id: str) -> AttachmentUp
     )
 
 
+def _find_existing_tx_attachment(
+    db: Session, ledger_id: str, sha256: str
+) -> AttachmentFile | None:
+    """同账本同 sha256 的既有 transaction 附件(S9 冲突复用查询)。"""
+    return db.scalar(
+        select(AttachmentFile).where(
+            AttachmentFile.ledger_id == ledger_id,
+            AttachmentFile.sha256 == sha256,
+        )
+    )
+
+
+def _reclaim_orphan_storage(path: Path) -> None:
+    """冲突复用时清掉刚写出的重复磁盘文件(失败只 warn)。"""
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        logger.warning("attachments.unlink_orphan_failed path=%s", path)
+
+
 @router.post("/upload", response_model=AttachmentUploadOut)
 async def upload_attachment(
     ledger_id: str = Form(...),
@@ -101,12 +122,7 @@ async def upload_attachment(
         raise HTTPException(status_code=413, detail="Attachment upload too large")
 
     sha256 = hashlib.sha256(data).hexdigest()
-    existing = db.scalar(
-        select(AttachmentFile).where(
-            AttachmentFile.ledger_id == ledger.id,
-            AttachmentFile.sha256 == sha256,
-        )
-    )
+    existing = _find_existing_tx_attachment(db, ledger.id, sha256)
     if existing is not None:
         logger.info(
             "attachments.upload.dedup ledger=%s sha256=%s size=%d user=%s",
@@ -136,7 +152,21 @@ async def upload_attachment(
         storage_path=str(storage_path),
     )
     db.add(row)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # S9:并发同图撞 (ledger_id, sha256) 部分唯一索引 —— 复用赢家的行,
+        # 刚写出的重复磁盘文件回收。
+        db.rollback()
+        winner = _find_existing_tx_attachment(db, ledger.id, sha256)
+        if winner is not None:
+            _reclaim_orphan_storage(storage_path)
+            logger.info(
+                "attachments.upload.dedup_race ledger=%s sha256=%s user=%s",
+                ledger.external_id, sha256, current_user.id,
+            )
+            return _to_upload_out(winner, ledger.external_id)
+        raise
     db.refresh(row)
     logger.info(
         "attachments.upload ledger=%s file=%s size=%d sha256=%s user=%s",
@@ -270,38 +300,43 @@ def download_attachment(
 
     # 权限校验:
     # 1) admin 直接通过(管理后台需求)
-    # 2) 自己上传的(row.user_id == current_user.id) → 通过
-    # 3) row.ledger_id 为 NULL(category_icon / user-global)→ 共享账本场景:
-    #    如果 row.user_id 是 caller 同 ledger 的 owner,允许(详见 .docs/shared-ledger
-    #    04-server-details.md §3.5)
-    # 4) row.ledger_id 非 NULL(tx 附件)→ 走 LedgerMember accessible
+    # 2) row.ledger_id 为 NULL(category_icon / user-global)→ 本人上传的直接
+    #    通过;否则要求 row.user_id 是 caller 同 ledger 的 owner(详见
+    #    .docs/shared-ledger 04-server-details.md §3.5)
+    # 3) row.ledger_id 非 NULL(tx 附件)→ 一律走 LedgerMember accessible
+    #    (owner/editor 均可读)。**「本人上传」不再放行**:被移除的成员
+    #    曾上传的交易附件必须随成员资格一并失去访问权(S1 越权修复)。
     if not current_user.is_admin:
         from ..ledger_access import get_accessible_ledger_ids
-        from ..models import LedgerMember
+        from ..models import Ledger, LedgerMember
         from sqlalchemy import and_, exists as sa_exists
 
-        if row.user_id == current_user.id:
-            pass  # 自己上传的,允许
-        elif row.ledger_id is None:
-            # category_icon / user-global:caller 跟 row.user_id 在同一 ledger
-            # 且 row.user_id 是该 ledger 的 owner(严控 — 只共享 owner 的 icon)
-            lm_caller = LedgerMember
-            lm_owner = LedgerMember.__table__.alias("lm_owner")
-            shared = db.scalar(
-                select(sa_exists().where(and_(
-                    lm_caller.user_id == current_user.id,
-                    lm_caller.ledger_id == lm_owner.c.ledger_id,
-                    lm_owner.c.user_id == row.user_id,
-                    lm_owner.c.role == "owner",
-                )))
-            )
-            if not shared:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Attachment access forbidden",
+        if row.ledger_id is None:
+            if row.user_id == current_user.id:
+                pass  # 自己上传的 category_icon / user-global 附件,允许
+            else:
+                # category_icon / user-global:caller 跟 row.user_id 在同一
+                # ledger 且 row.user_id 是该 ledger 的 owner(严控 — 只共享
+                # owner 的 icon)
+                lm_caller = LedgerMember
+                lm_owner = LedgerMember.__table__.alias("lm_owner")
+                shared = db.scalar(
+                    select(sa_exists().where(and_(
+                        lm_caller.user_id == current_user.id,
+                        lm_caller.ledger_id == lm_owner.c.ledger_id,
+                        lm_owner.c.user_id == row.user_id,
+                        lm_owner.c.role == "owner",
+                    )))
                 )
+                if not shared:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Attachment access forbidden",
+                    )
         else:
-            # tx 附件:走 LedgerMember accessible
+            # tx 附件:一律走 LedgerMember accessible(任意可读角色)。
+            # 曾在此处的「本人上传直接放行」分支已移除 —— 被移除成员的
+            # 历史上传不再可下载(S1)。
             accessible_ids = get_accessible_ledger_ids(db, user_id=current_user.id)
             ok = db.scalar(
                 select(Ledger).where(

@@ -19,7 +19,8 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field, field_serializer
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
@@ -411,12 +412,12 @@ async def accept_invite(
     normalized = _normalize_code(code)
     now = _utcnow()
 
-    # with_for_update 锁行 → 防两人同时接受同一码导致重复加入。
-    # SQLite 上 with_for_update 退化为单事务排他锁(BEGIN IMMEDIATE)
-    # ,效果一致。
+    # 预读(无锁):只做存在性与资格校验;「一次性」语义不靠这一步保证。
+    # (旧实现用 with_for_update —— SQLite 方言直接丢弃 FOR UPDATE 且默认
+    # DEFERRED 事务,排他锁并不存在,并发 accept 同码可双双通过。)
     invite = db.scalar(
         _active_invite_filter(
-            select(LedgerInvite).where(LedgerInvite.code == normalized).with_for_update(),
+            select(LedgerInvite).where(LedgerInvite.code == normalized),
             now,
         )
     )
@@ -448,7 +449,9 @@ async def accept_invite(
             detail="Cannot accept your own invite",
         )
 
-    # 成员数上限
+    # 成员数上限(5 人)。并发 accept 不同邀请码时可少量超限 —— 由
+    # ledger_members 的 (ledger_id, user_id) 复合主键兜底同用户重复加入,
+    # 超限一人在共享记账场景可接受(与修复前行为一致,不追求严格串行)。
     current_member_count = db.scalar(
         select(func.count(LedgerMember.user_id)).where(
             LedgerMember.ledger_id == ledger.id
@@ -467,9 +470,31 @@ async def accept_invite(
             detail=f"Unsupported invite role: {invite.target_role}",
         )
 
-    # 标记 invite 已用 + 写 ledger_members 行
-    invite.used_at = now
-    invite.used_by = current_user.id
+    # S4「先抢占」:条件 UPDATE 是原子的,两人同时 accept 同一码只有一方
+    # rowcount=1,另一方 409(SQLite / PG 行为一致,不再依赖 FOR UPDATE)。
+    # synchronize_session=False:Core UPDATE 的 WHERE(expires_at > now)会被
+    # ORM 拿去在 Python 侧对 identity map 里的对象求值,SQLite 返的 naive
+    # expires_at 与 aware now 比较直接 TypeError —— 我们不依赖 invite 对象
+    # 的事后属性同步(只用 target_role / invited_by,两者不被本 UPDATE 改)。
+    claimed = db.execute(
+        update(LedgerInvite)
+        .where(
+            LedgerInvite.code == normalized,
+            LedgerInvite.used_at.is_(None),
+            LedgerInvite.expires_at > now,
+        )
+        .values(used_at=now, used_by=current_user.id)
+        .execution_options(synchronize_session=False)
+    )
+    if not claimed.rowcount:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Invite already used or expired",
+        )
+
+    # 抢占成功 → 写 ledger_members 行;撞复合主键(并发同用户双请求)
+    # 时连同抢占一起回滚,对外仍是 409「已是成员」。
     member = LedgerMember(
         ledger_id=ledger.id,
         user_id=current_user.id,
@@ -478,7 +503,14 @@ async def accept_invite(
         joined_at=now,
     )
     db.add(member)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Already a member of this ledger",
+        ) from None
 
     member_count = db.scalar(
         select(func.count(LedgerMember.user_id)).where(

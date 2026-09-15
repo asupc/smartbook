@@ -80,14 +80,15 @@ _READ_SCOPE_DEP = (
 )
 
 
-def _is_admin(current_user: User) -> bool:
+def _is_admin() -> bool:
     """单用户隔离模型下,read 路由永远按 current_user 过滤 —— admin 角色只
     作用于 /admin/* 管理面板(用户列表、备份、日志等),不给读账本/交易/分类/
     标签/账户开"看所有用户数据"的后门。之前 admin 用户注册成第一个账号会
     自动被提升为 admin(见 alembic 0007_admin_bootstrap),结果 User B 登录
     就看到 User A 所有账本 —— 单用户自部署场景下这是 bug,不是 feature。
-    """
-    _ = current_user
+
+    S12-⑤:历史签名带 ``current_user`` 参数但从不使用(恒返 False),已移除
+    该误导参数 —— call site 一律无参调用。"""
     return False
 
 
@@ -189,6 +190,20 @@ def _get_latest_change_id(db: Session, *, ledger_id: str) -> int:
         select(func.max(SyncChange.change_id)).where(SyncChange.ledger_id == ledger_id)
     )
     return int(val or 0)
+
+
+def _latest_change_ids(db: Session, *, ledger_ids: list[str]) -> dict[str, int]:
+    """批量版 _get_latest_change_id(S12-②):一条 GROUP BY 拿全部账本的最大
+    change_id,替代逐账本点查的 N+1。没有 change 的账本不在结果里,caller
+    用 .get(lg_id, 0) 取。"""
+    if not ledger_ids:
+        return {}
+    rows = db.execute(
+        select(SyncChange.ledger_id, func.max(SyncChange.change_id))
+        .where(SyncChange.ledger_id.in_(ledger_ids))
+        .group_by(SyncChange.ledger_id)
+    ).all()
+    return {lg: int(cid or 0) for lg, cid in rows}
 
 
 def _user_info_map(
@@ -741,6 +756,7 @@ __all__ = [
     '_require_ledger',
     '_get_latest_snapshot',
     '_get_latest_change_id',
+    '_latest_change_ids',
     '_owner_map_for_ledgers',
     '_user_info_map',
     '_is_ledger_deleted',
