@@ -87,6 +87,24 @@ class SyncEngine implements app.SyncService {
   /// 「X 条修改被服务端版本覆盖」。null = 最近一次 push 无拒绝。
   ({int conflict, int failed, DateTime at})? _lastPushConflicts;
 
+  /// 附录 B3(2026-09-15):被拒 change 的重推熔断。
+  ///
+  /// 旧行为:被拒 change 不 markPushed,留在 local_changes 被每次 push 无限
+  /// 重推 —— 服务端配套每条冲突写一条 AuditLog(无节流),重推循环双向放大。
+  /// 现在:按 (entityType, entitySyncId) 计数,同一代表条(以 change id 标识,
+  /// 用户再次编辑会产生新 change、计数重置)被拒 [maxPushRejectAttempts]
+  /// 次后熔断 —— 本进程会话内不再推它,change 保留在 local_changes
+  /// (unpushed 计数仍可见,不静默丢失)。
+  ///
+  /// 仅内存态:进程重启后每个实体重新获得 N 次机会(服务端可能已修好);
+  /// 实体之后推送成功时计数清除。UI 暴露(同步页展示被熔断实体)可后置。
+  static const int maxPushRejectAttempts = 8;
+  final Map<String, ({int repChangeId, int rejects, bool tripped})>
+      _pushRejectState = {};
+
+  String _pushRejectKey(String entityType, String entitySyncId) =>
+      '$entityType\u0000$entitySyncId';
+
   /// WebSocket 实时监听
   StreamSubscription<SmartBookCloudRealtimeEvent>? _realtimeSubscription;
   Timer? _pullDebounce;
@@ -766,26 +784,50 @@ class SyncEngine implements app.SyncService {
       return 0;
     }
 
-    // change ↔ 序列化字典配对(后面按 entity_type 拆批时要凭 change.id 标记已推)。
-    final mainChanges = <LocalChange>[];
-    final mainSyncChanges = <Map<String, dynamic>>[];
-    final overrideChanges = <LocalChange>[];
-    final overrideSyncChanges = <Map<String, dynamic>>[];
-    for (final change in globalChanges) {
+    // C2(2026-09-15):先按 (entityType, entitySyncId) 合并(同实体多条 change
+    // 只发最新快照),再把代表条按 entity_type 拆主批/override 批 —— 拆批语义
+    // 从「逐条 change」移到「合并代表条」层,exchange_rate_override 依旧单独
+    // 推送,不与主批互相拖累。
+    final merged = _mergeChangesByEntity(globalChanges);
+    final mainReps = <LocalChange>[];
+    final mainChangeIds = <List<int>>[];
+    final overrideReps = <LocalChange>[];
+    final overrideChangeIds = <List<int>>[];
+    for (var i = 0; i < merged.representatives.length; i++) {
+      final rep = merged.representatives[i];
+      if (rep.entityType == 'exchange_rate_override') {
+        overrideReps.add(rep);
+        overrideChangeIds.add(merged.changeIds[i]);
+      } else {
+        mainReps.add(rep);
+        mainChangeIds.add(merged.changeIds[i]);
+      }
+    }
+
+    // user-global 实体序列化不需要 ledger 上下文,ledgerId 传 0 占位
+    // (_serializeEntityForPush 内部用它查 parent ledger.syncId,user-global
+    // 实体不会用到 parentLedgerSyncId)。
+    // C11(2026-09-15):序列化为 null(实体已被本地删除)时返回 null,由
+    // _pushChangeGroups 跳过该行 + 告警,不再发空 {} upsert。
+    Future<Map<String, dynamic>?> buildSyncChange(LocalChange change) async {
       Map<String, dynamic> payload;
       if (change.action == 'delete') {
         payload = <String, dynamic>{};
       } else {
-        // user-global 实体序列化不需要 ledger 上下文,ledgerId 传 0 占位
-        // (_serializeEntityForPush 内部用它查 parent ledger.syncId,user-global
-        // 实体不会用到 parentLedgerSyncId)。
         payload = await _serializeEntityForPush(
           entityType: change.entityType,
           entityId: change.entityId,
           ledgerId: 0,
         );
+        if (payload == null) {
+          logger.warning(
+              'SyncEngine',
+              'pushUserGlobal: ${change.entityType}(${change.entitySyncId}) '
+              '本地实体已不存在,跳过 upsert 行(等待 delete change/本地重建对齐)');
+          return null;
+        }
       }
-      final syncChange = {
+      return {
         'ledger_id': null,
         'scope': 'user',
         'entity_type': change.entityType,
@@ -794,49 +836,31 @@ class SyncEngine implements app.SyncService {
         'payload': payload,
         'updated_at': change.createdAt.toUtc().toIso8601String(),
       };
-      if (change.entityType == 'exchange_rate_override') {
-        overrideChanges.add(change);
-        overrideSyncChanges.add(syncChange);
-      } else {
-        mainChanges.add(change);
-        mainSyncChanges.add(syncChange);
-      }
     }
 
-    // 主批(account/category/tag):推送后按服务端结果分流 markPushed。
+    // 主批(account/category/tag):分批推送后按服务端结果分流 markPushed。
     // 批次3(2026-09-10):LWW 判负 / poison 被拒的 change 不再标记已推
     // (旧行为:200 即全量 markPushed,被拒的本地编辑静默丢失)。被拒实体
     // 保留在 local_changes,由紧随的 pull 用服务端版本覆盖对齐。
-    if (mainSyncChanges.isNotEmpty) {
-      final result = await provider.pushChanges(changes: mainSyncChanges);
-      final rejectedIds = result.rejectedEntitySyncIds;
-      final okIds = mainChanges
-          .where((c) => !rejectedIds.contains(c.entitySyncId))
-          .map((c) => c.id)
-          .toList();
-      if (okIds.isNotEmpty) {
-        await changeTracker.markPushed(okIds);
-      }
-      if (result.conflictCount > 0 || result.failedCount > 0) {
-        _lastPushConflicts = (
-          conflict: result.conflictCount,
-          failed: result.failedCount,
-          at: DateTime.now(),
-        );
-        logger.warning('SyncEngine',
-            'pushUserGlobalEntities: 服务端拒绝 ${result.conflictCount} 条冲突'
-            '/ ${result.failedCount} 条失败,保留本地待 pull 对齐');
-      }
+    // C2 追加:分批 ≤200 条 + samples 截断防误标(见 _pushChangeGroups)。
+    if (mainReps.isNotEmpty) {
+      await _pushChangeGroups(
+        mainReps,
+        mainChangeIds,
+        buildSyncChange: buildSyncChange,
+      );
     }
 
     // exchange_rate_override 独立批:旧服务器白名单会拒绝该 entity_type,
     // 混在主批会整批失败、阻塞 account/category/tag 同步(README D10)。
     // 失败只 warning、不标记已推 → 留在 local_changes 下次重试。
-    if (overrideSyncChanges.isNotEmpty) {
+    if (overrideReps.isNotEmpty) {
       try {
-        await provider.pushChanges(changes: overrideSyncChanges);
-        await changeTracker
-            .markPushed(overrideChanges.map((c) => c.id).toList());
+        await _pushChangeGroups(
+          overrideReps,
+          overrideChangeIds,
+          buildSyncChange: buildSyncChange,
+        );
       } catch (e, st) {
         logger.warning(
             'SyncEngine', 'override 批推送失败(server 可能未升级),跳过本轮不阻塞: $e', st);
@@ -844,7 +868,7 @@ class SyncEngine implements app.SyncService {
     }
 
     logger.info('SyncEngine',
-        'pushUserGlobalEntities: 推送 ${mainChanges.length} 条主批 + ${overrideChanges.length} 条 override 批 user-global change');
+        'pushUserGlobalEntities: 推送 ${mainReps.length} 主批 + ${overrideReps.length} override 批 user-global 实体(合并自 ${globalChanges.length} 条 change)');
     return globalChanges.length;
   }
 
@@ -1022,14 +1046,20 @@ class SyncEngine implements app.SyncService {
               '从 snapshot change 拿到 ledgerSyncId=$deletedLedgerSyncId,继续 push');
     }
 
-    // 构建服务端 push 格式：从 DB 读取最新数据序列化
-    final syncChanges = <Map<String, dynamic>>[];
-
-    for (final change in changes) {
+    // C2(2026-09-15):构建服务端 push 格式 + 合并 + 分批推送。
+    // 单条 change 的序列化逻辑与旧版一致(从 DB 读最新实体快照),变化在于:
+    // - 按 (entityType, entitySyncId) 合并,同实体多条 change 只序列化/发送
+    //   最新一条(旧行为重复序列化同一快照 N 次);
+    // - 每批 ≤ [pushBatchSize] 条,成功一批 markPushed 一批,失败批抛出并
+    //   保留未推条目下次续推(旧行为数千条一个 POST,60s deadline 大概率
+    //   超时,失败整体重推);
+    // - markPushed 按客户端本轮实际提交的合并组标记,不再盲信服务端截断
+    //   20 条的 samples 回执(附录 B1)。
+    Future<Map<String, dynamic>?> buildSyncChange(LocalChange change) async {
       final isUserGlobal =
           ChangeTracker.userGlobalEntityTypes.contains(change.entityType);
 
-      Map<String, dynamic> payload;
+      Map<String, dynamic>? payload;
 
       if (change.action == 'delete') {
         payload = <String, dynamic>{};
@@ -1037,11 +1067,21 @@ class SyncEngine implements app.SyncService {
         // 从数据库读取最新实体并序列化。注意:正常流程到这里 ledger 一定非
         // null —— ledger==null 的唯一来源是 deleteLedger,而它只产生 delete
         // changes(已被 if 分支拦走)。这里用 ledgerIdInt 兜底防御,避免 NPE。
+        // C11(2026-09-15):序列化为 null(实体已被本地删除)→ 整行跳过,
+        // 旧行为发空 {} upsert,若 delete change 因 orphan ledger 漏推,
+        // 空 upsert 成为服务端毒数据。
         payload = await _serializeEntityForPush(
           entityType: change.entityType,
           entityId: change.entityId,
           ledgerId: ledger?.id ?? ledgerIdInt,
         );
+        if (payload == null) {
+          logger.warning(
+              'SyncEngine',
+              'push: ${change.entityType}(${change.entitySyncId}) '
+              '本地实体已不存在,跳过 upsert 行(等待 delete change/本地重建对齐)');
+          return null;
+        }
       }
 
       // user-global 重构后协议(参考 .docs/user-global-refactor/plan.md):
@@ -1059,7 +1099,7 @@ class SyncEngine implements app.SyncService {
         pushLedgerId = ledger?.syncId ?? deletedLedgerSyncId ?? ledgerId;
         pushScope = 'ledger';
       }
-      syncChanges.add({
+      return {
         'ledger_id': pushLedgerId,
         'scope': pushScope,
         'entity_type': change.entityType,
@@ -1067,28 +1107,177 @@ class SyncEngine implements app.SyncService {
         'action': change.action == 'delete' ? 'delete' : 'upsert',
         'payload': payload,
         'updated_at': change.createdAt.toUtc().toIso8601String(),
-      });
+      };
     }
 
-    // 使用 pushChanges 直接推送个体变更(批次3:按结果分流 markPushed)
-    final pushResult = await provider.pushChanges(changes: syncChanges);
-    final rejectedSyncIds = pushResult.rejectedEntitySyncIds;
-    final okChanges =
-        changes.where((c) => !rejectedSyncIds.contains(c.entitySyncId)).toList();
-    await changeTracker.markPushed(okChanges.map((c) => c.id).toList());
-    if (pushResult.conflictCount > 0 || pushResult.failedCount > 0) {
-      _lastPushConflicts = (
-        conflict: pushResult.conflictCount,
-        failed: pushResult.failedCount,
-        at: DateTime.now(),
-      );
-      logger.warning('SyncEngine',
-          'push: 服务端拒绝 ${pushResult.conflictCount} 条冲突 / '
-          '${pushResult.failedCount} 条失败,这些 change 保留本地待 pull 对齐');
-    }
+    final merged = _mergeChangesByEntity(changes);
+    await _pushChangeGroups(
+      merged.representatives,
+      merged.changeIds,
+      buildSyncChange: buildSyncChange,
+    );
     logger.info('SyncEngine',
-        'push: 推送 ${changes.length} 条 ledger-scope 变更 + 本会话 user-global $userGlobalPushed 条');
+        'push: 推送 ${changes.length} 条 ledger-scope 变更(合并为 ${merged.representatives.length} 实体)+ 本会话 user-global $userGlobalPushed 条');
     return changes.length + userGlobalPushed;
+  }
+
+  // ────────────────────────────────────────────────────────────────────
+  // C2(2026-09-15):push 合并 + 分批
+  // ────────────────────────────────────────────────────────────────────
+
+  /// 合并后每批推送的最大条数。200 × ~500B/条 ≈ 100KB 请求体,单批在 60s
+  /// upload deadline 内稳定;失败也只影响本批,前面已成功批不回滚。
+  static const int pushBatchSize = 200;
+
+  /// 按 (entityType, entitySyncId) 合并 local_changes。
+  ///
+  /// 同一实体的多次编辑会产生多条 change,旧行为逐条序列化同一份最新快照
+  /// 重复 POST。合并规则:取组内 id 最大(= 最后意图)的一条作为代表 ——
+  /// 最新 action 为 delete 则发 delete,否则从 DB 序列化最新快照。
+  ///
+  /// 返回代表条与每组的全部 change id(代表条推送成功后整组一起 markPushed
+  /// —— 组内旧 change 的内容已被最新快照覆盖,留在本地只会造成重复推送)。
+  /// 入参须按 id 升序([ChangeTracker.getUnpushedChanges*] 的自然顺序)。
+  ({List<LocalChange> representatives, List<List<int>> changeIds})
+      _mergeChangesByEntity(List<LocalChange> changes) {
+    final groups = <String, List<LocalChange>>{};
+    for (final change in changes) {
+      groups
+          .putIfAbsent(
+              '${change.entityType}\u0000${change.entitySyncId}',
+              () => <LocalChange>[])
+          .add(change);
+    }
+    final representatives = <LocalChange>[];
+    final changeIds = <List<int>>[];
+    for (final group in groups.values) {
+      representatives.add(group.last);
+      changeIds.add([for (final c in group) c.id]);
+    }
+    return (representatives: representatives, changeIds: changeIds);
+  }
+
+  /// 合并后的代表条分批推送。
+  ///
+  /// - 成功一批 markPushed 一批;某批网络/HTTP 失败直接抛出(此前已成功批
+  ///   的标记保留,失败批及其后批次留在 local_changes,下次 push 续推)。
+  /// - 拒绝分流(2026-09-10 批次3 + 附录 B1):服务端 200 不代表全 accepted,
+  ///   LWW 判负(conflict)与 apply 异常(failed)都会在 200 里返回,但
+  ///   conflict/failed samples 各截断 20 条。样本数 < 计数说明有被拒实体
+  ///   无法点名 —— 此时**整批不 markPushed**(全部保留重推;同
+  ///   (updated_at, device_id) 元组重推服务端按幂等接受),绝不按残缺样本
+  ///   排除、把第 21 条起被拒的 change 误标已推静默丢失。
+  /// - C11(2026-09-15):`buildSyncChange` 返回 null(实体已被本地删除)的
+  ///   行跳过不发送,也不 markPushed(留待 delete change / 本地重建对齐)。
+  /// - 附录 B3(2026-09-15):同一代表条被服务端拒绝 [maxPushRejectAttempts]
+  ///   次后熔断 —— 本会话不再重推(否则被拒 change 无限重推,服务端每条
+  ///   冲突写一条 AuditLog,双向放大)。熔断条保留在 local_changes,unpushed
+  ///   计数可见;用户对实体产生新编辑(新 change id)或本会话内该实体推送
+  ///   成功时解除。
+  Future<int> _pushChangeGroups(
+    List<LocalChange> representatives,
+    List<List<int>> changeIds, {
+    required Future<Map<String, dynamic>?> Function(LocalChange change)
+        buildSyncChange,
+  }) async {
+    var markedRows = 0;
+    for (var start = 0; start < representatives.length;
+        start += pushBatchSize) {
+      final end = (start + pushBatchSize > representatives.length)
+          ? representatives.length
+          : start + pushBatchSize;
+      final batch = representatives.sublist(start, end);
+      // C11:逐条序列化,null(实体已删)跳过;B3:熔断条跳过(不消耗请求位)。
+      final sentIndexes = <int>[];
+      final syncChanges = <Map<String, dynamic>>[];
+      for (var i = 0; i < batch.length; i++) {
+        final rep = batch[i];
+        final rejectKey = _pushRejectKey(rep.entityType, rep.entitySyncId);
+        final state = _pushRejectState[rejectKey];
+        if (state != null && state.tripped) {
+          logger.warning(
+              'SyncEngine',
+              'push: ${rep.entityType}(${rep.entitySyncId}) 已被服务端拒绝 '
+              '${state.rejects} 次,本会话熔断不再重推(change 保留本地,可检查'
+              '服务端数据后重启 App 重试)');
+          continue;
+        }
+        final payload = await buildSyncChange(rep);
+        if (payload == null) continue; // 告警已在 buildSyncChange 内打
+        sentIndexes.add(start + i);
+        syncChanges.add(payload);
+      }
+      if (syncChanges.isEmpty) continue;
+      final result = await provider.pushChanges(changes: syncChanges);
+      final rejectedSyncIds = result.rejectedEntitySyncIds;
+      final reportedRejections = result.conflictCount + result.failedCount;
+      if (reportedRejections > 0) {
+        _lastPushConflicts = (
+          conflict: result.conflictCount,
+          failed: result.failedCount,
+          at: DateTime.now(),
+        );
+      }
+      if (rejectedSyncIds.length < reportedRejections) {
+        logger.warning(
+            'SyncEngine',
+            'push: 本批 ${batch.length} 条中 $reportedRejections 条被拒但样本被截断'
+            '(conflict/failed samples 各上限 20),整批保留待重推/pull 对齐');
+        // B3:样本截断时无法点名,全部已发代表条按被拒计数(保守,不误清)。
+        for (final i in sentIndexes) {
+          _countPushReject(representatives[i]);
+        }
+        continue;
+      }
+      final okChangeIds = <int>[
+        for (var i = 0; i < batch.length; i++)
+          if (sentIndexes.contains(start + i) &&
+              !rejectedSyncIds.contains(batch[i].entitySyncId))
+            ...changeIds[start + i],
+      ];
+      if (okChangeIds.isNotEmpty) {
+        await changeTracker.markPushed(okChangeIds);
+        markedRows += okChangeIds.length;
+      }
+      // B3:按服务端点名结果更新计数 —— 被拒 +1(达上限熔断),被接受清除。
+      for (var i = 0; i < batch.length; i++) {
+        if (!sentIndexes.contains(start + i)) continue;
+        final rep = batch[i];
+        if (rejectedSyncIds.contains(rep.entitySyncId)) {
+          _countPushReject(rep);
+        } else {
+          _pushRejectState
+              .remove(_pushRejectKey(rep.entityType, rep.entitySyncId));
+        }
+      }
+      if (reportedRejections > 0) {
+        logger.warning(
+            'SyncEngine',
+            'push: 本批 ${batch.length} 条中 ${rejectedSyncIds.length} 条被拒'
+            '(LWW 判负/poison),对应合并组保留本地待 pull 对齐');
+      }
+    }
+    return markedRows;
+  }
+
+  /// 附录 B3:被拒代表条计数;同一代表条(同 change id)达到上限即熔断,
+  /// 新 change id(用户再次编辑)重置计数。
+  void _countPushReject(LocalChange rep) {
+    final key = _pushRejectKey(rep.entityType, rep.entitySyncId);
+    final prev = _pushRejectState[key];
+    final rejects = (prev != null && prev.repChangeId == rep.id)
+        ? prev.rejects + 1
+        : 1;
+    final tripped = rejects >= maxPushRejectAttempts;
+    _pushRejectState[key] =
+        (repChangeId: rep.id, rejects: rejects, tripped: tripped);
+    if (tripped && !(prev?.tripped ?? false)) {
+      logger.error(
+          'SyncEngine',
+          'push: ${rep.entityType}(${rep.entitySyncId}) 被服务端拒绝 $rejects 次,'
+          '本会话熔断(停止重推;change 保留本地,unpushed 计数可见)',
+          'push_reject_tripped');
+    }
   }
 
   /// 拉取远程变更并应用到本地。

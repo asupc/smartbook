@@ -242,24 +242,31 @@ class AutoBookCoordinator {
     try {
       final value = await trace.run(() => action(context));
       final update = updateFor(value);
+      var effectiveState = update.state;
       if (update.state == AutoBookState.retry && update.nextRetryAt == null) {
         // M1-3:业务层返回的 retryable 结果统一走 markRetry —— mark() 会把
         // nextRetryAt 原样写成 null,退避闸门失效后桥接广播/启动 drain 会
         // 立刻重跑同一事件,形成忙循环。attemptCount 由 claim 递增,这里按
         // 它算 30s→2m→8m→30m→2h 阶梯。
+        // A1:退避用尽时 markRetry 落的是 failed 终态 —— 回读真实状态作为
+        // 执行结果,否则监听层拿到 retry(非终态)不 ACK 原生队列项。
         await store.markRetry(
           eventId: claim.event.id,
           attemptCount: claim.event.attemptCount,
           error: update.reason ?? 'retryable_outcome',
         );
+        final row = await store.findById(claim.event.id);
+        if (row != null) {
+          effectiveState = AutoBookStateValue.parse(row.state);
+        }
       } else {
         await store.mark(update, eventId: claim.event.id);
       }
-      trace.stage('event_terminal', outcome: update.state.value);
+      trace.stage('event_terminal', outcome: effectiveState.value);
       return AutoBookExecution<T>(
         skipped: false,
         value: value,
-        state: update.state,
+        state: effectiveState,
         eventId: claim.event.id,
         existingTransactionId:
             update.transactionId ?? update.duplicateOfTransactionId,

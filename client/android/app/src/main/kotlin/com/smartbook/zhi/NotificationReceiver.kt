@@ -1,5 +1,6 @@
 package com.smartbook.zhi
 
+import android.app.AlarmManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -14,40 +15,115 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 
 class NotificationReceiver : BroadcastReceiver() {
+    companion object {
+        private const val TAG = "NotificationReceiver"
+        // Dart shared_preferences 的持久化文件与 key 前缀(reminder_providers)
+        private const val FLUTTER_PREFS = "FlutterSharedPreferences"
+        private const val KEY_REMINDER_ENABLED = "flutter.reminder_enabled"
+        private const val KEY_REMINDER_HOUR = "flutter.reminder_hour"
+        private const val KEY_REMINDER_MINUTE = "flutter.reminder_minute"
+        private const val REMINDER_ID = 1001
+        private const val REMINDER_TITLE = "记账提醒"
+        private const val REMINDER_BODY = "别忘了记录今天的收支哦 💰"
+    }
+
     override fun onReceive(context: Context, intent: Intent) {
-        Log.d("NotificationReceiver", "收到广播: ${intent.action}")
+        Log.d(TAG, "收到广播: ${intent.action}")
 
         when (intent.action) {
             Intent.ACTION_BOOT_COMPLETED,
             Intent.ACTION_MY_PACKAGE_REPLACED,
             Intent.ACTION_PACKAGE_REPLACED -> {
-                Log.d("NotificationReceiver", "系统启动或应用更新，需要重新调度通知")
-                // 这里可以发送一个广播给Flutter应用，让它重新调度通知
-                // 但由于Flutter应用可能还没启动，我们先记录日志
+                Log.d(TAG, "系统启动或应用更新，需要重新调度通知")
                 rescheduleNotifications(context)
             }
             else -> {
                 // 处理定时通知
-                val title = intent.getStringExtra("title") ?: "记账提醒"
-                val body = intent.getStringExtra("body") ?: "别忘了记录今天的收支哦 💰"
-                val notificationId = intent.getIntExtra("notificationId", 1001)
+                val title = intent.getStringExtra("title") ?: REMINDER_TITLE
+                val body = intent.getStringExtra("body") ?: REMINDER_BODY
+                val notificationId = intent.getIntExtra("notificationId", REMINDER_ID)
                 showNotification(context, title, body, notificationId)
+                // C10:boot 重建的闹钟链按天自续(用户下次打开 App 后由 Dart
+                // _restoreUserReminder 重建完整调度,双链同 id 通知互相覆盖,
+                // 用户侧仍只看到一条)。
+                if (intent.getBooleanExtra("boot_rescheduled", false)) {
+                    scheduleNextDailyReminder(context, readReminderPrefs(context))
+                }
             }
         }
     }
 
+    private data class ReminderPrefs(val enabled: Boolean, val hour: Int, val minute: Int)
+
+    private fun readReminderPrefs(context: Context): ReminderPrefs {
+        val prefs = context.getSharedPreferences(FLUTTER_PREFS, Context.MODE_PRIVATE)
+        return ReminderPrefs(
+            enabled = prefs.getBoolean(KEY_REMINDER_ENABLED, false),
+            hour = prefs.getInt(KEY_REMINDER_HOUR, 21),
+            minute = prefs.getInt(KEY_REMINDER_MINUTE, 0),
+        )
+    }
+
+    /**
+     * C10(2026-09-15):BOOT_COMPLETED 后台 startActivity 在 Android 10+ 被
+     * 系统后台启动限制拦截(非 vivo 豁免场景静默失败,旧实现即此路径)。
+     * 改为原生直读 Dart 侧持久化的提醒配置(reminder_enabled/hour/minute),
+     * 用 AlarmManager 重挂下一次提醒;无 workmanager 依赖(pubspec 只读)。
+     * 用户下次打开 App 时 Dart _restoreUserReminder 会重建完整调度
+     * (每日重复 + 7 天备用 + AlarmManager 备用),本链自然并入。
+     */
     private fun rescheduleNotifications(context: Context) {
-        // 发送一个隐式Intent来启动MainActivity并告知需要重新调度通知
-        try {
-            val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
-            launchIntent?.let {
-                it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                it.putExtra("reschedule_notifications", true)
-                context.startActivity(it)
-                Log.d("NotificationReceiver", "已启动应用来重新调度通知")
+        val prefs = readReminderPrefs(context)
+        if (!prefs.enabled) {
+            Log.d(TAG, "记账提醒未启用,跳过重挂")
+            return
+        }
+        scheduleNextDailyReminder(context, prefs)
+    }
+
+    /** 重挂下一次 hour:minute 的提醒(已过点则顺延到明天)。 */
+    private fun scheduleNextDailyReminder(context: Context, prefs: ReminderPrefs) {
+        val cal = java.util.Calendar.getInstance().apply {
+            set(java.util.Calendar.HOUR_OF_DAY, prefs.hour)
+            set(java.util.Calendar.MINUTE, prefs.minute)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+            if (timeInMillis <= System.currentTimeMillis()) {
+                add(java.util.Calendar.DAY_OF_YEAR, 1)
             }
+        }
+        val intent = Intent(context, NotificationReceiver::class.java).apply {
+            action = "${context.packageName}.NOTIFICATION_ALARM"
+            putExtra("title", REMINDER_TITLE)
+            putExtra("body", REMINDER_BODY)
+            putExtra("notificationId", REMINDER_ID)
+            putExtra("boot_rescheduled", true)
+        }
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            REMINDER_ID,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        try {
+            val canExact = Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+                alarmManager.canScheduleExactAlarms()
+            if (canExact) {
+                alarmManager.setExactAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP, cal.timeInMillis, pendingIntent)
+            } else {
+                alarmManager.setAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP, cal.timeInMillis, pendingIntent)
+            }
+            Log.d(TAG, "C10 已重挂下次记账提醒: ${cal.timeInMillis}(boot 链)")
+        } catch (e: SecurityException) {
+            // 无精确闹钟权限时降级为非精确闹钟,仍然可触发
+            alarmManager.setAndAllowWhileIdle(
+                AlarmManager.RTC_WAKEUP, cal.timeInMillis, pendingIntent)
+            Log.w(TAG, "精确闹钟不可用,降级非精确: ${e.message}")
         } catch (e: Exception) {
-            Log.e("NotificationReceiver", "无法启动应用重新调度通知: $e")
+            Log.e(TAG, "重挂记账提醒失败: ${e.message}")
         }
     }
 

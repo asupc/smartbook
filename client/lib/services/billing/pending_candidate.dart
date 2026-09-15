@@ -236,11 +236,17 @@ class PendingCandidateStore {
   Future<List<PendingCandidate>> _loadUnlocked() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getStringList(_key) ?? const [];
+    // C8(2026-09-15):legacy 候选按 capturedAt 30 天过期(与 event store
+    // pending 的 [AutoBookEventStore.expireStalePending] 同口径)。只在读路径
+    // 过滤;物理清除发生在下次 add/remove 落盘(cap 100 兜底内存)。
+    final cutoff =
+        DateTime.now().subtract(AutoBookEventStore.pendingCandidateTtl);
     return raw
         .map((s) => _tryJson(s))
         .whereType<Map<String, dynamic>>()
         .map(PendingCandidate.fromJson)
         .whereType<PendingCandidate>()
+        .where((c) => c.capturedAt.isAfter(cutoff))
         .toList();
   }
 
@@ -302,6 +308,11 @@ class PendingCandidateStore {
   /// event store 是自动入口的事实来源；SharedPreferences 仅作为旧版本和
   /// event item 尚未写入时的兼容兜底。相同 (eventKey,itemIndex) 以 event store
   /// 版本为准，避免候选页展示已经被恢复/更新前的旧副本。
+  ///
+  /// C8(2026-09-15):进入投影前先把超过 TTL 的 pending 事件转 expired
+  /// (30 天未确认等同放弃,不再占确认页/角标);子项改为一次批查
+  /// ([AutoBookEventStore.itemsForEvents]),替代旧行为的逐事件
+  /// itemsForEvent(500 事件 = 500 次 DB 往返,角标计数也走这条路)。
   Future<List<PendingCandidate>> loadForReview(
     AutoBookEventStore eventStore,
   ) async {
@@ -309,9 +320,13 @@ class PendingCandidateStore {
     final merged = <String, PendingCandidate>{};
 
     try {
+      await eventStore.expireStalePending();
       final events = await eventStore.listPending(limit: 500);
+      final itemsByEvent = await eventStore.itemsForEvents(
+        events.map((e) => e.id).toList(),
+      );
       for (final event in events) {
-        final items = await eventStore.itemsForEvent(event.id);
+        final items = itemsByEvent[event.id] ?? const [];
         for (final item in items) {
           if (item.state != 'pending') continue;
           final payload = _tryMap(item.billJson);

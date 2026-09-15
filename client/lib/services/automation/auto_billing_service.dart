@@ -102,6 +102,9 @@ extension SmsProcessOutcomeEvent on SmsProcessOutcome {
 /// 否则临时失败会被落成 ignored 终态。
 extension BookkeepingResultEvent on BookkeepingResult {
   AutoBookState get eventState {
+    // A1:证据消失(截图原图等)优先于一切失败轴 —— 重试不会让文件回来,
+    // 落 expired 终态(ACK 原生队列),不进退避阶梯。
+    if (evidenceMissing) return AutoBookState.expired;
     if (aiNotConfigured) return AutoBookState.captured;
     if (retryable || failedCount > 0) return AutoBookState.retry;
     if (permanentFailure) return AutoBookState.failed;
@@ -114,6 +117,7 @@ extension BookkeepingResultEvent on BookkeepingResult {
 
   /// 事件行上的原因码,不含任何原文。
   String? get eventReason {
+    if (evidenceMissing) return 'evidence_missing';
     if (aiNotConfigured) return 'ai_not_configured';
     if (retryable || failedCount > 0) return 'ai_retryable';
     if (permanentFailure) return 'ai_permanent_failure';
@@ -367,9 +371,19 @@ class AutoBillingService {
   /// 供通知队列管理侧处理前预检(已处理 → 直接 ack)。
   bool isNotifyProcessed(String fingerprint) => _isNotifyProcessed(fingerprint);
 
+  /// 写入时统一裁剪到上限(C9,2026-09-15):旧行为只在启动加载时裁剪,
+  /// 长会话(通知/无障碍监听保活)里写入不裁,缓存无上限增长。
+  /// billFingerprints 路径已有同款裁剪,这里对齐。
+  void _trimProcessedCache(Set<String> cache) {
+    if (cache.length <= AutoBillingConfig.maxProcessedCache) return;
+    final toRemove = cache.length - AutoBillingConfig.maxProcessedCache;
+    cache.removeAll(cache.take(toRemove));
+  }
+
   /// 标记短信已处理(不管成败,与截图路径一致:避免重复消费同一短信)
   Future<void> _markSmsProcessed(String fingerprint) async {
     _processedSmsFingerprints.add(fingerprint);
+    _trimProcessedCache(_processedSmsFingerprints);
     await _saveProcessedSmsFingerprints();
   }
 
@@ -464,7 +478,12 @@ class AutoBillingService {
               body: l10n.autoBillingNotifyFileUnavailableBody,
             );
           }
-          return const BookkeepingResult(failedCount: 1, retryable: true);
+          // A1:等待窗口(fileWaitTimeout)结束后文件仍不可读 = 证据已消失
+          // (被系统/用户清理),不再是「慢写入」——落 expired 终态并 ACK 原生
+          // 队列。旧行为返 retryable,每轮 drain 都白等 3s 并按 2h 无限重试。
+          // 新鲜捕获竞态(ContentObserver 先于文件落盘)仍由上面的等待循环
+          // 覆盖,重放路径(_replayDraft)另有 existsSync 预检。
+          return const BookkeepingResult(evidenceMissing: true);
         }
       } else {
         print('✅ 文件已就绪,无需等待');
@@ -1001,13 +1020,27 @@ class AutoBillingService {
         .substring(0, 16);
   }
 
-  /// 通知指纹:sha256(pkg|title|body) 前 16 位 hex。
-  /// 与 native NotificationWatcher 同口径。
-  static String notifyFingerprint(String pkg, String title, String body) {
-    return sha256
-        .convert(utf8.encode('$pkg|$title|$body'))
-        .toString()
-        .substring(0, 16);
+  /// 通知指纹:sha256(pkg|notificationKey|notificationId|postTime|title|body)
+  /// 前 16 位 hex。与 native [NotificationWatcher.fingerprint] **完全同口径**
+  /// (C6,2026-09-15 统一):旧口径只有 pkg|title|body,同一通知被 App 更新
+  /// (postTime 变化)后 native 会重新入队,而 Dart 侧指纹不变,两侧判重
+  /// 口径脱节。旧队列缺 notificationKey/id/postTime 时退回内容指纹
+  /// (与旧口径兼容)。兼容影响:格式变化使旧 Dart 缓存 miss 一次,由
+  /// 语义判重兜底。
+  static String notifyFingerprint(
+    String pkg,
+    String title,
+    String body, {
+    String? notificationKey,
+    int notificationId = 0,
+    int postTime = 0,
+  }) {
+    final hasIdentity =
+        (notificationKey ?? '').trim().isNotEmpty || notificationId != 0 || postTime != 0;
+    final identity = hasIdentity
+        ? '$pkg|${notificationKey ?? ''}|$notificationId|$postTime|$title|$body'
+        : '$pkg|$title|$body';
+    return sha256.convert(utf8.encode(identity)).toString().substring(0, 16);
   }
 
   /// 屏幕文本指纹:sha256(pkg|text) 前 16 位 hex。
@@ -1090,6 +1123,14 @@ class AutoBillingService {
     try {
       final store = _eventStore;
       if (store == null) return 0;
+      // A2:事件表 30 天保留的周期清理点。coordinator 的启动清理只在进程
+      // 首次事件时跑一次,常驻进程(通知监听保活场景)也需要周期出口;
+      // 这里借用草稿补发已有的 15min 周期/联网恢复触发,失败不阻断草稿重试。
+      try {
+        await store.cleanupExpired();
+      } catch (e) {
+        logger.warning('AutoBilling', '周期清理过期事件失败(不影响草稿重试)', '$e');
+      }
       final drafts = await store.dueDrafts(limit: limit);
       var replayed = 0;
       for (final event in drafts) {
@@ -1228,7 +1269,10 @@ class AutoBillingService {
       sourceChannel: event.sourceChannel,
       externalId: event.externalId,
       contentHash: event.contentHash,
-      expiresAt: event.expiresAt,
+      // A2:回放透传原行的有效期;存量旧行为 NULL(回填前)时按捕获时刻
+      // 补默认 —— 只有事件行已被清理、需要重建时这个值才会真正落库。
+      expiresAt:
+          event.expiresAt ?? AutoBookInput.defaultExpiresAt(event.capturedAt),
     );
   }
 
@@ -1289,9 +1333,10 @@ class AutoBillingService {
 
   /// 核心:处理支付通知文本并自动记账(通知监听)。
   ///
-  /// 与 [processSms] 流程一致(native 过滤 → 指纹二次去重 → fromText),
-  /// 差异:指纹命名空间独立、正文为通知 title+text 合并、billingTypes 带
-  /// notification 标签。处理前先标记指纹:进程被杀宁可丢一笔不重复入账。
+  /// 与 [processSms] 流程一致(native 过滤 → fromText),差异:指纹命名空间
+  /// 独立、正文为通知 title+text 合并、billingTypes 带 notification 标签。
+  /// [notificationKey]/[notificationId]/[postTime] 用于与 native 同口径的指纹
+  /// (C6);缺省时退回内容指纹(旧队列兼容)。
   Future<SmsProcessOutcome> processNotification(
     String pkg,
     String title,
@@ -1299,8 +1344,18 @@ class AutoBillingService {
     bool showNotification = true,
     bool skipDedup = false,
     String? eventKey,
+    String? notificationKey,
+    int notificationId = 0,
+    int postTime = 0,
   }) async {
-    final fingerprint = notifyFingerprint(pkg, title, body);
+    final fingerprint = notifyFingerprint(
+      pkg,
+      title,
+      body,
+      notificationKey: notificationKey,
+      notificationId: notificationId,
+      postTime: postTime,
+    );
 
     // 与 processSms 同口径(2026-09-10):内容指纹命中不再直接丢弃,交语义
     // 判重裁决;事件幂等由 Coordinator 按 eventKey 把关。
@@ -1462,10 +1517,15 @@ class AutoBillingService {
 
   /// 核心:处理账单详情页屏幕文本并自动记账(屏幕文本监听)。
   ///
-  /// 与 [processNotification] 流程一致(native 过滤 → 指纹二次去重 →
-  /// fromText),差异:指纹命名空间独立、正文为无障碍抓取的页面文本
-  /// (含 UI 噪音,由 AI 守卫判定)、billingTypes 带 screen 标签。
-  /// 处理前先标记指纹:进程被杀宁可丢一笔不重复入账。
+  /// 与 [processNotification] 流程一致(native 过滤 → fromText),差异:指纹
+  /// 命名空间独立、正文为无障碍抓取的页面文本(含 UI 噪音,由 AI 守卫判定)、
+  /// billingTypes 带 screen 标签。
+  ///
+  /// 内容指纹命中**不再直接丢弃**(C1,2026-09-15,与 sms/notify 路 2026-09-10
+  /// 改法对齐):详情页文本不含时刻时,「同店同款第二笔真实消费」与旧页面文本
+  /// 的指纹完全一致,硬丢弃会把第二笔静默吞掉。命中只降级交语义判重
+  /// (账单级指纹 + SemanticDedupMatcher),事件幂等由 Coordinator 按 eventKey
+  /// 把关。
   Future<SmsProcessOutcome> processScreenText(
     String pkg,
     String text, {
@@ -1483,9 +1543,13 @@ class AutoBillingService {
   }) async {
     final fingerprint = screenTextFingerprint(pkg, text);
 
+    // C1(2026-09-15):与 processSms/processNotification 同口径 —— 内容指纹
+    // 命中只说明「同正文页面曾处理过」,不再直接丢弃,交语义判重(账单级
+    // 指纹 + SemanticDedupMatcher)裁决;否则详情页文本不含时刻时,同店同款
+    // 第二笔真实消费会在这一层被静默吞掉(native 已按 eventKey 放行,不能在
+    // Dart 层又按内容否决)。
     if (!skipDedup && _isScreenTextProcessed(fingerprint)) {
-      logger.debug('AutoBilling', '屏幕文本指纹已处理过,跳过', fingerprint);
-      return SmsProcessOutcome.duplicate;
+      logger.debug('AutoBilling', '屏幕文本指纹曾处理过,降级交语义判重', fingerprint);
     }
 
     const notificationId = 1005;
@@ -1556,6 +1620,7 @@ class AutoBillingService {
                 amount: amount,
                 note: bill.note,
                 time: bill.time,
+                type: bill.type?.name,
               );
               return _isBillProcessed(fp);
             },
@@ -1571,6 +1636,7 @@ class AutoBillingService {
             amount: amount,
             note: bill.note,
             time: bill.time,
+            type: bill.type?.name,
           );
           if (!_isBillProcessed(fp)) {
             _processedBillFingerprints.add(fp);
@@ -1671,6 +1737,7 @@ class AutoBillingService {
 
   Future<void> _markScreenTextProcessed(String fingerprint) async {
     _processedScreenTextFingerprints.add(fingerprint);
+    _trimProcessedCache(_processedScreenTextFingerprints);
     await _saveProcessedScreenTextFingerprints();
   }
 
@@ -1706,17 +1773,24 @@ class AutoBillingService {
   bool _isBillProcessed(String fingerprint) =>
       _processedBillFingerprints.contains(fingerprint);
 
-  /// 账单级指纹:sha256(渠道|金额|备注|交易日期) 前 16 位。
-  /// 金额用绝对值(收/支同额不同向不误判)、日期到小时 yyyy-MM-ddTHH。
+  /// 账单级指纹:sha256(渠道|类型|金额|备注|交易日期) 前 16 位。
+  /// 日期到小时 yyyy-MM-ddTHH;金额用绝对值,方向由 [type] 字段区分。
   /// 2026-09-10 从「按天」收紧到「按小时」:按天粒度会把「同日同店同款的
   /// 第二笔真实消费」(上午/下午各一杯同款咖啡)静默吞掉。小时粒度与语义
   /// 判重的 ±1 分钟硬闸门仍宽,残留的重复进入风险由 SemanticDedupMatcher
   /// 兜底;同一详情页短时间重复进入仍能靠指纹稳定去重。
+  ///
+  /// C2(2026-09-15)指纹加入 `type`(收支方向):旧口径 abs(金额) 且不含
+  /// 方向,「同渠道同金额的支付与退款」指纹相同,退款被 already_processed
+  /// 静默跳过(微信退款漏记的机制层根因之一)。**兼容影响**:指纹格式变化
+  /// 使旧缓存全部 miss —— 已记账的账单再次进入详情页时会重新走一次识别,
+  /// 由语义判重/待确认队列兜底(用户至多看到一次判重合并轻通知或重复候选)。
   static String billFingerprint({
     required String channel,
     required double amount,
     required String? note,
     required DateTime? time,
+    required String? type,
   }) {
     final date = time == null
         ? ''
@@ -1724,15 +1798,17 @@ class AutoBillingService {
             '${time.day.toString().padLeft(2, '0')}T'
             '${time.hour.toString().padLeft(2, '0')}';
     final normalizedNote = (note ?? '').trim();
+    final normalizedType = (type ?? '').trim();
     return sha256
         .convert(utf8.encode(
-            '$channel|${amount.abs().toStringAsFixed(2)}|$normalizedNote|$date'))
+            '$channel|$normalizedType|${amount.abs().toStringAsFixed(2)}|$normalizedNote|$date'))
         .toString()
         .substring(0, 16);
   }
 
   Future<void> _markNotifyProcessed(String fingerprint) async {
     _processedNotifyFingerprints.add(fingerprint);
+    _trimProcessedCache(_processedNotifyFingerprints);
     await _saveProcessedNotifyFingerprints();
   }
 

@@ -10,8 +10,13 @@ part of 'sync_engine.dart';
 /// 所有方法都是 private,只在 library 内被 `_push` / `fullPush` 调用,所以
 /// extension 保持 private。
 extension SyncEngineSerializationExt on SyncEngine {
-  /// 从 DB 读取实体并序列化为 push payload
-  Future<Map<String, dynamic>> _serializeEntityForPush({
+  /// 从 DB 读取实体并序列化为 push payload。
+  ///
+  /// C11(2026-09-15):返回 null = 实体在本地已不存在(upsert change 残留但
+  /// 行已删)。旧行为返回空 `{}` 照发 upsert,依赖随后的 delete change 兜底;
+  /// 若 delete 因 orphan ledger 漏推,空 upsert 就成为服务端毒数据。调用方
+  /// 见到 null 应**跳过该行 + 告警**,不发送。
+  Future<Map<String, dynamic>?> _serializeEntityForPush({
     required String entityType,
     required int entityId,
     required int ledgerId,
@@ -29,7 +34,7 @@ extension SyncEngineSerializationExt on SyncEngine {
         final tx = await (db.select(db.transactions)
               ..where((t) => t.id.equals(entityId)))
             .getSingleOrNull();
-        if (tx == null) return <String, dynamic>{};
+        if (tx == null) return null;
 
         // 获取关联数据
         final cat = tx.categoryId != null
@@ -178,25 +183,24 @@ extension SyncEngineSerializationExt on SyncEngine {
         final account = await (db.select(db.accounts)
               ..where((a) => a.id.equals(entityId)))
             .getSingleOrNull();
-        if (account == null) return <String, dynamic>{};
+        if (account == null) return null;
         return EntitySerializer.serializeAccount(account);
 
       case 'exchange_rate_override':
-        // 按 entityId 反查行,跟 account 分支同款;行已删(delete change)
-        // 返回空 payload(delete 路径 server 只看 action,不读 payload)。
-        // server 端 projection.upsert_exchange_rate_override 对缺字段静默 return
-        // (SmartBook-Cloud Task 3 防御分支),空 payload upsert 无害。
+        // 按 entityId 反查行;行已删(delete change 或残留 upsert change)时
+        // 返回 null 由调用方跳过(C11,旧行为发空 payload upsert —— 服务端
+        // 虽静默忽略,但空 upsert 会留在 canonical 侧等 delete 对齐)。
         final override = await (db.select(db.exchangeRateOverrides)
               ..where((o) => o.id.equals(entityId)))
             .getSingleOrNull();
-        if (override == null) return <String, dynamic>{};
+        if (override == null) return null;
         return EntitySerializer.serializeExchangeRateOverride(override);
 
       case 'category':
         final category = await (db.select(db.categories)
               ..where((c) => c.id.equals(entityId)))
             .getSingleOrNull();
-        if (category == null) return <String, dynamic>{};
+        if (category == null) return null;
         String? parentName;
         String? parentSyncId;
         if (category.parentId != null) {
@@ -244,14 +248,14 @@ extension SyncEngineSerializationExt on SyncEngine {
         final tag = await (db.select(db.tags)
               ..where((t) => t.id.equals(entityId)))
             .getSingleOrNull();
-        if (tag == null) return <String, dynamic>{};
+        if (tag == null) return null;
         return EntitySerializer.serializeTag(tag);
 
       case 'budget':
         final budget = await (db.select(db.budgets)
               ..where((b) => b.id.equals(entityId)))
             .getSingleOrNull();
-        if (budget == null) return <String, dynamic>{};
+        if (budget == null) return null;
         // 分类预算才有 categorySyncId;总预算直接不带。ledgerSyncId 用本 tx
         // 顶上已经取到的 parentLedgerSyncId(对应 budget.ledgerId)。
         String? categorySyncId;
@@ -272,7 +276,7 @@ extension SyncEngineSerializationExt on SyncEngine {
         final adj = await (db.select(db.accountAdjustments)
               ..where((a) => a.id.equals(entityId)))
             .getSingleOrNull();
-        if (adj == null) return <String, dynamic>{};
+        if (adj == null) return null;
         // 账户 syncId:Editor 共享账本 override 优先,其次本地账户表。
         String? accSyncId = adj.accountSyncIdOverride;
         String? accName;
@@ -303,12 +307,12 @@ extension SyncEngineSerializationExt on SyncEngine {
               ..where((l) => l.id.equals(entityId)))
             .getSingleOrNull();
         if (ledger == null || ledger.syncId == null || ledger.syncId!.isEmpty) {
-          return <String, dynamic>{};
+          return null;
         }
         return EntitySerializer.serializeLedger(ledger);
 
       default:
-        return <String, dynamic>{};
+        return null;
     }
   }
 

@@ -72,6 +72,13 @@ open class ScreenTextWatcher : AccessibilityService() {
     private var lastPageClass = ""
     private var lastDisabledRecordAt = 0L
 
+    // C4(2026-09-15):已判非账单 (pkg,pageClass) 的短期冷却。高频内容页
+    // (抖音信息流在白名单)每次防抖结束都会全树采集一次,结果全被内容闸
+    // 丢弃 —— 纯耗电。冷却窗口内直接跳过采集;切页(WINDOW_STATE_CHANGED
+    // 更新 lastPageClass,键随之变化)或窗口过期后恢复。内存 map,进程级。
+    private val nonBillCooldown = mutableMapOf<String, Long>()
+    private var lastCooldownRecordAt = 0L
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val e = event ?: return
         try {
@@ -112,6 +119,13 @@ open class ScreenTextWatcher : AccessibilityService() {
      * 防抖:页面停止变化 GRAB_IDLE_MS 后再抓取(参考 ScreenshotObserver
      * 两段写入「收集后延迟统一检查」思路)。期间有滚动/加载等持续事件则重排,
      * 重试次数上限防止滚动流无限后延。
+     *
+     * C4(2026-09-15):重试用尽且事件仍高频到达(滚动流/动画不停)时**丢弃
+     * 本轮** —— 旧行为强制抓取,抓到的滚动中文本全被内容闸丢弃,纯耗电
+     * (抖音白名单页每 ~2.4s 一次 ≤400 节点×多窗口全树 IPC 遍历)。丢弃后
+     * 计数归零,后续事件照常重新调度;页面真正静默的下一次事件正常抓取。
+     * 已判非账单的 (pkg,pageClass) 在冷却窗口内也直接跳过采集(见
+     * [isNonBillCoolingDown])。
      */
     private fun scheduleGrab() {
         if (grabScheduled) return
@@ -119,16 +133,58 @@ open class ScreenTextWatcher : AccessibilityService() {
         val idleMs = grabIdleMs()
         handler.postDelayed({
             grabScheduled = false
-            if (System.currentTimeMillis() - lastEventAt < idleMs &&
-                retryCount < MAX_GRAB_RETRIES
-            ) {
-                retryCount++
-                scheduleGrab()
+            if (System.currentTimeMillis() - lastEventAt < idleMs) {
+                if (retryCount < MAX_GRAB_RETRIES) {
+                    retryCount++
+                    scheduleGrab()
+                    return@postDelayed
+                }
+                retryCount = 0
+                recordDecision(
+                    this, lastEventPkg, "grab_busy_dropped",
+                    "重试用尽仍高频变化,丢弃本轮 cls=$lastPageClass"
+                )
                 return@postDelayed
             }
             retryCount = 0
+            if (isNonBillCoolingDown(lastEventPkg, lastPageClass)) {
+                return@postDelayed
+            }
             grabAndProcess()
         }, idleMs)
+    }
+
+    /** C4:非账单页面冷却键(包名+页面类名;内容变化页无类名时类名为空)。 */
+    private fun nonBillKey(pkg: String, pageClass: String) = "$pkg|$pageClass"
+
+    /** C4:该 (pkg,pageClass) 是否在非账单冷却窗口内。 */
+    private fun isNonBillCoolingDown(pkg: String, pageClass: String): Boolean {
+        val key = nonBillKey(pkg, pageClass)
+        val until = nonBillCooldown[key] ?: return false
+        if (System.currentTimeMillis() >= until) {
+            nonBillCooldown.remove(key)
+            return false
+        }
+        // 决策记录节流(5s 一条):事件风暴下不能淹没 20 条环形队列。
+        val now = System.currentTimeMillis()
+        if (now - lastCooldownRecordAt > 5_000) {
+            lastCooldownRecordAt = now
+            recordDecision(this, pkg, "cooldown_skip", "cls=$pageClass 冷却中,跳过采集")
+        }
+        return true
+    }
+
+    /**
+     * C4:把 (pkg,pageClass) 标记为非账单并进入冷却。仅在内容闸**明确判非
+     * 账单**的出口调用(聊天页/垃圾词/营销/无金额特征/列表页/不可入账/
+     * 非微信账单页);too_short(页面可能未加载完)与窗口竞态出口不冷却,
+     * 避免误伤加载慢的真账单页。
+     */
+    private fun markNonBill(pkg: String, pageClass: String) {
+        // 防泄漏:极端多页场景直接清空(键含页面类名,实际量级有限)。
+        if (nonBillCooldown.size > 64) nonBillCooldown.clear()
+        nonBillCooldown[nonBillKey(pkg, pageClass)] =
+            System.currentTimeMillis() + NON_BILL_COOLDOWN_MS
     }
 
     /**
@@ -152,6 +208,7 @@ open class ScreenTextWatcher : AccessibilityService() {
             if (isChatPage(pkg, lastPageClass)) {
                 log("页面类名命中聊天页黑名单,丢弃: $pkg/$lastPageClass")
                 recordDecision(this, pkg, "chat_page", "cls=$lastPageClass")
+                markNonBill(pkg, lastPageClass)
                 return
             }
 
@@ -208,12 +265,14 @@ open class ScreenTextWatcher : AccessibilityService() {
             if (rejectHit != null) {
                 log("页面内容命中垃圾特征,丢弃: $pkg len=$logLen")
                 recordDecision(this, pkg, "rejected", "命中垃圾词=$rejectHit")
+                markNonBill(pkg, lastPageClass)
                 return
             }
             val marketingHit = MARKETING_KEYWORDS.firstOrNull { text.contains(it) }
             if (marketingHit != null && !hasBookableHint(text)) {
                 log("页面内容命中营销特征且无交易特征,丢弃: $pkg len=$logLen")
                 recordDecision(this, pkg, "marketing_no_hint", "命中营销词=$marketingHit")
+                markNonBill(pkg, lastPageClass)
                 return
             }
             val amountCount = AMOUNT_PATTERN.findAll(text).count()
@@ -222,6 +281,7 @@ open class ScreenTextWatcher : AccessibilityService() {
                 val why = if (!hasAmount(text)) "无金额" else "无交易特征"
                 log("无金额或无交易特征,丢弃: $pkg len=$logLen")
                 recordDecision(this, pkg, "no_amount_or_hint", "$why amounts=$amountCount")
+                markNonBill(pkg, lastPageClass)
                 return
             }
             // 列表页分级判定见 isListPage:金额数远超详情页规模直接判列表;
@@ -234,12 +294,14 @@ open class ScreenTextWatcher : AccessibilityService() {
                     this, pkg, "list_page",
                     "amounts=$amountCount dates=$dateCount 样本[$sample]"
                 )
+                markNonBill(pkg, lastPageClass)
                 return
             }
             val nonBookableHit = NON_BOOKABLE_KEYWORDS.firstOrNull { text.contains(it) }
             if (nonBookableHit != null) {
                 log("命中账单汇总/待支付/失败状态,丢弃: $pkg len=$logLen")
                 recordDecision(this, pkg, "non_bookable", "命中状态词=$nonBookableHit")
+                markNonBill(pkg, lastPageClass)
                 return
             }
 
@@ -249,6 +311,7 @@ open class ScreenTextWatcher : AccessibilityService() {
             if (!isWechatBillPage(pkg, text)) {
                 log("微信页面缺少账单详情双特征(支付状态+支付成功),丢弃: $pkg len=$logLen")
                 recordDecision(this, pkg, "wechat_not_bill_page", "cls=$lastPageClass")
+                markNonBill(pkg, lastPageClass)
                 return
             }
 
@@ -414,15 +477,20 @@ open class ScreenTextWatcher : AccessibilityService() {
      * 因此微信页面只在「确认是账单详情页」时才放行:
      *  - 状态字段行:「当前状态」(2026-09 真机 dump 实测新版)或「支付状态」
      *    (旧版/部分场景),任一命中;
-     *  - 状态值:「支付成功」(支出)或「已存入零钱」(收款/转账收入)。
-     * 其余 App 不受影响(内容启发式照旧)。
+     *  - 状态值:「支付成功」(支出)、「已存入零钱」(收款/转账收入)或
+     *    「退款成功/已退款」(退款;B6 2026-09-15 补 —— 微信退款详情页状态值
+     *    是「退款成功」,旧词表不认,导致退款详情页在 native 与 Dart drain
+     *    两侧都被系统性丢弃)。
+     * 其余 App 不受影响(内容启发式照旧)。Dart drain 侧同口径
+     * (ScreenTextMonitorService.isWechatBillPageText)。
      */
     fun isWechatBillPage(pkg: String, text: String): Boolean {
         if (!pkg.contains("com.tencent.mm")) return true
         val hasStatusField =
             text.contains("当前状态") || text.contains("支付状态")
         val hasSettledValue =
-            text.contains("支付成功") || text.contains("已存入零钱")
+            text.contains("支付成功") || text.contains("已存入零钱") ||
+                text.contains("退款成功") || text.contains("已退款")
         return hasStatusField && hasSettledValue
     }
 
@@ -498,116 +566,6 @@ open class ScreenTextWatcher : AccessibilityService() {
             .digest("$pkg|$text".toByteArray())
             .take(8)
             .joinToString("") { "%02x".format(it.toInt() and 0xff) }
-    }
-
-    fun loadFingerprints(prefs: SharedPreferences): MutableSet<String> {
-        return prefs.getString(KEY_FINGERPRINTS, null)
-            ?.split("|")?.filter { it.isNotEmpty() }?.toMutableSet()
-            ?: mutableSetOf()
-    }
-
-    fun saveFingerprints(prefs: SharedPreferences, memo: MutableSet<String>) {
-        val trimmed = memo.toList().takeLast(MAX_FINGERPRINTS)
-        prefs.edit().putString(KEY_FINGERPRINTS, trimmed.joinToString("|")).apply()
-    }
-
-    // ------------------------------------------------------------
-    // 持久化队列(独立 prefs,结构同通知/短信:peek + 逐项 ack)
-    // ------------------------------------------------------------
-
-    @Synchronized
-    private fun enqueue(
-        prefs: SharedPreferences,
-        eventKey: String,
-        fingerprint: String,
-        pkg: String,
-        text: String,
-        ts: Long,
-    ): Boolean {
-        // 内容指纹优先判重:同一账单详情页文本完全一致,指纹稳定;事件键含
-        // 捕获时间戳,每次进入详情页都会变化,不能作为去重依据(2026-09-07
-        // 修复:重复进入被当成新事件,导致文本反复送 AI 记账)。已处理与队列
-        // 里都按 fingerprint 判重,eventKey 仅作队列项标识。
-        val processed = loadFingerprints(prefs)
-        if (processed.contains(fingerprint) ||
-            processed.contains(PROCESSED_EVENT_PREFIX + eventKey)
-        ) return false
-        val arr = JSONArray(prefs.getString(KEY_QUEUE, null) ?: "[]")
-        for (i in 0 until arr.length()) {
-            val obj = arr.optJSONObject(i) ?: continue
-            val queuedFp = obj.optString("fingerprint")
-            if (queuedFp == fingerprint || queuedFp.isEmpty() &&
-                obj.optString("eventKey") == eventKey
-            ) {
-                return false
-            }
-        }
-        arr.put(
-            JSONObject()
-                .put("eventKey", eventKey)
-                .put("fingerprint", fingerprint)
-                .put("package", pkg)
-                .put("text", text)
-                .put("timestamp", ts)
-        )
-        while (arr.length() > MAX_QUEUE) arr.remove(0)
-        prefs.edit().putString(KEY_QUEUE, arr.toString()).apply()
-        return true
-    }
-
-    @Synchronized
-    fun peekQueue(context: Context): ArrayList<Map<String, String>> {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val raw = prefs.getString(KEY_QUEUE, null) ?: return ArrayList()
-        val arr = JSONArray(raw)
-        val result = ArrayList<Map<String, String>>(arr.length())
-        for (i in 0 until arr.length()) {
-            val obj = arr.optJSONObject(i) ?: continue
-            result.add(
-                mapOf(
-                    "eventKey" to obj.optString("eventKey"),
-                    "fingerprint" to obj.optString("fingerprint"),
-                    "package" to obj.optString("package"),
-                    "text" to obj.optString("text"),
-                    "timestamp" to obj.optString("timestamp")
-                )
-            )
-        }
-        return result
-    }
-
-    @Synchronized
-    fun ackQueue(
-        context: Context,
-        fingerprints: List<String>,
-        eventKeys: List<String> = emptyList(),
-    ) {
-        if (fingerprints.isEmpty() && eventKeys.isEmpty()) return
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val raw = prefs.getString(KEY_QUEUE, null) ?: return
-        val wanted = (fingerprints + eventKeys).toSet()
-        val arr = JSONArray(raw)
-        val remaining = JSONArray()
-        val acked = mutableSetOf<String>()
-        for (i in 0 until arr.length()) {
-            val obj = arr.optJSONObject(i) ?: continue
-            val fp = obj.optString("fingerprint")
-            val key = obj.optString("eventKey")
-            if (wanted.contains(fp) || (key.isNotEmpty() && wanted.contains(key))) {
-                // 已处理记录同时写指纹与事件键:指纹作为去重主依据(同内容不再
-                // 记),事件键保留作兜底(2026-09-07)。之前只写 event:eventKey,
-                // 而 eventKey 含时间戳每次变化,漏记了指纹导致重复入账。
-                if (fp.isNotEmpty()) acked.add(fp)
-                if (key.isNotEmpty()) acked.add(PROCESSED_EVENT_PREFIX + key)
-            } else {
-                remaining.put(obj)
-            }
-        }
-        if (acked.isEmpty()) return
-        val processed = loadFingerprints(prefs)
-        processed.addAll(acked)
-        saveFingerprints(prefs, processed)
-        prefs.edit().putString(KEY_QUEUE, remaining.toString()).apply()
     }
 
     override fun onInterrupt() {
@@ -711,6 +669,10 @@ open class ScreenTextWatcher : AccessibilityService() {
         /** 连续重排最大次数(防滚动类事件无限后延) */
         private const val MAX_GRAB_RETRIES = 2
 
+        /** C4:已判非账单 (pkg,pageClass) 的冷却窗口(ms)。窗口内跳过整树
+            采集,只挡采集不挡事件调度;切页(类名变化)或过期自动失效。 */
+        private const val NON_BILL_COOLDOWN_MS = 15_000L
+
         private const val MAX_DEPTH = 30
         private const val MAX_NODES = 400
         private const val MAX_CHARS = 2000
@@ -812,10 +774,18 @@ open class ScreenTextWatcher : AccessibilityService() {
             "支付方式", "支付时间", "商品订单"
         )
 
+        /**
+         * 明确不是已完成交易的状态，避免详情页把待付款/汇总页送入 AI。
+         * B7(2026-09-15)同步 553f945 的收窄:SmsReceiver/NotificationWatcher
+         * 在该提交已移除「还款日」「可用额度」—— 信用卡/还款类账单详情尾部
+         * 常带这两条尾注,一票否决把真账单静默丢弃;纯额度提醒由
+         * isMarketingPage/hasBookableHint 组合覆盖。顺带补齐同提交新增的
+         * 「账单出账」「还款日前」「积分到账」三词,三路口径一致。
+         */
         private val NON_BOOKABLE_KEYWORDS = listOf(
-            "本期账单", "账单已出", "最低还款", "还款日", "待付款", "待支付",
-            "待确认", "订单确认", "交易关闭", "支付失败", "交易失败",
-            "支付未成功", "订单已关闭", "可用额度", "积分余额"
+            "本期账单", "账单已出", "账单出账", "最低还款", "还款日前",
+            "待付款", "待支付", "待确认", "订单确认", "交易关闭", "支付失败",
+            "交易失败", "支付未成功", "订单已关闭", "积分余额", "积分到账"
         )
         /** 金额写法:¥/￥ 前缀、x元、x块,以及**裸两位小数**(微信/京东账单详情
             的大字金额是「-529.00」式裸数字,无货币符号 —— 2026-09 真机走查漏记
@@ -828,6 +798,123 @@ open class ScreenTextWatcher : AccessibilityService() {
                 "|\\d[\\d,]*(\\.[\\d]{1,2})?\\s*块" +
                 "|\\d[\\d,]*\\.\\d{2}(?!\\d)"
         )
+        // ------------------------------------------------------------
+        // C7(2026-09-15):队列/指纹操作全部是 companion object 静态方法
+        // (@Synchronized 锁 companion 实例 = 类级单锁)。旧行为是实例方法,
+        // MainActivity 用临时实例(ScreenTextWatcher().peekQueue)调用 ——
+        // 锁对象互不相同,互斥形同虚设;任一侧挪后台线程就会
+        // SharedPreferences 丢更新(丢新页面文本/复活已 ACK 项)。
+        // ------------------------------------------------------------
+
+        fun loadFingerprints(prefs: SharedPreferences): MutableSet<String> {
+            return prefs.getString(KEY_FINGERPRINTS, null)
+                ?.split("|")?.filter { it.isNotEmpty() }?.toMutableSet()
+                ?: mutableSetOf()
+        }
+
+        fun saveFingerprints(prefs: SharedPreferences, memo: MutableSet<String>) {
+            val trimmed = memo.toList().takeLast(MAX_FINGERPRINTS)
+            prefs.edit().putString(KEY_FINGERPRINTS, trimmed.joinToString("|")).apply()
+        }
+
+        // ------------------------------------------------------------
+        // 持久化队列(独立 prefs,结构同通知/短信:peek + 逐项 ack)
+        // ------------------------------------------------------------
+
+        @Synchronized
+        private fun enqueue(
+            prefs: SharedPreferences,
+            eventKey: String,
+            fingerprint: String,
+            pkg: String,
+            text: String,
+            ts: Long,
+        ): Boolean {
+            // 内容指纹优先判重:同一账单详情页文本完全一致,指纹稳定;事件键含
+            // 捕获时间戳,每次进入详情页都会变化,不能作为去重依据(2026-09-07
+            // 修复:重复进入被当成新事件,导致文本反复送 AI 记账)。已处理与队列
+            // 里都按 fingerprint 判重,eventKey 仅作队列项标识。
+            val processed = loadFingerprints(prefs)
+            if (processed.contains(fingerprint) ||
+                processed.contains(PROCESSED_EVENT_PREFIX + eventKey)
+            ) return false
+            val arr = JSONArray(prefs.getString(KEY_QUEUE, null) ?: "[]")
+            for (i in 0 until arr.length()) {
+                val obj = arr.optJSONObject(i) ?: continue
+                val queuedFp = obj.optString("fingerprint")
+                if (queuedFp == fingerprint || queuedFp.isEmpty() &&
+                    obj.optString("eventKey") == eventKey
+                ) {
+                    return false
+                }
+            }
+            arr.put(
+                JSONObject()
+                    .put("eventKey", eventKey)
+                    .put("fingerprint", fingerprint)
+                    .put("package", pkg)
+                    .put("text", text)
+                    .put("timestamp", ts)
+            )
+            while (arr.length() > MAX_QUEUE) arr.remove(0)
+            prefs.edit().putString(KEY_QUEUE, arr.toString()).apply()
+            return true
+        }
+
+        @Synchronized
+        fun peekQueue(context: Context): ArrayList<Map<String, String>> {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val raw = prefs.getString(KEY_QUEUE, null) ?: return ArrayList()
+            val arr = JSONArray(raw)
+            val result = ArrayList<Map<String, String>>(arr.length())
+            for (i in 0 until arr.length()) {
+                val obj = arr.optJSONObject(i) ?: continue
+                result.add(
+                    mapOf(
+                        "eventKey" to obj.optString("eventKey"),
+                        "fingerprint" to obj.optString("fingerprint"),
+                        "package" to obj.optString("package"),
+                        "text" to obj.optString("text"),
+                        "timestamp" to obj.optString("timestamp")
+                    )
+                )
+            }
+            return result
+        }
+
+        @Synchronized
+        fun ackQueue(
+            context: Context,
+            fingerprints: List<String>,
+            eventKeys: List<String> = emptyList(),
+        ) {
+            if (fingerprints.isEmpty() && eventKeys.isEmpty()) return
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val raw = prefs.getString(KEY_QUEUE, null) ?: return
+            val wanted = (fingerprints + eventKeys).toSet()
+            val arr = JSONArray(raw)
+            val remaining = JSONArray()
+            val acked = mutableSetOf<String>()
+            for (i in 0 until arr.length()) {
+                val obj = arr.optJSONObject(i) ?: continue
+                val fp = obj.optString("fingerprint")
+                val key = obj.optString("eventKey")
+                if (wanted.contains(fp) || (key.isNotEmpty() && wanted.contains(key))) {
+                    // 已处理记录同时写指纹与事件键:指纹作为去重主依据(同内容不再
+                    // 记),事件键保留作兜底(2026-09-07)。之前只写 event:eventKey,
+                    // 而 eventKey 含时间戳每次变化,漏记了指纹导致重复入账。
+                    if (fp.isNotEmpty()) acked.add(fp)
+                    if (key.isNotEmpty()) acked.add(PROCESSED_EVENT_PREFIX + key)
+                } else {
+                    remaining.put(obj)
+                }
+            }
+            if (acked.isEmpty()) return
+            val processed = loadFingerprints(prefs)
+            processed.addAll(acked)
+            saveFingerprints(prefs, processed)
+            prefs.edit().putString(KEY_QUEUE, remaining.toString()).apply()
+        }
 
         private fun log(msg: String) {
             // vivo OriginOS 会过滤 Log.d(debug 级),用 Log.i 保证诊断日志可见

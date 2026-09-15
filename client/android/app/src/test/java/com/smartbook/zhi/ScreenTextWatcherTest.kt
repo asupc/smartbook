@@ -421,4 +421,63 @@ class ScreenTextWatcherTest {
             )
         )
     }
+
+    @Test
+    fun `B6 微信退款详情页状态值退款成功放行`() {
+        // 附录 B6(2026-09-15):微信退款详情页的状态字段行是「当前状态
+        // 退款成功」—— 旧词表只认 支付成功/已存入零钱,退款详情页在 native
+        // 与 Dart drain 两侧都被系统性丢弃(微信退款漏记的识别层根因)。
+        val refundText = "退款详情
+京东平台商户
+¥529.00
+当前状态
+退款成功
+" +
+            "退款方式
+招商银行信用卡 (1467)
+退款时间 2026-09-15 09:30:00
+退款单号 30000500012345"
+        assertTrue(watcher.isWechatBillPage("com.tencent.mm", refundText))
+        // 旧版字段写法
+        assertTrue(
+            watcher.isWechatBillPage(
+                "com.tencent.mm",
+                "退款详情
+支付状态 已退款
+¥8.00"
+            )
+        )
+        // 强锚点也应命中退款方向(词表已有「退款详情」)
+        assertTrue(watcher.hasBookableHint(refundText))
+        assertTrue(watcher.hasAmount(refundText))
+    }
+
+    @Test
+    fun `B7 同步 553f945 收窄后可用额度与还款日不再一票否决`() {
+        // SmsReceiver/NotificationWatcher 在 553f945 已移除这两词(真账单
+        // 详情/消费短信常带它们作尾注),ScreenTextWatcher 词表未同步 ——
+        // 信用卡还款/账单详情页会被整页静默丢弃。
+        val creditCardBill = "账单详情
+京东平台商户
+-529.00
+支付状态 支付成功
+" +
+            "支付方式 招商银行信用卡 (1467)
+创建时间 2026-09-05 20:28:42
+" +
+            "可用额度 9000.00
+还款日 2026-10-03"
+        // B7:同步 553f945 收窄,尾注不再否决真账单
+        assertFalse(watcher.isNonBookableStatus(creditCardBill))
+        // 强汇总写法仍然拦截
+        assertTrue(watcher.isNonBookableStatus("本期账单
+最低还款 500元
+¥5000.00"))
+        assertTrue(watcher.isNonBookableStatus("账单已出
+还款日前请留意
+¥30.00"))
+        assertTrue(watcher.isNonBookableStatus("订单确认
+待付款
+实付金额:¥30.00"))
+    }
 }

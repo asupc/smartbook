@@ -325,13 +325,16 @@ class RecurringTransactionService {
       return createAndAdvance(null);
     }
 
+    final capturedAt = DateTime.now();
     final execution = await c.executeWithContext<int>(
       input: AutoBookInput(
         eventKey: occurrenceKey,
         source: AutoBookSource.recurring,
         captureIntent: AutoBookCaptureIntent.recurring,
         ledgerId: recurring.ledgerId,
-        capturedAt: DateTime.now(),
+        capturedAt: capturedAt,
+        // A2:证据有效期 30 天(capturedAt 起算),到期由 cleanupExpired 清理。
+        expiresAt: AutoBookInput.defaultExpiresAt(capturedAt),
         sourceOccurredAt: nextDate,
         sourceChannel: 'recurring:${recurring.id}',
         externalId: occurrenceKey,

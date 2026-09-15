@@ -55,12 +55,15 @@ class ImageShareHandlerService {
       }
 
       final eventKey = await _coordinator.imageEventKey(path);
+      final capturedAt = DateTime.now();
       final execution = await _coordinator.execute(
         input: AutoBookInput(
           eventKey: eventKey,
           source: AutoBookSource.sharedImage,
           captureIntent: AutoBookCaptureIntent.userInitiated,
-          capturedAt: DateTime.now(),
+          capturedAt: capturedAt,
+          // A2:证据有效期 30 天(capturedAt 起算),到期由 cleanupExpired 清理。
+          expiresAt: AutoBookInput.defaultExpiresAt(capturedAt),
           contentHash: eventKey.startsWith('image:v1:')
               ? eventKey.substring('image:v1:'.length)
               : null,

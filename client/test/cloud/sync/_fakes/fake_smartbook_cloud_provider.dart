@@ -147,6 +147,13 @@ class FakeSmartBookCloudProvider extends SmartBookCloudProvider {
   /// 控制 storage.list 是否抛错
   Exception? storageListError;
 
+  /// 控制 pushChanges 是否抛错(C2 分批失败续推测试):返回非 null 即抛出。
+  Object? Function(List<Map<String, dynamic>> changes)? pushErrorInjector;
+
+  /// 覆盖 pushChanges 默认全 accepted 结果(测试服务端拒绝 / samples 截断
+  /// 的 markPushed 分流)。
+  SmartBookPushResult? pushResultOverride;
+
   final StreamController<SmartBookCloudRealtimeEvent> _realtimeController =
       StreamController<SmartBookCloudRealtimeEvent>.broadcast();
 
@@ -201,6 +208,18 @@ class FakeSmartBookCloudProvider extends SmartBookCloudProvider {
     required List<Map<String, dynamic>> changes,
   }) async {
     pushedBatches.add(changes);
+    final injector = pushErrorInjector;
+    if (injector != null) {
+      final err = injector(changes);
+      if (err != null) {
+        // ignore: only_throw_errors
+        throw err;
+      }
+    }
+    final override = pushResultOverride;
+    if (override != null) {
+      return override;
+    }
     return SmartBookPushResult(
       accepted: changes.length,
       rejected: 0,
@@ -303,6 +322,8 @@ class FakeSmartBookCloudProvider extends SmartBookCloudProvider {
     pullCalls.clear();
     pullErrorInjector = null;
     storageListError = null;
+    pushErrorInjector = null;
+    pushResultOverride = null;
     _fakeStorage.ledgerSnapshots.clear();
   }
 

@@ -69,7 +69,11 @@ class AutoBookEventStore {
       contentHash: d.Value(input.contentHash),
       capturedAt: input.capturedAt,
       sourceOccurredAt: d.Value(input.sourceOccurredAt),
-      expiresAt: d.Value(input.expiresAt),
+      // A2:证据有效期兜底 —— 调用方漏传时按捕获时刻+30d 落列,保证
+      // cleanupExpired 的 DELETE 恒有命中面(旧行为恒写 null → 表只进不出)。
+      expiresAt: d.Value(
+        input.expiresAt ?? AutoBookInput.defaultExpiresAt(input.capturedAt),
+      ),
       rawTitle: d.Value(hasRaw ? input.rawTitle : null),
       rawText: d.Value(hasRaw ? input.rawText : null),
       rawActor: d.Value(hasRaw ? input.rawActor : null),
@@ -213,12 +217,37 @@ class AutoBookEventStore {
     );
   }
 
+  /// A1(2026-09-15):重试上限。用尽后事件落 `failed` 终态 —— 旧行为在
+  /// clamp(1,5) 梯梯满后永远按 2h 重试,截图文件消失等不可恢复场景会形成
+  /// 无限循环(每次 drain 都是一次 AI 中转调用/3s 文件等待)。
+  static const int maxRetryAttempts = 8;
+
   Future<void> markRetry({
     required int eventId,
     required int attemptCount,
     String? error,
   }) async {
-    // 30s, 2m, 8m, 30m, 2h；避免桥接广播/启动 drain 形成忙循环。
+    // A1:用尽退避次数 → failed 终态(原因码 retry_exhausted,历史页可见)。
+    // 与 mark() 的终态语义对齐:同时清 nextRetryAt 与离线草稿 —— 草稿若
+    // 保留,会被 dueDrafts 的 [retry, failed] 过滤长期选中,占住 limit 挤掉
+    // 新草稿(重放又会因终态被 claim 拒绝,空转)。
+    if (attemptCount >= maxRetryAttempts) {
+      final now = DateTime.now();
+      await (db.update(db.autoBookEvents)..where((t) => t.id.equals(eventId)))
+          .write(
+        schema.AutoBookEventsCompanion(
+          state: const d.Value('failed'),
+          reason: const d.Value('retry_exhausted'),
+          nextRetryAt: const d.Value(null),
+          draftPayloadJson: const d.Value(null),
+          lastError: d.Value(_redactError(error)),
+          updatedAt: d.Value(now),
+        ),
+      );
+      return;
+    }
+    // 30s, 2m, 8m, 30m, 2h(第 5 次起固定 2h,直到 [maxRetryAttempts] 用尽);
+    // 避免桥接广播/启动 drain 形成忙循环。
     final seconds = switch (attemptCount.clamp(1, 5)) {
       1 => 30,
       2 => 120,
@@ -298,6 +327,56 @@ class AutoBookEventStore {
           ..where((t) => t.eventId.equals(eventId))
           ..orderBy([(t) => d.OrderingTerm.asc(t.itemIndex)]))
         .get();
+  }
+
+  /// C8(2026-09-15):批量读取一组事件的全部子项,按 eventId 分组返回。
+  /// [PendingCandidateStore.loadForReview] 旧行为是逐事件调
+  /// [itemsForEvent](500 事件 = 500 次 DB 往返,角标计数也走这条路);改一次
+  /// 批查(SQLite 变量上限 999,按 400 一段分块)。
+  Future<Map<int, List<schema.AutoBookEventItem>>> itemsForEvents(
+    List<int> eventIds,
+  ) async {
+    final grouped = <int, List<schema.AutoBookEventItem>>{};
+    for (var i = 0; i < eventIds.length; i += 400) {
+      final end =
+          (i + 400 > eventIds.length) ? eventIds.length : i + 400;
+      final chunk = eventIds.sublist(i, end);
+      if (chunk.isEmpty) continue;
+      final rows = await (db.select(db.autoBookEventItems)
+            ..where((t) => t.eventId.isIn(chunk))
+            ..orderBy([
+              (t) => d.OrderingTerm.asc(t.eventId),
+              (t) => d.OrderingTerm.asc(t.itemIndex),
+            ]))
+          .get();
+      for (final row in rows) {
+        grouped.putIfAbsent(row.eventId, () => []).add(row);
+      }
+    }
+    return grouped;
+  }
+
+  /// C8(2026-09-15):待确认事件 TTL —— `pending` 超过 [ttl](默认 30 天,
+  /// 与 A2 证据保留期同长)的事件转 `expired` 终态。旧行为 pending 无过期,
+  /// 确认页/角标被陈年候选长期占用;语义上 30 天未确认的候选等同放弃。
+  /// 与 [cleanupExpired] 的占位改造同款:置 expired(终态,不再被 claim)、
+  /// 清 expiresAt(不被后续 DELETE 吃掉,历史页保留「为什么停下」)。
+  /// 返回本轮过期的事件数。
+  static const Duration pendingCandidateTtl = Duration(days: 30);
+
+  Future<int> expireStalePending({Duration? ttl}) async {
+    final cutoff = DateTime.now().subtract(ttl ?? pendingCandidateTtl);
+    return (db.update(db.autoBookEvents)
+          ..where((t) =>
+              t.state.equals('pending') &
+              t.capturedAt.isSmallerThanValue(cutoff)))
+        .write(const schema.AutoBookEventsCompanion(
+      state: d.Value('expired'),
+      reason: d.Value('pending_expired'),
+      expiresAt: d.Value(null),
+      nextRetryAt: d.Value(null),
+      draftPayloadJson: d.Value(null),
+    ));
   }
 
   /// 按 provider/channel + external ID 找到已经落库的 canonical transaction。
@@ -751,12 +830,19 @@ class AutoBookEventStore {
   /// failed 退回 retry —— failed 是终态,claim 会直接拒绝,重放就成了空操作
   /// (M1-4)。只放开 failed:booked/duplicate/pending/ignored/expired 的内容
   /// 已被消化或证据已消失,不能靠重放复活。
+  ///
+  /// A1:failed → retry 复活时同时把 attemptCount 归零。retry_exhausted 的
+  /// 事件 attemptCount 已到 [maxRetryAttempts],不归零的话手动重试的第一次
+  /// 可重试失败就会立刻再次用尽退避(用户只买到一次尝试)。
   Future<void> resetRetryGate(int eventId) async {
     final event = await findById(eventId);
     await (db.update(db.autoBookEvents)..where((t) => t.id.equals(eventId)))
         .write(schema.AutoBookEventsCompanion(
       state: event?.state == AutoBookState.failed.value
           ? d.Value(AutoBookState.retry.value)
+          : const d.Value.absent(),
+      attemptCount: event?.state == AutoBookState.failed.value
+          ? const d.Value(0)
           : const d.Value.absent(),
       nextRetryAt: const d.Value(null),
       updatedAt: d.Value(DateTime.now()),
@@ -816,7 +902,37 @@ class AutoBookEventStore {
   Future<void> markRawEvidenceUploaded({required int eventId}) =>
       markRawEvidenceUploadSucceeded(eventId);
 
+  /// A2 存量回填:历史版本从不写 expiresAt,存量事件行该列全 NULL,
+  /// [cleanupExpired] 的 DELETE 恒不命中。按 `capturedAt + 30d` 补写
+  /// ([AutoBookInput.evidenceRetention]);幂等 —— 只有 NULL 行会被选中,
+  /// 空表/新库是一次廉价 SELECT 直接返回。
+  ///
+  /// `state=expired` 的占位行除外:它们的 expiresAt 是被 cleanupExpired
+  /// **有意置空**的(见下方占位改造注释),回填会让语义倒退。
+  Future<int> backfillMissingExpiresAt() async {
+    final rows = await (db.select(db.autoBookEvents)
+          ..where((t) =>
+              t.expiresAt.isNull() &
+              t.state.isNotIn(const ['expired'])))
+        .get();
+    for (final row in rows) {
+      await (db.update(db.autoBookEvents)..where((t) => t.id.equals(row.id)))
+          .write(schema.AutoBookEventsCompanion(
+        expiresAt:
+            d.Value(row.capturedAt.add(AutoBookInput.evidenceRetention)),
+      ));
+    }
+    return rows.length;
+  }
+
   Future<void> cleanupExpired() async {
+    // A2:先做一次性(幂等)回填,再清理 —— 保证 DELETE/占位改造有命中面。
+    // 失败不阻断后续清理路径(与下方占位改造同款容错)。
+    try {
+      await backfillMissingExpiresAt();
+    } catch (_) {
+      // 老库异常不阻塞;下次调用仍会重试回填。
+    }
     await cleanupExpiredRawEvidence();
     final now = DateTime.now();
     // 曾有原始证据、证据已被留存策略清掉的过期事件:保留「已过期(证据已

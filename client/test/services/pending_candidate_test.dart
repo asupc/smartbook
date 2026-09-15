@@ -146,5 +146,38 @@ void main() {
           PendingCandidate.candidateId(bill));
       expect(PendingCandidate.candidateId(bill), hasLength(12));
     });
+
+    test('C8:capturedAt 超过 30 天的 legacy 候选不再进入 load/count', () async {
+      final store = PendingCandidateStore();
+      final bill = BillInfo(
+          amount: -100, time: DateTime(2026, 8, 1), ledgerId: 1, note: '陈年');
+      final stale = PendingCandidate(
+        id: PendingCandidate.candidateId(bill),
+        bill: bill,
+        source: 'sms',
+        // 31 天前捕获:TTL(30 天)之外
+        capturedAt: DateTime.now().subtract(const Duration(days: 31)),
+        reason: 'lowConfidence',
+      );
+      expect(await store.add(stale), isTrue);
+      expect(await store.count(), 0, reason: 'C8 TTL:陈年候选不占角标');
+      expect(await store.load(), isEmpty,
+          reason: 'C8 TTL:陈年候选不再进确认页');
+
+      // 物理清除发生在下次 add/remove 落盘:新增一条后,旧行被写掉。
+      final freshBill = BillInfo(
+          amount: -1, time: DateTime(2026, 9, 15), ledgerId: 1);
+      final fresh = PendingCandidate(
+        id: PendingCandidate.candidateId(freshBill),
+        bill: freshBill,
+        source: 'sms',
+        capturedAt: DateTime.now(),
+      );
+      await store.add(fresh);
+      expect(await store.count(), 1);
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getStringList('pending_candidates_v1') ?? const [];
+      expect(raw, hasLength(1), reason: '陈年候选在下次落盘时被物理清除');
+    });
   });
 }

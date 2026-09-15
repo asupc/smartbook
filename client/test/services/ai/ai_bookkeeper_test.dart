@@ -10,7 +10,10 @@ import 'package:smartbook/ai/core/bill_info.dart';
 import 'package:smartbook/data/db.dart';
 import 'package:smartbook/data/repositories/local/local_repository.dart';
 import 'package:smartbook/services/ai/ai_bookkeeper.dart';
+import 'package:smartbook/services/automation/auto_book_event.dart';
+import 'package:smartbook/services/automation/auto_book_event_store.dart';
 import 'package:smartbook/services/billing/bill_creation_service.dart';
+import 'package:smartbook/services/billing/pending_candidate.dart';
 
 /// 可编程的 fake engine。不做 AI 调用,直接返回预设的 bills。
 class _FakeEngine implements AiExtractionEngine {
@@ -272,6 +275,96 @@ void main() {
 
       expect(response.result.success, isTrue);
       expect(response.recognizedText, '午餐30块');
+    });
+  });
+
+  group('AiBookkeeper.approvePending(C12 booked 快路径校验交易存在)', () {
+    late AutoBookEventStore eventStore;
+
+    setUp(() {
+      eventStore = AutoBookEventStore(db);
+    });
+
+    BillInfo candidateBill() => BillInfo(
+          amount: -30,
+          time: DateTime(2026, 9, 15, 12, 0),
+          category: '餐饮',
+          type: BillType.expense,
+          note: '午餐',
+          ledgerId: ledgerId,
+        );
+
+    test('事件 booked 且交易仍存在 → 直接返回该交易 id(幂等快路径)', () async {
+      final txId = await persister.createFromBill(
+          bill: candidateBill(), ledgerId: ledgerId);
+      expect(txId, isNotNull);
+      final event = await eventStore.ensure(
+        AutoBookInput(
+          eventKey: 'sms:v3:approve-ok',
+          source: AutoBookSource.sms,
+          capturedAt: DateTime(2026, 9, 15, 12, 1),
+        ),
+      );
+      await eventStore.mark(
+        AutoBookEventUpdate(
+          state: AutoBookState.booked,
+          transactionId: txId,
+        ),
+        eventId: event.id,
+      );
+      final bookkeeper = AiBookkeeper(
+        repository: repo,
+        engine: _FakeEngine(),
+        persister: persister,
+        eventStore: eventStore,
+      );
+      final candidate = PendingCandidate(
+        id: 'c-approve-ok',
+        bill: candidateBill(),
+        source: 'sms',
+        capturedAt: DateTime(2026, 9, 15, 12, 1),
+        eventKey: event.eventKey,
+      );
+
+      final returned = await bookkeeper.approvePending(candidate);
+      expect(returned, txId);
+    });
+
+    test('C12:事件 booked 但交易已被同步删除 → 不返回悬空 id,重建入账', () async {
+      final event = await eventStore.ensure(
+        AutoBookInput(
+          eventKey: 'sms:v3:approve-dangling',
+          source: AutoBookSource.sms,
+          capturedAt: DateTime(2026, 9, 15, 12, 1),
+        ),
+      );
+      // 模拟 pull 侧删除不回写事件状态:事件停在 booked,交易 id 已不存在。
+      await eventStore.mark(
+        const AutoBookEventUpdate(
+          state: AutoBookState.booked,
+          transactionId: 999999,
+        ),
+        eventId: event.id,
+      );
+      final bookkeeper = AiBookkeeper(
+        repository: repo,
+        engine: _FakeEngine(),
+        persister: persister,
+        eventStore: eventStore,
+      );
+      final candidate = PendingCandidate(
+        id: 'c-approve-dangling',
+        bill: candidateBill(),
+        source: 'sms',
+        capturedAt: DateTime(2026, 9, 15, 12, 1),
+        eventKey: event.eventKey,
+      );
+
+      final returned = await bookkeeper.approvePending(candidate);
+      expect(returned, isNotNull);
+      expect(returned, isNot(999999), reason: 'C12:悬空 transactionId 不外泄');
+      expect(await repo.getTransactionById(returned!), isNotNull,
+          reason: '返回的 id 必须对应实际存在的交易');
     });
   });
 }

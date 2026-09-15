@@ -189,103 +189,6 @@ class NotificationWatcher : NotificationListenerService() {
             .joinToString("") { "%02x".format(it.toInt() and 0xff) }
     }
 
-    fun loadFingerprints(prefs: SharedPreferences): MutableSet<String> {
-        return prefs.getString(KEY_FINGERPRINTS, null)
-            ?.split("|")?.filter { it.isNotEmpty() }?.toMutableSet()
-            ?: mutableSetOf()
-    }
-
-    fun saveFingerprints(prefs: SharedPreferences, memo: MutableSet<String>) {
-        val trimmed = memo.toList().takeLast(MAX_FINGERPRINTS)
-        prefs.edit().putString(KEY_FINGERPRINTS, trimmed.joinToString("|")).apply()
-    }
-
-    // ------------------------------------------------------------
-    // 持久化队列(独立 prefs,结构同短信队列:peek + 逐项 ack)
-    // ------------------------------------------------------------
-
-    @Synchronized
-    private fun enqueue(
-        prefs: SharedPreferences,
-        fingerprint: String,
-        pkg: String,
-        title: String,
-        text: String,
-        ts: Long,
-        notificationKey: String,
-        notificationId: Int,
-    ): Boolean {
-        val processed = loadFingerprints(prefs)
-        if (processed.contains(fingerprint)) return false
-        val arr = JSONArray(prefs.getString(KEY_QUEUE, null) ?: "[]")
-        for (i in 0 until arr.length()) {
-            if (arr.optJSONObject(i)?.optString("fingerprint") == fingerprint) {
-                return false
-            }
-        }
-        arr.put(
-            JSONObject()
-                .put("fingerprint", fingerprint)
-                .put("package", pkg)
-                .put("title", title)
-                .put("body", text)
-                .put("timestamp", ts)
-                .put("notificationKey", notificationKey)
-                .put("notificationId", notificationId)
-        )
-        while (arr.length() > MAX_QUEUE) arr.remove(0)
-        prefs.edit().putString(KEY_QUEUE, arr.toString()).apply()
-        return true
-    }
-
-    @Synchronized
-    fun peekQueue(context: Context): ArrayList<Map<String, String>> {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val raw = prefs.getString(KEY_QUEUE, null) ?: return ArrayList()
-        val arr = JSONArray(raw)
-        val result = ArrayList<Map<String, String>>(arr.length())
-        for (i in 0 until arr.length()) {
-            val obj = arr.optJSONObject(i) ?: continue
-            result.add(
-                mapOf(
-                    "fingerprint" to obj.optString("fingerprint"),
-                    "package" to obj.optString("package"),
-                    "title" to obj.optString("title"),
-                    "body" to obj.optString("body"),
-                    "timestamp" to obj.optString("timestamp"),
-                    "notificationKey" to obj.optString("notificationKey"),
-                    "notificationId" to obj.optString("notificationId")
-                )
-            )
-        }
-        return result
-    }
-
-    @Synchronized
-    fun ackQueue(context: Context, fingerprints: List<String>) {
-        if (fingerprints.isEmpty()) return
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val raw = prefs.getString(KEY_QUEUE, null) ?: return
-        val wanted = fingerprints.toSet()
-        val arr = JSONArray(raw)
-        val remaining = JSONArray()
-        val acked = mutableSetOf<String>()
-        for (i in 0 until arr.length()) {
-            val obj = arr.optJSONObject(i) ?: continue
-            val fp = obj.optString("fingerprint")
-            if (wanted.contains(fp)) {
-                acked.add(fp)
-            } else {
-                remaining.put(obj)
-            }
-        }
-        if (acked.isEmpty()) return
-        val processed = loadFingerprints(prefs)
-        processed.addAll(acked)
-        saveFingerprints(prefs, processed)
-        prefs.edit().putString(KEY_QUEUE, remaining.toString()).apply()
-    }
-
     companion object {
         private const val TAG = "NotificationWatcher"
         const val BRIDGE_ACTION = "com.smartbook.zhi.NOTIFY_CAPTURED"
@@ -376,6 +279,111 @@ class NotificationWatcher : NotificationListenerService() {
         )
 
         private val AMOUNT_PATTERN = Regex("[¥￥]\\s*\\d|\\d[\\d,]*(\\.[\\d]{1,2})?\\s*元|\\d[\\d,]*(\\.[\\d]{1,2})?\\s*块|人民币\\s*\\d")
+
+        // ------------------------------------------------------------
+        // C7(2026-09-15):队列/指纹操作全部是 companion object 静态方法
+        // (@Synchronized 锁 companion 实例 = 类级单锁)。旧行为是实例方法,
+        // MainActivity 用临时实例(NotificationWatcher().peekQueue)调用 ——
+        // 锁对象互不相同,互斥形同虚设;任一侧挪后台线程就会
+        // SharedPreferences 丢更新(丢新通知/复活已 ACK 项)。
+        // ------------------------------------------------------------
+
+        fun loadFingerprints(prefs: SharedPreferences): MutableSet<String> {
+            return prefs.getString(KEY_FINGERPRINTS, null)
+                ?.split("|")?.filter { it.isNotEmpty() }?.toMutableSet()
+                ?: mutableSetOf()
+        }
+
+        fun saveFingerprints(prefs: SharedPreferences, memo: MutableSet<String>) {
+            val trimmed = memo.toList().takeLast(MAX_FINGERPRINTS)
+            prefs.edit().putString(KEY_FINGERPRINTS, trimmed.joinToString("|")).apply()
+        }
+
+        // ------------------------------------------------------------
+        // 持久化队列(独立 prefs,结构同短信队列:peek + 逐项 ack)
+        // ------------------------------------------------------------
+
+        @Synchronized
+        private fun enqueue(
+            prefs: SharedPreferences,
+            fingerprint: String,
+            pkg: String,
+            title: String,
+            text: String,
+            ts: Long,
+            notificationKey: String,
+            notificationId: Int,
+        ): Boolean {
+            val processed = loadFingerprints(prefs)
+            if (processed.contains(fingerprint)) return false
+            val arr = JSONArray(prefs.getString(KEY_QUEUE, null) ?: "[]")
+            for (i in 0 until arr.length()) {
+                if (arr.optJSONObject(i)?.optString("fingerprint") == fingerprint) {
+                    return false
+                }
+            }
+            arr.put(
+                JSONObject()
+                    .put("fingerprint", fingerprint)
+                    .put("package", pkg)
+                    .put("title", title)
+                    .put("body", text)
+                    .put("timestamp", ts)
+                    .put("notificationKey", notificationKey)
+                    .put("notificationId", notificationId)
+            )
+            while (arr.length() > MAX_QUEUE) arr.remove(0)
+            prefs.edit().putString(KEY_QUEUE, arr.toString()).apply()
+            return true
+        }
+
+        @Synchronized
+        fun peekQueue(context: Context): ArrayList<Map<String, String>> {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val raw = prefs.getString(KEY_QUEUE, null) ?: return ArrayList()
+            val arr = JSONArray(raw)
+            val result = ArrayList<Map<String, String>>(arr.length())
+            for (i in 0 until arr.length()) {
+                val obj = arr.optJSONObject(i) ?: continue
+                result.add(
+                    mapOf(
+                        "fingerprint" to obj.optString("fingerprint"),
+                        "package" to obj.optString("package"),
+                        "title" to obj.optString("title"),
+                        "body" to obj.optString("body"),
+                        "timestamp" to obj.optString("timestamp"),
+                        "notificationKey" to obj.optString("notificationKey"),
+                        "notificationId" to obj.optString("notificationId")
+                    )
+                )
+            }
+            return result
+        }
+
+        @Synchronized
+        fun ackQueue(context: Context, fingerprints: List<String>) {
+            if (fingerprints.isEmpty()) return
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val raw = prefs.getString(KEY_QUEUE, null) ?: return
+            val wanted = fingerprints.toSet()
+            val arr = JSONArray(raw)
+            val remaining = JSONArray()
+            val acked = mutableSetOf<String>()
+            for (i in 0 until arr.length()) {
+                val obj = arr.optJSONObject(i) ?: continue
+                val fp = obj.optString("fingerprint")
+                if (wanted.contains(fp)) {
+                    acked.add(fp)
+                } else {
+                    remaining.put(obj)
+                }
+            }
+            if (acked.isEmpty()) return
+            val processed = loadFingerprints(prefs)
+            processed.addAll(acked)
+            saveFingerprints(prefs, processed)
+            prefs.edit().putString(KEY_QUEUE, remaining.toString()).apply()
+        }
 
         private fun log(msg: String) {
             // vivo OriginOS 会过滤 Log.d(debug 级),用 Log.i 保证诊断日志可见

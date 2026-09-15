@@ -186,11 +186,11 @@ class ScreenTextMonitorService {
     // 微信聊天列表文本(会话预览「已支付¥8.00」命中强锚点)在 drain 时也
     // 要拦下,直接 ACK 丢弃,不再送 AI —— 既省一次识别,也杜绝复发。
     // 状态字段行「当前状态/支付状态」任一命中 + 状态值「支付成功/已存入
-    // 零钱」(支出/收款两向;微信多代账单 UI 字段名并存,2026-09-11 真机
-    // dump 实测新版支出页为「当前状态 支付成功」)。
-    if (pkg.contains('com.tencent.mm') &&
-        !((text.contains('当前状态') || text.contains('支付状态')) &&
-            (text.contains('支付成功') || text.contains('已存入零钱')))) {
+    // 零钱/退款成功/已退款」(支出/收款/退款三向;微信多代账单 UI 字段名并存,
+    // 2026-09-11 真机 dump 实测新版支出页为「当前状态 支付成功」;2026-09-15
+    // B6 补退款向:退款详情页状态值是「退款成功」,旧词表不认 → 微信退款
+    // 详情页系统性漏记)。
+    if (!isWechatBillPageText(pkg, text)) {
       await _logDecision(
         'wechat_not_bill_page',
         'pkg=$pkg len=${text.length}(缺少 支付状态+支付成功 双特征)',
@@ -200,12 +200,15 @@ class ScreenTextMonitorService {
       return;
     }
     final alreadyWarned = _noAiNotified.contains(eventKey);
+    final capturedAt = DateTime.now();
     final execution = await _coordinator.execute(
       input: AutoBookInput(
         eventKey: eventKey,
         source: AutoBookSource.screenText,
         captureIntent: AutoBookCaptureIntent.automatic,
-        capturedAt: DateTime.now(),
+        capturedAt: capturedAt,
+        // A2:证据有效期 30 天(capturedAt 起算),到期由 cleanupExpired 清理。
+        expiresAt: AutoBookInput.defaultExpiresAt(capturedAt),
         sourceOccurredAt: timestamp == null
             ? null
             : DateTime.fromMillisecondsSinceEpoch(timestamp),
@@ -226,9 +229,10 @@ class ScreenTextMonitorService {
         // 成功入账始终通知;「AI 未配置」引导按指纹只提示一次
         showNotification: true,
         notifyAiUnconfigured: !alreadyWarned,
-        // 内容指纹去重(持久化,跨会话):Coordinator 按 eventKey 幂等,而
-        // eventKey 含捕获时间戳每次进入都变,兜不住同内容重复入账。这里
-        // 不再跳过 screenTextFingerprint 去重,与原生端指纹拦队形成双保险。
+        // 内容指纹去重(持久化,跨会话)在 processScreenText 内已是**降级**
+        // 语义(C1,2026-09-15):命中不再直接丢弃,交语义判重裁决 —— 与
+        // sms/notify 路 2026-09-10 改法一致,同店同款第二笔不被静默吞掉。
+        // Coordinator 按 eventKey 幂等,兜住重复 drain。
         skipDedup: false,
         eventKey: eventKey,
       ),
@@ -326,6 +330,28 @@ class ScreenTextMonitorService {
         'source': source,
       });
     } catch (_) {}
+  }
+
+  /// 微信账单页双特征判定(drain 侧;与 native
+  /// [ScreenTextWatcher.isWechatBillPage] 同口径,纯函数便于单测)。
+  ///
+  /// 微信是高频 IM,无障碍抓全页文本的场景几乎全是聊天列表/会话页 —— 列表
+  /// 里「微信支付」服务号会话预览「已支付¥8.00」同时命中强锚点与金额闸。
+  /// 因此微信页面只在「确认是账单详情页」时放行:
+  ///  - 状态字段行:「当前状态」或「支付状态」任一命中;
+  ///  - 状态值:「支付成功」(支出)/「已存入零钱」(收款)/**「退款成功」/
+  ///    「已退款」(退款,B6 2026-09-15:微信退款详情页状态值是「退款成功」,
+  ///    旧词表不认导致系统性漏记)**。
+  /// 其余 App 不受影响(返回 true)。
+  static bool isWechatBillPageText(String pkg, String text) {
+    if (!pkg.contains('com.tencent.mm')) return true;
+    final hasStatusField =
+        text.contains('当前状态') || text.contains('支付状态');
+    final hasSettledValue = text.contains('支付成功') ||
+        text.contains('已存入零钱') ||
+        text.contains('退款成功') ||
+        text.contains('已退款');
+    return hasStatusField && hasSettledValue;
   }
 
   Future<void> _ack(String fingerprint, String? eventKey) async {

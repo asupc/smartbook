@@ -184,6 +184,7 @@ class SmsMonitorService {
   }) async {
     // AI 未配置的提示每事件只弹一次(会话内)
     final alreadyWarned = _noAiNotified.contains(eventKey);
+    final capturedAt = DateTime.now();
     final execution = await _coordinator.execute(
       input: AutoBookInput(
         // v2 把 native 时间带入 key，避免同一模板在不同日期被误当成
@@ -191,7 +192,9 @@ class SmsMonitorService {
         eventKey: eventKey,
         source: AutoBookSource.sms,
         captureIntent: AutoBookCaptureIntent.automatic,
-        capturedAt: DateTime.now(),
+        capturedAt: capturedAt,
+        // A2:证据有效期 30 天(capturedAt 起算),到期由 cleanupExpired 清理。
+        expiresAt: AutoBookInput.defaultExpiresAt(capturedAt),
         sourceOccurredAt: timestamp == null
             ? null
             : DateTime.fromMillisecondsSinceEpoch(timestamp),

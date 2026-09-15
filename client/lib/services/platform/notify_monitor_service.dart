@@ -178,12 +178,15 @@ class NotifyMonitorService {
     // native fingerprint 已包含 StatusBarNotification key/id/postTime；
     // 旧队列没有这些字段时仍能通过 content fingerprint 兼容。
     final eventKey = 'notification:v3:$fingerprint';
+    final capturedAt = DateTime.now();
     final execution = await _coordinator.execute(
       input: AutoBookInput(
         eventKey: eventKey,
         source: AutoBookSource.notification,
         captureIntent: AutoBookCaptureIntent.automatic,
-        capturedAt: DateTime.now(),
+        capturedAt: capturedAt,
+        // A2:证据有效期 30 天(capturedAt 起算),到期由 cleanupExpired 清理。
+        expiresAt: AutoBookInput.defaultExpiresAt(capturedAt),
         sourceOccurredAt: timestamp == null
             ? null
             : DateTime.fromMillisecondsSinceEpoch(timestamp),
@@ -207,6 +210,11 @@ class NotifyMonitorService {
         // 事件幂等由 Coordinator 负责，避免旧内存 cache 影响 retry。
         skipDedup: true,
         eventKey: eventKey,
+        // C6(2026-09-15):透传 native 队列里的通知身份(notificationKey/id/
+        // postTime),Dart 侧指纹与 native 完全同口径,同通知更新不再二次判重。
+        notificationKey: notificationKey.isEmpty ? null : notificationKey,
+        notificationId: notificationId ?? 0,
+        postTime: timestamp ?? 0,
       ),
       // M1-3:与短信/详情页共用一份走向映射。
       updateFor: (outcome) => outcome.eventUpdate,

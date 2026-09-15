@@ -2558,9 +2558,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     required String userId,
     int? version,
   }) async {
-    // 服务端这个 endpoint 不校验 auth（profile.py download_avatar 无
-    // Depends(get_current_user)），但复用 _authedRequest 统一走同一套 base
-    // URL + header 拼接，auth header 即使带了也无害。
+    // 服务端该 endpoint 已加 Depends(get_current_user) 鉴权（带 v 时缓存为
+    // private），_authedRequest 的 Bearer 正好满足；401 时走既有的刷新重放。
     final response = await _authedRequest(
       method: 'GET',
       path: '/profile/avatar/$userId',

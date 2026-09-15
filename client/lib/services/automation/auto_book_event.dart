@@ -119,6 +119,15 @@ extension AutoBookStateValue on AutoBookState {
 /// [eventKey] 是入口事件的幂等键，不是 transactions.syncId。它可以由 native
 /// 元数据、图片内容 hash、Deep Link 的 idempotency_key 或账单文件行 hash 派生。
 class AutoBookInput {
+  /// A2(2026-09-15):事件证据默认保留期。事件行 30 天后允许
+  /// `AutoBookEventStore.cleanupExpired` 物理清理 —— 语义是「证据有效期」,
+  /// 从**捕获时刻**起算(capturedAt + 30d),不是写入时刻。
+  static const Duration evidenceRetention = Duration(days: 30);
+
+  /// 按捕获时刻计算的默认证据有效期(capturedAt + [evidenceRetention])。
+  static DateTime defaultExpiresAt(DateTime capturedAt) =>
+      capturedAt.add(evidenceRetention);
+
   final String eventKey;
   final AutoBookSource source;
   final AutoBookCaptureIntent captureIntent;

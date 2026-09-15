@@ -187,12 +187,15 @@ class ScreenshotMonitorService {
     // 静默模式:触发/识别中/非账单/失败不通知,只在成功入账时通知一次
     // (减少打扰;AI 未配置仍保留会话级一次性提示,便于发现配置缺失)。
     final eventKey = await _coordinator.imageEventKey(path);
+    final capturedAt = DateTime.now();
     final execution = await _coordinator.execute(
       input: AutoBookInput(
         eventKey: eventKey,
         source: AutoBookSource.screenshot,
         captureIntent: AutoBookCaptureIntent.automatic,
-        capturedAt: DateTime.now(),
+        capturedAt: capturedAt,
+        // A2:证据有效期 30 天(capturedAt 起算),到期由 cleanupExpired 清理。
+        expiresAt: AutoBookInput.defaultExpiresAt(capturedAt),
         contentHash: eventKey.startsWith('image:v1:')
             ? eventKey.substring('image:v1:'.length)
             : null,

@@ -43,6 +43,9 @@ class ScreenshotObserver(
         private const val DRAIN_DELAY_MS = 1000L
         // 单个 uri 遇到 .pending- 中间态的最大重查次数(每次间隔 DRAIN_DELAY_MS)
         private const val MAX_PENDING_RETRIES = 2
+        // C5:文件系统兜底的静默窗口 —— 近期(两段写入周期内)已成功入队过
+        // 截图则跳过兜底扫描
+        private const val FALLBACK_QUIET_MS = 5_000L
 
         // SharedPreferences相关
         private const val PREFS_NAME = "screenshot_monitor_prefs"
@@ -100,15 +103,20 @@ class ScreenshotObserver(
     private var lastCheckTime = System.currentTimeMillis()
     private val processedPaths = mutableSetOf<String>()
 
-    // 两段写入兼容(2026-09 修复):很多厂商截图先写 `.pending-` 临时文件、
-    // 写完再 rename 成正式名,MediaStore 会触发两次事件。旧实现 onChange 开头
-    // 的 500ms 防抖会把「第一个事件(.pending-,被过滤)之后的 rename 事件」
-    // 整个跳过 → 截图不触发,用户只能手动编辑保存(独立操作,间隔超窗口)才
-    // 触发。这里改为:收集待查 uri → 延迟 1s 一次性检查(rename 已完成),
-    // 集合天然去重,不再有全局防抖窗口。
-    private val pendingUris = mutableSetOf<Uri?>()
-    private var pendingScheduled = false
-    private val retryCounts = mutableMapOf<Uri, Int>()
+        // 两段写入兼容(2026-09 修复):很多厂商截图先写 `.pending-` 临时文件、
+        // 写完再 rename 成正式名,MediaStore 会触发两次事件。旧实现 onChange 开头
+        // 的 500ms 防抖会把「第一个事件(.pending-,被过滤)之后的 rename 事件」
+        // 整个跳过 → 截图不触发,用户只能手动编辑保存(独立操作,间隔超窗口)才
+        // 触发。这里改为:收集待查 uri → 延迟 1s 一次性检查(rename 已完成),
+        // 集合天然去重,不再有全局防抖窗口。
+        private val pendingUris = mutableSetOf<Uri?>()
+        private var pendingScheduled = false
+        private val retryCounts = mutableMapOf<Uri, Int>()
+
+        // C5(2026-09-15):最近一次成功入队时间 —— 两段写入的多次事件共用同
+        // 一个兜底静默窗口,本周期已 enqueue ≥1 张则跳过文件系统兜底。
+        @Volatile
+        private var lastEnqueuedAt = 0L
 
     init {
         // 从SharedPreferences加载已处理的路径
@@ -198,9 +206,11 @@ class ScreenshotObserver(
 
             val processStartTime = System.currentTimeMillis()
             var retry = false
+            var rowFound = false
             cursor?.use {
                 LoggerPlugin.debug(TAG, "媒体查询结果: rows=${it.count}")
-                if (it.moveToFirst()) {
+                rowFound = it.moveToFirst()
+                if (rowFound) {
                     val nameIndex = it.getColumnIndex(MediaStore.Images.Media.DISPLAY_NAME)
                     val dateIndex = it.getColumnIndex(MediaStore.Images.Media.DATE_ADDED)
                     val dataIndex = it.getColumnIndex(MediaStore.Images.Media.DATA)
@@ -249,6 +259,7 @@ class ScreenshotObserver(
                             Log.d(TAG, "✅ 检测到新截图: $imagePath")
                             Log.d(TAG, "文件名: $imageName, 年龄=${imageAge}秒")
                             LoggerPlugin.info(TAG, "检测到新截图: $imageName")
+                            lastEnqueuedAt = System.currentTimeMillis()
                             ScreenTextWatcher.recordDecision(
                                 context, "app", "enqueued",
                                 "name=$imageName",
@@ -278,30 +289,14 @@ class ScreenshotObserver(
                         ScreenTextWatcher.DECISION_SOURCE_SCREENSHOT,
                     )
                 }
-                if (!retry) {
-                    val fallbackPath = findRecentScreenshotFile()
-                    if (fallbackPath != null &&
-                        enqueuePending(fallbackPath, System.currentTimeMillis())
-                    ) {
-                        // MediaStore 行不可见的文件系统兜底(vivo 真机 2026-09-10:
-                        // 权限全量、is_pending=0,provider 查询仍恒 0 行;而
-                        // targetSdk 32 + legacy storage 的 FUSE 直读不受影响)
-                        LoggerPlugin.info(
-                            TAG,
-                            "检测到新截图(MediaStore 0 行,文件系统兜底): ${File(fallbackPath).name}"
-                        )
-                        ScreenTextWatcher.recordDecision(
-                            context, "app", "enqueued",
-                            "name=${File(fallbackPath).name}(文件兜底)",
-                            ScreenTextWatcher.DECISION_SOURCE_SCREENSHOT,
-                        )
-                        val callbackStartTime = System.currentTimeMillis()
-                        onScreenshotDetected(fallbackPath)
-                        LoggerPlugin.debug(
-                            TAG,
-                            "截图回调执行完成(文件系统兜底), 耗时=${System.currentTimeMillis() - callbackStartTime}ms"
-                        )
-                    }
+                // C5(2026-09-15):文件系统兜底仅在「MediaStore 对该 uri 恒 0 行
+                // + 近期(两段写入周期内)没有成功入队」时触发,并挪后台线程 ——
+                // 旧行为每次媒体变更(含拍照)都在主线程全扫 Pictures/DCIM/
+                // Screenshots 目录,且 MediaStore 查询已成功时也照扫。
+                if (!retry && !rowFound &&
+                    System.currentTimeMillis() - lastEnqueuedAt > FALLBACK_QUIET_MS
+                ) {
+                    runFileFallbackAsync()
                 }
                 val processElapsed = System.currentTimeMillis() - processStartTime
                 Log.d(TAG, "⏱️ [性能] 处理完成, 耗时=${processElapsed}ms")
@@ -390,6 +385,7 @@ class ScreenshotObserver(
                             Log.d(TAG, "✅ 检测到新截图: $imagePath")
                             Log.d(TAG, "文件名: $imageName, 年龄=${imageAge}秒")
                             LoggerPlugin.info(TAG, "检测到新截图(兜底): $imageName")
+                            lastEnqueuedAt = System.currentTimeMillis()
 
                             val callbackStartTime = System.currentTimeMillis()
                             onScreenshotDetected(imagePath)
@@ -410,9 +406,41 @@ class ScreenshotObserver(
     }
 
     /**
+     * C5(2026-09-15):文件系统兜底(后台线程)。MediaStore 行不可见的场景
+     * (vivo 真机 2026-09-10:权限全量、is_pending=0,provider 查询仍恒 0 行;
+     * targetSdk 32 + legacy storage 的 FUSE 直读不受影响)。目录扫描不在主
+     * 线程跑;入队仍按路径幂等(enqueuePending @Synchronized);Flutter 回调
+     * 经主线程转发(MethodChannel 必须主线程 invoke)。
+     */
+    private fun runFileFallbackAsync() {
+        Thread {
+            try {
+                val fallbackPath = findRecentScreenshotFile() ?: return@Thread
+                if (enqueuePending(fallbackPath, System.currentTimeMillis())) {
+                    lastEnqueuedAt = System.currentTimeMillis()
+                    LoggerPlugin.info(
+                        TAG,
+                        "检测到新截图(MediaStore 0 行,文件系统兜底): ${File(fallbackPath).name}"
+                    )
+                    ScreenTextWatcher.recordDecision(
+                        context, "app", "enqueued",
+                        "name=${File(fallbackPath).name}(文件兜底)",
+                        ScreenTextWatcher.DECISION_SOURCE_SCREENSHOT,
+                    )
+                    Handler(Looper.getMainLooper()).post {
+                        onScreenshotDetected(fallbackPath)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "后台兜底扫描失败", e)
+            }
+        }.start()
+    }
+
+    /**
      * 文件系统兜底:MediaStore 查询不到行时,直接扫系统截图目录找
      * [MAX_SCREENSHOT_AGE_SECONDS] 内的新截图(见 checkImageUri 内注释)。
-     * 只扫截图专属目录,列表小、主线程开销可忽略;enqueuePending 按路径幂等。
+     * 只扫截图专属目录,列表小;C5 起仅在后台线程调用。
      */
     private fun findRecentScreenshotFile(): String? {
         val roots = listOfNotNull(

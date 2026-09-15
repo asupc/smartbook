@@ -151,131 +151,6 @@ class SmsReceiver : BroadcastReceiver() {
             .joinToString("") { "%02x".format(it.toInt() and 0xff) }
     }
 
-    fun loadFingerprints(prefs: SharedPreferences): MutableSet<String> {
-        return prefs.getString(KEY_FINGERPRINTS, null)
-            ?.split("|")?.filter { it.isNotEmpty() }?.toMutableSet()
-            ?: mutableSetOf()
-    }
-
-    fun saveFingerprints(prefs: SharedPreferences, memo: MutableSet<String>) {
-        // 只保留最近 MAX_FINGERPRINTS 条(Set 无序,转为 List 后截尾)
-        val trimmed = memo.toList().takeLast(MAX_FINGERPRINTS)
-        prefs.edit().putString(KEY_FINGERPRINTS, trimmed.joinToString("|")).apply()
-    }
-
-    // ------------------------------------------------------------
-    // 持久化队列(JSON,cap MAX_QUEUE)。drain 后即清,原文不长期保留。
-    // ------------------------------------------------------------
-
-    @Synchronized
-    private fun enqueue(
-        prefs: SharedPreferences,
-        eventKey: String,
-        fingerprint: String,
-        sender: String,
-        body: String,
-        ts: Long,
-    ): Boolean {
-        val processed = loadFingerprints(prefs)
-        // 新事件按 eventKey 去重，不能把内容 fingerprint 当永久幂等键，
-        // 否则两条正文完全相同但时间不同的真实短信会互相覆盖。
-        if (processed.contains(PROCESSED_EVENT_PREFIX + eventKey)) return false
-        val arr = JSONArray(prefs.getString(KEY_QUEUE, null) ?: "[]")
-        for (i in 0 until arr.length()) {
-            val obj = arr.optJSONObject(i) ?: continue
-            if (obj.optString("eventKey") == eventKey ||
-                (obj.optString("eventKey").isEmpty() &&
-                    obj.optString("fingerprint") == fingerprint)
-            ) {
-                return false
-            }
-        }
-        arr.put(
-            JSONObject()
-                .put("eventKey", eventKey)
-                .put("fingerprint", fingerprint)
-                .put("sender", sender)
-                .put("body", body)
-                .put("timestamp", ts)
-        )
-        // 超出容量:删最旧(0 是队头,最先入队)。未 ACK 的项不写入 processed,
-        // 避免容量淘汰造成静默丢失后永久阻断重放。
-        while (arr.length() > MAX_QUEUE) arr.remove(0)
-        prefs.edit().putString(KEY_QUEUE, arr.toString()).apply()
-        return true
-    }
-
-    /**
-     * 读取全部积压短信(读取不移除 —— 移除由 Flutter 侧逐项 ack)。
-     *
-     * 设计:drain-then-delete 会在"读取后、处理完前"被进程杀死时丢掉
-     * 未处理的短信;peek-then-ack 只会丢"正在处理的那一条"(ack 语义
-     * 与处理完成原子写入),未开始的项下次启动继续处理。
-     */
-    @Synchronized
-    fun peekQueue(context: Context): ArrayList<Map<String, String>> {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val raw = prefs.getString(KEY_QUEUE, null) ?: return ArrayList()
-        val arr = JSONArray(raw)
-        val result = ArrayList<Map<String, String>>(arr.length())
-        for (i in 0 until arr.length()) {
-            val obj = arr.optJSONObject(i) ?: continue
-            result.add(
-                mapOf(
-                    "eventKey" to obj.optString("eventKey"),
-                    "fingerprint" to obj.optString("fingerprint"),
-                    "sender" to obj.optString("sender"),
-                    "body" to obj.optString("body"),
-                    "timestamp" to obj.optString("timestamp")
-                )
-            )
-        }
-        return result
-    }
-
-    /** 按指纹删除已处理项(处理完成后 ack)。 */
-    @Synchronized
-    fun ackSms(
-        context: Context,
-        fingerprints: List<String>,
-        eventKeys: List<String> = emptyList(),
-    ) {
-        if (fingerprints.isEmpty() && eventKeys.isEmpty()) return
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val raw = prefs.getString(KEY_QUEUE, null) ?: return
-        val wanted = (fingerprints + eventKeys).toSet()
-        val arr = JSONArray(raw)
-        val remaining = JSONArray()
-        val acked = mutableSetOf<String>()
-        for (i in 0 until arr.length()) {
-            val obj = arr.optJSONObject(i) ?: continue
-            val fp = obj.optString("fingerprint")
-            val key = obj.optString("eventKey")
-            if (wanted.contains(fp) || (key.isNotEmpty() && wanted.contains(key))) {
-                // 新格式只持久化带前缀的 eventKey；没有 eventKey 的旧队列
-                // 才回退到内容 fingerprint。
-                if (key.isNotEmpty()) {
-                    acked.add(PROCESSED_EVENT_PREFIX + key)
-                } else if (fp.isNotEmpty()) {
-                    acked.add(fp)
-                }
-            } else {
-                remaining.put(obj)
-            }
-        }
-        if (acked.isEmpty()) return
-        val processed = loadFingerprints(prefs)
-        processed.addAll(acked)
-        saveFingerprints(prefs, processed)
-        prefs.edit().putString(KEY_QUEUE, remaining.toString()).apply()
-    }
-
-    @Synchronized
-    fun queueSize(context: Context): Int {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        return JSONArray(prefs.getString(KEY_QUEUE, null) ?: "[]").length()
-    }
-
     companion object {
         private const val TAG = "SmsReceiver"
         const val BRIDGE_ACTION = "com.smartbook.zhi.SMS_CAPTURED"
@@ -361,6 +236,135 @@ class SmsReceiver : BroadcastReceiver() {
 
         /** 金额证据:带 ¥/￥ 符号,或数字紧邻 元/块。 */
         private val AMOUNT_PATTERN = Regex("[¥￥]\\s*\\d|\\d[\\d,]*(\\.[\\d]{1,2})?\\s*元|\\d[\\d,]*(\\.[\\d]{1,2})?\\s*块")
+
+        // ------------------------------------------------------------
+        // 持久化队列(JSON,cap MAX_QUEUE)。drain 后即清,原文不长期保留。
+        // C7(2026-09-15):队列/指纹操作全部是 companion object 静态方法
+        // (@Synchronized 锁 companion 实例 = 类级单锁)。旧行为是实例方法,
+        // MainActivity 用临时实例(SmsReceiver().peekQueue)调用 —— 锁对象互不
+        // 相同,互斥形同虚设;任一侧挪后台线程就会 SharedPreferences 丢更新
+        // (丢新短信/复活已 ACK 项)。对照 ScreenshotObserver 的 companion 模式。
+        // ------------------------------------------------------------
+
+        /** 读取全部积压短信(读取不移除 —— 移除由 Flutter 侧逐项 ack)。
+         *
+         * 设计:drain-then-delete 会在"读取后、处理完前"被进程杀死时丢掉
+         * 未处理的短信;peek-then-ack 只会丢"正在处理的那一条"(ack 语义
+         * 与处理完成原子写入),未开始的项下次启动继续处理。
+         */
+        @Synchronized
+        fun peekQueue(context: Context): ArrayList<Map<String, String>> {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val raw = prefs.getString(KEY_QUEUE, null) ?: return ArrayList()
+            val arr = JSONArray(raw)
+            val result = ArrayList<Map<String, String>>(arr.length())
+            for (i in 0 until arr.length()) {
+                val obj = arr.optJSONObject(i) ?: continue
+                result.add(
+                    mapOf(
+                        "eventKey" to obj.optString("eventKey"),
+                        "fingerprint" to obj.optString("fingerprint"),
+                        "sender" to obj.optString("sender"),
+                        "body" to obj.optString("body"),
+                        "timestamp" to obj.optString("timestamp")
+                    )
+                )
+            }
+            return result
+        }
+
+        /** 按指纹删除已处理项(处理完成后 ack)。 */
+        @Synchronized
+        fun ackSms(
+            context: Context,
+            fingerprints: List<String>,
+            eventKeys: List<String> = emptyList(),
+        ) {
+            if (fingerprints.isEmpty() && eventKeys.isEmpty()) return
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val raw = prefs.getString(KEY_QUEUE, null) ?: return
+            val wanted = (fingerprints + eventKeys).toSet()
+            val arr = JSONArray(raw)
+            val remaining = JSONArray()
+            val acked = mutableSetOf<String>()
+            for (i in 0 until arr.length()) {
+                val obj = arr.optJSONObject(i) ?: continue
+                val fp = obj.optString("fingerprint")
+                val key = obj.optString("eventKey")
+                if (wanted.contains(fp) || (key.isNotEmpty() && wanted.contains(key))) {
+                    // 新格式只持久化带前缀的 eventKey；没有 eventKey 的旧队列
+                    // 才回退到内容 fingerprint。
+                    if (key.isNotEmpty()) {
+                        acked.add(PROCESSED_EVENT_PREFIX + key)
+                    } else if (fp.isNotEmpty()) {
+                        acked.add(fp)
+                    }
+                } else {
+                    remaining.put(obj)
+                }
+            }
+            if (acked.isEmpty()) return
+            val processed = loadFingerprints(prefs)
+            processed.addAll(acked)
+            saveFingerprints(prefs, processed)
+            prefs.edit().putString(KEY_QUEUE, remaining.toString()).apply()
+        }
+
+        @Synchronized
+        fun queueSize(context: Context): Int {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            return JSONArray(prefs.getString(KEY_QUEUE, null) ?: "[]").length()
+        }
+
+        @Synchronized
+        private fun enqueue(
+            prefs: SharedPreferences,
+            eventKey: String,
+            fingerprint: String,
+            sender: String,
+            body: String,
+            ts: Long,
+        ): Boolean {
+            val processed = loadFingerprints(prefs)
+            // 新事件按 eventKey 去重，不能把内容 fingerprint 当永久幂等键，
+            // 否则两条正文完全相同但时间不同的真实短信会互相覆盖。
+            if (processed.contains(PROCESSED_EVENT_PREFIX + eventKey)) return false
+            val arr = JSONArray(prefs.getString(KEY_QUEUE, null) ?: "[]")
+            for (i in 0 until arr.length()) {
+                val obj = arr.optJSONObject(i) ?: continue
+                if (obj.optString("eventKey") == eventKey ||
+                    (obj.optString("eventKey").isEmpty() &&
+                        obj.optString("fingerprint") == fingerprint)
+                ) {
+                    return false
+                }
+            }
+            arr.put(
+                JSONObject()
+                    .put("eventKey", eventKey)
+                    .put("fingerprint", fingerprint)
+                    .put("sender", sender)
+                    .put("body", body)
+                    .put("timestamp", ts)
+            )
+            // 超出容量:删最旧(0 是队头,最先入队)。未 ACK 的项不写入 processed,
+            // 避免容量淘汰造成静默丢失后永久阻断重放。
+            while (arr.length() > MAX_QUEUE) arr.remove(0)
+            prefs.edit().putString(KEY_QUEUE, arr.toString()).apply()
+            return true
+        }
+
+        fun loadFingerprints(prefs: SharedPreferences): MutableSet<String> {
+            return prefs.getString(KEY_FINGERPRINTS, null)
+                ?.split("|")?.filter { it.isNotEmpty() }?.toMutableSet()
+                ?: mutableSetOf()
+        }
+
+        fun saveFingerprints(prefs: SharedPreferences, memo: MutableSet<String>) {
+            // 只保留最近 MAX_FINGERPRINTS 条(Set 无序,转为 List 后截尾)
+            val trimmed = memo.toList().takeLast(MAX_FINGERPRINTS)
+            prefs.edit().putString(KEY_FINGERPRINTS, trimmed.joinToString("|")).apply()
+        }
 
         private fun log(msg: String) {
             // vivo OriginOS 会过滤 Log.d(debug 级),用 Log.i 保证诊断日志可见

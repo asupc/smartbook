@@ -268,6 +268,10 @@ class AiBookkeeper {
 
     // 用户重复点击/进程在“交易已写入、候选尚未删除”窗口被杀时，优先
     // 返回已经记录的结果，不能再创建第二笔。
+    // C12(2026-09-15):booked 快路径回带 transactionId 前校验交易仍存在 ——
+    // 同步 pull 侧删除不回写事件状态,事件可能停在 booked 但交易已不在,
+    // 直接返回悬空 id 会让确认页拿着不存在的交易跳详情。不存在则继续走
+    // 下方的语义判重/创建路径(候选保留)。
     if (_eventStore != null &&
         candidate.eventKey != null &&
         candidate.eventKey!.isNotEmpty) {
@@ -275,8 +279,15 @@ class AiBookkeeper {
         final event = await _eventStore.findByEventKey(candidate.eventKey!);
         if (event?.state == AutoBookState.booked.value &&
             event?.transactionId != null) {
-          await PendingCandidateStore().remove(candidate.id);
-          return event!.transactionId;
+          final bookedTxId = event!.transactionId!;
+          final stillExists =
+              await _repo.getTransactionById(bookedTxId) != null;
+          if (stillExists) {
+            await PendingCandidateStore().remove(candidate.id);
+            return bookedTxId;
+          }
+          logger.warning(_tag, '候选事件指向的交易已不存在(可能被同步删除),'
+              '按待确认处理重新入账', 'tx=$bookedTxId');
         }
       } catch (e, st) {
         logger.warning(_tag, '读取候选事件幂等结果失败,继续语义检查', '$e');

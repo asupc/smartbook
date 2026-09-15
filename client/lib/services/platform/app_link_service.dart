@@ -262,12 +262,15 @@ class AppLinkService {
   Future<void> _handleScreenshotBilling(String imagePath) async {
     try {
       final eventKey = await _coordinator.imageEventKey(imagePath);
+      final capturedAt = DateTime.now();
       await _coordinator.execute(
         input: AutoBookInput(
           eventKey: eventKey,
           source: AutoBookSource.screenshot,
           captureIntent: AutoBookCaptureIntent.userInitiated,
-          capturedAt: DateTime.now(),
+          capturedAt: capturedAt,
+          // A2:证据有效期 30 天(capturedAt 起算),到期由 cleanupExpired 清理。
+          expiresAt: AutoBookInput.defaultExpiresAt(capturedAt),
           contentHash: eventKey.startsWith('image:v1:')
               ? eventKey.substring('image:v1:'.length)
               : null,
@@ -487,13 +490,16 @@ class AppLinkService {
         txParams.idempotencyKey,
         canonicalParams.map((e) => '${e.key}=${e.value}').join('&'),
       );
+      final capturedAt = DateTime.now();
       final execution = await _coordinator.execute<int>(
         input: AutoBookInput(
           eventKey: eventKey,
           source: AutoBookSource.deepLinkDirect,
           captureIntent: AutoBookCaptureIntent.userInitiated,
           ledgerId: ledgerId,
-          capturedAt: DateTime.now(),
+          capturedAt: capturedAt,
+          // A2:证据有效期 30 天(capturedAt 起算),到期由 cleanupExpired 清理。
+          expiresAt: AutoBookInput.defaultExpiresAt(capturedAt),
           externalId: txParams.idempotencyKey,
         ),
         action: () async {
@@ -602,12 +608,15 @@ class AppLinkService {
           params['idempotency_key'] ?? params['event_id'],
           'text=$text',
         );
+        final capturedAt = DateTime.now();
         final execution = await _coordinator.execute<BookkeepingResult>(
           input: AutoBookInput(
             eventKey: eventKey,
             source: AutoBookSource.deepLinkText,
             captureIntent: AutoBookCaptureIntent.automatic,
-            capturedAt: DateTime.now(),
+            capturedAt: capturedAt,
+            // A2:证据有效期 30 天(capturedAt 起算),到期由 cleanupExpired 清理。
+            expiresAt: AutoBookInput.defaultExpiresAt(capturedAt),
             externalId: params['idempotency_key'] ?? params['event_id'],
             rawText: text,
             rawMetadata: {'source': 'deeplink'},

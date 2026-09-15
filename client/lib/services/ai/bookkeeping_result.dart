@@ -52,6 +52,11 @@ class BookkeepingResult {
   /// 进入永久 ignored。
   final bool aiNotConfigured;
 
+  /// 事件证据已经消失(截图/分享图原图在等待窗口结束后仍不可读)。与
+  /// [retryable] 分开:重试不会让文件回来,事件应直接落 `expired` 终态并
+  /// ACK 原生队列,而不是进入退避阶梯无限循环(A1)。
+  final bool evidenceMissing;
+
   /// 本次入库里「拿不到汇率、按 1:1 暂记」的外币币种(去重、已排序)。
   ///
   /// 多币种降级路径(.docs/multi-currency-ai A5):自动通道无人值守,缺汇率
@@ -75,6 +80,7 @@ class BookkeepingResult {
     this.retryable = false,
     this.permanentFailure = false,
     this.aiNotConfigured = false,
+    this.evidenceMissing = false,
   });
 
   /// 至少有一笔成功入库。

@@ -28,6 +28,8 @@ import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.embedding.engine.FlutterEngineCache
+import io.flutter.embedding.engine.dart.DartExecutor
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity: FlutterFragmentActivity() {
@@ -40,11 +42,54 @@ class MainActivity: FlutterFragmentActivity() {
     private val LOGGER_CHANNEL = "com.smartbook.logger"
     private val SHARE_CHANNEL = "com.smartbook.zhi/share"
 
+    companion object {
+        private const val ENGINE_ID = "smartbook_main_engine"
+    }
+
+    /**
+     * C3(2026-09-15)最小正确版:FlutterEngine 缓存到进程级。
+     *
+     * 旧行为:引擎随 Activity 销毁 —— UI 划走后,进程虽被通知监听/
+     * 无障碍服务保活,Dart 已死,四路自动记账只入 native 队列,等下次开
+     * App 才 drain。方案取舍:WorkManager 需要 pub 包 `workmanager`
+     * (pubspec 只读,不可加);前台服务持有 engine 需 FGS 声明 + 双引擎
+     * 并存治理,侵入面更大。引擎缓存 + 三桥/截图观察器挂 applicationContext
+     * 是侵入最小的组合:Activity 销毁不再销毁引擎,桥接广播仍能转发 drain。
+     * 进程整体死亡(服务未开启/系统回收)时一切一起消失,与旧行为一致。
+     *
+     * ⚠️ 待真机验证(本改动无法在静态环境编译):见 fix plan C3 验证清单
+     * (冷启动 → 划走 → 短信/通知到达应即时入账;再次打开 App 不应双实例;
+     * 划走后再打开 UI 正常渲染 —— 若白屏说明该 Flutter 版本的 delegate
+     * 仍销毁了 host-provided engine,需回退本方法)。
+     */
+    override fun provideFlutterEngine(context: Context): FlutterEngine? {
+        val cache = FlutterEngineCache.getInstance(context)
+        cache.get(ENGINE_ID)?.let { return it }
+        val engine = FlutterEngine(context)
+        // 双保险:引擎已在执行 Dart(异常时序下的二次 provide)不再重复执行
+        // 入口点(executeDartEntrypoint 对同一引擎只能调一次)。
+        if (!engine.dartExecutor.isExecutingDart) {
+            engine.dartExecutor.executeDartEntrypoint(
+                DartExecutor.DartEntrypoint.create("main")
+            )
+        }
+        cache.put(ENGINE_ID, engine)
+        return engine
+    }
+
+    /**
+     * C3:引擎由 [FlutterEngineCache] 持有,Activity 销毁时不随 Activity
+     * 销毁(默认实现仅对 Activity 自建的引擎销毁;显式返回 false 双保险,
+     * 防止不同 embedding 版本语义漂移)。
+     */
+    override fun shouldDestroyEngineWithActivity(): Boolean = false
+
     private var screenshotObserver: ScreenshotObserver? = null
 
     // SMS 桥接:SmsReceiver 的本地广播 → Flutter(SmsMonitorService 的
-    // onSmsCaptured)。仅进程存活时注册;进程被杀死时短信只进持久化队列,
-    // 等下次启动 drain。
+    // onSmsCaptured)。C3 后挂 applicationContext(进程级):UI 划走
+    // (Activity 销毁但进程被通知/无障碍服务保活)时引擎仍在,桥接继续
+    // 即时转发;进程死亡时一切一起消失。
     private var smsBridgeReceiver: BroadcastReceiver? = null
 
     // 通知桥接:同上(NotificationWatcher → NotifyMonitorService.onNotifyCaptured)
@@ -229,20 +274,22 @@ class MainActivity: FlutterFragmentActivity() {
                     unregisterSmsBridge()
                     result.success(true)
                 }
-                // peek 不清空;处理完逐项 ack(被杀只丢正在处理的一条)
+                // peek 不清空;处理完逐项 ack(被杀只丢正在处理的一条)。
+                // C7:队列操作是 companion object 静态方法(静态锁)—— 旧行为
+                // 临时实例调 @Synchronized 实例方法,锁对象互不相同,互斥失效。
                 "peekPendingSms" -> {
-                    result.success(SmsReceiver().peekQueue(this))
+                    result.success(SmsReceiver.peekQueue(this))
                 }
                 "ackPendingSms" -> {
                     val fingerprints =
                         call.argument<List<String>>("fingerprints") ?: emptyList()
                     val eventKeys =
                         call.argument<List<String>>("eventKeys") ?: emptyList()
-                    SmsReceiver().ackSms(this, fingerprints, eventKeys)
+                    SmsReceiver.ackSms(this, fingerprints, eventKeys)
                     result.success(true)
                 }
                 "getQueueSize" -> {
-                    result.success(SmsReceiver().queueSize(this))
+                    result.success(SmsReceiver.queueSize(this))
                 }
                 else -> result.notImplemented()
             }
@@ -282,12 +329,13 @@ class MainActivity: FlutterFragmentActivity() {
                     result.success(true)
                 }
                 "peekPending" -> {
-                    result.success(NotificationWatcher().peekQueue(this))
+                    // C7:companion object 静态方法(静态锁),同短信队列注释。
+                    result.success(NotificationWatcher.peekQueue(this))
                 }
                 "ackPending" -> {
                     val fingerprints =
                         call.argument<List<String>>("fingerprints") ?: emptyList()
-                    NotificationWatcher().ackQueue(this, fingerprints)
+                    NotificationWatcher.ackQueue(this, fingerprints)
                     result.success(true)
                 }
                 else -> result.notImplemented()
@@ -371,14 +419,15 @@ class MainActivity: FlutterFragmentActivity() {
                     result.success(true)
                 }
                 "peekPending" -> {
-                    result.success(ScreenTextWatcher().peekQueue(this))
+                    // C7:companion object 静态方法(静态锁),同短信队列注释。
+                    result.success(ScreenTextWatcher.peekQueue(this))
                 }
                 "ackPending" -> {
                     val fingerprints =
                         call.argument<List<String>>("fingerprints") ?: emptyList()
                     val eventKeys =
                         call.argument<List<String>>("eventKeys") ?: emptyList()
-                    ScreenTextWatcher().ackQueue(this, fingerprints, eventKeys)
+                    ScreenTextWatcher.ackQueue(this, fingerprints, eventKeys)
                     result.success(true)
                 }
                 // 识别决策环形队列(设置页「最近识别记录」,真机漏记排查用)
@@ -920,7 +969,9 @@ class MainActivity: FlutterFragmentActivity() {
         LoggerPlugin.info("MainActivity", "开始配置 ContentObserver 截图监听")
 
         // 创建ContentObserver
-        screenshotObserver = ScreenshotObserver(this) { screenshotPath ->
+        // C3:observer 挂 applicationContext —— Activity 销毁后(进程被服务
+        // 保活)ContentObserver 继续工作,截图回调经缓存引擎转发给 Dart。
+        screenshotObserver = ScreenshotObserver(applicationContext) { screenshotPath ->
             android.util.Log.d("MainActivity", "✅ ContentObserver 检测到截图: $screenshotPath")
             LoggerPlugin.info("MainActivity", "ContentObserver 检测到截图，路径: ${screenshotPath.substringAfterLast('/')}")
 
@@ -957,12 +1008,20 @@ class MainActivity: FlutterFragmentActivity() {
         }
     }
 
+    /**
+     * C3(2026-09-15):不再在 onDestroy 注销截图观察器与三桥。
+     *
+     * 旧行为:UI 划走 → Activity onDestroy → 观察器/桥接全部注销,而引擎
+     * 也随 Activity 销毁 —— 即使进程被通知监听/无障碍服务保活,四路自动
+     * 记账也全部停摆(只入 native 队列等下次开 App)。现在引擎经
+     * [FlutterEngineCache] 进程级保活(见 provideFlutterEngine),观察器与
+     * 桥接都挂 applicationContext,Activity 销毁后继续工作;进程死亡时
+     * 一起消失。stopScreenshotObserver / unregister*Bridge 仍保留,供
+     * Dart 侧用户关闭监听时调用。
+     */
     override fun onDestroy() {
         super.onDestroy()
-        stopScreenshotObserver()
-        unregisterSmsBridge()
-        unregisterNotifyBridge()
-        unregisterScreenTextBridge()
+        Log.d("MainActivity", "MainActivity onDestroy(引擎由缓存持有,监听桥接保持)")
     }
 
     /**
@@ -984,7 +1043,7 @@ class MainActivity: FlutterFragmentActivity() {
                 }
             }
             ContextCompat.registerReceiver(
-                this, receiver, IntentFilter(ScreenTextWatcher.BRIDGE_ACTION),
+                applicationContext, receiver, IntentFilter(ScreenTextWatcher.BRIDGE_ACTION),
                 ContextCompat.RECEIVER_NOT_EXPORTED
             )
             screenTextBridgeReceiver = receiver
@@ -998,7 +1057,7 @@ class MainActivity: FlutterFragmentActivity() {
         try {
             val bridge = screenTextBridgeReceiver
             if (bridge != null) {
-                unregisterReceiver(bridge)
+                applicationContext.unregisterReceiver(bridge)
                 screenTextBridgeReceiver = null
                 Log.d("MainActivity", "✅ 屏幕文本桥接接收器已注销")
             }
@@ -1026,7 +1085,7 @@ class MainActivity: FlutterFragmentActivity() {
                 }
             }
             ContextCompat.registerReceiver(
-                this, receiver, IntentFilter(NotificationWatcher.BRIDGE_ACTION),
+                applicationContext, receiver, IntentFilter(NotificationWatcher.BRIDGE_ACTION),
                 ContextCompat.RECEIVER_NOT_EXPORTED
             )
             notifyBridgeReceiver = receiver
@@ -1040,7 +1099,7 @@ class MainActivity: FlutterFragmentActivity() {
         try {
             val bridge = notifyBridgeReceiver
             if (bridge != null) {
-                unregisterReceiver(bridge)
+                applicationContext.unregisterReceiver(bridge)
                 notifyBridgeReceiver = null
                 Log.d("MainActivity", "✅ 通知桥接接收器已注销")
             }
@@ -1054,7 +1113,9 @@ class MainActivity: FlutterFragmentActivity() {
      * (SmsMonitorService 只需"有新短信,请 drain"信号;处理数据从持久化
      * 队列取,与启动恢复路径共用一条 drain 逻辑)。
      *
-     * 只在 Activity 存活期间注册 —— 进程被杀死时短信只入队,下次启动 drain。
+     * C3(2026-09-15):挂 applicationContext + 引擎缓存 —— Activity 销毁后
+     * 桥接仍存活(进程存活期间);进程死亡时自然无人接收,短信只入队,
+     * 下次启动 drain。
      */
     private fun registerSmsBridge(flutterEngine: FlutterEngine) {
         try {
@@ -1074,7 +1135,7 @@ class MainActivity: FlutterFragmentActivity() {
                 }
             }
             ContextCompat.registerReceiver(
-                this, receiver, IntentFilter(SmsReceiver.BRIDGE_ACTION),
+                applicationContext, receiver, IntentFilter(SmsReceiver.BRIDGE_ACTION),
                 ContextCompat.RECEIVER_NOT_EXPORTED
             )
             smsBridgeReceiver = receiver
@@ -1088,7 +1149,7 @@ class MainActivity: FlutterFragmentActivity() {
         try {
             val bridge = smsBridgeReceiver
             if (bridge != null) {
-                unregisterReceiver(bridge)
+                applicationContext.unregisterReceiver(bridge)
                 smsBridgeReceiver = null
                 Log.d("MainActivity", "✅ SMS 桥接接收器已注销")
             }
