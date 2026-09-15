@@ -87,6 +87,11 @@ class AiRuntimeCoordinator {
       case 'unauthorized':
         _set(AiRuntimeState.authenticationRequired);
       case 'upstream_unavailable':
+      case 'http_error':
+        // 中转明确返回了非 2xx:全部 5xx/限流(upstream_unavailable)之外,
+        // 剩余的 400/403/404 等都指向服务商配置或上游明确拒绝。归入
+        // providerError —— 状态对用户可见,且非 ready 期间队列一律保留不
+        // ACK,由 drain 调度退避重试。
         _set(AiRuntimeState.providerError);
       default:
         break;

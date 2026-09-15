@@ -65,8 +65,9 @@ class AiRelayException implements Exception {
   final String message;
   final int? statusCode;
 
-  /// true = 可恢复的临时失败(连不上服务端 / 超时 / 上游 5xx / 限流)。
-  /// 自动记账据此把输入存为草稿等待重试;4xx 校验类失败为 false。
+  /// true = 可恢复的临时失败(连不上服务端 / 超时 / 上游 5xx / 限流 / 401 /
+  /// 未预期状态码)。自动记账据此把输入存为草稿等待重试;仅显式白名单的
+  /// 400/404/422(请求本身不合法、重试无意义)为 false。
   final bool transient;
 
   /// 可区分的失败原因码(M1-1)。只用于日志与事件 reason,不含任何原文:
@@ -427,9 +428,12 @@ class AiRelayClient {
       final decoded = jsonDecode(body);
       return decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
     } on FormatException catch (e) {
+      // 2xx 但响应体不是合法 JSON:服务端/代理异常,重试可能恢复 →
+      // transient(P0-3:permanent 仅限 400/404/422 白名单)。
       throw AiRelayException(
         '响应不是合法 JSON: ${e.message}',
         statusCode: resp.statusCode,
+        transient: true,
         errorCode: 'bad_response',
       );
     }
@@ -451,11 +455,19 @@ class AiRelayClient {
     }
     // 刷新后仍 401 = 会话不可用(authenticationRequired):事件必须保留等
     // 用户登录恢复,绝不能当成「不是账单」终结并 ACK 原始队列。
-    final unauthorized = resp.statusCode == 401;
+    //
+    // 分类反转为「默认 transient,显式白名单 permanent」(P0-3):仅
+    // 400/404/422 这类「请求本身不合法、重试无意义」的校验失败才判
+    // permanent(终结并 ACK);401(token 刷新可能修复)、403(可能是
+    // 网关/权限的临时状态)以及一切未预期状态码一律 transient,让事件回到
+    // retry —— 服务端一次 500/临时 403 绝不能导致 ACK 删除原始短信/通知。
+    final code = resp.statusCode;
+    final unauthorized = code == 401;
+    final permanent = code == 400 || code == 404 || code == 422;
     return AiRelayException(
       '[${resp.statusCode}] $message',
       statusCode: resp.statusCode,
-      transient: unauthorized,
+      transient: !permanent,
       errorCode: unauthorized ? 'unauthorized' : 'http_error',
     );
   }
@@ -513,11 +525,9 @@ class AiRelayClient {
       }
       return _send(fn, retried: true, deadline: deadline);
     }
-    // 服务端在线但上游/网关临时不可用 → 同样视为可重试
-    if (resp.statusCode == 429 ||
-        resp.statusCode == 502 ||
-        resp.statusCode == 503 ||
-        resp.statusCode == 504) {
+    // 服务端在线但上游/网关临时不可用(全部 5xx)/限流(429)→ 同样视为
+    // 可重试:网关将来新增的任何 5xx 错误码都不该被当成永久失败(P0-3)。
+    if (resp.statusCode == 429 || resp.statusCode >= 500) {
       throw AiRelayException(
         '[${resp.statusCode}] ${_extractErrorMessage(resp)}',
         statusCode: resp.statusCode,
