@@ -279,8 +279,15 @@ def _purge_expired_trash_tx(db: Session, r: OrphanRecord, file_ops: list) -> Non
     与 read/trash.py 的 purge 端点同语义:先收集附件引用,删行,再 GC
     孤立附件(共享引用保留)。GC 的文件 unlink 由 gc 内部处理;这里的
     file_ops 预留为空(clean() 会在 DB commit 后跑列表内容)。
+
+    物理删除后该交易的所有 **upsert** sync_changes 事件一并 compact
+    (P1-A3):transaction 是最大实体,upsert 历史只增不减会让 sync_changes
+    无界膨胀。复用 sync_applier._compact_entity_upsert_events 的契约例外
+    —— **delete 墓碑事件保留**,cursor 落后的设备仍能 apply delete 把本地
+    副本删干净(upsert 事件对已不存在的实体毫无价值,apply 是幂等 no-op)。
     """
     from ... import projection
+    from ...sync_applier import _compact_entity_upsert_events
 
     ledger_id, sync_id = _ledger_sync_from_record(r)
     # 二次校验仍在回收站(避免清理扫描后用户已恢复的行被误删)
@@ -299,4 +306,9 @@ def _purge_expired_trash_tx(db: Session, r: OrphanRecord, file_ops: list) -> Non
     projection.purge_tx(db, ledger_id=ledger_id, sync_id=sync_id)
     projection.gc_orphan_attachments_for_ledger(
         db, ledger_id=ledger_id, file_ids=tx_file_ids,
+    )
+    # r.user_id 即投影行的 user_id(= ledger owner),与 SyncChange.user_id
+    # 的对应关系同 scanner._scan_sync_change_missing_entity 的 transaction 分支
+    _compact_entity_upsert_events(
+        db, user_id=r.user_id, entity_type="transaction", entity_sync_id=sync_id,
     )

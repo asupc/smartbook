@@ -53,6 +53,9 @@ def _bootstrap(monkeypatch, tmp_path):
     monkeypatch.setattr(outbox_module, "get_settings", lambda: s)
     monkeypatch.setattr(outbox_module, "SessionLocal", Session)
     monkeypatch.setattr(analysis_log_module, "SessionLocal", Session)
+    # S12-⑥:image_path 现存相对名,断言经 analysis_log.resolve_log_image_path
+    # 解析 —— 它读 analysis_log 模块的 get_settings,一并替换到 tmp 目录。
+    monkeypatch.setattr(analysis_log_module, "get_settings", lambda: s)
     monkeypatch.setattr(worker_module, "get_settings", lambda: s)
     monkeypatch.setattr(worker_module, "SessionLocal", Session)
 
@@ -100,7 +103,8 @@ def test_drain_with_image_archives_final(monkeypatch, tmp_path) -> None:
         assert log is not None
         assert log.image_path is not None
         assert log.image_path.endswith(".jpg")
-        assert Path(log.image_path).exists()
+        from src.services.ai.analysis_log import resolve_log_image_path
+        assert resolve_log_image_path(log.image_path).exists()
         # spool 已清空
     assert not list((tmp_path / "spool").glob("*"))
 

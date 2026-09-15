@@ -9,8 +9,9 @@
   status 过滤。**列表只返截断预览**(全文字段可能很长,列表带全量会拖页面
   并把内容暴露进响应缓存);全文走详情 endpoint。
 - `GET /ai/logs/{id}` — 单条全文,只允许本人,非本人 404。
-- `DELETE /ai/logs/{id}` — 手动删除自己的单条记录(日志不设自动保留期,
-  永久保留,删除是唯一清理入口;带图记录行删完后顺带删落盘图片)。
+- `DELETE /ai/logs/{id}` — 手动删除自己的单条记录(默认保留期外另有
+  AI_LOG_RETENTION_DAYS 定时清理,手动删除是保留期内唯一清理入口;带图
+  记录行删完后顺带删落盘图片)。
 - `POST /ai/logs/batch-delete` — 批量删除(Web 多选删除,body `{ids}` ≤200,
   去重);只删属于本人的 id,不存在/他人的跳过(不泄露存在性),返回
   `{"deleted": n}`。
@@ -23,7 +24,6 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from pathlib import Path
 
 from fastapi import (
     APIRouter,
@@ -41,6 +41,7 @@ from ...database import get_db
 from ...deps import get_current_user, require_any_scopes
 from ...models import AIAnalysisLog, User
 from ...security import SCOPE_APP_WRITE, SCOPE_WEB_READ, SCOPE_WEB_WRITE
+from ...services.ai.analysis_log import resolve_log_image_path
 
 logger = logging.getLogger(__name__)
 
@@ -244,7 +245,9 @@ def get_ai_log_image(
     row = db.get(AIAnalysisLog, log_id)
     if row is None or row.user_id != current_user.id or not row.image_path:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="log not found")
-    path = Path(row.image_path)
+    # S12-⑥:新行 image_path 只存文件名(相对 AI_LOG_IMAGE_DIR),历史行是
+    # 绝对路径 —— resolve_log_image_path 两者都兼容。
+    path = resolve_log_image_path(row.image_path)
     if not path.exists():
         logger.warning("ai.log.image missing log_id=%s path=%s", log_id, row.image_path)
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="log image missing")
@@ -262,7 +265,8 @@ def delete_ai_log(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict[str, bool]:
-    """手动删除一条自己的 AI 分析记录(日志不设自动保留期,删除是唯一清理入口)。
+    """手动删除一条自己的 AI 分析记录(保留期 AI_LOG_RETENTION_DAYS 之外的
+    手动清理入口;main.py 的 retention 循环会清超期行)。
 
     非本人或不存在 → 404(同详情,不泄露存在性)。带图记录:行删完后顺带删
     落盘图片(图片不落 DB,不删会永久残留在磁盘);图片删除失败只打日志,
@@ -276,7 +280,7 @@ def delete_ai_log(
     db.commit()
     if stale_path:
         try:
-            Path(stale_path).unlink(missing_ok=True)
+            resolve_log_image_path(stale_path).unlink(missing_ok=True)
         except OSError:
             logger.warning(
                 "ai.log.delete failed to remove image log_id=%s path=%s", log_id, stale_path,
@@ -314,7 +318,7 @@ def delete_ai_logs_batch(
     db.commit()
     for p in stale_paths:
         try:
-            Path(p).unlink(missing_ok=True)
+            resolve_log_image_path(p).unlink(missing_ok=True)
         except OSError:
             logger.warning("ai.log.batch_delete failed to remove image path=%s", p)
     return {"deleted": len(rows)}

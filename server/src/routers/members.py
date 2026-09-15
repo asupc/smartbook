@@ -387,14 +387,18 @@ async def transfer_ownership(
     # 当前真实 Owner。
     ledger.user_id = target_user_id
 
-    db.commit()
-
-    # 防御性 sanity:转让后恰好 1 个 Owner
+    # S12-⑦:不变量校验(转让后恰好 1 个 owner)必须在 commit 前做 ——
+    # autoflush 让 pending 的两次 role 更新对下面的 COUNT 可见;不满足则
+    # 回滚整个转让,而不是像旧实现那样先 commit 再发现不变量破了、数据
+    # 已经脏着落库。
+    db.flush()
     if _owner_count(db, ledger.id) != 1:
+        db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Invariant violated: ledger must have exactly one owner",
         )
+    db.commit()
 
     logger.info(
         "member.transfer ledger=%s from=%s to=%s",

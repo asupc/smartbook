@@ -45,9 +45,18 @@ class Settings(BaseSettings):
     attachment_storage_dir: str = Field(default="", alias="ATTACHMENT_STORAGE_DIR")
     attachment_max_upload_bytes: int = 64 * 1024 * 1024
     # AI 调用记录的输入图片(App 上报截图记账原图,Web 详情查看)。文件名
-    # {log_id}.{ext},随日志行手动删除时一并删除(不落 DB,避免 blob 撑爆表;
-    # AI 日志无自动保留期)。
+    # {log_id}.{ext},随日志行删除(手动删除或保留期到期)时一并删除
+    # (不落 DB,避免 blob 撑爆表)。
     ai_log_image_dir: str = Field(default="", alias="AI_LOG_IMAGE_DIR")
+
+    # ===== 日志保留期(main.py retention 循环,每 24h 一轮)=====
+    # ai_analysis_logs 保留天数:二开后四路识别(截图/支付通知/短信/账单页)
+    # 全落这张表,写入频率远超上游,必须有出口(P1-A5)。到期行连同
+    # image_path 落盘图片一起删。<= 0 关闭自动清理(回到手动删除语义,
+    # DELETE /ai/logs/{id} / batch-delete 始终可用)。
+    ai_log_retention_days: int = Field(default=180, alias="AI_LOG_RETENTION_DAYS")
+    # audit_logs 保留天数:审计流水只有取证价值,默认留 1 年。<= 0 关闭。
+    audit_log_retention_days: int = Field(default=365, alias="AUDIT_LOG_RETENTION_DAYS")
 
     # ===== M6-5 AI 日志可靠 outbox =====
     # 开启后 AI 日志写入走「先持久化 enqueue → 返回 → worker 异步归档」，响应

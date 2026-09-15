@@ -54,11 +54,20 @@ settings = get_settings()
 # 这是零配置体验的最后一环。ensure_admin 内部是幂等的,第二次启动看到已有
 # user 就跳过。
 ensure_admin()
-if settings.app_env != "development":
-    if settings.is_default_jwt_secret or settings.is_weak_jwt_secret:
+# JWT_SECRET 校验(2026-09 P1 修注):模块顶部的 ensure_jwt_secret() 已把
+# 缺失/占位符的 secret 兜底成"文件读取或随机生成的 32+ bytes 强密钥"注入
+# env,所以这里再看到 default/weak 只有两种可能 —— (a) bootstrap 兜底本身
+# 失败(data 目录只读,文件读写都失败,env 仍是公开占位符);(b) 测试 /
+# 显式注入的弱值。非 development 下 (a) 意味着用**公开已知值**签 JWT,
+# 必须拒绝启动;development 下至少 warn 留痕。
+if settings.is_default_jwt_secret or settings.is_weak_jwt_secret:
+    if settings.app_env != "development":
         raise RuntimeError("JWT_SECRET must be changed to a strong 32+ bytes value")
-    if settings.has_wildcard_cors:
-        raise RuntimeError("CORS_ORIGINS cannot contain wildcard '*' in non-development environments")
+    logging.getLogger(__name__).warning(
+        "JWT_SECRET is default/weak after bootstrap fallback (dev-only continuation)"
+    )
+if settings.app_env != "development" and settings.has_wildcard_cors:
+    raise RuntimeError("CORS_ORIGINS cannot contain wildcard '*' in non-development environments")
 
 from .version import __version__ as _smartbook_cloud_version, APP_NAME as _smartbook_cloud_name
 
@@ -315,11 +324,14 @@ async def _stop_mcp_streamable() -> None:  # noqa: B008
 
 
 # ============================================================================
-# Call log retention — 每 24h 清一次超期行。目前只有 mcp_call_logs(30 天);
-# ai_analysis_logs **不设保留期限**(永久保留,只随用户手动删除,删除入口
-# DELETE /api/v1/ai/logs/{id},见 src/routers/ai/logs.py)。跟 APScheduler
-# 解耦,用纯 asyncio loop 避免额外依赖。loop 首次睡 24h 再跑,意味着冷启动后
-# 第一次清理是次日;不影响测试(test 进程秒级退出,任务永远不触发)。
+# Log retention — 每 24h 清一次超期行。跟 APScheduler 解耦,用纯 asyncio loop
+# 避免额外依赖。loop 首次睡 24h 再跑,意味着冷启动后第一次清理是次日;
+# 不影响测试(test 进程秒级退出,任务永远不触发)。覆盖:
+#   - mcp_call_logs(硬编码 30 天)
+#   - ai_analysis_logs(AI_LOG_RETENTION_DAYS,默认 180;二开后四路识别全落
+#     这张表,写入频率远超上游,必须有出口。到期行连带 image_path 落盘
+#     图片一起删;<= 0 关闭)
+#   - audit_logs(AUDIT_LOG_RETENTION_DAYS,默认 365;<= 0 关闭)
 # ============================================================================
 
 
@@ -342,29 +354,84 @@ async def _start_log_retention() -> None:  # noqa: B008
 
 
 def _prune_retention_logs() -> None:
-    """删除超期行。只有 mcp_call_logs(30 天);AI 分析日志不参与自动清理。"""
+    """删除超期日志行:mcp_call_logs(30 天)、ai_analysis_logs 与 audit_logs
+    (按 settings 配置,<= 0 跳过)。AI 日志的落盘图片在行删除后 best-effort
+    unlink(失败只 warn,磁盘残留下轮不会重扫 — 可接受,手动删除端点同款
+    语义)。"""
     from datetime import datetime, timedelta, timezone
     from typing import cast
 
-    from sqlalchemy import delete
+    from sqlalchemy import delete, select
     from sqlalchemy.engine import CursorResult
 
-    from .models import MCPCallLog
+    from .models import AIAnalysisLog, AuditLog, MCPCallLog
 
     now = datetime.now(timezone.utc)
-    cutoff = now - timedelta(days=_MCP_LOG_RETENTION_DAYS)
     with SessionLocal() as db:
-        # SQLAlchemy 类型标注不区分 DML 的 CursorResult,cast 一下才能用 rowcount
+        # mcp_call_logs — 固定 30 天
+        cutoff = now - timedelta(days=_MCP_LOG_RETENTION_DAYS)
         result = cast(
             CursorResult,
             db.execute(delete(MCPCallLog).where(MCPCallLog.called_at < cutoff)),
         )
-        db.commit()
-        deleted = result.rowcount or 0
-        if deleted:
-            logging.getLogger(__name__).info(
-                "retention: deleted %d old mcp call logs", deleted,
+        deleted_mcp = result.rowcount or 0
+
+        # ai_analysis_logs — 配置保留期,先收图片路径再删行
+        deleted_ai = 0
+        stale_image_paths: list[str] = []
+        if settings.ai_log_retention_days > 0:
+            ai_cutoff = now - timedelta(days=settings.ai_log_retention_days)
+            stale_image_paths = [
+                row.image_path
+                for row in db.execute(
+                    select(AIAnalysisLog.image_path).where(
+                        AIAnalysisLog.called_at < ai_cutoff,
+                        AIAnalysisLog.image_path.is_not(None),
+                    )
+                ).all()
+                if row.image_path
+            ]
+            result = cast(
+                CursorResult,
+                db.execute(
+                    delete(AIAnalysisLog).where(AIAnalysisLog.called_at < ai_cutoff)
+                ),
             )
+            deleted_ai = result.rowcount or 0
+
+        # audit_logs — 配置保留期
+        deleted_audit = 0
+        if settings.audit_log_retention_days > 0:
+            audit_cutoff = now - timedelta(days=settings.audit_log_retention_days)
+            result = cast(
+                CursorResult,
+                db.execute(
+                    delete(AuditLog).where(AuditLog.created_at < audit_cutoff)
+                ),
+            )
+            deleted_audit = result.rowcount or 0
+
+        db.commit()
+
+    # DB 已 commit → 再做文件 IO(不持 DB 锁;失败只 warn,行已删是事实)
+    # S12-⑥:image_path 新行只存文件名(相对 AI_LOG_IMAGE_DIR),经
+    # resolve_log_image_path 归一解析;历史绝对路径该函数原样返回。
+    from .services.ai.analysis_log import resolve_log_image_path
+
+    for p in stale_image_paths:
+        try:
+            resolve_log_image_path(p).unlink(missing_ok=True)
+        except OSError:
+            logging.getLogger(__name__).warning(
+                "retention: failed to remove ai log image path=%s", p,
+            )
+
+    if deleted_mcp or deleted_ai or deleted_audit:
+        logging.getLogger(__name__).info(
+            "retention: deleted %d mcp call logs, %d ai analysis logs "
+            "(+%d image files), %d audit logs",
+            deleted_mcp, deleted_ai, len(stale_image_paths), deleted_audit,
+        )
 
 
 @app.on_event("shutdown")
@@ -375,13 +442,68 @@ async def _stop_log_retention() -> None:  # noqa: B008
 
 
 # ============================================================================
+# Trash retention(0030 承诺的「30 天后自动物理删除」)— 每日一轮:
+# data_cleanup scanner._scan_tx_trash_expired 找出软删超 30 天的交易,
+# cleaner.clean 物理删除(行 + 附件 GC + upsert 事件 compact)。此前只有
+# admin 手动 API(/admin/data-cleanup),现在接线成自动任务,与 log
+# retention 同款 loop 形态(纯 asyncio,首睡 24h)。
+# ============================================================================
+
+
+@app.on_event("startup")
+async def _start_trash_retention() -> None:  # noqa: B008
+    import asyncio
+
+    async def _loop() -> None:
+        while True:
+            await asyncio.sleep(24 * 3600)
+            try:
+                await asyncio.to_thread(_prune_expired_trash)
+            except Exception:
+                logging.getLogger(__name__).exception("trash retention failed")
+
+    app.state.trash_retention_task = asyncio.create_task(_loop())
+
+
+def _prune_expired_trash() -> None:
+    """物理清理软删超 30 天的交易(scanner → cleaner,复用 admin 手动
+    清理的同一套实现,含附件 GC 与 upsert 事件 compact)。"""
+    from .services.data_cleanup import scanner as _cleanup_scanner
+    from .services.data_cleanup.cleaner import clean
+
+    with SessionLocal() as db:
+        records = _cleanup_scanner._scan_tx_trash_expired(db)
+        if not records:
+            return
+        result = clean(db, records)
+        if result.success_count or result.failures:
+            logging.getLogger(__name__).info(
+                "retention: trash purge cleaned=%d failed=%d",
+                result.success_count,
+                len(result.failures),
+            )
+
+
+@app.on_event("shutdown")
+async def _stop_trash_retention() -> None:  # noqa: B008
+    task = getattr(app.state, "trash_retention_task", None)
+    if task is not None and not task.done():
+        task.cancel()
+
+
+# ============================================================================
 # sync_changes 表规模观测 —— 启动时打印行数 + payload 总字节,运维肉眼
-# 跟踪增长趋势。sync_changes 是 append-only log(append 不 compact),长期
-# 会膨胀;详见 .docs/dashboard-anomaly-budget/plan.md 关于 compaction 的讨论。
+# 跟踪增长趋势。sync_changes 是 append-only log,长期会膨胀;详见
+# .docs/dashboard-anomaly-budget/plan.md 关于 compaction 的讨论。
+# 2026-09(P1-A3)起,交易物理 purge(回收站过期清理 / 手动彻底删除)会
+# 连带 compact 该交易的 upsert 事件(delete 墓碑保留),最大实体的"删了
+# 还留全量历史"问题已有出口;但存活交易的 upsert 历史、未进回收站的
+# 编辑历史仍只增不减 —— 增长只是放缓,没有归零。
 # 当前规模阈值参考:
 #   ~25k 行 / 30 MB(线上 2026-05,跨度 1 个月)
 #   ~120 MB / 年(线性外推)
-# >= 500k 行或 >= 200 MB 时考虑加 retention / compaction job。
+# >= 500k 行或 >= 200 MB 时考虑基于 SyncCursor 最老游标做安全水位归档 /
+# 全量 compaction job。
 # 查询本身扫一遍 sync_changes,大表上几百 ms — 一次性 startup 开销可接受。
 # ============================================================================
 
@@ -443,3 +565,66 @@ async def _stop_evidence_retention() -> None:
             await task
         except asyncio.CancelledError:
             pass
+
+
+# ============================================================================
+# AI 日志 outbox worker(P1-B3 接线)— `AI_LOG_OUTBOX_ENABLED` 开启时,
+# startup 先恢复上次进程留下的过期 lease,再起 run_worker_forever 后台
+# task;shutdown 经 stop_event 优雅关停。默认保持关闭(config.py,
+# 先存量部署一版再灰度开启);不开启时 AI 日志走同步直写路径,行为不变。
+# 启停逻辑拆成独立 helper 便于单测(tests/test_retention_wiring.py)。
+# ============================================================================
+
+
+async def _start_ai_log_outbox_worker_task(app_ref) -> None:
+    import asyncio
+
+    from .services.ai.analysis_log_worker import (
+        recover_stale_leases,
+        run_worker_forever,
+    )
+
+    if not settings.ai_log_outbox_enabled:
+        return
+    # 先恢复崩溃遗留的过期 lease(processing → retry),再进主循环
+    try:
+        await asyncio.to_thread(recover_stale_leases)
+    except Exception:
+        logging.getLogger(__name__).warning(
+            "ai log outbox lease recovery failed", exc_info=True,
+        )
+    stop_event = asyncio.Event()
+    app_ref.state.ai_log_outbox_stop = stop_event
+    app_ref.state.ai_log_outbox_task = asyncio.create_task(
+        run_worker_forever(stop_event)
+    )
+    logging.getLogger(__name__).info("ai.log.outbox worker started")
+
+
+async def _stop_ai_log_outbox_worker_task(app_ref) -> None:
+    stop_event = getattr(app_ref.state, "ai_log_outbox_stop", None)
+    task = getattr(app_ref.state, "ai_log_outbox_task", None)
+    if stop_event is not None:
+        stop_event.set()
+    if task is None or task.done():
+        return
+    import asyncio
+
+    try:
+        # worker 空闲时 1s 轮询 stop_event,给 5s 足够优雅退出;
+        # 超时再 cancel(drain 一批的耗时上限由 batch 大小决定)。
+        await asyncio.wait_for(task, timeout=5.0)
+    except TimeoutError:
+        task.cancel()
+    except Exception:
+        logging.getLogger(__name__).exception("ai log outbox worker stop failed")
+
+
+@app.on_event("startup")
+async def _start_ai_log_outbox_worker() -> None:  # noqa: B008
+    await _start_ai_log_outbox_worker_task(app)
+
+
+@app.on_event("shutdown")
+async def _stop_ai_log_outbox_worker() -> None:  # noqa: B008
+    await _stop_ai_log_outbox_worker_task(app)

@@ -546,17 +546,22 @@ def test_prune_retention_removes_old_mcp_logs(monkeypatch) -> None:
         app.dependency_overrides.clear()
 
 
-def test_prune_retention_keeps_ai_logs_forever(monkeypatch, tmp_path) -> None:
-    """AI 日志不设保留期限:自动清理跑一次,超期旧行 + 其落盘图片原样保留。"""
+def test_prune_retention_deletes_expired_ai_logs(monkeypatch, tmp_path) -> None:
+    """P1-A5:AI 日志默认 180 天保留期 —— 超期行 + 落盘图片被自动清理,
+    未到期行保留。(旧契约「永久保留」已由 AI_LOG_RETENTION_DAYS 取代,
+    <= 0 可关回手动删除语义,见 test_retention_wiring.py。)"""
     Session = _bootstrap(monkeypatch)
     try:
         import src.main as main_module
         from src.main import _prune_retention_logs
 
         monkeypatch.setattr(main_module, "SessionLocal", Session)
+        monkeypatch.setattr(main_module.settings, "ai_log_retention_days", 180)
 
         old_img = tmp_path / "old.jpg"
         old_img.write_bytes(b"old")
+        new_img = tmp_path / "new.jpg"
+        new_img.write_bytes(b"new")
         with Session() as db:
             db.add(User(
                 id="u-prune-ai", email="prune-ai@example.com", password_hash="x",
@@ -567,14 +572,20 @@ def test_prune_retention_keeps_ai_logs_forever(monkeypatch, tmp_path) -> None:
                 image_path=str(old_img), image_mime="image/jpeg",
                 called_at=datetime.now(timezone.utc) - timedelta(days=365),
             ))
+            db.add(AIAnalysisLog(
+                user_id="u-prune-ai", entry_type="chat", status="ok",
+                image_path=str(new_img), image_mime="image/jpeg",
+                called_at=datetime.now(timezone.utc) - timedelta(days=1),
+            ))
             db.commit()
 
         _prune_retention_logs()
 
         with Session() as db:
             rows = db.scalars(select(AIAnalysisLog)).all()
-            assert len(rows) == 1  # 一年前的记录完好无损
-        assert old_img.exists()
+            assert len(rows) == 1  # 一年前的超期行被清,昨天的保留
+        assert not old_img.exists()
+        assert new_img.exists()
     finally:
         app.dependency_overrides.clear()
 

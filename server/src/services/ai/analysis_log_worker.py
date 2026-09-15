@@ -138,7 +138,9 @@ def _claim_next(owner: str, limit: int) -> list[AIAnalysisLogOutbox]:
 
 
 def _archive_image(spool_path: str | None, outbox_id: str, image_mime: str | None) -> str | None:
-    """把 spool `.ready` 归档成最终图片。返回最终绝对路径;缺失 → None(视为已归档/缺失)。
+    """把 spool `.ready` 归档成最终图片。返回**相对 AI_LOG_IMAGE_DIR 的文件名**
+    (S12-⑥:容器/卷迁移后按配置目录重新解析;读侧 analysis_log
+    .resolve_log_image_path 兼容历史绝对路径);缺失 → None(视为已归档/缺失)。
 
     幂等:final 已存在则直接返回 final(文件步骤已完成);两者都不存在 → None,
     由 worker 根据 spool 是否缺失决定 retry(临时的)或判 missing。
@@ -148,10 +150,10 @@ def _archive_image(spool_path: str | None, outbox_id: str, image_mime: str | Non
     spool = Path(spool_path)
     final = _image_root() / f"{outbox_id}.{_ext(image_mime)}"
     if final.exists():
-        return str(final)
+        return final.name
     if spool.exists():
         os.replace(spool, final)
-        return str(final)
+        return final.name
     return None
 
 

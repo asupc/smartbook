@@ -123,7 +123,8 @@ def write_ai_analysis_log_with_image(
 
     层级上仍是「失败静默」:DB 写失败只打日志;**图片写盘失败只断图**
     (image_path 留空,日志行不丢) —— 审计记录是主诉求,图片是增强。
-    文件名 {log_id}{ext},随日志行手动删除时一并删除(日志不设自动保留期)。
+    文件名 {log_id}{ext},随日志行删除时一并删除;行本身有保留期
+    (AI_LOG_RETENTION_DAYS,main.py 定时清理,过期行的图片由清理任务删)。
     """
     try:
         with SessionLocal() as db:
@@ -149,7 +150,10 @@ def write_ai_analysis_log_with_image(
                 ext = _EXT_BY_MIME.get(image_mime, "")
                 storage_path = _image_root() / f"{row.id}{ext}"
                 storage_path.write_bytes(image_bytes)
-                row.image_path = str(storage_path)
+                # S12-⑥:只存文件名(相对 ai_log_image_dir 根),容器/卷迁移
+                # 后按配置目录重新解析;读侧兼容历史绝对路径(见
+                # resolve_log_image_path)。
+                row.image_path = storage_path.name
                 row.image_mime = image_mime
             except Exception:
                 logger.exception(
@@ -161,6 +165,17 @@ def write_ai_analysis_log_with_image(
             "ai: failed to write analysis log with image entry_type=%s user=%s",
             entry_type, user_id,
         )
+
+
+def resolve_log_image_path(stored: str) -> Path:
+    """DB 里的 image_path → 实际磁盘路径。
+
+    新行只存文件名(相对 `AI_LOG_IMAGE_DIR` 根,目录配置变了/容器迁移后仍
+    可解析);历史行存的是写入时的绝对路径 —— 原样使用(存在性检查照旧)。"""
+    p = Path(stored)
+    if p.is_absolute():
+        return p
+    return _image_root() / p
 
 async def _run_log_write_in_thread(
     writer: Callable[..., None],

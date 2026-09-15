@@ -15,17 +15,24 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
-from fastapi import Header, Request, status
+# S10 新增 helper 用到的 star-import 符号在此显式导入(同对象,消除新增 F405)
+from fastapi import Header, HTTPException, Query, Request, status
 from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
-from ._shared import *  # noqa: F401,F403 — imports + helpers + router
 from ... import projection
-from ...ledger_access import require_accessible_ledger_by_external_id, WRITABLE_ROLES
+from ...ledger_access import (
+    WRITABLE_ROLES,
+    get_accessible_ledger_ids,
+    require_accessible_ledger_by_external_id,
+)
 from ...models import AuditLog, Ledger, ReadTxProjection, SyncChange, User
+from ._shared import *  # noqa: F401,F403 — imports + helpers + router
 
 logger = logging.getLogger(__name__)
 
-# 保留窗口与 data_cleanup cleaner 的过期口径保持一致(30 天)。
+# 保留窗口与 data_cleanup cleaner 的过期清算口径保持一致(30 天)。
 TRASH_RETENTION_DAYS = 30
 
 
@@ -53,22 +60,93 @@ class TrashActionOut(BaseModel):
     sync_id: str
     ok: bool
     new_change_id: int | None = None
+    # S10:本次操作命中的账本(external id)—— sync_id 只在账本内唯一,
+    # 跨账本同名时 caller 用 ledger_id 参数消歧,响应回带实际账本。
+    ledger_id: str | None = None
 
 
-def _find_trash_row(
-    db: Session, user_id: str, sync_id: str
-) -> ReadTxProjection | None:
-    return db.scalar(
-        select(ReadTxProjection).where(
-            ReadTxProjection.user_id == user_id,
-            ReadTxProjection.sync_id == sync_id,
-            ReadTxProjection.deleted_at.is_not(None),
+def _accessible_trash_rows(
+    db: Session,
+    user_id: str,
+    sync_id: str,
+    *,
+    ledger_int_id: str | None = None,
+) -> list[ReadTxProjection]:
+    """按表 PK 语义查回收站行(S10)。
+
+    旧实现按 ``user_id == caller`` 过滤 —— 共享账本的 tx 投影行 user_id 是
+    ledger owner,Editor 删除的交易自己查不到/恢复不了;且 PK 是
+    ``(ledger_id, sync_id)``,跨账本同 sync_id 时旧行为会静默命中不确定的
+    一行。现改为「caller 可访问账本集合 ∩ sync_id」,可选 ledger_int_id
+    收敛到单账本。"""
+    conds: list[object] = [
+        ReadTxProjection.sync_id == sync_id,
+        ReadTxProjection.deleted_at.is_not(None),
+        ReadTxProjection.ledger_id.in_(
+            get_accessible_ledger_ids(db, user_id=user_id)
+        ),
+    ]
+    if ledger_int_id is not None:
+        conds.append(ReadTxProjection.ledger_id == ledger_int_id)
+    return list(db.scalars(select(ReadTxProjection).where(*conds)).all())
+
+
+def _resolve_trash_row_for_action(
+    db: Session,
+    current_user: User,
+    sync_id: str,
+    ledger_external_id: str | None,
+) -> tuple[ReadTxProjection, Ledger]:
+    """restore/purge 共用:定位唯一目标行(按可访问账本集合 + 可选账本消歧)。
+
+    - 0 行 → 404;
+    - 多行且未传 ledger_id → 409(列出候选账本,让前端让用户选);
+    - 多行且传了 ledger_id → 按 (ledger_id, sync_id) PK 唯一收敛;
+    - 传了 ledger_id 但其中无该行 → 404。"""
+    ledger_int_id: str | None = None
+    if ledger_external_id:
+        ledger_int_id = db.scalar(
+            select(Ledger.id).where(Ledger.external_id == ledger_external_id)
         )
+        if ledger_int_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Ledger not found"
+            )
+    rows = _accessible_trash_rows(
+        db, current_user.id, sync_id, ledger_int_id=ledger_int_id
     )
-
-
-def _ledger_of(db: Session, ledger_id: str) -> Ledger | None:
-    return db.scalar(select(Ledger).where(Ledger.id == ledger_id))
+    if not rows:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "message": "Transaction not found in trash",
+                "error_code": "TRASH_TX_NOT_FOUND",
+            },
+        )
+    if len(rows) > 1:
+        # 同 sync_id 在多个可访问账本 —— 不再静默取第一行(可能操作错账本)。
+        candidates = [
+            lg.external_id
+            for lg in db.scalars(
+                select(Ledger).where(Ledger.id.in_([r.ledger_id for r in rows]))
+            )
+        ]
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": "sync_id exists in multiple accessible ledgers; "
+                "pass ledger_id to disambiguate",
+                "error_code": "TRASH_TX_AMBIGUOUS",
+                "ledger_ids": candidates,
+            },
+        )
+    row = rows[0]
+    ledger = db.scalar(select(Ledger).where(Ledger.id == row.ledger_id))
+    if ledger is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Ledger not found"
+        )
+    return row, ledger
 
 
 @router.get("/workspace/trash", response_model=TrashListOut)
@@ -79,8 +157,12 @@ def list_trash(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> TrashListOut:
+    # S10:按「可访问账本集合」而非 user_id 过滤 —— 共享账本 tx 投影行的
+    # user_id 是 owner,Editor 删除的交易也要出现在自己的回收站里。
     base = select(ReadTxProjection).where(
-        ReadTxProjection.user_id == current_user.id,
+        ReadTxProjection.ledger_id.in_(
+            get_accessible_ledger_ids(db, user_id=current_user.id)
+        ),
         ReadTxProjection.deleted_at.is_not(None),
     )
     total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
@@ -144,6 +226,40 @@ def _require_writable_ledger(db: Session, user: User, ledger: Ledger) -> None:
         )
 
 
+def _fanout_restore_ws(
+    request: Request,
+    member_user_ids: list[str],
+    payload: dict,
+) -> None:
+    """把 trash 恢复通知广播给账本全部成员(P1-B1)。
+
+    本路由是同步 def(FastAPI 跑线程池),worker 线程里没有 running loop ——
+    旧实现在这里 `asyncio.get_running_loop()` 必抛 RuntimeError 被 catch,
+    广播 task 从未被创建(实时通知从未生效)。改为与 backup scheduler 的
+    WS progress 同款:经 run_coroutine_threadsafe 推回主 loop
+    (app.state.main_loop,由 main.py 的 backup scheduler startup 设置)。
+
+    member 列表在 **commit 前**由 caller 查出(本函数不碰 db —— 请求
+    Session commit 后再开查询会重新开事务,而线程池里也没有 loop 能跑
+    async broadcast_to_ledger);广播本身在 commit 后发,与 write/push 的
+    「commit 后广播」模式对齐。main loop 不可用(未起 lifespan 的测试 /
+    极早期)时跳过并留痕,不吞其它异常。
+    """
+    import asyncio
+
+    loop = getattr(request.app.state, "main_loop", None)
+    if loop is None or loop.is_closed():
+        logger.warning(
+            "tx.restore fanout skipped: main loop unavailable (lifespan not started?)"
+        )
+        return
+    ws_manager = request.app.state.ws_manager
+    for uid in member_user_ids:
+        asyncio.run_coroutine_threadsafe(
+            ws_manager.broadcast_to_user(uid, payload), loop,
+        )
+
+
 @router.post(
     "/workspace/trash/{sync_id}/restore",
     response_model=TrashActionOut,
@@ -152,28 +268,20 @@ def restore_trash_tx(
     sync_id: str,
     request: Request,
     device_id: str = Header(default="web-console", alias="X-Device-ID"),
+    ledger_id: str | None = Query(
+        default=None,
+        description="跨账本同 sync_id 时用于消歧(external id);单命中时可省",
+    ),
     _scopes: set[str] = Depends(_READ_SCOPE_DEP),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> TrashActionOut:
-    row = _find_trash_row(db, current_user.id, sync_id)
-    if row is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "message": "Transaction not found in trash",
-                "error_code": "TRASH_TX_NOT_FOUND",
-            },
-        )
-    ledger = _ledger_of(db, row.ledger_id)
-    if ledger is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Ledger not found"
-        )
+    row, ledger = _resolve_trash_row_for_action(db, current_user, sync_id, ledger_id)
     _require_writable_ledger(db, current_user, ledger)
 
     restored = projection.restore_tx(db, ledger_id=row.ledger_id, sync_id=sync_id)
     new_change_id: int | None = None
+    member_user_ids: list[str] = []
     if restored:
         # 重发 upsert change:mobile 端 pull 后重建本地行(即使本地 tombstone
         # 已应用,upsert payload 会覆盖)。payload 用软删期间保留的投影行。
@@ -201,35 +309,36 @@ def restore_trash_tx(
                 metadata_json={"syncId": sync_id, "newChangeId": new_change_id},
             )
         )
+        # commit 前把成员列表查出(见 _fanout_restore_ws 说明);commit 后
+        # 逐成员 broadcast_to_user。
+        from ...ledger_access import list_ledger_members
+
+        member_user_ids = [
+            uid for uid, _role in list_ledger_members(db, ledger_id=ledger.id)
+        ]
     db.commit()
     if new_change_id is not None:
         # 共享账本 fan-out,让在线端立即收到恢复
-        from ...websocket_manager import broadcast_to_ledger
-        try:
-            import asyncio
-
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-        if loop is not None:
-            loop.create_task(
-                broadcast_to_ledger(
-                    db=None,
-                    ws_manager=request.app.state.ws_manager,
-                    ledger_id=ledger.id,
-                    payload={
-                        "type": "sync_change",
-                        "ledgerId": ledger.external_id,
-                        "serverCursor": new_change_id,
-                        "serverTimestamp": datetime.now(timezone.utc).isoformat(),
-                    },
-                )
-            )
+        _fanout_restore_ws(
+            request,
+            member_user_ids,
+            {
+                "type": "sync_change",
+                "ledgerId": ledger.external_id,
+                "serverCursor": new_change_id,
+                "serverTimestamp": datetime.now(timezone.utc).isoformat(),
+            },
+        )
     logger.info(
         "tx.restore_from_trash ledger=%s sync_id=%s change_id=%s user=%s",
         ledger.external_id, sync_id, new_change_id, current_user.id,
     )
-    return TrashActionOut(sync_id=sync_id, ok=restored, new_change_id=new_change_id)
+    return TrashActionOut(
+        sync_id=sync_id,
+        ok=restored,
+        new_change_id=new_change_id,
+        ledger_id=ledger.external_id,
+    )
 
 
 @router.post(
@@ -238,24 +347,15 @@ def restore_trash_tx(
 )
 def purge_trash_tx(
     sync_id: str,
+    ledger_id: str | None = Query(
+        default=None,
+        description="跨账本同 sync_id 时用于消歧(external id);单命中时可省",
+    ),
     _scopes: set[str] = Depends(_READ_SCOPE_DEP),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> TrashActionOut:
-    row = _find_trash_row(db, current_user.id, sync_id)
-    if row is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "message": "Transaction not found in trash",
-                "error_code": "TRASH_TX_NOT_FOUND",
-            },
-        )
-    ledger = _ledger_of(db, row.ledger_id)
-    if ledger is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Ledger not found"
-        )
+    row, ledger = _resolve_trash_row_for_action(db, current_user, sync_id, ledger_id)
     _require_writable_ledger(db, current_user, ledger)
 
     # 物理删除:先收集附件引用,删行,再 GC 孤立附件(共享引用保留)。
@@ -265,6 +365,13 @@ def purge_trash_tx(
     projection.purge_tx(db, ledger_id=ledger.id, sync_id=sync_id)
     projection.gc_orphan_attachments_for_ledger(
         db, ledger_id=ledger.id, file_ids=tx_file_ids,
+    )
+    # 物理删除后 compact 该交易的 upsert 事件历史(P1-A3,与 data_cleanup
+    # cleaner 的过期清理同款);delete 墓碑保留,落后设备仍能 apply 删除。
+    from ...sync_applier import _compact_entity_upsert_events
+
+    _compact_entity_upsert_events(
+        db, user_id=row.user_id, entity_type="transaction", entity_sync_id=sync_id,
     )
     # tombstone change 已在删除时发过;purge 不再发(客户端本地已删)。
     db.add(
@@ -280,4 +387,4 @@ def purge_trash_tx(
         "tx.purge_from_trash ledger=%s sync_id=%s user=%s",
         ledger.external_id, sync_id, current_user.id,
     )
-    return TrashActionOut(sync_id=sync_id, ok=True)
+    return TrashActionOut(sync_id=sync_id, ok=True, ledger_id=ledger.external_id)

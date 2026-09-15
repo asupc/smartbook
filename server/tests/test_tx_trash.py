@@ -181,3 +181,142 @@ def test_trash_scanner_and_cleaner_roundtrip():
     finally:
         db.close()
         engine.dispose()
+
+
+def test_trash_restore_fanout_broadcasts_to_members():
+    """P1-B1:restore 成功后 WS 广播被**真正调度**(共享账本多成员场景)。
+
+    restore_trash_tx 是同步 def 路由(worker 线程里没有 running loop),广播经
+    run_coroutine_threadsafe 推回 app.state.main_loop。测试里起一个后台
+    event loop 线程扮演主 loop,替换 ws_manager 为记录器,断言 owner + editor
+    两个成员都收到了带新 change_id 的 sync_change 通知。
+    """
+    import asyncio
+    import threading
+
+    from src.models import Ledger, LedgerMember, User
+
+    engine = create_engine(
+        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+    Base.metadata.create_all(bind=engine)
+    Session = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+
+    def override_get_db():
+        db = Session()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+    client = TestClient(app)
+
+    class _RecordingWS:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, dict]] = []
+
+        async def broadcast_to_user(self, user_id: str, payload: dict) -> None:
+            self.calls.append((user_id, payload))
+
+    loop = asyncio.new_event_loop()
+    loop_thread = threading.Thread(target=loop.run_forever, daemon=True)
+    loop_thread.start()
+    recorder = _RecordingWS()
+    real_ws_manager = app.state.ws_manager
+    app.state.ws_manager = recorder
+    app.state.main_loop = loop
+    try:
+        owner_token = _register_and_login(client, "fanout-owner@test.com")
+        _register_and_login(client, "fanout-editor@test.com")
+        ledger_ext = _create_ledger(client, owner_token)
+        tx_ids = _seed_txs(client, owner_token, ledger_ext, n=1)
+        victim = tx_ids[0]
+
+        with Session() as db:
+            owner = db.scalar(select(User).where(User.email == "fanout-owner@test.com"))
+            editor = db.scalar(select(User).where(User.email == "fanout-editor@test.com"))
+            ledger = db.scalar(select(Ledger).where(Ledger.external_id == ledger_ext))
+            assert owner and editor and ledger
+            db.add(LedgerMember(
+                ledger_id=ledger.id, user_id=editor.id,
+                role="editor", invited_by=owner.id,
+            ))
+            db.commit()
+            owner_id, editor_id = owner.id, editor.id
+
+        # 软删 → 恢复
+        r = client.request(
+            "DELETE",
+            f"/api/v1/write/ledgers/{ledger_ext}/transactions/{victim}",
+            json={"base_change_id": 0},
+            headers={"Authorization": f"Bearer {owner_token}", "X-Device-ID": "d-web"},
+        )
+        assert r.status_code == 200, r.text
+        r = client.post(
+            f"/api/v1/read/workspace/trash/{victim}/restore",
+            headers={"Authorization": f"Bearer {owner_token}", "X-Device-ID": "d-web"},
+        )
+        assert r.status_code == 200, r.text
+        new_change_id = r.json()["new_change_id"]
+        assert new_change_id is not None
+
+        # 广播在后台 loop 上异步执行(fire-and-forget);软删请求也产生过
+        # 广播,所以按 serverCursor == restore 的 new_change_id 过滤并轮询
+        # 直到 owner + editor 两条都到达
+        import time
+
+        deadline = time.monotonic() + 5
+        restore_calls: list[tuple[str, dict]] = []
+        while time.monotonic() < deadline:
+            restore_calls = [
+                (uid, p)
+                for uid, p in recorder.calls
+                if p.get("serverCursor") == new_change_id
+            ]
+            if len(restore_calls) >= 2:
+                break
+            time.sleep(0.05)
+        assert len(restore_calls) == 2, recorder.calls
+        # owner + editor 两个成员都收到
+        assert {uid for uid, _ in restore_calls} == {owner_id, editor_id}
+        for _uid, payload in restore_calls:
+            assert payload["type"] == "sync_change"
+            assert payload["ledgerId"] == ledger_ext
+            assert payload["serverCursor"] == new_change_id
+    finally:
+        app.dependency_overrides.clear()
+        app.state.ws_manager = real_ws_manager
+        if hasattr(app.state, "main_loop"):
+            del app.state.main_loop
+        loop.call_soon_threadsafe(loop.stop)
+        loop_thread.join(timeout=5)
+        loop.close()
+        engine.dispose()
+
+
+def test_trash_restore_fanout_skipped_without_main_loop():
+    """main loop 不可用(未起 lifespan)时广播跳过、不抛错 —— 与旧行为的
+    降级语义一致但有留痕。"""
+    client = _make_client()
+    try:
+        token = _register_and_login(client, "fanout-noloop@test.com")
+        ledger_id = _create_ledger(client, token)
+        victim = _seed_txs(client, token, ledger_id, n=1)[0]
+        client.request(
+            "DELETE",
+            f"/api/v1/write/ledgers/{ledger_id}/transactions/{victim}",
+            json={"base_change_id": 0},
+            headers={"Authorization": f"Bearer {token}", "X-Device-ID": "d-web"},
+        )
+        # 确保 main_loop 缺失(TestClient 不带 lifespan 就不会有;防御性删一下)
+        if hasattr(app.state, "main_loop"):
+            del app.state.main_loop
+        r = client.post(
+            f"/api/v1/read/workspace/trash/{victim}/restore",
+            headers={"Authorization": f"Bearer {token}", "X-Device-ID": "d-web"},
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["ok"] is True
+    finally:
+        app.dependency_overrides.clear()
