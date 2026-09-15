@@ -290,25 +290,29 @@ async def push_changes(
                 updated_by_device_id=req.device_id,
                 updated_by_user_id=current_user.id,
             )
-            db.add(row_change)
-            db.flush()
             try:
                 with db.begin_nested():
+                    # add+flush 必须在 savepoint 内:apply 抛错时 SyncChange 行随
+                    # 投影应用一起回滚。在外面 flush 的话,孤儿事件行会被外层
+                    # commit 提交 —— pull 端按事件删实体而投影未删,且该孤儿行
+                    # 成为 LWW 最新,阻塞后续合法 upsert。
+                    db.add(row_change)
+                    db.flush()
                     extra_fanout = apply_user_change_to_projection(
                         db,
                         user_id=current_user.id,
                         change=row_change,
                     )
             except Exception as exc:
-                # 批次3:坏 change 隔离 —— savepoint 只回滚这一条的投影应用,
-                # 不再 raise 炸整批(旧行为:客户端无限重推同一批,同步永久卡死)。
+                # 批次3:坏 change 隔离 —— savepoint 回滚这一条的投影应用与
+                # SyncChange 行,不再 raise 炸整批(旧行为:客户端无限重推同一批,
+                # 同步永久卡死)。row_change 已回滚,except 内不可访问其属性。
                 logger.exception(
                     "sync.push.apply_failed (user-scope, isolated) entity=%s action=%s "
-                    "sync_id=%s change_id=%d payload=%s",
+                    "sync_id=%s payload=%s",
                     change.entity_type,
                     change.action,
                     change.entity_sync_id,
-                    row_change.change_id,
                     change.payload,
                 )
                 failed_count += 1
@@ -376,14 +380,16 @@ async def push_changes(
                 updated_by_device_id=req.device_id,
                 updated_by_user_id=current_user.id,
             )
-            db.add(row_change)
-            db.flush()
             # 方案 B:projection 随 push 同事务刷新。不再写 ledger_snapshot 行。
             if change.entity_type in INDIVIDUAL_ENTITY_TYPES:
                 # lock 一次/账本,避免两个 push 并发走同个 ledger 的 cascade
                 lock_ledger_for_materialize(db, ledger.id)
                 try:
                     with db.begin_nested():
+                        # 同 user-scope:add+flush 必须在 savepoint 内,apply 抛错
+                        # 时 SyncChange 行随投影应用一起回滚,不留孤儿事件行。
+                        db.add(row_change)
+                        db.flush()
                         apply_change_to_projection(
                             db,
                             ledger_id=ledger.id,
@@ -394,14 +400,14 @@ async def push_changes(
                     # 批次3:坏 change 隔离 —— savepoint 回滚这一条的投影应用与
                     # SyncChange 行,其余 change 照常 commit。旧行为(raise 整批
                     # 500)会让一条 poison change 永久卡死该设备的全部推送。
+                    # row_change 已回滚,except 内不可访问其属性。
                     logger.exception(
                         "sync.push.apply_failed (isolated) entity=%s action=%s ledger=%s sync_id=%s "
-                        "change_id=%d payload=%s",
+                        "payload=%s",
                         change.entity_type,
                         change.action,
                         change.ledger_id,
                         change.entity_sync_id,
-                        row_change.change_id,
                         change.payload,
                     )
                     failed_count += 1
@@ -415,6 +421,9 @@ async def push_changes(
                             "error": str(exc)[:200],
                         })
                     continue
+            else:
+                db.add(row_change)
+                db.flush()
             touched_ledgers[ledger.external_id] = ledger.id
 
         accepted += 1

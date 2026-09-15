@@ -200,6 +200,20 @@ app.include_router(shared_resources_router.router, prefix=settings.api_prefix, t
 app.include_router(member_stats_router.router, prefix=settings.api_prefix, tags=["member-stats"])
 app.include_router(evidence_router.router, prefix=f"{settings.api_prefix}/evidence", tags=["evidence"])
 
+def _resolve_static_file(static_dir: Path, full_path: str) -> Path | None:
+    """SPA catch-all 的静态文件解析;越界路径一律返回 None(落回 index.html 兜底)。
+
+    uvicorn 会把 %2F 解码进 scope["path"],Path 拼接也不清洗 `..`/绝对段
+    (`static_dir / "/etc/x"` 会整体替换基准),必须 resolve 后做包含校验,
+    否则 `GET /..%2F..%2Fdata%2F.jwt_secret` 能读静态目录外任意文件
+    (该路由无认证依赖)。
+    """
+    target = (static_dir / full_path).resolve()
+    if target.is_relative_to(static_dir.resolve()) and target.is_file():
+        return target
+    return None
+
+
 _static_dir = Path(settings.web_static_dir)
 
 if _static_dir.exists():
@@ -217,8 +231,8 @@ if _static_dir.exists():
         if full_path.startswith(protected_prefixes):
             raise HTTPException(status_code=404, detail="Not found")
 
-        target = _static_dir / full_path
-        if target.exists() and target.is_file():
+        target = _resolve_static_file(_static_dir, full_path)
+        if target is not None:
             return FileResponse(target)
         if _index_file.exists():
             return FileResponse(_index_file)

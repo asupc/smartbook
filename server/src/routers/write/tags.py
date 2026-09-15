@@ -39,6 +39,9 @@ def _cascade_items_for_tag_delete(db, current_user, tag_id: str):
     rows = db.scalars(
         sa_select(ReadTxProjection).where(
             ReadTxProjection.user_id == current_user.id,
+            # 软删(回收站)行不进剥离子集:cascade upsert 会让 mobile 按INSERT
+            # 重建已删交易。投影剥离 SQL 仍会清理这些行,restore 时自然干净。
+            ReadTxProjection.deleted_at.is_(None),
             or_(
                 ReadTxProjection.tag_sync_ids_json.like(like_id),
                 and_(

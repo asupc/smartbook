@@ -921,6 +921,7 @@ def _cascade_tx_rows_for_account(
     return list(db.scalars(
         select(ReadTxProjection).where(
             ReadTxProjection.user_id == user_id,
+            ReadTxProjection.deleted_at.is_(None),
             or_(
                 ReadTxProjection.account_sync_id == account_sync_id,
                 ReadTxProjection.from_account_sync_id == account_sync_id,
@@ -937,6 +938,7 @@ def _cascade_tx_rows_for_category(
     return list(db.scalars(
         select(ReadTxProjection).where(
             ReadTxProjection.user_id == user_id,
+            ReadTxProjection.deleted_at.is_(None),
             ReadTxProjection.category_sync_id == category_sync_id,
         )
     ))
@@ -946,11 +948,13 @@ def _cascade_tx_rows_for_tag(
     db: Session, *, user_id: str, tag_sync_id: str,
 ) -> list[ReadTxProjection]:
     """tag 改名涉及的 tx 行:tag_sync_ids_json 含该 sync_id(与 rename_cascade_tag
-    的 by-id 集合一致)。"""
+    的 by-id 集合一致)。软删(回收站)行不补发 —— cascade upsert 会让 mobile
+    端按 INSERT 重建已删交易(全量 diff 路径的 snapshot_builder 同样过滤)。"""
     like_pat = f'%"{tag_sync_id}"%'
     return list(db.scalars(
         select(ReadTxProjection).where(
             ReadTxProjection.user_id == user_id,
+            ReadTxProjection.deleted_at.is_(None),
             ReadTxProjection.tag_sync_ids_json.like(like_pat),
         )
     ))

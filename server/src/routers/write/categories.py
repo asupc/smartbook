@@ -51,6 +51,7 @@ def _cascade_items_for_category_delete(db, current_user, ledger, category_id: st
     rows = db.scalars(
         sa_select(ReadTxProjection).where(
             ReadTxProjection.user_id == current_user.id,
+            ReadTxProjection.deleted_at.is_(None),
             ReadTxProjection.category_kind == old_kind,
             ReadTxProjection.category_name.in_(list(family_names)),
         )
