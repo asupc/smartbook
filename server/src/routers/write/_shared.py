@@ -27,12 +27,12 @@ from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
-from ...concurrency import lock_ledger_for_materialize
+from ...concurrency import lock_ledger_for_materialize, lock_user_global
 from ...config import get_settings
 from ...database import get_db
 from ...deps import get_current_user, require_any_scopes, require_scopes
@@ -393,8 +393,9 @@ def _emit_entity_diffs(
                       "tag", emitted_ids)
 
     # Rename cascade via SQL batch,放在 tx diff 之前 —— 保证 tx diff 跳过的
-    # cascade 行已经被刷新过。user-global 重构后 rename_cascade_* 按 user_id
-    # 跨该用户所有 ledger 刷 read_tx_projection。
+    # cascade 行已经被刷新过。rename_cascade_* 按 sync_id 稳定 FK 匹配引用
+    # 该实体的所有 tx 投影行(不按 user_id,P0-1 契约 —— 共享账本 tx 投影行
+    # 的 user_id 是 ledger owner)。
     for sync_id, _old, new_name, _kind in account_renames:
         projection.rename_cascade_account(
             db, user_id=current_user.id, account_sync_id=sync_id, new_name=new_name,
@@ -513,14 +514,28 @@ def _load_idempotent_response(
     idempotency_key: str,
     request_hash: str,
 ) -> WriteCommitMeta | None:
+    now = _utcnow()
+    # S7:过期行不算命中(回放窗口只有 24h;过期后再回放会复活早已不该
+    # 重放的响应)。清扫(_purge_expired_idempotency)每请求最多删 200 行,
+    # 积压时这里会撞到过期行 —— 按 miss 处理并顺带删掉本行。
     row = db.scalar(
         select(SyncPushIdempotency).where(
             SyncPushIdempotency.user_id == user_id,
             SyncPushIdempotency.device_id == device_id,
             SyncPushIdempotency.idempotency_key == idempotency_key,
+            SyncPushIdempotency.expires_at > now,
         )
     )
     if row is None:
+        db.execute(
+            delete(SyncPushIdempotency).where(
+                SyncPushIdempotency.user_id == user_id,
+                SyncPushIdempotency.device_id == device_id,
+                SyncPushIdempotency.idempotency_key == idempotency_key,
+                SyncPushIdempotency.expires_at <= now,
+            )
+        )
+        db.flush()
         return None
     if row.request_hash != request_hash:
         raise HTTPException(
@@ -914,50 +929,31 @@ def _projection_row_to_tx_dict(row: ReadTxProjection) -> dict[str, Any]:
 def _cascade_tx_rows_for_account(
     db: Session, *, user_id: str, account_sync_id: str,
 ) -> list[ReadTxProjection]:
-    """account 删除后投影剥离/级联涉及的 tx 行。谓词与 snapshot_mutator
-    .delete_account 的剥离逻辑一一对应:现代数据按 sync_id 精确匹配;老数据
-    (行上三个 account id 列全 NULL)的回退名字匹配由剥离 SQL 单独处理,
-    这里只负责补发变更事件,精确谓词已覆盖现代数据。"""
-    return list(db.scalars(
-        select(ReadTxProjection).where(
-            ReadTxProjection.user_id == user_id,
-            ReadTxProjection.deleted_at.is_(None),
-            or_(
-                ReadTxProjection.account_sync_id == account_sync_id,
-                ReadTxProjection.from_account_sync_id == account_sync_id,
-                ReadTxProjection.to_account_sync_id == account_sync_id,
-            ),
-        )
-    ))
+    """account 改名/删除后投影级联涉及的 tx 行。谓词下放
+    projection.cascade_tx_rows_for_account:按 account/from/to 三个 sync_id
+    稳定 FK 匹配(**不按 user_id**,P0-1 契约 —— 共享账本 tx 投影行的
+    user_id 是 ledger owner,操作者可能是 Editor);老数据(行上三个
+    account id 列全 NULL)的名字回退匹配由剥离逻辑在全量路径单独处理,
+    这里只服务现代数据。user_id 参数仅为签名兼容保留。"""
+    return projection.cascade_tx_rows_for_account(db, account_sync_id=account_sync_id)
 
 
 def _cascade_tx_rows_for_category(
     db: Session, *, user_id: str, category_sync_id: str,
 ) -> list[ReadTxProjection]:
-    """category 删除涉及的 tx 行(按 category_sync_id 精确匹配)。"""
-    return list(db.scalars(
-        select(ReadTxProjection).where(
-            ReadTxProjection.user_id == user_id,
-            ReadTxProjection.deleted_at.is_(None),
-            ReadTxProjection.category_sync_id == category_sync_id,
-        )
-    ))
+    """category 改名/删除涉及的 tx 行(按 category_sync_id 稳定 FK 精确匹配,
+    不按 user_id —— P0-1 契约,见 _cascade_tx_rows_for_account)。"""
+    return projection.cascade_tx_rows_for_category(db, category_sync_id=category_sync_id)
 
 
 def _cascade_tx_rows_for_tag(
     db: Session, *, user_id: str, tag_sync_id: str,
 ) -> list[ReadTxProjection]:
     """tag 改名涉及的 tx 行:tag_sync_ids_json 含该 sync_id(与 rename_cascade_tag
-    的 by-id 集合一致)。软删(回收站)行不补发 —— cascade upsert 会让 mobile
-    端按 INSERT 重建已删交易(全量 diff 路径的 snapshot_builder 同样过滤)。"""
-    like_pat = f'%"{tag_sync_id}"%'
-    return list(db.scalars(
-        select(ReadTxProjection).where(
-            ReadTxProjection.user_id == user_id,
-            ReadTxProjection.deleted_at.is_(None),
-            ReadTxProjection.tag_sync_ids_json.like(like_pat),
-        )
-    ))
+    的 by-id 集合一致,按稳定 FK 匹配不按 user_id —— P0-1 契约)。软删
+    (回收站)行不补发 —— cascade upsert 会让 mobile 端按 INSERT 重建已删
+    交易(全量 diff 路径的 snapshot_builder 同样过滤)。"""
+    return projection.cascade_tx_rows_for_tag(db, tag_sync_id=tag_sync_id)
 
 
 def _emit_cascade_tx_changes(
@@ -1069,6 +1065,11 @@ async def _commit_write_fast_entity(
     """
 
     def _core() -> tuple[WriteCommitMeta, bool, list]:
+        # P0-2 锁顺序契约(user→ledger):user-global 实体(账户/分类/标签)
+        # 的改名/删除会按 sync_id cascade 刷投影(可能命中 owner 名下的共享
+        # 账本行),先取 owner 的 user 锁再取 ledger 锁,固定顺序防死锁
+        # (SYNC_ARCHITECTURE §4.7)。
+        lock_user_global(db, ledger.user_id)
         lock_ledger_for_materialize(db, ledger.id)
 
         if get_settings().strict_base_change_id:
@@ -1202,6 +1203,17 @@ async def _commit_write_fast_entity(
                 device_id=device_id, now=now, rows=cascade_rows,
             ))
 
+        # P1-B2:user-global diff + ledger-scope 镜像事件。diff 纯内存,镜像
+        # 必须与本次写入同事务(§4.9);折进 new_change_id(cascade fanout 同款)。
+        user_global_events = _diff_user_global_for_shared_resource(
+            prev=prev_snapshot, next=next_snapshot,
+        )
+        if user_global_events:
+            emitted_change_ids.append(_emit_user_global_ledger_mirrors(
+                db, actor_user_id=current_user.id,
+                device_id=device_id, now=now, events=user_global_events,
+            ))
+
         new_change_id = max(emitted_change_ids) if emitted_change_ids else (
             snapshot_builder.latest_change_id(db, ledger.id)
         )
@@ -1264,9 +1276,6 @@ async def _commit_write_fast_entity(
             entity_type, ledger.external_id, entity_id, response.new_change_id,
             device_id, current_user.id,
         )
-        user_global_events = _diff_user_global_for_shared_resource(
-            prev=prev_snapshot, next=next_snapshot,
-        )
         return response, False, user_global_events
 
     response, did_replay, user_global_events = await run_in_threadpool(_core)
@@ -1313,6 +1322,10 @@ async def _commit_write(
     def _core() -> tuple[WriteCommitMeta, bool, list]:
         # Serialize concurrent writers on the same ledger。方案 B 后不再写 snapshot,
         # 但依然锁 —— 防止 rename cascade 的 SQL UPDATE 和 tx upsert 交叉跑。
+        # P0-2 锁顺序契约(user→ledger):user-global rename cascade 会按
+        # sync_id 刷本账本(含 owner 名下)的 tx 投影行,先取 owner 的
+        # user 锁再取 ledger 锁,与 push 路径保持全局 user→ledger 顺序防死锁。
+        lock_user_global(db, ledger.user_id)
         lock_ledger_for_materialize(db, ledger.id)
 
         # strict_base_change_id 语义转换:原先比 latest ledger_snapshot.change_id,
@@ -1359,6 +1372,17 @@ async def _commit_write(
             next_snapshot=next_snapshot,
             now=now,
         )
+        # §7 共享账本:user-global 实体(category/account/tag)的 shared_resource
+        # fan-out 输入;P1-B2 起同时派生 ledger-scope 镜像 SyncChange(与本次
+        # 写入同事务,Editor 常规 pull 可见,§4.9)。
+        user_global_events = _diff_user_global_for_shared_resource(
+            prev=prev_snapshot, next=next_snapshot
+        )
+        if user_global_events:
+            emitted_change_ids.append(_emit_user_global_ledger_mirrors(
+                db, actor_user_id=current_user.id,
+                device_id=device_id, now=now, events=user_global_events,
+            ))
         # 无变化 → 用当前 max change_id(幂等/只是触发写但没真修改的场景)
         new_change_id = max(emitted_change_ids) if emitted_change_ids else (
             snapshot_builder.latest_change_id(db, ledger.id)
@@ -1426,11 +1450,6 @@ async def _commit_write(
             device_id,
             current_user.id,
         )
-        # §7 共享账本:user-global 实体(category/account/tag)的 shared_resource
-        # fan-out 输入。纯 diff(sync),在线程里算好,出去再 await 推送。
-        user_global_events = _diff_user_global_for_shared_resource(
-            prev=prev_snapshot, next=next_snapshot
-        )
         return response, False, user_global_events
 
     response, did_replay, user_global_events = await run_in_threadpool(_core)
@@ -1464,6 +1483,178 @@ async def _commit_write(
         )
 
     return response
+
+
+def _serialize_user_global_projection(
+    db: Session,
+    *,
+    user_id: str,
+    entity_type: str,
+    sync_id: str,
+) -> dict[str, Any] | None:
+    """user-global 实体的 **apply 后投影状态** → camelCase payload(P1-B2 镜像
+    事件的内容源)。key 与 mobile EntitySerializer / web snapshot_mutator 写入
+    的 payload 同形,Editor 端 pull 后可直接按 account/category/tag change 应用。
+
+    行不存在(已删)或 entity_type 不在镜像三件套 → None(调用方降级用事件
+    自带 payload 或发 delete 空壳)。"""
+    from ...models import (
+        UserAccountProjection,
+        UserCategoryProjection,
+        UserTagProjection,
+    )
+
+    if entity_type == "account":
+        row = db.get(UserAccountProjection, (user_id, sync_id))
+        if row is None:
+            return None
+        payload: dict[str, Any] = {"syncId": sync_id, "name": row.name or ""}
+        if row.account_type is not None:
+            payload["type"] = row.account_type
+        if row.currency is not None:
+            payload["currency"] = row.currency
+        if row.initial_balance is not None:
+            payload["initialBalance"] = row.initial_balance
+        if row.note is not None:
+            payload["note"] = row.note
+        if row.credit_limit is not None:
+            payload["creditLimit"] = row.credit_limit
+        if row.billing_day is not None:
+            payload["billingDay"] = row.billing_day
+        if row.payment_due_day is not None:
+            payload["paymentDueDay"] = row.payment_due_day
+        if row.bank_name is not None:
+            payload["bankName"] = row.bank_name
+        if row.card_last_four is not None:
+            payload["cardLastFour"] = row.card_last_four
+        # hidden 是非空 bool,显式携带(client 端按 containsKey 保护本地值)
+        payload["hidden"] = bool(row.hidden)
+        return payload
+    if entity_type == "category":
+        row = db.get(UserCategoryProjection, (user_id, sync_id))
+        if row is None:
+            return None
+        payload = {"syncId": sync_id, "name": row.name or ""}
+        if row.kind is not None:
+            payload["kind"] = row.kind
+        if row.level is not None:
+            payload["level"] = row.level
+        if row.sort_order is not None:
+            payload["sortOrder"] = row.sort_order
+        if row.icon is not None:
+            payload["icon"] = row.icon
+        if row.icon_type is not None:
+            payload["iconType"] = row.icon_type
+        if row.custom_icon_path is not None:
+            payload["customIconPath"] = row.custom_icon_path
+        if row.icon_cloud_file_id is not None:
+            payload["iconCloudFileId"] = row.icon_cloud_file_id
+        if row.icon_cloud_sha256 is not None:
+            payload["iconCloudSha256"] = row.icon_cloud_sha256
+        if row.parent_name is not None:
+            payload["parentName"] = row.parent_name
+        if row.parent_sync_id is not None:
+            payload["parentSyncId"] = row.parent_sync_id
+        return payload
+    if entity_type == "tag":
+        row = db.get(UserTagProjection, (user_id, sync_id))
+        if row is None:
+            return None
+        payload = {"syncId": sync_id, "name": row.name or ""}
+        if row.color is not None:
+            payload["color"] = row.color
+        return payload
+    return None
+
+
+def _emit_user_global_ledger_mirrors(
+    db: Session,
+    *,
+    actor_user_id: str,
+    device_id: str,
+    now: datetime,
+    events: list[dict[str, Any]],
+) -> int:
+    """P1-B2:owner 的 user-global 实体(category/account/tag)变更派生
+    **ledger-scope 镜像 SyncChange**。
+
+    动机:owner 的 user-scope SyncChange 行对 Editor 的 /sync/pull 不可见
+    (pull 按 `scope='user' AND user_id==caller` 过滤),原来只靠 WS
+    shared_resource_change 推送 —— Editor 掉线即永久拉不到,镜像永久分叉,
+    30s polling fallback 对该通道无效。镜像事件挂在 owner 的共享账本
+    (member>1)下,Editor 的常规 pull 天然拉得到,WS 退化为加速通道。
+
+    契约(SYNC_ARCHITECTURE §4.9):
+      - 必须与 user-scope 原事件**同事务**写入(事件流里 owner 变更与镜像
+        原子可见);
+      - payload 是 apply 后的投影状态(**不**是客户端可能缺键的 partial
+        payload),只含 Editor 本可见的投影内容,隐私边界不变;
+      - delete 事件 payload 只带 syncId(实体行已删,投影无状态可序列化);
+      - **不**重复发 tx cascade 事件 —— 那由 P0 波的 cascade-only fanout
+        (_emit_cascade_tx_changes / push 的 _emit_user_global_cascade_tx_changes)
+        单独负责,镜像只覆盖 user-global 实体自身的 ledger 可见性;
+      - 单人账本(无其它 member)不产生镜像 —— 与 WS fan-out 的共享账本
+        判定(member count > 1)同口径。
+
+    返回本批镜像行的最大 change_id(无镜像 → 0),调用方按 cascade fanout
+    的同款惯例折进响应的 new_change_id。
+    """
+    if not events:
+        return 0
+    # actor 作为 owner 的共享账本(member>1)。与 _broadcast_shared_resource_events
+    # 的 WS fan-out 查询同款 —— 镜像通道与推送通道覆盖同一批账本。
+    rows = db.execute(
+        select(Ledger.id)
+        .join(LedgerMember, LedgerMember.ledger_id == Ledger.id)
+        .where(Ledger.user_id == actor_user_id)
+        .group_by(Ledger.id)
+        .having(func.count(LedgerMember.user_id) > 1)
+    ).all()
+    shared_ledger_ids = [r[0] for r in rows]
+    if not shared_ledger_ids:
+        return 0
+
+    from sqlalchemy import insert as sa_insert
+
+    bulk_rows = []
+    for ev in events:
+        entity_type = ev["resource_type"]
+        sync_id = ev["sync_id"]
+        action = ev["action"]
+        if action == "delete":
+            payload: dict[str, Any] = {"syncId": sync_id}
+        else:
+            payload = (
+                _serialize_user_global_projection(
+                    db, user_id=actor_user_id,
+                    entity_type=entity_type, sync_id=sync_id,
+                )
+                or ev.get("payload")
+                or {"syncId": sync_id}
+            )
+        for ledger_id in shared_ledger_ids:
+            bulk_rows.append({
+                # ledger-scope 行的 user_id 惯例 = ledger owner(此处即 actor)
+                "user_id": actor_user_id,
+                "ledger_id": ledger_id,
+                "scope": "ledger",
+                "entity_type": entity_type,
+                "entity_sync_id": sync_id,
+                "action": action,
+                "payload_json": payload,
+                "updated_at": now,
+                "updated_by_device_id": device_id,
+                "updated_by_user_id": actor_user_id,
+            })
+    if not bulk_rows:
+        return 0
+    db.execute(sa_insert(SyncChange), bulk_rows)
+    new_max = db.scalar(select(func.max(SyncChange.change_id)))
+    logger.info(
+        "sync.user_global.mirror_fanout user=%s ledgers=%d events=%d rows=%d",
+        actor_user_id, len(shared_ledger_ids), len(events), len(bulk_rows),
+    )
+    return int(new_max or 0)
 
 
 def _diff_user_global_for_shared_resource(
@@ -1649,6 +1840,7 @@ __all__ = [
     'IntegrityError',
     'Session',
     'lock_ledger_for_materialize',
+    'lock_user_global',
     'get_settings',
     'get_db',
     'get_current_user',
@@ -1720,6 +1912,8 @@ __all__ = [
     '_cascade_tx_rows_for_tag',
     '_emit_cascade_tx_changes',
     '_cascade_rows_for_entity',
+    '_serialize_user_global_projection',
+    '_emit_user_global_ledger_mirrors',
     '_commit_write_fast_entity',
     '_load_ledger_for_write',
     '_latest_snapshot_change',

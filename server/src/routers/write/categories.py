@@ -11,7 +11,7 @@ helper / WRITE 响应表。Endpoint 自身只管参数校验 + mutate lambda 的
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
-from sqlalchemy import or_, select as sa_select
+from sqlalchemy import and_, or_, select as sa_select
 
 from ._shared import *  # noqa: F401,F403 — 集中从 _shared 取所有 symbol
 from ...models import ReadTxProjection, UserCategoryProjection
@@ -23,8 +23,12 @@ def _cascade_items_for_category_delete(db, current_user, ledger, category_id: st
     """删除分类前定向点查「本分类 + 子分类家族」的关联交易,喂给快路径做
     mutator 的 tx_count 校验。None = 仍走全量路径(老数据兜底)。
 
-    谓词与 snapshot_mutator.delete_category 完全一致:kind 相同 + name 落在
-    family_names(本分类名 + 同 kind 直接子分类名)。"""
+    谓词(P0-1 契约,2026-09):主谓词按 family 的 **category_sync_id 稳定
+    FK** 匹配(本分类 + 子分类的 sync_id 集合,不按 user_id —— 共享账本
+    tx 投影行的 user_id 是 ledger owner);legacy by-name 分支(kind+name
+    落在 family_names)保留原 user 收窄 —— 名字非稳定 FK,跨用户同名会
+    误伤,且 mutator 的校验循环本身按 kind+name 计数。两个分支取并集,
+    只会把校验集变严不会变松。"""
     cat = db.scalar(
         sa_select(UserCategoryProjection).where(
             UserCategoryProjection.user_id == current_user.id,
@@ -44,16 +48,24 @@ def _cascade_items_for_category_delete(db, current_user, ledger, category_id: st
         )
     ).all()
     family_names = {old_name}
+    family_sync_ids = {category_id}
     for row in children:
         child_name = (row.name or "").strip()
         if child_name:
             family_names.add(child_name)
+        if row.sync_id:
+            family_sync_ids.add(row.sync_id)
     rows = db.scalars(
         sa_select(ReadTxProjection).where(
-            ReadTxProjection.user_id == current_user.id,
             ReadTxProjection.deleted_at.is_(None),
-            ReadTxProjection.category_kind == old_kind,
-            ReadTxProjection.category_name.in_(list(family_names)),
+            or_(
+                ReadTxProjection.category_sync_id.in_(list(family_sync_ids)),
+                and_(
+                    ReadTxProjection.user_id == current_user.id,
+                    ReadTxProjection.category_kind == old_kind,
+                    ReadTxProjection.category_name.in_(list(family_names)),
+                ),
+            ),
         )
     ).all()
     return list(rows)

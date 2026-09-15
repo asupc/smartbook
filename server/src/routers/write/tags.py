@@ -22,9 +22,11 @@ router = APIRouter()
 def _cascade_items_for_tag_delete(db, current_user, tag_id: str):
     """删除标签前定向点查引用交易,喂给快路径:mutator 在这个子集上自动剥离
     tags/tagIds,快路径 detach 分支用它映射行的跨账本 ledger_id。
-    谓词 = tag_sync_ids_json 含该 sync_id(精确)+ tags_csv LIKE 名字粗筛
-    (Python 拆分精确匹配在 mutator 内完成)。返回 None 时走全量路径兜底
-    (tag 行不存在 → mutator 会 KeyError 404,统一从全量路径出)。"""
+    谓词 = tag_sync_ids_json 含该 sync_id(精确,稳定 FK,**不按 user_id**
+    —— P0-1 契约:共享账本 tx 投影行的 user_id 是 ledger owner)+ tags_csv
+    LIKE 名字粗筛(legacy 分支仍按操作者收窄,名字非稳定 FK 跨用户同名会
+    误伤;Python 拆分精确匹配在 mutator 内完成)。返回 None 时走全量路径
+    兜底(tag 行不存在 → mutator 会 KeyError 404,统一从全量路径出)。"""
     tag = db.scalar(
         sa_select(UserTagProjection).where(
             UserTagProjection.user_id == current_user.id,
@@ -38,13 +40,13 @@ def _cascade_items_for_tag_delete(db, current_user, tag_id: str):
     like_name = f"%{old_name}%"
     rows = db.scalars(
         sa_select(ReadTxProjection).where(
-            ReadTxProjection.user_id == current_user.id,
             # 软删(回收站)行不进剥离子集:cascade upsert 会让 mobile 按INSERT
             # 重建已删交易。投影剥离 SQL 仍会清理这些行,restore 时自然干净。
             ReadTxProjection.deleted_at.is_(None),
             or_(
                 ReadTxProjection.tag_sync_ids_json.like(like_id),
                 and_(
+                    ReadTxProjection.user_id == current_user.id,
                     ReadTxProjection.tags_csv.like(like_name),
                     ReadTxProjection.tag_sync_ids_json.is_(None),
                 ),

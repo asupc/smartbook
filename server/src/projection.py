@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from sqlalchemy import delete, func, or_, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
@@ -127,12 +128,18 @@ def _is_sqlite(bind) -> bool:
 
 
 def _upsert(db: Session, model, pk_fields: tuple[str, ...], values: dict) -> None:
-    """通用 upsert:主键撞了就 UPDATE 其他所有列。"""
+    """通用 upsert:主键撞了就 UPDATE 其他所有列。
+
+    S12-①:按 bind 方言选 insert 构造器 —— 之前一律用 SQLite 方言 insert
+    跑在 PG 上,靠两方言 ON CONFLICT 语法恰好兼容才没炸;引入任一方言
+    特性(例如 PG 的 index_where / sqlite 的 OR REPLACE)即断。现在
+    SQLite / PG 各走各的方言 insert,其余方言 fallback 到 merge 风格。
+    """
     bind = db.get_bind()
-    if _is_sqlite(bind) or getattr(bind.dialect, "name", "") == "postgresql":
-        # SQLite / PG 都支持 ON CONFLICT。这里用 sqlite 方言 insert 生成语句,
-        # 实际执行时由 SQLAlchemy 翻译;PG 下走一样的语义。
-        stmt = sqlite_insert(model).values(**values)
+    dialect_name = getattr(bind.dialect, "name", "")
+    if dialect_name in ("sqlite", "postgresql"):
+        insert_ctor = sqlite_insert if dialect_name == "sqlite" else pg_insert
+        stmt = insert_ctor(model).values(**values)
         update_cols = {k: stmt.excluded[k] for k in values.keys() if k not in pk_fields}
         if update_cols:
             stmt = stmt.on_conflict_do_update(
@@ -280,6 +287,12 @@ def upsert_tx(
         # 插入且旧 payload 无字段 → NULL(统计端 COALESCE 回退 amount)。
         "currency_code": _as_str(payload.get("currencyCode")),
         "native_amount": _as_float_or_none(payload.get("nativeAmount")),
+        # P0-5 复活语义(2026-09):upsert 是「此实体存在且内容如此」的声明,
+        # 能通过 LWW 胜出的 upsert 同时清软删标记(与 trash restore 对齐,
+        # 见 SYNC_ARCHITECTURE §4.8)。老语义「不清 deleted_at 但照常广播
+        # upsert」会让 pull 端重建交易而服务端读路径/统计视其不存在(幽灵
+        # 交易)。首次插入时列默认也是 NULL,行为不变。
+        "deleted_at": None,
         "source_change_id": source_change_id,
     }
 
@@ -738,14 +751,19 @@ def rename_cascade_account(
     account_sync_id: str,
     new_name: str | None,
 ) -> None:
-    """account 是 user-global,rename 时刷遍该用户所有 ledger 的 read_tx_projection。"""
-    from sqlalchemy import update
+    """account 是 user-global,rename 时刷遍引用该账户的所有
+    read_tx_projection / read_account_adjustment_projection 行。
 
-    # 一次 UPDATE 用 user_id 圈定范围;不再循环 ledger。
+    P0-1 契约(2026-09):匹配谓词按稳定 FK 列(account_sync_id /
+    from_account_sync_id / to_account_sync_id),**不按 user_id** —— 共享账本
+    里 tx 投影行的 user_id 是 ledger owner,操作者可能是 Editor,按
+    `user_id == 操作者` 过滤会漏掉 owner 名下的行(denorm 永久旧名)。
+    sync_id 是 UUID,跨用户碰撞可忽略;禁止用「ledger ∈ 该用户可访问集合」
+    收窄匹配。user_id 参数仅为签名兼容保留,不参与过滤。
+    """
     db.execute(
         update(ReadTxProjection)
         .where(
-            ReadTxProjection.user_id == user_id,
             ReadTxProjection.account_sync_id == account_sync_id,
         )
         .values(account_name=new_name)
@@ -753,7 +771,6 @@ def rename_cascade_account(
     db.execute(
         update(ReadTxProjection)
         .where(
-            ReadTxProjection.user_id == user_id,
             ReadTxProjection.from_account_sync_id == account_sync_id,
         )
         .values(from_account_name=new_name)
@@ -761,16 +778,15 @@ def rename_cascade_account(
     db.execute(
         update(ReadTxProjection)
         .where(
-            ReadTxProjection.user_id == user_id,
             ReadTxProjection.to_account_sync_id == account_sync_id,
         )
         .values(to_account_name=new_name)
     )
-    # 余额调整记录(0028)的 account_name 冗余列一起刷。
+    # 余额调整记录(0028)的 account_name 冗余列一起刷。同样按 account_sync_id
+    # 稳定 FK 匹配(调整行 user_id = ledger owner,操作者可能是 Editor)。
     db.execute(
         update(ReadAccountAdjustmentProjection)
         .where(
-            ReadAccountAdjustmentProjection.user_id == user_id,
             ReadAccountAdjustmentProjection.account_sync_id == account_sync_id,
         )
         .values(account_name=new_name)
@@ -785,16 +801,16 @@ def rename_cascade_category(
     new_name: str | None,
     new_kind: str | None = None,
 ) -> None:
-    """category 是 user-global,rename 时刷遍该用户所有 ledger 的 read_tx_projection。"""
-    from sqlalchemy import update
-
+    """category 是 user-global,rename 时刷遍引用该分类的所有
+    read_tx_projection 行。谓词同 rename_cascade_account:按
+    category_sync_id 稳定 FK 匹配,不按 user_id(P0-1 契约,详见其 docstring)。
+    user_id 参数仅为签名兼容保留。"""
     values: dict[str, Any] = {"category_name": new_name}
     if new_kind is not None:
         values["category_kind"] = new_kind
     db.execute(
         update(ReadTxProjection)
         .where(
-            ReadTxProjection.user_id == user_id,
             ReadTxProjection.category_sync_id == category_sync_id,
         )
         .values(**values)
@@ -809,9 +825,14 @@ def rename_cascade_tag(
     old_name: str,
     new_name: str,
 ) -> None:
-    """Tag rename 走 tags_csv 字符串替换。tag 是 user-global,刷该用户所有 tx 行。
-    用 Python 做字符串替换比纯 SQL 的 REPLACE 更安全(避免 name 是别的 tag 的
-    substring 时误伤)。
+    """Tag rename 走 tags_csv 字符串替换。tag 是 user-global,刷所有引用该
+    tag 的 tx 行。用 Python 做字符串替换比纯 SQL 的 REPLACE 更安全(避免
+    name 是别的 tag 的 substring 时误伤)。
+
+    P0-1 契约:by-id 分支(tag_sync_ids_json 精确引用,稳定 FK)不按
+    user_id 过滤 —— 共享账本 tx 投影行 user_id=owner,操作者可能是
+    Editor;by-name legacy 分支(无 id 老数据)仍按 user_id 收窄,名字不是
+    稳定 FK,跨用户同名会误伤。
 
     F13:只取 (ledger_id, sync_id, tags_csv) 三列(旧版水化整行 ORM 实体,
     2 万行 = 2 万个全列对象),更新走轻量 Core UPDATE(逐行,SQLite 单连接
@@ -829,12 +850,12 @@ def rename_cascade_tag(
     rows_by_id = db.execute(
         sql_select(ReadTxProjection.ledger_id, ReadTxProjection.sync_id, ReadTxProjection.tags_csv)
         .where(
-            ReadTxProjection.user_id == user_id,
             ReadTxProjection.tag_sync_ids_json.like(like_pat),
         )
     ).all()
     # tags_csv 可能是 "旧标签" 或 "A,旧标签,B" 等逗号分隔形式;
     # 用 LIKE 做粗筛,Python 侧按逗号拆分精确匹配防 substring 误伤。
+    # legacy 分支按 user_id 收窄(见 docstring)。
     like_name = f"%{old_name}%"
     rows_by_name = db.execute(
         sql_select(ReadTxProjection.ledger_id, ReadTxProjection.sync_id, ReadTxProjection.tags_csv)
@@ -875,9 +896,11 @@ def detach_cascade_tag(
     tags_csv 移除该名(两维度独立,与 snapshot_mutator._strip_tag_from_tx 同构,
     容忍名字/id 不同步的脏数据)。
 
-    谓词与 rename_cascade_tag / web 写路径 cascade 点查同源:
-      1) tag_sync_ids_json 精确引用该 sync_id (mobile/web 完整数据)
-      2) tags_csv 包含旧名但没有 tag_sync_ids_json (legacy/不完整数据)
+    谓词与 rename_cascade_tag / web 写路径 cascade 点查同源(P0-1 契约):
+      1) tag_sync_ids_json 精确引用该 sync_id (mobile/web 完整数据,不按
+         user_id 过滤 —— 共享账本 tx 投影行 user_id=owner)
+      2) tags_csv 包含旧名但没有 tag_sync_ids_json (legacy/不完整数据,
+         仍按 user_id 收窄 —— 名字不是稳定 FK,跨用户同名会误伤)
     只做投影 UPDATE,不发 SyncChange —— cascade 事件由调用方定向补发
     (web 快路径)或由 tag:delete 事件在客户端级联(mobile push 路径)。
     """
@@ -890,6 +913,7 @@ def detach_cascade_tag(
     if tag_name:
         predicates.append(
             and_(
+                ReadTxProjection.user_id == user_id,
                 ReadTxProjection.tags_csv.like(f"%{tag_name}%"),
                 ReadTxProjection.tag_sync_ids_json.is_(None),
             )
@@ -901,7 +925,6 @@ def detach_cascade_tag(
             ReadTxProjection.tags_csv,
             ReadTxProjection.tag_sync_ids_json,
         ).where(
-            ReadTxProjection.user_id == user_id,
             or_(*predicates),
         )
     ).all()
@@ -930,6 +953,59 @@ def detach_cascade_tag(
                 )
                 .values(tags_csv=new_csv, tag_sync_ids_json=new_ids_json)
             )
+
+
+# --------------------------------------------------------------------------- #
+# Cascade 点查:user-global 实体改名/删除时受影响的活跃 tx 行                    #
+# --------------------------------------------------------------------------- #
+# P0-1 契约(2026-09):谓词按稳定 FK 列(sync_id)匹配,**不按 user_id** ——
+# 共享账本 tx 投影行的 user_id 是 ledger owner,操作者可能是 Editor,按
+# `user_id == 操作者` 过滤会漏掉 owner 名下的行。web 快路径的点查
+# (write/_shared._cascade_tx_rows_for_*)与 sync push 的 cascade 事件补发
+# 共用这三个函数,保证谓词单点收敛。软删(回收站)行一律不返回 —— 对其
+# 补发 cascade upsert 会让 mobile 端按 INSERT 重建已删交易。
+
+def cascade_tx_rows_for_account(
+    db: Session, *, account_sync_id: str,
+) -> list[ReadTxProjection]:
+    """引用该账户的活跃 tx 行(account/from/to 三个 FK 列任一命中)。"""
+    return list(db.scalars(
+        select(ReadTxProjection).where(
+            ReadTxProjection.deleted_at.is_(None),
+            or_(
+                ReadTxProjection.account_sync_id == account_sync_id,
+                ReadTxProjection.from_account_sync_id == account_sync_id,
+                ReadTxProjection.to_account_sync_id == account_sync_id,
+            ),
+        )
+    ))
+
+
+def cascade_tx_rows_for_category(
+    db: Session, *, category_sync_id: str,
+) -> list[ReadTxProjection]:
+    """引用该分类的活跃 tx 行(按 category_sync_id 精确匹配)。"""
+    return list(db.scalars(
+        select(ReadTxProjection).where(
+            ReadTxProjection.deleted_at.is_(None),
+            ReadTxProjection.category_sync_id == category_sync_id,
+        )
+    ))
+
+
+def cascade_tx_rows_for_tag(
+    db: Session, *, tag_sync_id: str,
+) -> list[ReadTxProjection]:
+    """引用该标签的活跃 tx 行:tag_sync_ids_json 含该 sync_id(与
+    rename_cascade_tag / detach_cascade_tag 的 by-id 集合一致)。legacy
+    by-name 老数据不在本点查范围(名字非稳定 FK,由全量路径兜底)。"""
+    like_pat = f'%"{tag_sync_id}"%'
+    return list(db.scalars(
+        select(ReadTxProjection).where(
+            ReadTxProjection.deleted_at.is_(None),
+            ReadTxProjection.tag_sync_ids_json.like(like_pat),
+        )
+    ))
 
 
 # --------------------------------------------------------------------------- #
@@ -1103,23 +1179,33 @@ def _extract_tx_cloud_file_ids(attachments_json: str | None) -> set[str]:
 
 
 def _batch_referenced_file_ids(
-    db: Session, *, user_id: str | None = None, ledger_id: str | None = None,
+    db: Session, *, ledger_id: str | None = None,
     candidates: set[str],
 ) -> set[str]:
-    """F14:一次拉取范围(user 或 ledger)内所有非空 attachments_json,Python
-    侧一次性匹配 candidates 里仍被引用的 fileId。替代逐 fileId 的 LIKE 全表
-    扫(删一笔带 3 附件的 tx = 3 次全表扫)。categories 表的 icon 引用一并查。
+    """F14:一次拉取所有 attachments_json 提到 candidates 的 tx 行,Python 侧
+    一次性精确匹配仍被引用的 fileId;categories 表的 icon 引用一并查。
 
-    行数 = 范围内带附件的 tx 行(远小于全表),LIKE 由 SQL 粗筛到
-    attachments_json IS NOT NULL 后整列带回。
+    P0-1(2026-09):引用匹配按 **fileId 全局精确匹配**,不再按 user_id 收窄
+    —— fileId 是全局唯一稳定键,精确匹配没有跨用户误报;而按操作者 user_id
+    收窄会漏扫共享账本场景下 owner 名下的投影行(Editor 触发 GC 时误判孤儿
+    → 删掉 owner 行仍在引用的活附件)。单人场景结果不变(本就只有自己的行)。
+
+    ledger_id 仅用于 ledger 变体([gc_orphan_attachments_for_ledger]),按
+    ledger 隔离是那份契约(test_ledger_gc_does_not_cross_ledger_boundary),
+    与 user 域路径互不影响。
+
+    tx 扫描带 candidates 子串 LIKE 粗筛(引用必须包含 id 字符串才是真子集),
+    避免全局化后整列水化;Python 侧 [_extract_tx_cloud_file_ids] 复核。
     """
     if not candidates:
         return set()
     stmt = select(ReadTxProjection.attachments_json).where(
         ReadTxProjection.attachments_json.isnot(None),
+        or_(*[
+            ReadTxProjection.attachments_json.like(f"%{fid}%")
+            for fid in candidates
+        ]),
     )
-    if user_id is not None:
-        stmt = stmt.where(ReadTxProjection.user_id == user_id)
     if ledger_id is not None:
         stmt = stmt.where(ReadTxProjection.ledger_id == ledger_id)
     referenced: set[str] = set()
@@ -1128,11 +1214,11 @@ def _batch_referenced_file_ids(
     hit = referenced & candidates
     # category icon 引用(等值列,IN 点查)。必须对全量 candidates 查 —— 只被
     # category 引用、不被任何 tx 引用的 fileId 也算"仍被引用"(GC 保留)。
+    # 同样不按 user_id 收窄(P0-1):Editor 镜像 category 可能引用 owner 上传
+    # 的图标 fileId,反之亦然。
     cat_stmt = select(UserCategoryProjection.icon_cloud_file_id).where(
         UserCategoryProjection.icon_cloud_file_id.in_(list(candidates)),
     )
-    if user_id is not None:
-        cat_stmt = cat_stmt.where(UserCategoryProjection.user_id == user_id)
     for (fid,) in db.execute(cat_stmt):
         if fid:
             hit.add(fid.strip())
@@ -1140,16 +1226,20 @@ def _batch_referenced_file_ids(
 
 
 def _fileid_still_referenced(db: Session, *, user_id: str, file_id: str) -> bool:
-    """某个 AttachmentFile 在该用户的 projection 里还有引用吗?
+    """某个 AttachmentFile 还有任何 projection 行引用吗?
 
     扫:
-      - read_tx_projection.attachments_json LIKE '%"cloudFileId":"<id>"%' (JSON
-        字段名是 cloudFileId)。两种空格变体都 match,防备 client / server 序列
-        化习惯差异。tx 是 ledger-scoped,但带 user_id denorm 列。
-      - user_category_projection.icon_cloud_file_id = <id>(per-user 表)
+      - read_tx_projection.attachments_json 里 cloudFileId == file_id 的行
+        (JSON 字段名是 cloudFileId;Python 精确匹配容忍序列化空格差异)
+      - user_category_projection.icon_cloud_file_id = file_id
+
+    P0-1:匹配按 fileId 全局精确匹配,**不按 user_id 收窄** —— 共享账本里
+    Editor 触发的 GC / 孤儿扫描不能漏掉 owner 名下的引用行(user_id 参数仅为
+    调用方签名兼容保留,scanner 等外部调用方不改)。单人场景行为不变。
     """
+    _ = user_id  # 不参与匹配,见 docstring
     return file_id in _batch_referenced_file_ids(
-        db, user_id=user_id, candidates={file_id},
+        db, candidates={file_id},
     )
 
 
@@ -1245,16 +1335,20 @@ def gc_orphan_attachments(
     user_id: str,
     file_ids: Iterable[str | None],
 ) -> int:
-    """对给定 fileId 集合,若该用户 projection 里无任何引用 → 删 AttachmentFile
-    行 + unlink 物理文件。返回实际清掉的条数(日志/测试用)。
+    """对给定 fileId 集合,若**任何** projection 行都无引用 → 删该用户名下的
+    AttachmentFile 行 + unlink 物理文件。返回实际清掉的条数(日志/测试用)。
 
     **调用契约**:必须在目标 tx/category 的 projection 行**已经删掉**之后调用。
     否则会把正在用的 blob 误删。事务边界由调用方管(两个修改应在同一事务 commit)。
 
-    Scope 到单 user:AttachmentFile 自身带 user_id,引用检查也限到同 user
-    (跨 ledger 的 tx 都看,因为 tx 用 user_id denorm 列;category 是 per-user)。
-    比老版本"按 ledger_id 过滤"更准:category_icon 的 AttachmentFile.ledger_id
-    本来就是 NULL,老版本 GC 永远 miss 这类附件 —— 本次顺手修复。
+    两层 scope(P0-1 后):
+      - **引用检查全局**:按 fileId 精确匹配扫所有用户的 tx attachments_json
+        + category icon(id 全局唯一,精确匹配无跨用户误报)。旧版本按
+        `user_id == 操作者` 收窄,共享账本场景 Editor 触发 GC 时漏扫 owner
+        名下的投影行 → 误删活附件;单人场景结果不变。
+      - **DELETE 仍限到该 user 的 AttachmentFile 行**(AttachmentFile 自身带
+        user_id;跨 ledger 的行都看)。别人的孤儿行由其自己的写路径 / cleaner
+        清,避免越权删除。
 
     物理文件 unlink 失败只 warn 不抛 —— DB 行已删是事实,磁盘残留可后续清理
     脚本补扫。
@@ -1267,7 +1361,7 @@ def gc_orphan_attachments(
             if t:
                 seen.add(t)
     # F14:一次批查引用集(替代逐 fileId 全表扫),循环里只做点查 + 删除。
-    referenced = _batch_referenced_file_ids(db, user_id=user_id, candidates=seen)
+    referenced = _batch_referenced_file_ids(db, candidates=seen)
 
     for file_id in seen:
         if file_id in referenced:

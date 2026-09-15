@@ -32,8 +32,9 @@ account / category / tag 是 user-global 实体,name 变了之后 ReadTxProjecti
 里的冗余列(account_name / category_name / tags_csv)要一起刷。detect 写在
 ``apply_user_change_to_projection`` 里(不在 merge 里),因为它必须在 upsert
 当前实体 *之前* 跑 —— cascade 用的是 SQL 单条 UPDATE 匹配**旧名**,upsert
-之后旧名就丢了。范围是该用户的所有 ledger(单条 SQL WHERE user_id=X,不再
-循环 ledger)。
+之后旧名就丢了。范围是引用该实体的所有 tx 投影行(按 sync_id 稳定 FK 匹配,
+不按 user_id —— 共享账本 tx 投影行的 user_id 是 ledger owner,见 P0-1 契约
+in SYNC_ARCHITECTURE.md §4.4)。
 """
 
 from __future__ import annotations
@@ -423,12 +424,16 @@ def _delete_user_account(db: Session, user_id: str, sync_id: str) -> None:
     留下悬挂的 account_sync_id —— 净资产回放按 `acc in bal` 静默跳过这些
     交易,与 /summary 口径分裂,且账户列表分桶里这些交易随桶一起消失。
 
+    P0-1 契约(2026-09):引用检查按 account/from/to 三个 **sync_id 稳定
+    FK 列**匹配,不按 `ReadTxProjection.user_id == 操作者` —— 共享账本里
+    Editor push 的 tx 投影行 user_id=ledger owner,按操作者过滤会误判为
+    无引用而放行,留下 owner 名下的悬挂外键。
+
     拒绝 = 抛 ValueError → push 端 savepoint 隔离记 failed_samples,App 端
     提示「该账户仍有交易」;用户先迁/删交易后重推即成功。
     """
     linked = db.scalar(
         select(ReadTxProjection.sync_id).where(
-            ReadTxProjection.user_id == user_id,
             ReadTxProjection.deleted_at.is_(None),
             or_(
                 ReadTxProjection.account_sync_id == sync_id,

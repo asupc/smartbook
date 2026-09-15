@@ -247,11 +247,26 @@ tx 列表的账户名永远是旧的。
 
 - **/sync/push 路径**:`sync_applier._detect_and_run_rename_cascade` 在
   upsert *之前* 跑(upsert 之后 projection 里就只有新名,没法按旧名 match)。
+  跑完之后 push 端还会按 sync_id 点查受影响 tx 行,**补发 cascade-only
+  SyncChange**(与 web 快路径同语义,见下),落后设备(含共享账本 owner)
+  pull 后刷新本地 denorm 列。
 - **/write/* 路径**:`write/_shared.py::_diff_entity_list` + `_collect_renames`
   处理。更进一步的优化是 `_tx_diff_only_cascade`:当 tx 的 diff 只在
   cascade 字段上(账户/分类改名触发的 denorm 更新),绕开 per-row projection
   upsert,改成一条 SQL UPDATE + 一条 SyncChange bulk insert,10k tx 的
   rename 从 10k 次 ON CONFLICT 降到 1 条 UPDATE。
+- **匹配谓词按 sync_id,不按 user_id**(2026-09 P0-1 契约):user-global
+  实体(account / category / tag)对 `read_tx_projection` 的 rename cascade、
+  删除前引用校验、cascade 事件补发点查,一律按**稳定 FK 列**匹配 ——
+  账户 `account_sync_id / from_account_sync_id / to_account_sync_id`,
+  分类 `category_sync_id`,标签 `tag_sync_ids_json`。共享账本里 tx 投影行的
+  `user_id` 是 **ledger owner** 而操作者可能是 Editor,按 `user_id == 操作者`
+  过滤会漏掉 owner 名下的行(denorm 永久旧名 / 悬挂外键)。sync_id 是 UUID,
+  跨用户碰撞可忽略;**禁止**用「ledger ∈ 该用户可访问集合」收窄匹配 ——
+  会重新引入作用域错配。谓词统一收敛在 `projection.rename_cascade_*` /
+  `projection.cascade_tx_rows_for_*` / `sync_applier._delete_user_account`。
+  例外:legacy by-name 回退分支(tag 的 `tags_csv` 名字匹配、账户/分类无
+  id 老数据)仍按操作者 user 收窄 —— 名字不是稳定 FK,跨用户同名会误伤。
 
 ### 4.5 增量 push 的字段 merge
 
@@ -286,12 +301,101 @@ existing 补回的旧 `nativeAmount` 会与新 amount 失配 → 后处理按该
 
 **不要手工 update change_id** 或改成非 autoincrement 的逻辑。
 
-### 4.7 lock_ledger_for_materialize
+### 4.7 lock_ledger_for_materialize / lock_user_global
 
-`/sync/push` 和 `/write/*` 应用 projection 之前都调这个 SQLite advisory lock
-按账本加锁,避免两个并发 push 同账本的 rename cascade 交错。
+`/sync/push` 和 `/write/*` 应用 projection 之前都加事务级 advisory lock,
+避免两个并发 push 同账本的 rename cascade 交错。
 
-锁粒度是 ledger,不阻塞跨账本并发写。
+- `lock_ledger_for_materialize(db, ledger_id)`:按账本加锁,粒度是 ledger,
+  不阻塞跨账本并发写。
+- `lock_user_global(db, user_id)`:按用户加锁,key `user_global:{user_id}`,
+  守护 user-global 实体(账户/分类/标签)的 rename cascade(SQL UPDATE 刷
+  tx 投影 denorm 列)与并发 tx upsert 写同一批行的竞态。
+
+**锁顺序契约:user → ledger**。push 的 user-scope 分支(批内含 user-global
+变更时,在循环前先取 caller 的 user 锁);push 的 ledger-scope 分支与 web
+写路径(`write/_shared.py` 两个 commit 入口)在取 ledger 锁之前先取 owner
+(`ledger.user_id`)的 user 锁。任何路径都不得先持 ledger 锁再取 user 锁 ——
+固定顺序防死锁。
+
+实现:PostgreSQL 下是 `pg_advisory_xact_lock`(事务提交/回滚自动释放);
+SQLite(dev/test)下是 **no-op** —— SQLite 本身按文件级串行化写,测试只
+验证确定性语义,不验证锁本身。
+
+### 4.8 软删 × LWW 交叉语义(复活语义)
+
+0030 软删(delete 事件只写 `deleted_at`,不删行)与 §4.2 LWW 在同一实体上
+交叉时,裁决规则:**LWW 最新者胜,胜出的 upsert 同时清 `deleted_at`**
+(「复活语义」,与回收站 restore 对齐)。
+
+- 设备 A push delete、设备 B 离线编辑后 push 更晚 `updated_at` 的 upsert →
+  upsert 通过 LWW 胜出,`projection.upsert_tx` 的 ON CONFLICT SET 列里带
+  `deleted_at=None` → 交易复活且内容为 B 的版本,三端一致(服务端
+  `/read/*`、统计、`/sync/full` 与 pull 重放同轨)。
+- B 的 upsert 早于 delete 的 `updated_at` → LWW 在 push 层直接拒绝
+  (`sync.push.conflict`),行保持软删,upsert 不入事件流也不广播。
+- upsert 是客户端「此实体存在且内容如此」的声明,能通过 LWW 的 upsert
+  就该清软删标记。**禁止**回到「不清 `deleted_at` 但照常广播 upsert」的
+  自相矛盾状态 —— 那会让 pull 端按 upsert 重建交易,而服务端读路径 /
+  统计视其不存在(幽灵交易)。
+
+`sync_applier` 的 upsert 分支无需感知 delete 状态:LWW 已在 push 层按
+(entity_type, entity_sync_id) 的最新 change(**不过滤 action**,delete 的
+updated_at 参与同一比较)裁决完毕,apply 只忠实落盘胜出者。回收站
+restore(`read/trash.py`)是同语义的显式入口:清 `deleted_at` + 补发一条
+upsert SyncChange。
+
+### 4.9 user-global 变更的 ledger-scope 镜像(2026-09 P1-B2)
+
+owner 的 user-global 实体(account/category/tag)变更写的是 `scope='user'`
+的 SyncChange 行,而 `/sync/pull` 对 user-scope 行按 `user_id == caller`
+过滤 —— **Editor 永远拉不到 owner 的这类事件**。历史上只靠 WS
+`shared_resource_change` 推送补救:Editor 掉线即永久分叉,30s polling
+fallback 对该通道完全失效。
+
+契约(P1-B2 起):
+
+- owner 的 user-global 变更(category/account/tag 三种)且其作为 owner 的
+  账本有其它成员(`LedgerMember` count > 1)时,服务端**同步派生
+  ledger-scope 镜像 SyncChange**:同实体类型 / 同 sync_id / 同 action,
+  `scope='ledger'`、`ledger_id=共享账本 id`、`user_id=ledger owner`。
+  Editor 的常规 `/sync/pull` 天然拉得到;WS 退化为加速通道。
+- **payload 是 apply 后的投影状态**(`User{Account,Category,Tag}Projection`
+  行序列化成 camelCase,与 mobile/web serializer 同形),不是客户端可能
+  缺键的 partial payload。只含 Editor 本可见的投影 denorm 内容,隐私边界
+  不变。delete 事件 payload 只带 `syncId`。
+- 镜像必须与 owner 的 user-scope 原事件**同事务**写入(push 批内事务 /
+  `_commit_write*` 的 `_core` 事务)。落点:web 写路径
+  `write/_shared._emit_user_global_ledger_mirrors`(两个 commit 入口都接了),
+  push 路径在批循环后、`db.commit()` 前调用。
+- **不重复发 tx cascade 事件**:rename 触发的 cascade-only tx SyncChange 由
+  P0 波机制单独负责(`_emit_cascade_tx_changes` / push 的
+  `_emit_user_global_cascade_tx_changes`),镜像只覆盖 user-global 实体自身
+  的 ledger 可见性。
+- 单人账本(无其它 member)不产生镜像 —— 与 WS fan-out 的共享账本判定
+  同口径。
+- Editor 自己 push 的 user-global 变更不产生镜像(镜像只派发给 actor
+  作为 owner 的共享账本;Editor 通常没有自己的成员)。
+
+### 4.10 push 的首绑 auto-create 与「被移除成员」拒绝(2026-09 P1-E1)
+
+ledger-scoped change 推到 caller 不可访问的 external_id 时,push 端的
+裁决顺序:
+
+1. **caller 曾是该账本成员但已被移除 / 账本已被删** → 显式拒绝
+   (`rejected++` + `failed_samples` 带 `reason=membership_revoked`)。
+   成员历史证据(满足其一即成立):`LedgerInvite.used_by == caller`
+   (接受过该账本邀请;被移除/删账本后邀请使用记录保留)或该账本上存在
+   `SyncChange.updated_by_user_id == caller`(曾推过变更)。**绝不落入
+   auto-create** —— 否则以 owner 的 external_id 在 caller 名下静默重建
+   私有账本,数据分裂。
+2. **首绑判定按不可变事实**:该 device 是否推送过任何 SyncChange
+   (`updated_by_device_id == device` 的存在性)。"首推" 放行 auto-create
+   (换机 / 迁移导入)。`device.last_seen_at` 不参与判定 —— 请求开头就赋值
+   且建行即有 default,恒非 None(旧判据是死代码)。
+3. 非首推且用户名下 ≥2 个账本时推未知 external_id → ghost guard 拒绝
+   (`reason=unknown_ledger`),让客户端走 fullPush/重新绑定;名下 ≤1 的
+   迁移期仍放行。
 
 ---
 
@@ -308,7 +412,10 @@ commit 完事之后,在 HTTP handler 里 explicitly 调 `websocket_manager.broad
 - Web: `SyncSocketContext` → `useSyncRefresh` 调各 Page 的 refetch
 
 如果 WS 掉线没收到事件,还有 polling fallback(mobile 的 `startPoller` +
-web 的 `SyncSocketProvider` 里的 poller)每 30s 主动拉一次补漏。
+web 的 `SyncSocketProvider` 里的 poller)每 30s 主动拉一次补漏。owner 的
+user-global 变更自 2026-09 P1-B2 起同样被 polling 覆盖 —— 成员靠 §4.9 的
+ledger-scope 镜像事件走常规 pull 补拉,WS 只是加速通道(旧版只有 WS 一条
+路,掉线即永久分叉)。
 
 ---
 
