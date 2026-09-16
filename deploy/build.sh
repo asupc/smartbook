@@ -274,10 +274,10 @@ SRC_ARMV7="$BUILD_APK_DIR/app-armeabi-v7a-$FLAVOR-release.apk"
 SRC_X86="$BUILD_APK_DIR/app-x86_64-$FLAVOR-release.apk"
 
 case "$ARCH" in
-  universal) copy_apk "$SRC_UNIVERSAL" "$DEPLOY_DIR/smartbook-$FLAVOR-${TAG}.apk" ;;
-  arm64)     copy_apk "$SRC_ARM64"     "$DEPLOY_DIR/smartbook-$FLAVOR-arm64-${TAG}.apk" ;;
-  armv7)     copy_apk "$SRC_ARMV7"     "$DEPLOY_DIR/smartbook-$FLAVOR-armv7-${TAG}.apk" ;;
-  x86_64)    copy_apk "$SRC_X86"       "$DEPLOY_DIR/smartbook-$FLAVOR-x86_64-${TAG}.apk" ;;
+  universal) DST_APK="$DEPLOY_DIR/smartbook-$FLAVOR-${TAG}.apk";      copy_apk "$SRC_UNIVERSAL" "$DST_APK" ;;
+  arm64)     DST_APK="$DEPLOY_DIR/smartbook-$FLAVOR-arm64-${TAG}.apk"; copy_apk "$SRC_ARM64" "$DST_APK" ;;
+  armv7)     DST_APK="$DEPLOY_DIR/smartbook-$FLAVOR-armv7-${TAG}.apk"; copy_apk "$SRC_ARMV7" "$DST_APK" ;;
+  x86_64)    DST_APK="$DEPLOY_DIR/smartbook-$FLAVOR-x86_64-${TAG}.apk"; copy_apk "$SRC_X86" "$DST_APK" ;;
 esac
 
 if (( WITH_AAB )); then
@@ -304,4 +304,6 @@ echo " arch      : $ARCH"
 echo " tag       : $TAG"
 echo " Git commit: $GIT_COMMIT"
 echo "=========================================================="
-echo " 若需安装到设备：adb install -r \"$DEPLOY_DIR/smartbook-$FLAVOR-${TAG}.apk\""
+if [[ -n "${DST_APK:-}" ]]; then
+  echo " 若需安装到设备：adb install -r \"$DST_APK\""
+fi
