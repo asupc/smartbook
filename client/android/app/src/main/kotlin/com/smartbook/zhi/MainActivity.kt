@@ -63,14 +63,14 @@ class MainActivity: FlutterFragmentActivity() {
      * 仍销毁了 host-provided engine,需回退本方法)。
      */
     override fun provideFlutterEngine(context: Context): FlutterEngine? {
-        val cache = FlutterEngineCache.getInstance(context)
+        val cache = FlutterEngineCache.getInstance()
         cache.get(ENGINE_ID)?.let { return it }
         val engine = FlutterEngine(context)
         // 双保险:引擎已在执行 Dart(异常时序下的二次 provide)不再重复执行
         // 入口点(executeDartEntrypoint 对同一引擎只能调一次)。
         if (!engine.dartExecutor.isExecutingDart) {
             engine.dartExecutor.executeDartEntrypoint(
-                DartExecutor.DartEntrypoint.create("main")
+                DartExecutor.DartEntrypoint.createDefault()
             )
         }
         cache.put(ENGINE_ID, engine)
@@ -82,7 +82,7 @@ class MainActivity: FlutterFragmentActivity() {
      * 销毁(默认实现仅对 Activity 自建的引擎销毁;显式返回 false 双保险,
      * 防止不同 embedding 版本语义漂移)。
      */
-    override fun shouldDestroyEngineWithActivity(): Boolean = false
+    override fun shouldDestroyEngineWithHost(): Boolean = false
 
     private var screenshotObserver: ScreenshotObserver? = null
 

@@ -810,7 +810,7 @@ class SyncEngine implements app.SyncService {
     // C11(2026-09-15):序列化为 null(实体已被本地删除)时返回 null,由
     // _pushChangeGroups 跳过该行 + 告警,不再发空 {} upsert。
     Future<Map<String, dynamic>?> buildSyncChange(LocalChange change) async {
-      Map<String, dynamic> payload;
+      Map<String, dynamic>? payload;
       if (change.action == 'delete') {
         payload = <String, dynamic>{};
       } else {

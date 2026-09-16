@@ -1363,7 +1363,7 @@ class AutoBillingService {
       logger.debug('AutoBilling', '通知内容指纹曾处理过,降级交语义判重', fingerprint);
     }
 
-    const notificationId = 1004;
+    const progressNotificationId = 1004;
     const resultNotificationId = 1104;
     final l10n = lookupAppLocalizations(PlatformDispatcher.instance.locale);
 
@@ -1374,7 +1374,7 @@ class AutoBillingService {
         logger.warning('AutoBilling', 'AI text 未配置,通知保留待补记');
         if (showNotification) {
           await _showNotification(
-            id: notificationId,
+            id: progressNotificationId,
             title: l10n.aiNotConfiguredNotificationTitle,
             body: l10n.aiNotConfiguredNotificationBody,
           );
@@ -1384,7 +1384,7 @@ class AutoBillingService {
 
       if (showNotification) {
         await _showNotification(
-          id: notificationId,
+          id: progressNotificationId,
           title: l10n.autoNotifyBillingRecognizingTitle,
           body: l10n.autoNotifyBillingAnalyzingBody,
         );
@@ -1394,7 +1394,7 @@ class AutoBillingService {
       if (ledgerId == null) {
         if (showNotification) {
           await _showFinalNotification(
-            progressId: notificationId,
+            progressId: progressNotificationId,
             finalId: resultNotificationId,
             title: l10n.autoBillingNotifyNoLedgerTitle,
             body: l10n.autoBillingNotifyNoLedgerBody,
@@ -1441,7 +1441,7 @@ class AutoBillingService {
         logger.info('AutoBilling', '通知非交易,已丢弃');
         if (showNotification) {
           await _showFinalNotification(
-            progressId: notificationId,
+            progressId: progressNotificationId,
             finalId: resultNotificationId,
             title: l10n.autoBillingNotifyNoBillTitle,
             body: l10n.autoBillingNotifyNoBillBody,
@@ -1461,7 +1461,7 @@ class AutoBillingService {
         }
         if (showNotification) {
           await _showFinalNotification(
-            progressId: notificationId,
+            progressId: progressNotificationId,
             finalId: resultNotificationId,
             title: l10n.autoBillingNotifyRecognizeFailedTitle,
             body: l10n.autoBillingNotifyRecognizeFailedBody,
@@ -1486,7 +1486,7 @@ class AutoBillingService {
       await _markNotifyProcessed(fingerprint);
       if (showNotification) {
         await _showFinalNotification(
-          progressId: notificationId,
+          progressId: progressNotificationId,
           finalId: resultNotificationId,
           title: _successTitle(result, l10n),
           body: _successBody(result, l10n),
@@ -1505,7 +1505,7 @@ class AutoBillingService {
       }
       if (showNotification) {
         await _showFinalNotification(
-          progressId: notificationId,
+          progressId: progressNotificationId,
           finalId: resultNotificationId,
           title: l10n.autoBillingNotifyProcessFailedTitle,
           body: l10n.autoBillingNotifyProcessFailedBody(e.toString()),
