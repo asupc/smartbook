@@ -388,3 +388,153 @@ def test_vision_capability_with_empty_model_returns_missing_fields():
         assert body["error_code"] == "AI_TEST_MISSING_FIELDS"
     finally:
         app.dependency_overrides.clear()
+
+
+# ──────────────────── 掩码/空 key 合并存储真 key(编辑表单回填场景) ────────────────────
+
+
+def _save_provider_via_crud(client: TestClient, token: str, provider_id: str) -> None:
+    r = client.post(
+        "/api/v1/ai/providers",
+        json={
+            "id": provider_id,
+            "name": "Zhipu",
+            "apiKey": "sk-real-key-123",
+            "baseUrl": "https://example.com/v1",
+            "textModel": "glm-4-flash",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 201, r.text
+
+
+def test_masked_api_key_uses_stored_key():
+    """编辑表单从 GET /providers 掩码视图回填 `****-123` 直接点测试 →
+    上游应收到存储的真 key,而不是掩码串当 Bearer(401 INVALID_API_KEY)。"""
+    captured: list[str | None] = []
+
+    async def fake_post(self, url, headers=None, json=None, **_):
+        captured.append((headers or {}).get("Authorization"))
+        return httpx.Response(
+            200, json={"choices": [{"message": {"content": "ok"}}]},
+        )
+
+    client = _make_client()
+    try:
+        token = _register_and_login(client, "tp9@test.com")
+        _save_provider_via_crud(client, token, "prov_mask")
+        with patch("httpx.AsyncClient.post", fake_post):
+            r = client.post(
+                "/api/v1/ai/test-provider",
+                json={
+                    "provider": {
+                        "id": "prov_mask",
+                        "name": "Zhipu",
+                        "apiKey": "****-123",  # mask_api_key 的真实输出格式
+                        "baseUrl": "https://example.com/v1",
+                        "textModel": "glm-4-flash",
+                    },
+                    "capability": "text",
+                },
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        body = r.json()
+        assert body["success"] is True, body
+        assert captured == ["Bearer sk-real-key-123"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_empty_api_key_with_stored_provider_uses_stored_key():
+    """key 留空(编辑场景「保持已存 key」) → 同样用存储的真 key 测试。"""
+    captured: list[str | None] = []
+
+    async def fake_post(self, url, headers=None, json=None, **_):
+        captured.append((headers or {}).get("Authorization"))
+        return httpx.Response(
+            200, json={"choices": [{"message": {"content": "ok"}}]},
+        )
+
+    client = _make_client()
+    try:
+        token = _register_and_login(client, "tp10@test.com")
+        _save_provider_via_crud(client, token, "prov_empty")
+        with patch("httpx.AsyncClient.post", fake_post):
+            r = client.post(
+                "/api/v1/ai/test-provider",
+                json={
+                    "provider": {
+                        "id": "prov_empty",
+                        "apiKey": "",
+                        "baseUrl": "https://example.com/v1",
+                        "textModel": "glm-4-flash",
+                    },
+                    "capability": "text",
+                },
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        body = r.json()
+        assert body["success"] is True, body
+        assert captured == ["Bearer sk-real-key-123"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_empty_api_key_unknown_id_keeps_missing_fields():
+    """空 key + 不存在的 id(新建 draft 未填 key)→ 维持 MISSING_FIELDS,不查库兜底。"""
+    client = _make_client()
+    try:
+        token = _register_and_login(client, "tp11@test.com")
+        r = client.post(
+            "/api/v1/ai/test-provider",
+            json={
+                "provider": {
+                    "id": "draft",
+                    "apiKey": "",
+                    "baseUrl": "https://example.com/v1",
+                    "textModel": "glm-4-flash",
+                },
+                "capability": "text",
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        body = r.json()
+        assert body["success"] is False
+        assert body["error_code"] == "AI_TEST_MISSING_FIELDS"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_real_api_key_takes_precedence_over_stored():
+    """新填的真 key 优先于存储值(先测再存语义不变)。"""
+    captured: list[str | None] = []
+
+    async def fake_post(self, url, headers=None, json=None, **_):
+        captured.append((headers or {}).get("Authorization"))
+        return httpx.Response(
+            200, json={"choices": [{"message": {"content": "ok"}}]},
+        )
+
+    client = _make_client()
+    try:
+        token = _register_and_login(client, "tp12@test.com")
+        _save_provider_via_crud(client, token, "prov_new")
+        with patch("httpx.AsyncClient.post", fake_post):
+            r = client.post(
+                "/api/v1/ai/test-provider",
+                json={
+                    "provider": {
+                        "id": "prov_new",
+                        "apiKey": "sk-rotated-999",
+                        "baseUrl": "https://example.com/v1",
+                        "textModel": "glm-4-flash",
+                    },
+                    "capability": "text",
+                },
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        body = r.json()
+        assert body["success"] is True, body
+        assert captured == ["Bearer sk-rotated-999"]
+    finally:
+        app.dependency_overrides.clear()

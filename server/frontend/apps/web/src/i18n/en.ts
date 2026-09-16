@@ -951,6 +951,7 @@ const en = {
   'ai.providers.title': 'Providers',
   'ai.providers.badge.builtin': 'Built-in',
   'ai.providers.field.apiKey': 'API Key',
+  'ai.providers.field.apiKey.keep': 'Stored securely — leave empty to keep, type to replace',
   'ai.providers.field.baseUrl': 'Base URL',
   'ai.providers.field.protocol': 'API protocol',
   'ai.providers.field.protocol.openai': 'OpenAI compatible (/chat/completions)',

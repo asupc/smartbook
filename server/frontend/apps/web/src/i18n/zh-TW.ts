@@ -951,6 +951,7 @@ const zhTW = {
   'ai.providers.title': '服務商',
   'ai.providers.badge.builtin': '內建',
   'ai.providers.field.apiKey': 'API Key',
+  'ai.providers.field.apiKey.keep': '已安全儲存 — 留空保持不變,輸入新值可更換',
   'ai.providers.field.baseUrl': 'Base URL',
   'ai.providers.field.protocol': '介面協定',
   'ai.providers.field.protocol.openai': 'OpenAI 相容(/chat/completions)',

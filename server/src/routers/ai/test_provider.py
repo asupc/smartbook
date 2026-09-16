@@ -19,11 +19,19 @@ from typing import Literal
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from ...config import get_settings
+from ...database import get_db
 from ...deps import get_current_user, require_any_scopes
-from ...models import User
+from ...models import User, UserProfile
 from ...security import SCOPE_APP_WRITE, SCOPE_WEB_WRITE
+from ...services.ai.ai_config_store import (
+    find_provider,
+    is_unset_key,
+    load_ai_config,
+)
 from ...services.ai.provider_client import (
     _post_chat_adaptive,
     with_disabled_thinking,
@@ -124,6 +132,7 @@ async def test_provider(
     req: TestProviderRequest,
     _scopes: set[str] = Depends(require_any_scopes(SCOPE_APP_WRITE, SCOPE_WEB_WRITE)),
     current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ) -> TestProviderResponse:
     if not _check_rate_limit(current_user.id):
         raise HTTPException(
@@ -134,8 +143,21 @@ async def test_provider(
     p = req.provider
     cap = req.capability
 
+    # 掩码/空 key + 已存在的 provider id → 换成存储的真 key 测。key 语义与
+    # 保存路径对齐(merge_ai_config_on_patch:空/掩码回传 = 保留原值):表单
+    # 从服务端掩码视图回填后直接点「测试」,测的应是保存后会生效的配置,
+    # 而不是把 `****1234` 当 Bearer 发给上游吃 401。新填的真 key 优先。
+    api_key = p.apiKey
+    if is_unset_key(api_key) and p.id:
+        profile = db.scalar(
+            select(UserProfile).where(UserProfile.user_id == current_user.id)
+        )
+        stored = find_provider(load_ai_config(profile), p.id)
+        if stored is not None:
+            api_key = stored.get("apiKey") or ""
+
     # 校验必填字段:apiKey + baseUrl + 对应 capability 的 model
-    if not p.apiKey or not p.baseUrl:
+    if not api_key or not p.baseUrl:
         return TestProviderResponse(
             success=False,
             error_code="AI_TEST_MISSING_FIELDS",
@@ -161,9 +183,9 @@ async def test_provider(
     started = time.monotonic()
     try:
         if cap == "text":
-            preview = await _test_text(base_url, p.apiKey, model, protocol=protocol)
+            preview = await _test_text(base_url, api_key, model, protocol=protocol)
         elif cap == "vision":
-            preview = await _test_vision(base_url, p.apiKey, model, protocol=protocol)
+            preview = await _test_vision(base_url, api_key, model, protocol=protocol)
         else:
             if protocol == "anthropic":
                 return TestProviderResponse(
@@ -171,7 +193,7 @@ async def test_provider(
                     error_code="AI_TEST_MISSING_FIELDS",
                     error_message="Anthropic protocol has no speech-to-text API",
                 )
-            preview = await _test_speech(base_url, p.apiKey, model)
+            preview = await _test_speech(base_url, api_key, model)
         latency = int((time.monotonic() - started) * 1000)
         logger.info(
             "ai.test_provider success user=%s capability=%s model=%s latency=%dms",

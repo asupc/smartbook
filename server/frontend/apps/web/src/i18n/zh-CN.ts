@@ -455,6 +455,7 @@ const zhCN = {
   'ai.providers.title': '服务商',
   'ai.providers.badge.builtin': '内置',
   'ai.providers.field.apiKey': 'API Key',
+  'ai.providers.field.apiKey.keep': '已安全存储 — 留空保持不变,输入新值可更换',
   'ai.providers.field.baseUrl': 'Base URL',
   'ai.providers.field.protocol': '接口协议',
   'ai.providers.field.protocol.openai': 'OpenAI 兼容(/chat/completions)',

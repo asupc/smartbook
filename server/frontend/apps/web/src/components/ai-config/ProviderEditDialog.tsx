@@ -39,6 +39,10 @@ export function ProviderEditDialog({ open, initial, saving = false, onClose, onS
   const { token } = useAuth()
   const isEdit = initial !== null
   const isBuiltIn = initial?.isBuiltIn === true
+  // 服务端只吐掩码(`****1234`):编辑已有且已存 key 的服务商时,表单留空 =
+  // 「保持已存 key」——保存走服务端 merge 保留原值,测试由服务端按 id 换
+  // 存储的真 key(与 mobile 端「留空保持不变」语义一致)。
+  const hasStoredKey = isEdit && (initial?.apiKey || '').trim().length > 0
 
   const [name, setName] = useState('')
   const [apiKey, setApiKey] = useState('')
@@ -58,11 +62,13 @@ export function ProviderEditDialog({ open, initial, saving = false, onClose, onS
   })
   const [runAllStatus, setRunAllStatus] = useState<'idle' | 'running'>('idle')
 
-  // open 切换时重新初始化 form
+  // open 切换时重新初始化 form(掩码 key 清空展示,配「留空保持」语义)
   useEffect(() => {
     if (!open) return
     setName(initial?.name ?? '')
-    setApiKey(initial?.apiKey ?? '')
+    setApiKey(
+      (initial?.apiKey ?? '').startsWith('****') ? '' : (initial?.apiKey ?? ''),
+    )
     setBaseUrl(initial?.baseUrl ?? '')
     setTextModel(initial?.textModel ?? '')
     setVisionModel(initial?.visionModel ?? '')
@@ -96,8 +102,11 @@ export function ProviderEditDialog({ open, initial, saving = false, onClose, onS
     setTestResults({ text: null, vision: null, speech: null })
   }, [apiKey, baseUrl, textModel, visionModel, audioModel, protocol, visionConcurrency])
 
+  // 编辑已存 key 的服务商时 key 可留空(= 保持);新建 / 原本没 key 的必须填
   const canSave =
-    name.trim().length > 0 && apiKey.trim().length > 0 && baseUrl.trim().length > 0
+    name.trim().length > 0 &&
+    baseUrl.trim().length > 0 &&
+    (apiKey.trim().length > 0 || hasStoredKey)
 
   const handleSave = async () => {
     if (!canSave || saving) return
@@ -211,7 +220,7 @@ export function ProviderEditDialog({ open, initial, saving = false, onClose, onS
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               disabled={saving}
-              placeholder="sk-…"
+              placeholder={hasStoredKey ? (t('ai.providers.field.apiKey.keep') as string) : 'sk-…'}
               autoComplete="off"
               spellCheck={false}
               className="font-mono text-xs"
@@ -253,6 +262,7 @@ export function ProviderEditDialog({ open, initial, saving = false, onClose, onS
             disabled={saving}
             provider={draftProvider}
             capability="text"
+            hasStoredKey={hasStoredKey}
             externalResult={testResults.text}
             externalStatus={resolveStatus(testResults.text, runAllStatus === 'running' && !!textModel.trim() && testResults.text === null)}
             onResult={(cap, r) => setTestResults((prev) => ({ ...prev, [cap]: r }))}
@@ -264,6 +274,7 @@ export function ProviderEditDialog({ open, initial, saving = false, onClose, onS
             disabled={saving}
             provider={draftProvider}
             capability="vision"
+            hasStoredKey={hasStoredKey}
             externalResult={testResults.vision}
             externalStatus={resolveStatus(testResults.vision, runAllStatus === 'running' && !!visionModel.trim() && testResults.vision === null)}
             onResult={(cap, r) => setTestResults((prev) => ({ ...prev, [cap]: r }))}
@@ -290,6 +301,7 @@ export function ProviderEditDialog({ open, initial, saving = false, onClose, onS
             disabled={saving}
             provider={draftProvider}
             capability="speech"
+            hasStoredKey={hasStoredKey}
             externalResult={testResults.speech}
             externalStatus={resolveStatus(testResults.speech, runAllStatus === 'running' && !!audioModel.trim() && testResults.speech === null)}
             onResult={(cap, r) => setTestResults((prev) => ({ ...prev, [cap]: r }))}
@@ -359,6 +371,7 @@ function ModelFieldWithTest({
   disabled,
   provider,
   capability,
+  hasStoredKey = false,
   externalStatus,
   externalResult,
   onResult,
@@ -369,6 +382,8 @@ function ModelFieldWithTest({
   disabled?: boolean
   provider: AIProvider
   capability: TestProviderCapability
+  /** 编辑场景服务端已存 key(表单留空 = 保持;测试由服务端换真 key) */
+  hasStoredKey?: boolean
   externalStatus?: 'idle' | 'running' | 'success' | 'fail'
   externalResult?: TestProviderResult | null
   onResult: (cap: TestProviderCapability, result: TestProviderResult) => void
@@ -391,7 +406,12 @@ function ModelFieldWithTest({
         <ProviderTestButton
           provider={provider}
           capability={capability}
-          disabled={!value.trim() || !provider.apiKey || !provider.baseUrl}
+          disabled={
+            !value.trim() ||
+            !provider.baseUrl ||
+            // key:表单新填的,或编辑场景服务端已存(掩码留空 → 服务端按 id 换真 key)
+            !(provider.apiKey || hasStoredKey)
+          }
           externalStatus={externalStatus}
           externalResult={externalResult}
           onResult={onResult}
