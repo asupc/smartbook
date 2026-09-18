@@ -252,6 +252,40 @@ class MainActivity: FlutterFragmentActivity() {
                     ScreenshotObserver.ackQueue(this, paths)
                     result.success(true)
                 }
+                // 截图来源 App 门禁开关(Dart 设置页同步;ScreenshotObserver 门禁读同一 pref)
+                "getSourceAppFilter" -> {
+                    val gatePrefs = getSharedPreferences(
+                        ScreenshotObserver.PREFS_NAME, Context.MODE_PRIVATE
+                    )
+                    result.success(
+                        gatePrefs.getBoolean(
+                            ScreenshotObserver.KEY_SOURCE_FILTER_ENABLED, true
+                        )
+                    )
+                }
+                "setSourceAppFilter" -> {
+                    val enabled = call.argument<Boolean>("enabled") ?: true
+                    val gatePrefs = getSharedPreferences(
+                        ScreenshotObserver.PREFS_NAME, Context.MODE_PRIVATE
+                    )
+                    gatePrefs.edit()
+                        .putBoolean(ScreenshotObserver.KEY_SOURCE_FILTER_ENABLED, enabled)
+                        .apply()
+                    result.success(true)
+                }
+                // 「使用情况访问」授权状态与设置页跳转 —— 无障碍服务未开启时,
+                // 截图来源 App 探测靠 UsageStats 兜底,需用户授予该特殊权限
+                "isUsageAccessGranted" -> {
+                    result.success(UsageStatsProbe.isGranted(this))
+                }
+                "openUsageAccessSettings" -> {
+                    try {
+                        startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+                    } catch (e: Exception) {
+                        Log.e("MainActivity", "打开使用情况访问设置失败", e)
+                    }
+                    result.success(true)
+                }
                 else -> result.notImplemented()
             }
         }

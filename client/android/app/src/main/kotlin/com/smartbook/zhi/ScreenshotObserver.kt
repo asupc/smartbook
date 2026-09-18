@@ -48,11 +48,22 @@ class ScreenshotObserver(
         private const val FALLBACK_QUIET_MS = 5_000L
 
         // SharedPreferences相关
-        private const val PREFS_NAME = "screenshot_monitor_prefs"
+        const val PREFS_NAME = "screenshot_monitor_prefs"
         private const val KEY_PROCESSED_PATHS = "processed_paths"
         private const val MAX_STORED_PATHS = 200 // 最多存储200条记录
         private const val KEY_PENDING_QUEUE = "pending_queue"
         private const val MAX_PENDING_QUEUE = 30
+
+        // ---- 截图来源 App 门禁(2026-09-18 策略调整) ----
+        /** 门禁开关(默认开;Dart 设置页经 setSourceAppFilter 同步到本 pref)。 */
+        const val KEY_SOURCE_FILTER_ENABLED = "source_app_filter_enabled"
+
+        /**
+         * 前台 App 记录的新鲜窗口:窗口切换事件记录的语义是「最近一次前台
+         * 切换」,任何切 App 都会刷新记录,宽窗不会把已切走的 App 误当真前台;
+         * 代价是静态账单页久看(>10min 无任何切换)后截图会被判"来源未知"。
+         */
+        private const val FOREGROUND_FRESH_MS = 10 * 60_000L
 
         /** 读取待处理截图，读取不删除，处理完成由 Flutter ACK。 */
         @Synchronized
@@ -255,6 +266,7 @@ class ScreenshotObserver(
 
                         // 检查是否是截图
                         if (isScreenshot(imagePath, imageName) &&
+                            passesSourceAppGate(imageName) &&
                             enqueuePending(imagePath, System.currentTimeMillis())) {
                             Log.d(TAG, "✅ 检测到新截图: $imagePath")
                             Log.d(TAG, "文件名: $imageName, 年龄=${imageAge}秒")
@@ -381,6 +393,7 @@ class ScreenshotObserver(
 
                         // 检查是否是截图
                         if (isScreenshot(imagePath, imageName) &&
+                            passesSourceAppGate(imageName) &&
                             enqueuePending(imagePath, System.currentTimeMillis())) {
                             Log.d(TAG, "✅ 检测到新截图: $imagePath")
                             Log.d(TAG, "文件名: $imageName, 年龄=${imageAge}秒")
@@ -416,7 +429,8 @@ class ScreenshotObserver(
         Thread {
             try {
                 val fallbackPath = findRecentScreenshotFile() ?: return@Thread
-                if (enqueuePending(fallbackPath, System.currentTimeMillis())) {
+                if (passesSourceAppGate(File(fallbackPath).name) &&
+                    enqueuePending(fallbackPath, System.currentTimeMillis())) {
                     lastEnqueuedAt = System.currentTimeMillis()
                     LoggerPlugin.info(
                         TAG,
@@ -493,6 +507,40 @@ class ScreenshotObserver(
             }
         }
         return f.lastModified()
+    }
+
+    /**
+     * 截图来源 App 门禁(2026-09-18 策略调整):截图入队前先探查截图时刻的
+     * 前台 App,仅金融/电商类消费 App(BillingAppClassifier)放行;非此类
+     * 不入队、不触发 OCR/AI。探测数据源:无障碍事件跟踪优先,UsageStats
+     * 兜底(详见 BillingAppGate.kt 类注释);两个来源都探测不到时 fail-closed
+     * 拦截 —— 旧行为"任意截图都送 AI"在开启门禁(默认)后不再保留。
+     * 拦截会记决策(识别记录页可见),真机发现误拦/漏拦时按记录里的包名
+     * 增补名单或排除项。
+     */
+    private fun passesSourceAppGate(imageName: String): Boolean {
+        if (!prefs.getBoolean(KEY_SOURCE_FILTER_ENABLED, true)) return true
+        val fg = ForegroundAppTracker.recentForeground(FOREGROUND_FRESH_MS)
+            ?: UsageStatsProbe.lastForegroundPackage(context, FOREGROUND_FRESH_MS)
+        if (fg == null) {
+            LoggerPlugin.info(TAG, "截图来源App探测不到,门禁拦截: $imageName")
+            ScreenTextWatcher.recordDecision(
+                context, "app", "skipped_unknown_source",
+                "name=$imageName 来源App未知(需无障碍或「使用情况访问」)",
+                ScreenTextWatcher.DECISION_SOURCE_SCREENSHOT,
+            )
+            return false
+        }
+        if (!BillingAppClassifier.isBillingApp(fg)) {
+            LoggerPlugin.info(TAG, "截图来源非金融/电商App,门禁拦截: fg=$fg name=$imageName")
+            ScreenTextWatcher.recordDecision(
+                context, fg, "skipped_non_billing_app",
+                "name=$imageName 前台App不在金融/电商白名单",
+                ScreenTextWatcher.DECISION_SOURCE_SCREENSHOT,
+            )
+            return false
+        }
+        return true
     }
 
     /** 将截图路径写入待处理队列，队列项本身作为事件级幂等兜底。 */

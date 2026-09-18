@@ -4834,6 +4834,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get autoDeleteScreenshotDesc => 'Delete the phone screenshot after it was recognized as a bill and booked. It is kept when not a bill, on failure, or when sent to pending.';
 
   @override
+  String get screenshotSourceFilterTitle => 'Only screenshots in billing apps';
+
+  @override
+  String get screenshotSourceFilterDesc => 'Auto-book screenshots only when taken inside finance or shopping apps (Alipay, WeChat, banks, Taobao, JD, etc.). Screenshots from other apps are skipped.';
+
+  @override
+  String get screenshotSourceFilterDescOff => 'Off: every screenshot is sent for recognition';
+
+  @override
+  String get screenshotSourceFilterPermissionMissing => 'Cannot detect the foreground app: enable the accessibility service or grant Usage access, otherwise screenshots will not be auto-booked';
+
+  @override
   String get autoBookCheckTitle => 'Auto-book master switch';
 
   @override

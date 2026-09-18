@@ -57,16 +57,21 @@ open class ScreenTextWatcher : AccessibilityService() {
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
-        Log.d(TAG, "无障碍服务被解绑")
+        // 生命周期三日志必须 Log.i:vivo 过滤 Log.d,解绑记录是排查「秒关」的关键证据
+        Log.i(TAG, "无障碍服务被解绑")
         return super.onUnbind(intent)
     }
 
     override fun onDestroy() {
-        Log.d(TAG, "无障碍服务销毁")
+        Log.i(TAG, "无障碍服务销毁")
         super.onDestroy()
     }
     private var grabScheduled = false
     private var retryCount = 0
+
+    // C4b(2026-09-17):连续丢弃轮数计数,到 BUSY_DROP_LIMIT 强制抓取一次。
+    // 正常抓取路径归零;防止「永不静默」页(详情页轮播/信息流)丢弃死循环。
+    private var busyDropStreak = 0
     private var lastEventAt = 0L
     private var lastEventPkg = ""
     private var lastPageClass = ""
@@ -86,6 +91,15 @@ open class ScreenTextWatcher : AccessibilityService() {
                 e.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
             ) return
             val pkg = e.packageName?.toString() ?: return
+
+            // 截图来源门禁:先于可信包过滤记录前台 App —— 门禁需要全量前台包
+            // (判断"非消费类 App 不触发"),而非只有本服务可信包。仅记窗口切换
+            // 事件(语义 = 前台 App 变化);SystemUI(截图预览浮窗)在 Tracker
+            // 内排除。无障碍服务关闭时无记录,门禁由 UsageStatsProbe 兜底。
+            if (e.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                ForegroundAppTracker.recordForeground(pkg)
+            }
+
             if (!TRUSTED_PACKAGES.any { pkg.contains(it) }) return
 
             val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -120,10 +134,16 @@ open class ScreenTextWatcher : AccessibilityService() {
      * 两段写入「收集后延迟统一检查」思路)。期间有滚动/加载等持续事件则重排,
      * 重试次数上限防止滚动流无限后延。
      *
-     * C4(2026-09-15):重试用尽且事件仍高频到达(滚动流/动画不停)时**丢弃
-     * 本轮** —— 旧行为强制抓取,抓到的滚动中文本全被内容闸丢弃,纯耗电
-     * (抖音白名单页每 ~2.4s 一次 ≤400 节点×多窗口全树 IPC 遍历)。丢弃后
-     * 计数归零,后续事件照常重新调度;页面真正静默的下一次事件正常抓取。
+     * C4(2026-09-15):重试用尽且事件仍高频到达(滚动流/动画不停)时丢弃
+     * 本轮 —— 旧行为强制抓取,抓到的滚动中文本全被内容闸丢弃,纯耗电。
+     *
+     * C4b 修订(2026-09-17 京东真机实锤):纯丢弃在「永不静默」页面(订单
+     * 详情页轮播图/信息流动画,事件间隔始终 < 防抖时长)形成死循环 ——
+     * 丢弃后下一次事件重新开始 2 次重试再丢弃,永远轮不到抓取,真订单页
+     * 整页漏记(识别记录被 grab_busy_dropped 刷屏、不触发记账)。改为
+     * **连续丢弃 BUSY_DROP_LIMIT 轮后强制抓取一次**:滚动中的抓取仍由
+     * 下方内容闸拦截,明确判非账单后进 15s 冷却(耗电回到 C4 冷却兜底);
+     * 页面最终静下来时防抖正常抓全,不再有「永远轮不到抓」的路径。
      * 已判非账单的 (pkg,pageClass) 在冷却窗口内也直接跳过采集(见
      * [isNonBillCoolingDown])。
      */
@@ -140,13 +160,19 @@ open class ScreenTextWatcher : AccessibilityService() {
                     return@postDelayed
                 }
                 retryCount = 0
-                recordDecision(
-                    this, lastEventPkg, "grab_busy_dropped",
-                    "重试用尽仍高频变化,丢弃本轮 cls=$lastPageClass"
-                )
-                return@postDelayed
+                if (busyDropStreak < BUSY_DROP_LIMIT) {
+                    busyDropStreak++
+                    recordDecision(
+                        this, lastEventPkg, "grab_busy_dropped",
+                        "重试用尽仍高频变化,丢弃本轮($busyDropStreak/$BUSY_DROP_LIMIT) cls=$lastPageClass"
+                    )
+                    return@postDelayed
+                }
+                busyDropStreak = 0
+                log("连续丢弃 $BUSY_DROP_LIMIT 轮仍高频,强制抓取兜底: $lastEventPkg/$lastPageClass")
             }
             retryCount = 0
+            busyDropStreak = 0
             if (isNonBillCoolingDown(lastEventPkg, lastPageClass)) {
                 return@postDelayed
             }
@@ -244,13 +270,21 @@ open class ScreenTextWatcher : AccessibilityService() {
             // 「文本不离开设备,除非判为账单且 AI 已配置」的隐私边界不变。
             val roots = candidateRoots(pkg, activeRoot)
             var text = ""
+            // 窗口选取修订(2026-09-17 京东漏记实锤):旧逻辑「第一个 ≥8 字符
+            // 的窗口即中选」在抖音成立(活动窗口是无文本系统窗,必然继续遍历),
+            // 但京东 WebActivity 活动窗口是带标题栏的外壳(~105 字),8 字达标线
+            // 下立即中选、提前 break,真正承载订单内容的窗口从不被遍历 →
+            // len=105 永远「无金额」漏记。达标线提至 MIN_SELECT_TEXT_LENGTH,
+            // 未达标继续遍历取最长窗口。
+            val rootLens = StringBuilder()
             for (root in roots) {
                 val candidate = collectWindowText(root)
-                if (candidate.length >= MIN_TEXT_LENGTH) {
-                    text = candidate
-                    break
-                }
+                rootLens.append("${root.packageName}:${candidate.length} ")
                 if (candidate.length > text.length) text = candidate
+                if (text.length >= MIN_SELECT_TEXT_LENGTH) break
+            }
+            if (text.length < MIN_SELECT_TEXT_LENGTH) {
+                log("窗口采集未达标(取最长): wins=${roots.size} [$rootLens] sel=${text.length}")
             }
             val logLen = text.length
             if (text.length < MIN_TEXT_LENGTH) {
@@ -668,6 +702,13 @@ open class ScreenTextWatcher : AccessibilityService() {
         private const val FAST_GRAB_IDLE_MS = 300L
         /** 连续重排最大次数(防滚动类事件无限后延) */
         private const val MAX_GRAB_RETRIES = 2
+
+        /** C4b:高频事件连续丢弃轮数上限,到顶强制抓取一次兜底(防永不静默页丢弃死循环漏记) */
+        private const val BUSY_DROP_LIMIT = 2
+
+        /** 窗口选取达标线:某窗口采集文本达到此值才停止遍历后续候选窗口,
+            否则全部遍历取最长。与 MIN_TEXT_LENGTH(过短丢弃)解耦。 */
+        private const val MIN_SELECT_TEXT_LENGTH = 200
 
         /** C4:已判非账单 (pkg,pageClass) 的冷却窗口(ms)。窗口内跳过整树
             采集,只挡采集不挡事件调度;切页(类名变化)或过期自动失效。 */

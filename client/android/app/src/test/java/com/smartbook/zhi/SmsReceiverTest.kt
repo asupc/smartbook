@@ -53,8 +53,14 @@ class SmsReceiverTest {
 
     @Test
     fun `营销短信被拒`() {
-        assertTrue(receiver.shouldReject("【招商银行】6.18消费满减活动,回复TD退订"))
-        assertTrue(receiver.shouldReject("【微信支付】夏日福利,领券享立减"))
+        // 营销词 2026-09-10 已从一票否决(REJECT)迁到软性拒识(isMarketing*),
+        // 与 NotificationWatcher/ScreenTextWatcher 同规则 —— 断言对齐现行为。
+        // 注意 SETTLED_KEYWORDS 含「消费/支付」等宽泛词,示例须避开才能命中营销路。
+        assertFalse(receiver.shouldReject("【招商银行】6.18大促,满减优惠券,回复TD退订"))
+        assertTrue(receiver.isMarketingSms("【招商银行】6.18大促,满减优惠券,回复TD退订"))
+        assertTrue(receiver.isMarketingSms("【会员福利】夏日福利,领券享立减"))
+        // 内嵌抵扣行的已结算交易短信不能被当营销拒
+        assertFalse(receiver.isMarketingSms("您已支付成功98.00元,立减优惠2.00元"))
     }
 
     @Test

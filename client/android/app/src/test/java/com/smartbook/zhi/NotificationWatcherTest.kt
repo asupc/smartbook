@@ -49,7 +49,12 @@ class NotificationWatcherTest {
 
     @Test
     fun `营销通知被拒`() {
-        assertTrue(watcher.shouldReject("618大促,满减优惠券,领券立减100"))
+        // 营销词 2026-09-10 已从一票否决(REJECT)迁到软性拒识(isMarketing*):
+        // 真实支付通知常内嵌「立减/满减」抵扣行,一票否决会漏记真交易。
+        assertFalse(watcher.shouldReject("618大促,满减优惠券,领券立减100"))
+        assertTrue(watcher.isMarketingNotification("618大促,满减优惠券,领券立减100"))
+        // 内嵌抵扣行的已结算交易通知不能被当营销拒
+        assertFalse(watcher.isMarketingNotification("支付成功,实付98.00,立减优惠券2.00"))
     }
 
     @Test

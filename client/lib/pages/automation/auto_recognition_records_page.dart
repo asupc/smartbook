@@ -47,6 +47,8 @@ class _AutoRecognitionRecordsPageState
     'non_bookable': '不可入账状态',
     'duplicate': '重复页面',
     'partial_access': '照片权限受限',
+    'skipped_non_billing_app': '非消费类App截图',
+    'skipped_unknown_source': '来源App未知',
   };
 
   @override

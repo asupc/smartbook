@@ -4834,6 +4834,18 @@ class AppLocalizationsZh extends AppLocalizations {
   String get autoDeleteScreenshotDesc => '截图被识别为账单并成功入账后,自动从相册删除;非账单、失败或进入「待确认」时保留';
 
   @override
+  String get screenshotSourceFilterTitle => '仅消费类App截图记账';
+
+  @override
+  String get screenshotSourceFilterDesc => '仅在金融/电商类App(支付宝、微信、银行、淘宝、京东等)内截图才自动记账,其它App截图不触发识别';
+
+  @override
+  String get screenshotSourceFilterDescOff => '已关闭:所有截图都会尝试识别记账';
+
+  @override
+  String get screenshotSourceFilterPermissionMissing => '无法识别截图来源App:需开启无障碍服务或授权「使用情况访问」,否则截图不会自动记账';
+
+  @override
   String get autoBookCheckTitle => '自动入账总闸';
 
   @override
@@ -12971,6 +12983,18 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
 
   @override
   String get autoDeleteScreenshotDesc => '截圖被識別為帳單並成功入帳後,自動從相簿刪除;非帳單、失敗或進入「待確認」時保留';
+
+  @override
+  String get screenshotSourceFilterTitle => '僅消費類App截圖記帳';
+
+  @override
+  String get screenshotSourceFilterDesc => '僅在金融/電商類App(支付寶、微信、銀行、淘寶、京東等)內截圖才自動記帳,其它App截圖不觸發識別';
+
+  @override
+  String get screenshotSourceFilterDescOff => '已關閉:所有截圖都會嘗試識別記帳';
+
+  @override
+  String get screenshotSourceFilterPermissionMissing => '無法識別截圖來源App:需開啟無障礙服務或授權「使用情況訪問」,否則截圖不會自動記帳';
 
   @override
   String get autoBookCheckTitle => '自動入帳總閘';

@@ -242,6 +242,43 @@ class ScreenshotMonitorService {
     await prefs.setBool(_autoDeleteKey, value);
   }
 
+  // ---- 截图来源 App 门禁(仅金融/电商类 App 截图触发自动记账) ----
+  // 判定在原生 ScreenshotObserver 入队前完成;开关的持久化也在原生侧
+  // (screenshot_monitor_prefs),Dart 只做读写转发,避免双份事实源。
+
+  /// 门禁开关是否开启(默认开;非 Android 平台视为关 —— 仅有 Android 实现)。
+  Future<bool> isSourceFilterEnabled() async {
+    if (!Platform.isAndroid) return false;
+    try {
+      return await _channel.invokeMethod<bool>('getSourceAppFilter') ?? true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  Future<void> setSourceFilterEnabled(bool value) async {
+    if (!Platform.isAndroid) return;
+    await _channel.invokeMethod('setSourceAppFilter', {'enabled': value});
+  }
+
+  /// 「使用情况访问」是否已授权 —— 无障碍服务未开启时,来源 App 探测靠
+  /// UsageStats 兜底;两者都没有则截图一律被门禁拦截(识别记录页可见原因)。
+  Future<bool> isUsageAccessGranted() async {
+    if (!Platform.isAndroid) return false;
+    try {
+      return await _channel.invokeMethod<bool>('isUsageAccessGranted') ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> openUsageAccessSettings() async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _channel.invokeMethod('openUsageAccessSettings');
+    } catch (_) {}
+  }
+
   /// 删除截图文件(调用原生 MediaStore 删除)。
   /// Android 11+ 截图属 SystemUI 所有,删除会弹系统确认框,用户确认
   /// (勾选「不再询问」后后续静默)才真正删除,结果不阻塞记账流程。

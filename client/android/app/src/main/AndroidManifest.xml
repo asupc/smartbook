@@ -34,6 +34,11 @@
     <!-- 短信监听自动记账(M1)。仅 RECEIVE_SMS:
          足够实时接收新短信;不做历史短信回填(不申请 READ_SMS,隐私最小化)。 -->
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
+    <!-- 截图来源 App 门禁兜底:UsageStatsManager 查询前台 App。AppOps 特殊
+         权限,仅声明不生效,需用户在系统「使用情况访问」页授权;未授权时
+         来源探测退回无障碍事件跟踪(见 BillingAppGate.kt)。 -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
     <!-- Optional: vibration for notifications -->
     <uses-permission android:name="android.permission.VIBRATE" />
     <!-- Required for foreground service notifications -->

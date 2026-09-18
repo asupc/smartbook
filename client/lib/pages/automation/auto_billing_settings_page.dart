@@ -49,6 +49,8 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
   late final ScreenTextMonitorService _screenTextMonitor;
   bool _isMonitorEnabled = false;
   bool _autoDeleteScreenshotEnabled = false;
+  bool _sourceFilterEnabled = true;
+  bool _isUsageAccessGranted = false;
   bool _isSmsMonitorEnabled = false;
   bool _isNotifyMonitorEnabled = false;
   bool _isNotifyListenerGranted = false;
@@ -93,6 +95,8 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
     final enabled = await _screenshotMonitor.isEnabled();
     _autoDeleteScreenshotEnabled =
         await _screenshotMonitor.isAutoDeleteEnabled();
+    final sourceFilterEnabled = await _screenshotMonitor.isSourceFilterEnabled();
+    final usageAccessGranted = await _screenshotMonitor.isUsageAccessGranted();
     final smsEnabled = await _smsMonitor.isEnabled();
     final notifyEnabled = await _notifyMonitor.isEnabled();
     final notifyGranted = await _notifyMonitor.isListenerGranted();
@@ -116,6 +120,8 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
 
     setState(() {
       _isMonitorEnabled = enabled;
+      _sourceFilterEnabled = sourceFilterEnabled;
+      _isUsageAccessGranted = usageAccessGranted;
       _isSmsMonitorEnabled = smsEnabled;
       _isNotifyMonitorEnabled = notifyEnabled;
       _isNotifyListenerGranted = notifyGranted;
@@ -323,6 +329,31 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
     }
   }
 
+  /// 「仅消费类 App 截图自动记账」:开关持久化在原生侧(判定也在原生入队前
+  /// 完成);开启时若无任何来源 App 数据源(无障碍 + 使用情况访问都没开),
+  /// 截图会被全部拦截 —— 引导去授权「使用情况访问」。
+  Future<void> _toggleSourceFilter(bool value) async {
+    final l10n = AppLocalizations.of(context);
+    try {
+      await _screenshotMonitor.setSourceFilterEnabled(value);
+      if (!mounted) return;
+      setState(() {
+        _sourceFilterEnabled = value;
+      });
+      showToast(context, value ? l10n.enableSuccess : l10n.disableSuccess);
+      if (value && !_isScreenAccessibilityGranted && !_isUsageAccessGranted) {
+        showToast(context, l10n.screenshotSourceFilterPermissionMissing,
+            duration: const Duration(seconds: 4));
+        await _screenshotMonitor.openUsageAccessSettings();
+      }
+    } catch (e) {
+      if (mounted) {
+        showToast(context, '${l10n.enableFailed}: $e',
+            duration: const Duration(seconds: 3));
+      }
+    }
+  }
+
   Future<void> _toggleSmsMonitor(bool value) async {
     final l10n = AppLocalizations.of(context);
 
@@ -502,6 +533,25 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
                   subtitle: l10n.autoDeleteScreenshotDesc,
                   value: _autoDeleteScreenshotEnabled,
                   onChanged: _isLoading ? null : _toggleAutoDeleteScreenshot,
+                ),
+
+                const SizedBox(height: 16),
+
+                // 仅消费类 App 截图自动记账(截图来源 App 门禁):开启时只有
+                // 金融/电商类 App 内的截图才触发识别,其它截图不入队不送 AI
+                _buildSwitchCard(
+                  context,
+                  primaryColor,
+                  l10n,
+                  icon: Icons.category_outlined,
+                  title: l10n.screenshotSourceFilterTitle,
+                  subtitle: !_sourceFilterEnabled
+                      ? l10n.screenshotSourceFilterDescOff
+                      : (_isScreenAccessibilityGranted || _isUsageAccessGranted
+                          ? l10n.screenshotSourceFilterDesc
+                          : l10n.screenshotSourceFilterPermissionMissing),
+                  value: _sourceFilterEnabled,
+                  onChanged: _isLoading ? null : _toggleSourceFilter,
                 ),
 
                 const SizedBox(height: 16),

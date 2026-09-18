@@ -4834,6 +4834,18 @@ class AppLocalizationsKo extends AppLocalizations {
   String get autoDeleteScreenshotDesc => '스크린샷이 청구서로 인식되어 성공적으로 정산된 후 휴대폰 스크린샷을 자동으로 삭제합니다. 청구서가 아니거나 실패했거나 \'확인 대기\' 상태인 경우 유지됩니다.';
 
   @override
+  String get screenshotSourceFilterTitle => '소비 앱 스크린샷만 기장';
+
+  @override
+  String get screenshotSourceFilterDesc => '금융/커머스 앱(알리페이, 위챗, 은행, 타오바오, 징둥 등)에서 찍은 스크린샷만 자동 기장하며, 그 외 앱의 스크린샷은 인식하지 않습니다';
+
+  @override
+  String get screenshotSourceFilterDescOff => '꺼짐: 모든 스크린샷을 인식 시도합니다';
+
+  @override
+  String get screenshotSourceFilterPermissionMissing => '스크린샷 출처 앱을 식별할 수 없습니다: 접근성 서비스를 켜거나 \'사용 기록 접근\'을 허용해야 하며, 그렇지 않으면 스크린샷이 자동 기장되지 않습니다';
+
+  @override
   String get autoBookCheckTitle => '자동 기록 마스터 스위치';
 
   @override
