@@ -20,8 +20,10 @@ import android.os.Process
  *     MOVE_TO_FOREGROUND。需用户在系统设置授予「使用情况访问」特殊权限
  *     (AppOps),未授权时查询恒空、静默返回 null。
  *
- * 两个数据源都排除 com.android.systemui:截图瞬间 SystemUI 的预览浮窗/
- * 保存通知会产生窗口事件与 Activity 记录,不排除会把真前台 App 覆盖掉。
+ * 两个数据源都排除截图系统组件([ScreenshotOverlay],含 SystemUI 与各厂商
+ * 截屏/编辑浮窗):截图瞬间这些组件的浮窗会产生窗口事件与 Activity 记录,
+ * 不排除会把真前台 App 覆盖掉 —— vivo 真机 2026-09-22 实测,截图后必弹
+ * com.vivo.smartshot 编辑浮窗,门禁全部误拦成 smartshot。
  * 自身包名**不**排除 —— 用户在智记内的截图本就不该自动记账。
  */
 object BillingAppClassifier {
@@ -79,45 +81,109 @@ object BillingAppClassifier {
 }
 
 /**
+ * 截图系统组件(厂商截屏/编辑浮窗)识别:截图瞬间 SystemUI 预览浮窗、vivo
+ * smartshot 编辑浮窗等会弹到前台,把真前台 App 的窗口事件/Activity 记录
+ * 覆盖掉 —— 两个探测数据源([ForegroundAppTracker] 不记录、[UsageStatsProbe]
+ * 查询时跳过)都按"透传"处理,探测结果停留在浮窗弹出前的真实前台 App。
+ * **命中本表 ≠ 拦截**:排除后取到的前一个前台才是门禁判定对象。
+ *
+ * 用通用子串而非逐家精确包名:厂商截图组件包名随 ROM 版本变(小米
+ * com.miui.screenshot、OPPO/一加 com.oplus.screenshot、荣耀
+ * com.hihonor.screenshot…),漏收录的表现是"门禁全拦成该组件包名"
+ * (vivo smartshot 真机 2026-09-22 事故),错收录的代价只是"在该 App 里
+ * 截图归到上一个前台"且这些组件必非白名单金融 App —— 泛匹配更稳。
+ */
+object ScreenshotOverlay {
+
+    private val HINTS = listOf(
+        "com.android.systemui",           // 截图预览/保存通知(含 :screenshot 子进程)
+        "screenshot",                     // MIUI/OPPO/华为/荣耀等 *screenshot* 组件
+        "smartshot",                      // vivo/iQOO 截图编辑浮窗 com.vivo.smartshot
+        "longshot",                       // 各厂商长截屏组件
+        "com.samsung.android.smartcapture" // 三星截屏编辑器(包名不含 screenshot)
+    )
+
+    /** 包名是否属于截图系统组件(子串匹配,覆盖 :子进程 后缀)。 */
+    fun matches(pkg: String): Boolean {
+        return HINTS.any { pkg.contains(it) }
+    }
+}
+
+/**
  * 前台 App 跟踪:无障碍服务把每次窗口切换事件(TYPE_WINDOW_STATE_CHANGED,
  * 语义 = 前台 App 变化)的包名+时间戳记到这个进程级单例,截图门禁查询。
  *
- * 记录语义是「最近一次前台切换的 App」:任何切 App 都必然产生窗口切换事件,
- * 所以新鲜窗口可以放得宽(默认 10 分钟)—— 静态账单页久看无事件不会把记录
- * 变"陈旧";窗口内记录即当前前台 App。探测不到前台(无障碍未开启/服务被
- * ROM 杀掉且记录超窗)时门禁按 fail-closed 处理,由 UsageStatsProbe 兜底。
+ * **记录语义是环形队列 + 查询回溯**(vivo 真机 2026-09-23 教训):截屏瞬间
+ * 除了 smartshot 编辑浮窗,还会弹 upslide 等多个**系统浮层组件**的窗口事件,
+ * 逐个加排除名单是打地鼠 —— 改为「最近 8 条」队列,查询时从新到旧回溯:
+ * 白名单 App 命中即判定;系统预装 App(浮层必是系统组件,由查询方经
+ * [skipExtra] 注入 PackageManager 判定)透传跳过;第一个真实三方 App 即
+ * 判定对象。回溯到底没有 → null → UsageStatsProbe 兜底。
+ *
+ * 任何切 App 都必然产生窗口切换事件,所以新鲜窗口可以放得宽(默认 10 分钟)
+ * —— 静态账单页久看无事件不会把记录变"陈旧"。
  *
  * 线程模型:无障碍回调在主线程写,门禁在 MediaStore 延迟检查(主线程)或
- * 文件兜底线程读,@Volatile 单字段写读即可,无需加锁。
+ * 文件兜底线程读,synchronized 保护队列即可。
  */
 object ForegroundAppTracker {
 
-    /** 截图预览浮窗/保存通知等系统覆盖层的包名 —— 记录时排除。 */
-    private const val EXCLUDED_PKG = "com.android.systemui"
+    private const val MAX_ENTRIES = 8
 
+    private val entries = ArrayDeque<Pair<String, Long>>()
+
+    /**
+     * 最近被排除的截图系统组件包名(诊断字段):正常情况下它被透传、判定对象
+     * 是排除前的真实前台;若门禁仍拦成截图组件本身,说明有未覆盖的新组件
+     * ——识别记录页 detail 会带出这个字段,直接看到 ROM 实际弹的浮窗包名。
+     */
     @Volatile
-    private var lastPkg: String? = null
+    var lastSkippedOverlay: String? = null
+        private set
 
-    @Volatile
-    private var lastTs = 0L
-
-    /** 无障碍事件到达时记录前台包名;空包名与 SystemUI 不记(见类注释)。 */
+    /** 无障碍事件到达时记录前台包名;空包名与截图系统组件不记(见类注释)。 */
     fun recordForeground(pkg: String?, ts: Long = System.currentTimeMillis()) {
-        if (pkg.isNullOrEmpty() || pkg == EXCLUDED_PKG) return
-        lastPkg = pkg
-        lastTs = ts
+        if (pkg.isNullOrEmpty()) return
+        if (ScreenshotOverlay.matches(pkg)) {
+            lastSkippedOverlay = pkg
+            return
+        }
+        synchronized(entries) {
+            entries.addLast(pkg to ts)
+            while (entries.size > MAX_ENTRIES) entries.removeFirst()
+        }
     }
 
-    /** 最近 [maxAgeMs] 内的前台包名;无记录或超窗返回 null。 */
-    fun recentForeground(maxAgeMs: Long): String? {
-        val pkg = lastPkg ?: return null
-        return if (System.currentTimeMillis() - lastTs <= maxAgeMs) pkg else null
+    /**
+     * 回溯查询最近 [maxAgeMs] 内的前台包名:白名单 App 命中立即返回;
+     * 截图组件与 [skipExtra](查询方注入的"系统预装透传")跳过;第一个
+     * 真实三方 App 作为判定对象返回。无记录/全部超窗/全部被透传 → null。
+     */
+    fun recentForeground(
+        maxAgeMs: Long,
+        skipExtra: (String) -> Boolean = { false },
+    ): String? {
+        val now = System.currentTimeMillis()
+        synchronized(entries) {
+            for ((pkg, ts) in entries.reversed()) {
+                if (now - ts > maxAgeMs) return null // 队列按时间有序,更旧的必超窗
+                if (BillingAppClassifier.isBillingApp(pkg)) return pkg
+                if (ScreenshotOverlay.matches(pkg) || skipExtra(pkg)) continue
+                return pkg
+            }
+        }
+        return null
     }
 
     /** 仅供单测重置状态。 */
     fun resetForTest() {
-        lastPkg = null
-        lastTs = 0L
+        synchronized(entries) { entries.clear() }
+        lastSkippedOverlay = null
+    }
+
+    /** 仅供排查日志输出队列快照。 */
+    fun queueForLog(): String {
+        return synchronized(entries) { entries.joinToString(" → ") { it.first } }
     }
 }
 
@@ -129,7 +195,7 @@ object ForegroundAppTracker {
  */
 object UsageStatsProbe {
 
-    /** 查询窗口内最后一次前台包名(SystemUI 除外);未授权/无事件返回 null。 */
+    /** 查询窗口内最后一次前台包名(截图系统组件除外);未授权/无事件返回 null。 */
     fun lastForegroundPackage(context: Context, windowMs: Long): String? {
         return try {
             val usm = context.getSystemService(Context.USAGE_STATS_SERVICE)
@@ -144,7 +210,9 @@ object UsageStatsProbe {
                 // targetSdk 32 直接用旧常量,新旧系统都覆盖。
                 if (event.eventType != UsageEvents.Event.MOVE_TO_FOREGROUND) continue
                 val p = event.packageName ?: continue
-                if (p == "com.android.systemui") continue
+                // 截图组件的浮窗 Activity 记录同样会覆盖真前台,跳过后取的
+                // 是浮窗弹出前最后一个真实 App(如 vivo smartshot 场景)。
+                if (ScreenshotOverlay.matches(p)) continue
                 pkg = p
             }
             pkg

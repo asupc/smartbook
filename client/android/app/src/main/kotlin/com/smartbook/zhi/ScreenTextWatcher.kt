@@ -97,6 +97,9 @@ open class ScreenTextWatcher : AccessibilityService() {
             // 事件(语义 = 前台 App 变化);SystemUI(截图预览浮窗)在 Tracker
             // 内排除。无障碍服务关闭时无记录,门禁由 UsageStatsProbe 兜底。
             if (e.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                // Log.i:vivo 过滤 Log.d,截图门禁 tracker 链路(哪个包进了队列/
+                // 哪个浮层被透传)的排查靠这条
+                Log.i("BillingAppGate", "state-changed pkg=$pkg")
                 ForegroundAppTracker.recordForeground(pkg)
             }
 

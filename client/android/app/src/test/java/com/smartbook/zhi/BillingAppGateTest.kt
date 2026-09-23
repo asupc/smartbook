@@ -93,6 +93,80 @@ class BillingAppGateTest {
     }
 
     @Test
+    fun `vivo截图编辑浮窗不污染记录`() {
+        // vivo 真机 2026-09-22:截图后必弹 com.vivo.smartshot 编辑浮窗,
+        // 覆盖真前台导致门禁全拦成 smartshot —— 必须与 SystemUI 同等透传
+        ForegroundAppTracker.recordForeground("com.tencent.mm")
+        ForegroundAppTracker.recordForeground("com.vivo.smartshot")
+        assertEquals(
+            "com.tencent.mm",
+            ForegroundAppTracker.recentForeground(60_000L)
+        )
+        // 诊断字段:被排除的浮窗包名要留痕,供门禁拦截 detail 带出
+        assertEquals("com.vivo.smartshot", ForegroundAppTracker.lastSkippedOverlay)
+    }
+
+    @Test
+    fun `systemui子进程截图事件不污染记录`() {
+        ForegroundAppTracker.recordForeground("com.tencent.mm")
+        ForegroundAppTracker.recordForeground("com.android.systemui:screenshot")
+        assertEquals(
+            "com.tencent.mm",
+            ForegroundAppTracker.recentForeground(60_000L)
+        )
+    }
+
+    @Test
+    fun `系统预装浮层经skipExtra透传回溯到真实前台`() {
+        // vivo 真机 2026-09-23:截屏瞬间除 smartshot 外,upslide 等系统
+        // 浮层也会插窗口事件;skipExtra 注入"系统预装透传",回溯到浮层
+        // 弹出前的真实三方 App(京东,白名单)作为判定对象
+        ForegroundAppTracker.recordForeground("com.jingdong.app.mall")
+        ForegroundAppTracker.recordForeground("com.vivo.upslide")
+        assertEquals(
+            "com.jingdong.app.mall",
+            ForegroundAppTracker.recentForeground(60_000L) { it == "com.vivo.upslide" }
+        )
+    }
+
+    @Test
+    fun `回溯不到真实前台时返回null`() {
+        ForegroundAppTracker.recordForeground("com.vivo.upslide")
+        assertNull(
+            ForegroundAppTracker.recentForeground(60_000L) { it == "com.vivo.upslide" }
+        )
+    }
+
+    @Test
+    fun `白名单包回溯时优先命中`() {
+        // 回溯遇白名单立即返回:即使更近处有系统浮层,白名单 App 就是判定对象
+        ForegroundAppTracker.recordForeground("com.tencent.mm")
+        ForegroundAppTracker.recordForeground("com.vivo.upslide")
+        assertEquals(
+            "com.tencent.mm",
+            ForegroundAppTracker.recentForeground(60_000L) { it == "com.vivo.upslide" }
+        )
+    }
+
+    @Test
+    fun `环形队列只保留最近8条`() {
+        ForegroundAppTracker.recordForeground("com.tencent.mm")
+        repeat(10) { ForegroundAppTracker.recordForeground("com.third.app$it") }
+        // 微信已被挤出队列;回溯从 app9 开始,无 skipExtra 时 app9 即判定对象
+        assertEquals(
+            "com.third.app9",
+            ForegroundAppTracker.recentForeground(60_000L)
+        )
+        // 跳过 app9/app8 后回溯到 app7
+        assertEquals(
+            "com.third.app7",
+            ForegroundAppTracker.recentForeground(60_000L) {
+                it == "com.third.app9" || it == "com.third.app8"
+            }
+        )
+    }
+
+    @Test
     fun `切换App后记录被覆盖`() {
         ForegroundAppTracker.recordForeground("com.eg.android.AlipayGphone")
         ForegroundAppTracker.recordForeground("com.tencent.mobileqq")

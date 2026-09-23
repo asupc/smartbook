@@ -510,6 +510,27 @@ class ScreenshotObserver(
     }
 
     /**
+     * 是否系统预装 App(FLAG_SYSTEM 且非「预装后被商店更新」)。截屏瞬间的
+     * 系统浮层(smartshot/upslide/systemui 等)必是预装组件,统一透传;
+     * 结果进程内缓存(PackageManager 查询不便宜)。查不到的包名按非预装
+     * 处理(fail-closed,作为判定对象拦截)。
+     */
+    private val preinstalledCache = mutableMapOf<String, Boolean>()
+
+    private fun isPreinstalledApp(pkg: String): Boolean {
+        preinstalledCache[pkg]?.let { return it }
+        val result = try {
+            val ai = context.packageManager.getApplicationInfo(pkg, 0)
+            (ai.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0 &&
+                (ai.flags and android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) == 0
+        } catch (_: Exception) {
+            false
+        }
+        preinstalledCache[pkg] = result
+        return result
+    }
+
+    /**
      * 截图来源 App 门禁(2026-09-18 策略调整):截图入队前先探查截图时刻的
      * 前台 App,仅金融/电商类消费 App(BillingAppClassifier)放行;非此类
      * 不入队、不触发 OCR/AI。探测数据源:无障碍事件跟踪优先,UsageStats
@@ -520,22 +541,45 @@ class ScreenshotObserver(
      */
     private fun passesSourceAppGate(imageName: String): Boolean {
         if (!prefs.getBoolean(KEY_SOURCE_FILTER_ENABLED, true)) return true
-        val fg = ForegroundAppTracker.recentForeground(FOREGROUND_FRESH_MS)
-            ?: UsageStatsProbe.lastForegroundPackage(context, FOREGROUND_FRESH_MS)
+        // 数据源优先级(vivo 真机 2026-09-23 定律):已授「使用情况访问」时
+        // UsageStats 优先 —— 它是 Activity 级信号,ROM 必发;而无障碍窗口
+        // 事件在 vivo 上对「已存在窗口重聚焦」不派发(用户切到微信/京东时
+        // tracker 收不到,队列里只有更老的记录),截屏瞬间的浮层反而必达,
+        // tracker 做主源必被污染。未授权时 tracker 优先,usm 恒空兜底。
+        val usmGranted = UsageStatsProbe.isGranted(context)
+        val usmFg = if (usmGranted) {
+            UsageStatsProbe.lastForegroundPackage(context, FOREGROUND_FRESH_MS)
+        } else null
+        val trackerFg = ForegroundAppTracker.recentForeground(FOREGROUND_FRESH_MS) {
+            isPreinstalledApp(it)
+        }
+        val fg = if (usmGranted) usmFg ?: trackerFg else trackerFg ?: usmFg
+        // Log.i:vivo 三方应用 logcat 被系统整体关闭,这条主要服务 adb bugreport 场景
+        android.util.Log.i(
+            TAG, "gate probe usm=$usmFg tracker=$trackerFg queue=${ForegroundAppTracker.queueForLog()}"
+        )
+        val src = if (usmGranted) {
+            if (usmFg != null) "usagestats" else "tracker"
+        } else "tracker"
+        val diag = buildString {
+            append("src=").append(src)
+            append(" 浮窗=").append(ForegroundAppTracker.lastSkippedOverlay ?: "-")
+            append(" usm=").append(if (usmGranted) "ok" else "未授权")
+        }
         if (fg == null) {
-            LoggerPlugin.info(TAG, "截图来源App探测不到,门禁拦截: $imageName")
+            LoggerPlugin.info(TAG, "截图来源App探测不到,门禁拦截: $imageName $diag")
             ScreenTextWatcher.recordDecision(
                 context, "app", "skipped_unknown_source",
-                "name=$imageName 来源App未知(需无障碍或「使用情况访问」)",
+                "name=$imageName 来源App未知(需无障碍或「使用情况访问」) $diag",
                 ScreenTextWatcher.DECISION_SOURCE_SCREENSHOT,
             )
             return false
         }
         if (!BillingAppClassifier.isBillingApp(fg)) {
-            LoggerPlugin.info(TAG, "截图来源非金融/电商App,门禁拦截: fg=$fg name=$imageName")
+            LoggerPlugin.info(TAG, "截图来源非金融/电商App,门禁拦截: fg=$fg name=$imageName $diag")
             ScreenTextWatcher.recordDecision(
                 context, fg, "skipped_non_billing_app",
-                "name=$imageName 前台App不在金融/电商白名单",
+                "name=$imageName 前台App不在金融/电商白名单 $diag",
                 ScreenTextWatcher.DECISION_SOURCE_SCREENSHOT,
             )
             return false
