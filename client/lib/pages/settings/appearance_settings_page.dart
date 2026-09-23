@@ -53,15 +53,10 @@ class _AppearanceSettingsPageState
     if (currentLanguage == null) {
       languageDisplay = l10n.languageSystemDefault;
     } else {
+      // 2026-09-18 国际化收敛:仅保留简体中文
       switch (currentLanguage.languageCode) {
         case 'zh':
           languageDisplay = l10n.languageChinese;
-          break;
-        case 'en':
-          languageDisplay = l10n.languageEnglish;
-          break;
-        case 'ko':
-          languageDisplay = '한국어';
           break;
         default:
           languageDisplay = currentLanguage.languageCode;

@@ -172,13 +172,10 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
     final languageNotifier = ref.read(languageProvider.notifier);
     final currentLocale = ref.watch(languageProvider);
 
-    // 可选语言列表
+    // 可选语言列表(2026-09-18 国际化收敛:仅保留中文)
     final availableLocales = [
       null, // 跟随系统
       const Locale('zh'),
-      const Locale('zh', 'TW'),
-      const Locale('en'),
-      const Locale('ko'),
     ];
 
     return SingleChildScrollView(

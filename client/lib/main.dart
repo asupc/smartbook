@@ -734,12 +734,10 @@ class MainApp extends ConsumerWidget {
           GlobalWidgetsLocalizations.delegate,
           GlobalCupertinoLocalizations.delegate,
         ],
-        supportedLocales: const [
-          Locale('en'),
-          Locale('zh'),
-          Locale('zh', 'TW'),
-          Locale('ko'),
-        ],
+        // 2026-09-18 国际化收敛:仅保留简体中文,locale 列表以生成类的
+        // supportedLocales 为唯一事实源(当前 = [zh]),避免手写列表与 arb
+        // 集合漂移。
+        supportedLocales: AppLocalizations.supportedLocales,
         locale: selectedLanguage,
         builder: (context, child) {
           final showPrivacy = ref.watch(showPrivacyScreenProvider);

@@ -76,10 +76,31 @@ void main() async {
   print('');
 }
 
+/// 枚举 lib/l10n 下现存的 app_<lang>.arb 语种(2026-09-18 国际化收敛为仅
+/// 中文后按文件动态枚举,增删语种无需改脚本)。
+List<String> listArbLanguages(Directory l10nDir) {
+  if (!l10nDir.existsSync()) return const [];
+  final langs = l10nDir
+      .listSync()
+      .whereType<File>()
+      .map((f) => f.uri.pathSegments.last)
+      .where((name) => name.startsWith('app_') && name.endsWith('.arb'))
+      .map((name) => name.substring(4, name.length - 4))
+      .toList();
+  // 中文基准固定排最前,展示顺序稳定
+  langs.sort((a, b) {
+    if (a == 'zh') return -1;
+    if (b == 'zh') return 1;
+    return a.compareTo(b);
+  });
+  return langs;
+}
+
 /// 检查翻译完整性
 Future<void> checkTranslationCompleteness() async {
   final l10nDir = Directory('lib/l10n');
-  final languages = ['zh', 'en', 'zh_TW'];
+  // 2026-09-18 国际化收敛为仅中文:语种列表按现存 arb 动态枚举,不再硬编码。
+  final languages = listArbLanguages(l10nDir);
 
   print('📊 第一步：检查翻译文件完整性');
   print('');
@@ -121,7 +142,7 @@ Future<void> checkTranslationCompleteness() async {
   print('语言代码 | 文件名称        | 键数量   | 完成度   | 状态');
   print('-' * 70);
 
-  final languageNames = {
+  final languageNames = <String, String>{
     'zh': '简体中文',
     'en': 'English',
     'zh_TW': '繁體中文',
@@ -259,8 +280,8 @@ Future<Map<String, Set<String>>> checkExtraKeys() async {
   print('📊 基准文件 (app_zh.arb): ${zhKeys.length} 个键');
   print('');
 
-  // 支持的语言列表 (排除中文)
-  final languages = ['en', 'zh_TW'];
+  // 基准之外的语种按现存 arb 动态枚举(2026-09-18 收敛后可能为空)
+  final languages = listArbLanguages(l10nDir).where((l) => l != 'zh').toList();
 
   // 收集每个语言的多余键
   final Map<String, Set<String>> extraKeysMap = {};

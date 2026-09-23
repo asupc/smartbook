@@ -5,8 +5,6 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/intl.dart' as intl;
 
-import 'app_localizations_en.dart';
-import 'app_localizations_ko.dart';
 import 'app_localizations_zh.dart';
 
 // ignore_for_file: type=lint
@@ -92,15370 +90,15361 @@ abstract class AppLocalizations {
 
   /// A list of this localizations delegate's supported locales.
   static const List<Locale> supportedLocales = <Locale>[
-    Locale('en'),
-    Locale('ko'),
-    Locale('zh'),
-    Locale('zh', 'TW')
+    Locale('zh')
   ];
 
   /// No description provided for @aiConsentTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Before enabling AI features'**
+  /// In zh, this message translates to:
+  /// **'开启 AI 功能前,请知悉'**
   String get aiConsentTitle;
 
   /// No description provided for @aiConsentBody.
   ///
-  /// In en, this message translates to:
-  /// **'AI features need to send related data to the third-party AI provider you configure:\n\n• Who it goes to: by default Zhipu GLM (open.bigmodel.cn, operated by Zhipu); if you configure another third-party AI service, it goes to the provider you entered.\n• What is sent: the content you actively use for recognition/chat — receipt images, voice recordings, text you type, plus the category names, account names and relevant transaction records needed to complete recognition/analysis.\n• Purpose: only for bill recognition, bookkeeping and chats you initiate; SmartBook itself does not collect or store this data.\n\nThe data is processed by that third-party provider under its own privacy policy. Enabling means you consent to the data sharing above.'**
+  /// In zh, this message translates to:
+  /// **'AI 功能需将相关数据发送给你所配置的第三方 AI 服务商进行处理:\n\n• 发送给谁:默认「智谱 GLM」(open.bigmodel.cn,由智谱华章运营);若你自行配置了其它第三方 AI 服务商,则发送给你填写的服务商。\n• 发送什么:你主动用于识别/对话的内容 —— 账单图片、语音录音、你输入的文字,以及为完成识别/分析所需的分类名称、账户名称和相关交易记录。\n• 用途:仅用于账单识别、记账与你发起的对话分析;智记自身不收集、不存储这些数据。\n\n数据由该第三方服务商按其隐私政策处理。开启即表示你同意上述数据共享。'**
   String get aiConsentBody;
 
   /// No description provided for @aiConsentAgree.
   ///
-  /// In en, this message translates to:
-  /// **'Agree & enable'**
+  /// In zh, this message translates to:
+  /// **'同意并开启'**
   String get aiConsentAgree;
 
   /// No description provided for @aboutPrivacyPolicy.
   ///
-  /// In en, this message translates to:
-  /// **'Privacy Policy'**
+  /// In zh, this message translates to:
+  /// **'隐私政策'**
   String get aboutPrivacyPolicy;
 
   /// No description provided for @aboutChangelog.
   ///
-  /// In en, this message translates to:
-  /// **'Changelog'**
+  /// In zh, this message translates to:
+  /// **'更新日志'**
   String get aboutChangelog;
 
-  /// The application title
+  /// No description provided for @appTitle.
   ///
-  /// In en, this message translates to:
+  /// In zh, this message translates to:
   /// **'智记'**
   String get appTitle;
 
   /// No description provided for @tabHome.
   ///
-  /// In en, this message translates to:
-  /// **'Home'**
+  /// In zh, this message translates to:
+  /// **'明细'**
   String get tabHome;
 
   /// No description provided for @tabInsights.
   ///
-  /// In en, this message translates to:
-  /// **'Stats'**
+  /// In zh, this message translates to:
+  /// **'洞察'**
   String get tabInsights;
 
   /// No description provided for @tabAssets.
   ///
-  /// In en, this message translates to:
-  /// **'Assets'**
+  /// In zh, this message translates to:
+  /// **'资产'**
   String get tabAssets;
 
   /// No description provided for @tabRecord.
   ///
-  /// In en, this message translates to:
-  /// **'Record'**
+  /// In zh, this message translates to:
+  /// **'记账'**
   String get tabRecord;
 
   /// No description provided for @tabAiAssistant.
   ///
-  /// In en, this message translates to:
-  /// **'AI Assistant'**
+  /// In zh, this message translates to:
+  /// **'AI 助手'**
   String get tabAiAssistant;
 
   /// No description provided for @tabMine.
   ///
-  /// In en, this message translates to:
-  /// **'Mine'**
+  /// In zh, this message translates to:
+  /// **'我的'**
   String get tabMine;
 
   /// No description provided for @commonCancel.
   ///
-  /// In en, this message translates to:
-  /// **'Cancel'**
+  /// In zh, this message translates to:
+  /// **'取消'**
   String get commonCancel;
 
   /// No description provided for @commonConfirm.
   ///
-  /// In en, this message translates to:
-  /// **'Confirm'**
+  /// In zh, this message translates to:
+  /// **'确定'**
   String get commonConfirm;
 
   /// No description provided for @commonSave.
   ///
-  /// In en, this message translates to:
-  /// **'Save'**
+  /// In zh, this message translates to:
+  /// **'保存'**
   String get commonSave;
 
   /// No description provided for @commonDelete.
   ///
-  /// In en, this message translates to:
-  /// **'Delete'**
+  /// In zh, this message translates to:
+  /// **'删除'**
   String get commonDelete;
 
   /// No description provided for @commonAdd.
   ///
-  /// In en, this message translates to:
-  /// **'Add'**
+  /// In zh, this message translates to:
+  /// **'添加'**
   String get commonAdd;
 
   /// No description provided for @commonEdit.
   ///
-  /// In en, this message translates to:
-  /// **'Edit'**
+  /// In zh, this message translates to:
+  /// **'编辑'**
   String get commonEdit;
 
   /// No description provided for @commonMore.
   ///
-  /// In en, this message translates to:
-  /// **'More'**
+  /// In zh, this message translates to:
+  /// **'更多'**
   String get commonMore;
 
   /// No description provided for @commonOk.
   ///
-  /// In en, this message translates to:
-  /// **'OK'**
+  /// In zh, this message translates to:
+  /// **'确定'**
   String get commonOk;
 
   /// No description provided for @commonKnow.
   ///
-  /// In en, this message translates to:
-  /// **'Got it'**
+  /// In zh, this message translates to:
+  /// **'知道了'**
   String get commonKnow;
 
   /// No description provided for @commonNo.
   ///
-  /// In en, this message translates to:
-  /// **'No'**
+  /// In zh, this message translates to:
+  /// **'否'**
   String get commonNo;
 
   /// No description provided for @commonEmpty.
   ///
-  /// In en, this message translates to:
-  /// **'No data'**
+  /// In zh, this message translates to:
+  /// **'暂无数据'**
   String get commonEmpty;
 
   /// No description provided for @commonError.
   ///
-  /// In en, this message translates to:
-  /// **'Error'**
+  /// In zh, this message translates to:
+  /// **'错误'**
   String get commonError;
 
   /// No description provided for @commonSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'Success'**
+  /// In zh, this message translates to:
+  /// **'成功'**
   String get commonSuccess;
 
   /// No description provided for @commonFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Failed'**
+  /// In zh, this message translates to:
+  /// **'失败'**
   String get commonFailed;
 
   /// No description provided for @commonBack.
   ///
-  /// In en, this message translates to:
-  /// **'Back'**
+  /// In zh, this message translates to:
+  /// **'返回'**
   String get commonBack;
 
   /// No description provided for @commonNext.
   ///
-  /// In en, this message translates to:
-  /// **'Next'**
+  /// In zh, this message translates to:
+  /// **'下一步'**
   String get commonNext;
 
   /// No description provided for @fabActionCamera.
   ///
-  /// In en, this message translates to:
-  /// **'Camera'**
+  /// In zh, this message translates to:
+  /// **'拍照'**
   String get fabActionCamera;
 
   /// No description provided for @fabActionGallery.
   ///
-  /// In en, this message translates to:
-  /// **'Gallery'**
+  /// In zh, this message translates to:
+  /// **'相册'**
   String get fabActionGallery;
 
   /// No description provided for @fabActionVoice.
   ///
-  /// In en, this message translates to:
-  /// **'Voice'**
+  /// In zh, this message translates to:
+  /// **'语音'**
   String get fabActionVoice;
 
   /// No description provided for @fabActionVoiceDisabled.
   ///
-  /// In en, this message translates to:
-  /// **'AI enabled & API Key required'**
+  /// In zh, this message translates to:
+  /// **'需要启用AI并配置API Key'**
   String get fabActionVoiceDisabled;
 
   /// No description provided for @fabActionManual.
   ///
-  /// In en, this message translates to:
-  /// **'Add entry'**
+  /// In zh, this message translates to:
+  /// **'记一笔'**
   String get fabActionManual;
 
   /// No description provided for @voiceRecordingTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Voice Billing'**
+  /// In zh, this message translates to:
+  /// **'语音记账'**
   String get voiceRecordingTitle;
 
   /// No description provided for @voiceRecordingPreparing.
   ///
-  /// In en, this message translates to:
-  /// **'Preparing...'**
+  /// In zh, this message translates to:
+  /// **'准备录音...'**
   String get voiceRecordingPreparing;
 
   /// No description provided for @voiceRecordingInProgress.
   ///
-  /// In en, this message translates to:
-  /// **'Recording...'**
+  /// In zh, this message translates to:
+  /// **'正在录音...'**
   String get voiceRecordingInProgress;
 
   /// No description provided for @voiceRecordingProcessing.
   ///
-  /// In en, this message translates to:
-  /// **'Recognizing...'**
+  /// In zh, this message translates to:
+  /// **'正在识别...'**
   String get voiceRecordingProcessing;
 
   /// No description provided for @voiceRecordingDuration.
   ///
-  /// In en, this message translates to:
-  /// **'Duration: {duration}s'**
+  /// In zh, this message translates to:
+  /// **'录音时长: {duration}秒'**
   String voiceRecordingDuration(int duration);
 
   /// No description provided for @voiceRecordingSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'Voice billing successful'**
+  /// In zh, this message translates to:
+  /// **'语音记账成功'**
   String get voiceRecordingSuccess;
 
   /// No description provided for @voiceRecordingNoLedger.
   ///
-  /// In en, this message translates to:
-  /// **'No ledger found'**
+  /// In zh, this message translates to:
+  /// **'未找到当前账本'**
   String get voiceRecordingNoLedger;
 
   /// No description provided for @voiceRecordingNoInfo.
   ///
-  /// In en, this message translates to:
-  /// **'No billing information recognized'**
+  /// In zh, this message translates to:
+  /// **'未识别到记账信息'**
   String get voiceRecordingNoInfo;
 
   /// No description provided for @voiceRecordingPermissionDenied.
   ///
-  /// In en, this message translates to:
-  /// **'Microphone permission required'**
+  /// In zh, this message translates to:
+  /// **'需要麦克风权限才能录音'**
   String get voiceRecordingPermissionDenied;
 
   /// No description provided for @voiceRecordingPermissionDeniedTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Microphone Permission Required'**
+  /// In zh, this message translates to:
+  /// **'需要麦克风权限'**
   String get voiceRecordingPermissionDeniedTitle;
 
   /// No description provided for @voiceRecordingPermissionDeniedMessage.
   ///
-  /// In en, this message translates to:
-  /// **'Voice billing requires microphone permission. Please allow SmartBook to access the microphone in System Settings.'**
+  /// In zh, this message translates to:
+  /// **'语音记账功能需要使用麦克风权限。请在系统设置中允许智记访问麦克风。'**
   String get voiceRecordingPermissionDeniedMessage;
 
   /// No description provided for @voiceRecordingStartFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Failed to start recording: {error}'**
+  /// In zh, this message translates to:
+  /// **'启动录音失败: {error}'**
   String voiceRecordingStartFailed(String error);
 
   /// No description provided for @voiceRecordingFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Recording failed: {error}'**
+  /// In zh, this message translates to:
+  /// **'录音失败: {error}'**
   String voiceRecordingFailed(String error);
 
   /// No description provided for @voiceRecordingRecognizeFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Recognition failed: {error}'**
+  /// In zh, this message translates to:
+  /// **'识别失败: {error}'**
   String voiceRecordingRecognizeFailed(String error);
 
   /// No description provided for @voiceRecordingNoInfoDetected.
   ///
-  /// In en, this message translates to:
-  /// **'Unable to extract bill info: {text}'**
+  /// In zh, this message translates to:
+  /// **'未能识别账单信息: {text}'**
   String voiceRecordingNoInfoDetected(String text);
 
   /// No description provided for @voiceRecordingNoSpeech.
   ///
-  /// In en, this message translates to:
-  /// **'No speech detected'**
+  /// In zh, this message translates to:
+  /// **'未检测到语音输入'**
   String get voiceRecordingNoSpeech;
 
   /// No description provided for @voiceRecordingHoldToTalk.
   ///
-  /// In en, this message translates to:
-  /// **'Hold to talk'**
+  /// In zh, this message translates to:
+  /// **'按住 说话'**
   String get voiceRecordingHoldToTalk;
 
   /// No description provided for @voiceRecordingReleaseToFinish.
   ///
-  /// In en, this message translates to:
-  /// **'Release to finish'**
+  /// In zh, this message translates to:
+  /// **'松手结束录音'**
   String get voiceRecordingReleaseToFinish;
 
   /// No description provided for @voiceRecordingTooShort.
   ///
-  /// In en, this message translates to:
-  /// **'Recording too short'**
+  /// In zh, this message translates to:
+  /// **'录音时间过短'**
   String get voiceRecordingTooShort;
 
   /// No description provided for @voiceRecordingResultLabel.
   ///
-  /// In en, this message translates to:
-  /// **'Recognition result:'**
+  /// In zh, this message translates to:
+  /// **'识别结果：'**
   String get voiceRecordingResultLabel;
 
   /// No description provided for @voiceRecordingAutoHintSpoken.
   ///
-  /// In en, this message translates to:
-  /// **'Pause when done to auto-recognize'**
+  /// In zh, this message translates to:
+  /// **'说完后停顿即可自动识别'**
   String get voiceRecordingAutoHintSpoken;
 
   /// No description provided for @voiceRecordingAutoHintWaiting.
   ///
-  /// In en, this message translates to:
-  /// **'Please start speaking...'**
+  /// In zh, this message translates to:
+  /// **'请开始说话...'**
   String get voiceRecordingAutoHintWaiting;
 
   /// No description provided for @smartBillingVoiceTrigger.
   ///
-  /// In en, this message translates to:
-  /// **'Voice trigger mode'**
+  /// In zh, this message translates to:
+  /// **'语音触发方式'**
   String get smartBillingVoiceTrigger;
 
   /// No description provided for @voiceTriggerModeAuto.
   ///
-  /// In en, this message translates to:
-  /// **'Auto-detect pause'**
+  /// In zh, this message translates to:
+  /// **'自动检测停顿'**
   String get voiceTriggerModeAuto;
 
   /// No description provided for @voiceTriggerModeAutoDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Stops automatically after a pause; best for short entries'**
+  /// In zh, this message translates to:
+  /// **'录音后自动判断说完，适合短句快速记账'**
   String get voiceTriggerModeAutoDesc;
 
   /// No description provided for @voiceTriggerModeHold.
   ///
-  /// In en, this message translates to:
-  /// **'Hold to talk'**
+  /// In zh, this message translates to:
+  /// **'按住说话'**
   String get voiceTriggerModeHold;
 
   /// No description provided for @voiceTriggerModeHoldDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Hold to record, release to stop; best for longer input'**
+  /// In zh, this message translates to:
+  /// **'长按录音、松开结束，适合一次说较多内容'**
   String get voiceTriggerModeHoldDesc;
 
   /// No description provided for @smartBillingVoiceSilenceTimeout.
   ///
-  /// In en, this message translates to:
-  /// **'Pause to finish'**
+  /// In zh, this message translates to:
+  /// **'停顿结束时长'**
   String get smartBillingVoiceSilenceTimeout;
 
   /// No description provided for @smartBillingVoiceSilenceTimeoutValue.
   ///
-  /// In en, this message translates to:
-  /// **'Auto-finish after a {seconds}s pause'**
+  /// In zh, this message translates to:
+  /// **'停顿 {seconds} 秒后自动结束识别'**
   String smartBillingVoiceSilenceTimeoutValue(String seconds);
 
   /// No description provided for @commonPrevious.
   ///
-  /// In en, this message translates to:
-  /// **'Previous'**
+  /// In zh, this message translates to:
+  /// **'上一步'**
   String get commonPrevious;
 
   /// No description provided for @commonFinish.
   ///
-  /// In en, this message translates to:
-  /// **'Finish'**
+  /// In zh, this message translates to:
+  /// **'完成'**
   String get commonFinish;
 
   /// No description provided for @commonClose.
   ///
-  /// In en, this message translates to:
-  /// **'Close'**
+  /// In zh, this message translates to:
+  /// **'关闭'**
   String get commonClose;
 
   /// No description provided for @commonOther.
   ///
-  /// In en, this message translates to:
-  /// **'Other'**
+  /// In zh, this message translates to:
+  /// **'其他'**
   String get commonOther;
 
   /// No description provided for @commonYesterday.
   ///
-  /// In en, this message translates to:
-  /// **'Yesterday'**
+  /// In zh, this message translates to:
+  /// **'昨天'**
   String get commonYesterday;
 
   /// No description provided for @commonSearch.
   ///
-  /// In en, this message translates to:
-  /// **'Search'**
+  /// In zh, this message translates to:
+  /// **'搜索'**
   String get commonSearch;
 
   /// No description provided for @commonNoteHint.
   ///
-  /// In en, this message translates to:
-  /// **'Note...'**
+  /// In zh, this message translates to:
+  /// **'备注…'**
   String get commonNoteHint;
 
   /// No description provided for @commonSettings.
   ///
-  /// In en, this message translates to:
-  /// **'Settings'**
+  /// In zh, this message translates to:
+  /// **'设置'**
   String get commonSettings;
 
   /// No description provided for @commonGoSettings.
   ///
-  /// In en, this message translates to:
-  /// **'Go to Settings'**
+  /// In zh, this message translates to:
+  /// **'前往设置'**
   String get commonGoSettings;
 
   /// No description provided for @commonLanguage.
   ///
-  /// In en, this message translates to:
-  /// **'Language'**
+  /// In zh, this message translates to:
+  /// **'语言'**
   String get commonLanguage;
-
-  /// No description provided for @commonCurrent.
-  ///
-  /// In en, this message translates to:
-  /// **'Current'**
-  String get commonCurrent;
-
-  /// No description provided for @commonTutorial.
-  ///
-  /// In en, this message translates to:
-  /// **'Tutorial'**
-  String get commonTutorial;
-
-  /// No description provided for @commonConfigure.
-  ///
-  /// In en, this message translates to:
-  /// **'Configure'**
-  String get commonConfigure;
-
-  /// No description provided for @commonPressAgainToExit.
-  ///
-  /// In en, this message translates to:
-  /// **'Press again to exit'**
-  String get commonPressAgainToExit;
 
   /// No description provided for @commonWeekdayMonday.
   ///
-  /// In en, this message translates to:
-  /// **'Monday'**
+  /// In zh, this message translates to:
+  /// **'星期一'**
   String get commonWeekdayMonday;
 
   /// No description provided for @commonWeekdayTuesday.
   ///
-  /// In en, this message translates to:
-  /// **'Tuesday'**
+  /// In zh, this message translates to:
+  /// **'星期二'**
   String get commonWeekdayTuesday;
 
   /// No description provided for @commonWeekdayWednesday.
   ///
-  /// In en, this message translates to:
-  /// **'Wednesday'**
+  /// In zh, this message translates to:
+  /// **'星期三'**
   String get commonWeekdayWednesday;
 
   /// No description provided for @commonWeekdayThursday.
   ///
-  /// In en, this message translates to:
-  /// **'Thursday'**
+  /// In zh, this message translates to:
+  /// **'星期四'**
   String get commonWeekdayThursday;
 
   /// No description provided for @commonWeekdayFriday.
   ///
-  /// In en, this message translates to:
-  /// **'Friday'**
+  /// In zh, this message translates to:
+  /// **'星期五'**
   String get commonWeekdayFriday;
 
   /// No description provided for @commonWeekdaySaturday.
   ///
-  /// In en, this message translates to:
-  /// **'Saturday'**
+  /// In zh, this message translates to:
+  /// **'星期六'**
   String get commonWeekdaySaturday;
 
   /// No description provided for @commonWeekdaySunday.
   ///
-  /// In en, this message translates to:
-  /// **'Sunday'**
+  /// In zh, this message translates to:
+  /// **'星期日'**
   String get commonWeekdaySunday;
+
+  /// No description provided for @commonCurrent.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前'**
+  String get commonCurrent;
+
+  /// No description provided for @commonTutorial.
+  ///
+  /// In zh, this message translates to:
+  /// **'教程'**
+  String get commonTutorial;
+
+  /// No description provided for @commonConfigure.
+  ///
+  /// In zh, this message translates to:
+  /// **'配置'**
+  String get commonConfigure;
+
+  /// No description provided for @commonPressAgainToExit.
+  ///
+  /// In zh, this message translates to:
+  /// **'再按一次退出应用'**
+  String get commonPressAgainToExit;
 
   /// No description provided for @homeIncome.
   ///
-  /// In en, this message translates to:
-  /// **'Income'**
+  /// In zh, this message translates to:
+  /// **'收入'**
   String get homeIncome;
 
   /// No description provided for @homeExpense.
   ///
-  /// In en, this message translates to:
-  /// **'Expense'**
+  /// In zh, this message translates to:
+  /// **'支出'**
   String get homeExpense;
 
   /// No description provided for @homeBalance.
   ///
-  /// In en, this message translates to:
-  /// **'Balance'**
+  /// In zh, this message translates to:
+  /// **'结余'**
   String get homeBalance;
 
   /// No description provided for @homeNoRecords.
   ///
-  /// In en, this message translates to:
-  /// **'No records yet'**
+  /// In zh, this message translates to:
+  /// **'还没有记账'**
   String get homeNoRecords;
 
   /// No description provided for @homeSelectDate.
   ///
-  /// In en, this message translates to:
-  /// **'Select date'**
+  /// In zh, this message translates to:
+  /// **'选择日期'**
   String get homeSelectDate;
 
   /// No description provided for @homeAppTitle.
   ///
-  /// In en, this message translates to:
+  /// In zh, this message translates to:
   /// **'智记'**
   String get homeAppTitle;
 
   /// No description provided for @homeSearch.
   ///
-  /// In en, this message translates to:
-  /// **'Search'**
+  /// In zh, this message translates to:
+  /// **'搜索'**
   String get homeSearch;
 
   /// No description provided for @homeYear.
   ///
-  /// In en, this message translates to:
-  /// **'{year}'**
-  String homeYear(int year);
+  /// In zh, this message translates to:
+  /// **'{year}年'**
+  String homeYear(Object year);
 
   /// No description provided for @homeMonth.
   ///
-  /// In en, this message translates to:
-  /// **'{month}M'**
-  String homeMonth(String month);
+  /// In zh, this message translates to:
+  /// **'{month}月'**
+  String homeMonth(Object month);
 
   /// No description provided for @homeNoRecordsSubtext.
   ///
-  /// In en, this message translates to:
-  /// **'Tap the AI assistant below, or long-press it to add manually'**
+  /// In zh, this message translates to:
+  /// **'点击下方「AI 助手」记账，长按可手动记一笔'**
   String get homeNoRecordsSubtext;
 
   /// No description provided for @homeNewRecordsCount.
   ///
-  /// In en, this message translates to:
-  /// **'{count} new records'**
+  /// In zh, this message translates to:
+  /// **'有 {count} 条新记录'**
   String homeNewRecordsCount(int count);
 
   /// No description provided for @homeViewNewRecords.
   ///
-  /// In en, this message translates to:
-  /// **'View'**
+  /// In zh, this message translates to:
+  /// **'查看'**
   String get homeViewNewRecords;
 
   /// No description provided for @homeLastMonthReportSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'View and share last month\'s report'**
+  /// In zh, this message translates to:
+  /// **'查看上月消费报告并分享'**
   String get homeLastMonthReportSubtitle;
 
   /// No description provided for @homeLastMonthReportView.
   ///
-  /// In en, this message translates to:
-  /// **'View'**
+  /// In zh, this message translates to:
+  /// **'查看'**
   String get homeLastMonthReportView;
 
   /// No description provided for @homeAnnualReportReminder.
   ///
-  /// In en, this message translates to:
-  /// **'Your {year} Annual Report is ready'**
+  /// In zh, this message translates to:
+  /// **'{year}年度账单已生成，回顾你的财务足迹'**
   String homeAnnualReportReminder(int year);
 
   /// No description provided for @homeAnnualReportView.
   ///
-  /// In en, this message translates to:
-  /// **'View'**
+  /// In zh, this message translates to:
+  /// **'查看'**
   String get homeAnnualReportView;
 
   /// No description provided for @widgetTodayExpense.
   ///
-  /// In en, this message translates to:
-  /// **'Today\'s Expense'**
+  /// In zh, this message translates to:
+  /// **'今日支出'**
   String get widgetTodayExpense;
 
   /// No description provided for @widgetTodayIncome.
   ///
-  /// In en, this message translates to:
-  /// **'Today\'s Income'**
+  /// In zh, this message translates to:
+  /// **'今日收入'**
   String get widgetTodayIncome;
 
   /// No description provided for @widgetMonthExpense.
   ///
-  /// In en, this message translates to:
-  /// **'Month\'s Expense'**
+  /// In zh, this message translates to:
+  /// **'本月支出'**
   String get widgetMonthExpense;
 
   /// No description provided for @widgetMonthIncome.
   ///
-  /// In en, this message translates to:
-  /// **'Month\'s Income'**
+  /// In zh, this message translates to:
+  /// **'本月收入'**
   String get widgetMonthIncome;
 
   /// No description provided for @widgetMonthSuffix.
   ///
-  /// In en, this message translates to:
-  /// **''**
+  /// In zh, this message translates to:
+  /// **'月'**
   String get widgetMonthSuffix;
 
   /// No description provided for @widgetToday.
   ///
-  /// In en, this message translates to:
-  /// **'Today'**
+  /// In zh, this message translates to:
+  /// **'今日'**
   String get widgetToday;
 
   /// No description provided for @widgetQuickAddLabel.
   ///
-  /// In en, this message translates to:
-  /// **'Add'**
+  /// In zh, this message translates to:
+  /// **'记一笔'**
   String get widgetQuickAddLabel;
 
   /// No description provided for @widgetBudgetTotal.
   ///
-  /// In en, this message translates to:
-  /// **'Total'**
+  /// In zh, this message translates to:
+  /// **'总额'**
   String get widgetBudgetTotal;
 
   /// No description provided for @widgetBudgetRemaining.
   ///
-  /// In en, this message translates to:
-  /// **'Left'**
+  /// In zh, this message translates to:
+  /// **'剩'**
   String get widgetBudgetRemaining;
 
   /// No description provided for @widgetNoBudget.
   ///
-  /// In en, this message translates to:
-  /// **'No Budget'**
+  /// In zh, this message translates to:
+  /// **'未设预算'**
   String get widgetNoBudget;
 
   /// No description provided for @widgetNoTransactions.
   ///
-  /// In en, this message translates to:
-  /// **'No Transactions'**
+  /// In zh, this message translates to:
+  /// **'暂无交易'**
   String get widgetNoTransactions;
 
   /// No description provided for @widgetRecentTransactions.
   ///
-  /// In en, this message translates to:
-  /// **'Recent Transactions'**
+  /// In zh, this message translates to:
+  /// **'最近交易'**
   String get widgetRecentTransactions;
 
   /// No description provided for @widgetNoAccounts.
   ///
-  /// In en, this message translates to:
-  /// **'No Accounts'**
+  /// In zh, this message translates to:
+  /// **'暂无账户'**
   String get widgetNoAccounts;
 
   /// No description provided for @searchTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Search'**
+  /// In zh, this message translates to:
+  /// **'搜索'**
   String get searchTitle;
 
   /// No description provided for @searchHint.
   ///
-  /// In en, this message translates to:
-  /// **'Search notes, categories or amounts...'**
+  /// In zh, this message translates to:
+  /// **'搜索备注、分类或金额...'**
   String get searchHint;
 
   /// No description provided for @searchCategoryHint.
   ///
-  /// In en, this message translates to:
-  /// **'Search category name...'**
+  /// In zh, this message translates to:
+  /// **'搜索分类名称...'**
   String get searchCategoryHint;
 
   /// No description provided for @searchCategoryFilter.
   ///
-  /// In en, this message translates to:
-  /// **'Category Filter'**
+  /// In zh, this message translates to:
+  /// **'分类筛选'**
   String get searchCategoryFilter;
 
   /// No description provided for @searchMinAmount.
   ///
-  /// In en, this message translates to:
-  /// **'Min amount'**
+  /// In zh, this message translates to:
+  /// **'最小金额'**
   String get searchMinAmount;
 
   /// No description provided for @searchMaxAmount.
   ///
-  /// In en, this message translates to:
-  /// **'Max amount'**
+  /// In zh, this message translates to:
+  /// **'最大金额'**
   String get searchMaxAmount;
 
   /// No description provided for @searchNoInput.
   ///
-  /// In en, this message translates to:
-  /// **'Enter keywords to start searching'**
+  /// In zh, this message translates to:
+  /// **'输入关键词开始搜索'**
   String get searchNoInput;
 
   /// No description provided for @searchNoResults.
   ///
-  /// In en, this message translates to:
-  /// **'No matching results found'**
+  /// In zh, this message translates to:
+  /// **'未找到匹配的结果'**
   String get searchNoResults;
 
   /// No description provided for @searchBatchMode.
   ///
-  /// In en, this message translates to:
-  /// **'Batch Operations'**
+  /// In zh, this message translates to:
+  /// **'批量操作'**
   String get searchBatchMode;
 
   /// No description provided for @searchBatchModeWithCount.
   ///
-  /// In en, this message translates to:
-  /// **'Batch Operations ({selected}/{total})'**
-  String searchBatchModeWithCount(Object selected, Object total);
+  /// In zh, this message translates to:
+  /// **'批量操作 ({selected}/{total})'**
+  String searchBatchModeWithCount(int selected, int total);
 
   /// No description provided for @searchExitBatchMode.
   ///
-  /// In en, this message translates to:
-  /// **'Exit Batch Mode'**
+  /// In zh, this message translates to:
+  /// **'退出批量操作'**
   String get searchExitBatchMode;
 
   /// No description provided for @searchSelectAll.
   ///
-  /// In en, this message translates to:
-  /// **'Select All'**
+  /// In zh, this message translates to:
+  /// **'全选'**
   String get searchSelectAll;
 
   /// No description provided for @searchDeselectAll.
   ///
-  /// In en, this message translates to:
-  /// **'Deselect All'**
+  /// In zh, this message translates to:
+  /// **'取消全选'**
   String get searchDeselectAll;
 
   /// No description provided for @searchSelectedCount.
   ///
-  /// In en, this message translates to:
-  /// **'{count} selected'**
-  String searchSelectedCount(Object count);
+  /// In zh, this message translates to:
+  /// **'已选择 {count} 项'**
+  String searchSelectedCount(int count);
 
   /// No description provided for @searchBatchSetNote.
   ///
-  /// In en, this message translates to:
-  /// **'Set Note'**
+  /// In zh, this message translates to:
+  /// **'设置备注'**
   String get searchBatchSetNote;
 
   /// No description provided for @searchBatchChangeCategory.
   ///
-  /// In en, this message translates to:
-  /// **'Change Category'**
+  /// In zh, this message translates to:
+  /// **'调整分类'**
   String get searchBatchChangeCategory;
 
   /// No description provided for @searchBatchDeleteConfirmTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Confirm Delete'**
+  /// In zh, this message translates to:
+  /// **'确认删除'**
   String get searchBatchDeleteConfirmTitle;
 
   /// No description provided for @searchBatchDeleteConfirmMessage.
   ///
-  /// In en, this message translates to:
-  /// **'Are you sure you want to delete the selected {count} transactions?\nThis action cannot be undone.'**
-  String searchBatchDeleteConfirmMessage(Object count);
+  /// In zh, this message translates to:
+  /// **'确定要删除选中的 {count} 笔记账吗?\n此操作无法撤销。'**
+  String searchBatchDeleteConfirmMessage(int count);
 
   /// No description provided for @searchBatchSetNoteTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Batch Set Note'**
+  /// In zh, this message translates to:
+  /// **'批量设置备注'**
   String get searchBatchSetNoteTitle;
 
   /// No description provided for @searchBatchSetNoteMessage.
   ///
-  /// In en, this message translates to:
-  /// **'Set the same note for the selected {count} transactions'**
-  String searchBatchSetNoteMessage(Object count);
+  /// In zh, this message translates to:
+  /// **'将为选中的 {count} 笔记账设置相同的备注'**
+  String searchBatchSetNoteMessage(int count);
 
   /// No description provided for @searchBatchSetNoteHint.
   ///
-  /// In en, this message translates to:
-  /// **'Enter note content (leave empty to clear notes)'**
+  /// In zh, this message translates to:
+  /// **'输入备注内容 (留空则清空备注)'**
   String get searchBatchSetNoteHint;
 
   /// No description provided for @searchBatchDeleteSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'Successfully deleted {count} transactions'**
-  String searchBatchDeleteSuccess(Object count);
+  /// In zh, this message translates to:
+  /// **'成功删除 {count} 笔记账'**
+  String searchBatchDeleteSuccess(int count);
 
   /// No description provided for @searchBatchDeleteFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Delete failed: {error}'**
-  String searchBatchDeleteFailed(Object error);
+  /// In zh, this message translates to:
+  /// **'删除失败: {error}'**
+  String searchBatchDeleteFailed(String error);
 
   /// No description provided for @searchBatchSetNoteSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'Successfully set note for {count} transactions'**
-  String searchBatchSetNoteSuccess(Object count);
+  /// In zh, this message translates to:
+  /// **'成功为 {count} 笔记账设置备注'**
+  String searchBatchSetNoteSuccess(int count);
 
   /// No description provided for @searchBatchSetNoteFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Set note failed: {error}'**
-  String searchBatchSetNoteFailed(Object error);
+  /// In zh, this message translates to:
+  /// **'设置备注失败: {error}'**
+  String searchBatchSetNoteFailed(String error);
 
   /// No description provided for @searchBatchChangeCategorySuccess.
   ///
-  /// In en, this message translates to:
-  /// **'Successfully changed category for {count} transactions'**
-  String searchBatchChangeCategorySuccess(Object count);
+  /// In zh, this message translates to:
+  /// **'成功为 {count} 笔记账调整分类'**
+  String searchBatchChangeCategorySuccess(int count);
 
   /// No description provided for @searchBatchChangeCategoryFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Change category failed: {error}'**
-  String searchBatchChangeCategoryFailed(Object error);
+  /// In zh, this message translates to:
+  /// **'调整分类失败: {error}'**
+  String searchBatchChangeCategoryFailed(String error);
 
   /// No description provided for @searchResultsCount.
   ///
-  /// In en, this message translates to:
-  /// **'{count} results'**
-  String searchResultsCount(Object count);
+  /// In zh, this message translates to:
+  /// **'共 {count} 条结果'**
+  String searchResultsCount(int count);
 
   /// No description provided for @searchSummaryIncome.
   ///
-  /// In en, this message translates to:
-  /// **'Income'**
+  /// In zh, this message translates to:
+  /// **'收入'**
   String get searchSummaryIncome;
 
   /// No description provided for @searchSummaryExpense.
   ///
-  /// In en, this message translates to:
-  /// **'Expense'**
+  /// In zh, this message translates to:
+  /// **'支出'**
   String get searchSummaryExpense;
 
   /// No description provided for @searchFilterTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Filter'**
+  /// In zh, this message translates to:
+  /// **'筛选'**
   String get searchFilterTitle;
 
   /// No description provided for @searchAmountFilter.
   ///
-  /// In en, this message translates to:
-  /// **'Amount Filter'**
+  /// In zh, this message translates to:
+  /// **'金额筛选'**
   String get searchAmountFilter;
 
   /// No description provided for @searchDateFilter.
   ///
-  /// In en, this message translates to:
-  /// **'Date Filter'**
+  /// In zh, this message translates to:
+  /// **'时间筛选'**
   String get searchDateFilter;
 
   /// No description provided for @searchStartDate.
   ///
-  /// In en, this message translates to:
-  /// **'Start Date'**
+  /// In zh, this message translates to:
+  /// **'开始日期'**
   String get searchStartDate;
 
   /// No description provided for @searchEndDate.
   ///
-  /// In en, this message translates to:
-  /// **'End Date'**
+  /// In zh, this message translates to:
+  /// **'结束日期'**
   String get searchEndDate;
 
   /// No description provided for @searchNotSet.
   ///
-  /// In en, this message translates to:
-  /// **'Not Set'**
+  /// In zh, this message translates to:
+  /// **'未设置'**
   String get searchNotSet;
 
   /// No description provided for @searchClearFilter.
   ///
-  /// In en, this message translates to:
-  /// **'Clear Filter'**
+  /// In zh, this message translates to:
+  /// **'清空筛选'**
   String get searchClearFilter;
 
   /// No description provided for @searchBatchCategoryTransferError.
   ///
-  /// In en, this message translates to:
-  /// **'Selected transactions contain transfers, cannot change category'**
+  /// In zh, this message translates to:
+  /// **'选中的交易包含转账，无法修改分类'**
   String get searchBatchCategoryTransferError;
 
   /// No description provided for @searchBatchCategoryTypeError.
   ///
-  /// In en, this message translates to:
-  /// **'Selected transactions have different types, please select all income or all expense'**
+  /// In zh, this message translates to:
+  /// **'选中的交易类型不一致，请选择全部为收入或全部为支出的交易'**
   String get searchBatchCategoryTypeError;
 
   /// No description provided for @searchDateStart.
   ///
-  /// In en, this message translates to:
-  /// **'Start'**
+  /// In zh, this message translates to:
+  /// **'开始'**
   String get searchDateStart;
 
   /// No description provided for @searchDateEnd.
   ///
-  /// In en, this message translates to:
-  /// **'End'**
+  /// In zh, this message translates to:
+  /// **'结束'**
   String get searchDateEnd;
 
   /// No description provided for @analyticsMonth.
   ///
-  /// In en, this message translates to:
-  /// **'Month'**
+  /// In zh, this message translates to:
+  /// **'月'**
   String get analyticsMonth;
 
   /// No description provided for @analyticsYear.
   ///
-  /// In en, this message translates to:
-  /// **'Year'**
+  /// In zh, this message translates to:
+  /// **'年'**
   String get analyticsYear;
 
   /// No description provided for @analyticsAll.
   ///
-  /// In en, this message translates to:
-  /// **'All'**
+  /// In zh, this message translates to:
+  /// **'全部'**
   String get analyticsAll;
 
   /// No description provided for @analyticsCustom.
   ///
-  /// In en, this message translates to:
-  /// **'Custom'**
+  /// In zh, this message translates to:
+  /// **'自定义'**
   String get analyticsCustom;
 
   /// No description provided for @analyticsCompareLastMonth.
   ///
-  /// In en, this message translates to:
-  /// **'vs last month'**
+  /// In zh, this message translates to:
+  /// **'较上月'**
   String get analyticsCompareLastMonth;
 
   /// No description provided for @analyticsCompareSameMonthLastYear.
   ///
-  /// In en, this message translates to:
-  /// **'vs same month last year'**
+  /// In zh, this message translates to:
+  /// **'较去年同月'**
   String get analyticsCompareSameMonthLastYear;
 
   /// No description provided for @analyticsCompareLastYear.
   ///
-  /// In en, this message translates to:
-  /// **'vs last year'**
+  /// In zh, this message translates to:
+  /// **'较去年'**
   String get analyticsCompareLastYear;
 
   /// No description provided for @analyticsComparePrevPrevYear.
   ///
-  /// In en, this message translates to:
-  /// **'vs year before last'**
+  /// In zh, this message translates to:
+  /// **'较前年'**
   String get analyticsComparePrevPrevYear;
 
   /// No description provided for @analyticsAccountBreakdown.
   ///
-  /// In en, this message translates to:
-  /// **'Account breakdown'**
+  /// In zh, this message translates to:
+  /// **'账户分布'**
   String get analyticsAccountBreakdown;
 
   /// No description provided for @analyticsTopMerchants.
   ///
-  /// In en, this message translates to:
-  /// **'Top merchants'**
+  /// In zh, this message translates to:
+  /// **'商户 Top'**
   String get analyticsTopMerchants;
 
   /// No description provided for @analyticsNoAccount.
   ///
-  /// In en, this message translates to:
-  /// **'No account'**
+  /// In zh, this message translates to:
+  /// **'未指定账户'**
   String get analyticsNoAccount;
 
   /// No description provided for @analyticsCategoryRanking.
   ///
-  /// In en, this message translates to:
-  /// **'Category Ranking'**
+  /// In zh, this message translates to:
+  /// **'分类排行'**
   String get analyticsCategoryRanking;
 
   /// No description provided for @analyticsTotalAmount.
   ///
-  /// In en, this message translates to:
-  /// **'Total'**
+  /// In zh, this message translates to:
+  /// **'总计'**
   String get analyticsTotalAmount;
 
   /// No description provided for @analyticsNoDataSubtext.
   ///
-  /// In en, this message translates to:
-  /// **'Swipe left/right to switch periods, or tap button to toggle income/expense'**
+  /// In zh, this message translates to:
+  /// **'可左右滑动切换周期，或点击按钮切换收入/支出'**
   String get analyticsNoDataSubtext;
 
   /// No description provided for @analyticsSwipeHint.
   ///
-  /// In en, this message translates to:
-  /// **'Swipe left/right to change period'**
+  /// In zh, this message translates to:
+  /// **'左右滑动切换周期'**
   String get analyticsSwipeHint;
 
   /// No description provided for @analyticsSwitchTo.
   ///
-  /// In en, this message translates to:
-  /// **'Switch to {type}'**
-  String analyticsSwitchTo(String type);
+  /// In zh, this message translates to:
+  /// **'切换到{type}'**
+  String analyticsSwitchTo(Object type);
 
   /// No description provided for @analyticsTipHeader.
   ///
-  /// In en, this message translates to:
-  /// **'Tip: Top capsule can switch Month/Year/All'**
+  /// In zh, this message translates to:
+  /// **'提示：顶部胶囊可切换 月/年/全部'**
   String get analyticsTipHeader;
 
   /// No description provided for @analyticsSwipeToSwitch.
   ///
-  /// In en, this message translates to:
-  /// **'Swipe to switch'**
+  /// In zh, this message translates to:
+  /// **'横滑切换'**
   String get analyticsSwipeToSwitch;
 
   /// No description provided for @analyticsAllYears.
   ///
-  /// In en, this message translates to:
-  /// **'All Years'**
+  /// In zh, this message translates to:
+  /// **'全部年份'**
   String get analyticsAllYears;
 
   /// No description provided for @analyticsToday.
   ///
-  /// In en, this message translates to:
-  /// **'Today'**
+  /// In zh, this message translates to:
+  /// **'今天'**
   String get analyticsToday;
 
   /// No description provided for @splashAppName.
   ///
-  /// In en, this message translates to:
-  /// **'Bee Accounting'**
+  /// In zh, this message translates to:
+  /// **'智记'**
   String get splashAppName;
 
   /// No description provided for @splashSlogan.
   ///
-  /// In en, this message translates to:
-  /// **'Record Every Drop'**
+  /// In zh, this message translates to:
+  /// **'一笔一蜜'**
   String get splashSlogan;
 
   /// No description provided for @splashSecurityTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Open Source Data Security'**
+  /// In zh, this message translates to:
+  /// **'开源数据安全'**
   String get splashSecurityTitle;
 
   /// No description provided for @splashSecurityFeature1.
   ///
-  /// In en, this message translates to:
-  /// **'• Local data storage, complete privacy control'**
+  /// In zh, this message translates to:
+  /// **'• 数据本地存储，隐私完全自控'**
   String get splashSecurityFeature1;
 
   /// No description provided for @splashSecurityFeature2.
   ///
-  /// In en, this message translates to:
-  /// **'• Open source code transparency, trustworthy security'**
+  /// In zh, this message translates to:
+  /// **'• 开源代码透明，安全值得信赖'**
   String get splashSecurityFeature2;
 
   /// No description provided for @splashSecurityFeature3.
   ///
-  /// In en, this message translates to:
-  /// **'• Optional cloud sync, consistent data across devices'**
+  /// In zh, this message translates to:
+  /// **'• 可选云端同步，多设备数据一致'**
   String get splashSecurityFeature3;
 
   /// No description provided for @splashInitializing.
   ///
-  /// In en, this message translates to:
-  /// **'Initializing data...'**
+  /// In zh, this message translates to:
+  /// **'正在初始化数据...'**
   String get splashInitializing;
 
   /// No description provided for @ledgersTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Ledger Management'**
+  /// In zh, this message translates to:
+  /// **'账本管理'**
   String get ledgersTitle;
 
   /// No description provided for @ledgersNew.
   ///
-  /// In en, this message translates to:
-  /// **'New Ledger'**
+  /// In zh, this message translates to:
+  /// **'新建账本'**
   String get ledgersNew;
 
   /// No description provided for @ledgersClear.
   ///
-  /// In en, this message translates to:
-  /// **'Clear Ledger'**
+  /// In zh, this message translates to:
+  /// **'清空账本'**
   String get ledgersClear;
 
   /// No description provided for @ledgersClearMessage.
   ///
-  /// In en, this message translates to:
-  /// **'Are you sure to clear all transactions in ledger \"{name}\"? This action cannot be undone.\\nThe ledger will be kept, only transaction data will be deleted.'**
-  String ledgersClearMessage(Object name);
+  /// In zh, this message translates to:
+  /// **'确定要清空账本\"{name}\"的所有账单吗？此操作不可恢复。\\n账本本身会保留，仅删除账单数据。'**
+  String ledgersClearMessage(String name);
 
   /// No description provided for @ledgerDefaultName.
   ///
-  /// In en, this message translates to:
-  /// **'Default Ledger'**
+  /// In zh, this message translates to:
+  /// **'默认账本'**
   String get ledgerDefaultName;
 
   /// No description provided for @ledgersEdit.
   ///
-  /// In en, this message translates to:
-  /// **'Edit Ledger'**
+  /// In zh, this message translates to:
+  /// **'编辑账本'**
   String get ledgersEdit;
 
   /// No description provided for @ledgersDelete.
   ///
-  /// In en, this message translates to:
-  /// **'Delete Ledger'**
+  /// In zh, this message translates to:
+  /// **'删除账本'**
   String get ledgersDelete;
 
   /// No description provided for @ledgersDeleteConfirm.
   ///
-  /// In en, this message translates to:
-  /// **'Delete Ledger'**
+  /// In zh, this message translates to:
+  /// **'删除账本'**
   String get ledgersDeleteConfirm;
 
   /// No description provided for @ledgersDeleteMessage.
   ///
-  /// In en, this message translates to:
-  /// **'Are you sure you want to delete this ledger and all its records? This action cannot be undone.\\nIf there is a backup in the cloud, it will also be deleted.'**
+  /// In zh, this message translates to:
+  /// **'确定要删除该账本及其全部记录吗？此操作不可恢复。\\n若云端存在备份，也会一并删除。'**
   String get ledgersDeleteMessage;
 
   /// No description provided for @ledgersDeleted.
   ///
-  /// In en, this message translates to:
-  /// **'Deleted'**
+  /// In zh, this message translates to:
+  /// **'已删除'**
   String get ledgersDeleted;
 
   /// No description provided for @ledgersDeleteFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Delete Failed'**
+  /// In zh, this message translates to:
+  /// **'删除失败'**
   String get ledgersDeleteFailed;
 
   /// No description provided for @ledgersClearTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Clear Ledger'**
+  /// In zh, this message translates to:
+  /// **'清空账本'**
   String get ledgersClearTitle;
 
   /// No description provided for @ledgersClearSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'Ledger cleared'**
+  /// In zh, this message translates to:
+  /// **'账本已清空'**
   String get ledgersClearSuccess;
 
   /// No description provided for @ledgersDeleteLocal.
   ///
-  /// In en, this message translates to:
-  /// **'Delete Local Ledger Only'**
+  /// In zh, this message translates to:
+  /// **'仅删除本地账本'**
   String get ledgersDeleteLocal;
 
   /// No description provided for @ledgersDeleteLocalTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Delete Local Ledger'**
+  /// In zh, this message translates to:
+  /// **'删除本地账本'**
   String get ledgersDeleteLocalTitle;
 
   /// No description provided for @ledgersDeleteLocalMessage.
   ///
-  /// In en, this message translates to:
-  /// **'Are you sure to delete local ledger \"{name}\"?\\nCloud backup will be kept and you can restore it anytime.'**
-  String ledgersDeleteLocalMessage(Object name);
+  /// In zh, this message translates to:
+  /// **'确定要删除本地账本\"{name}\"吗？\\n云端备份会保留，您可以随时恢复。'**
+  String ledgersDeleteLocalMessage(String name);
 
   /// No description provided for @ledgersDeleteLocalSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'Local ledger deleted'**
+  /// In zh, this message translates to:
+  /// **'本地账本已删除'**
   String get ledgersDeleteLocalSuccess;
 
   /// No description provided for @ledgersName.
   ///
-  /// In en, this message translates to:
-  /// **'Name'**
+  /// In zh, this message translates to:
+  /// **'名称'**
   String get ledgersName;
 
   /// No description provided for @ledgersDefaultLedgerName.
   ///
-  /// In en, this message translates to:
-  /// **'Default Ledger'**
+  /// In zh, this message translates to:
+  /// **'默认账本'**
   String get ledgersDefaultLedgerName;
 
   /// No description provided for @ledgersCurrency.
   ///
-  /// In en, this message translates to:
-  /// **'Currency'**
+  /// In zh, this message translates to:
+  /// **'币种'**
   String get ledgersCurrency;
 
   /// No description provided for @ledgersMonthStartDay.
   ///
-  /// In en, this message translates to:
-  /// **'Month start day'**
+  /// In zh, this message translates to:
+  /// **'每月起始日'**
   String get ledgersMonthStartDay;
 
   /// No description provided for @ledgersMonthStartDayHint.
   ///
-  /// In en, this message translates to:
-  /// **'Statistics and budgets use this day (1-28) as the start of each monthly period'**
+  /// In zh, this message translates to:
+  /// **'统计与预算按该日作为每月周期起点（1-28）'**
   String get ledgersMonthStartDayHint;
 
   /// No description provided for @ledgersMonthStartDayNatural.
   ///
-  /// In en, this message translates to:
-  /// **'1st (calendar month)'**
+  /// In zh, this message translates to:
+  /// **'1日（自然月）'**
   String get ledgersMonthStartDayNatural;
 
   /// No description provided for @ledgersMonthStartDayValue.
   ///
-  /// In en, this message translates to:
-  /// **'Day {day} of each month'**
-  String ledgersMonthStartDayValue(int day);
+  /// In zh, this message translates to:
+  /// **'每月{day}日'**
+  String ledgersMonthStartDayValue(Object day);
 
   /// No description provided for @ledgersSelectCurrency.
   ///
-  /// In en, this message translates to:
-  /// **'Select Currency'**
+  /// In zh, this message translates to:
+  /// **'选择币种'**
   String get ledgersSelectCurrency;
 
   /// No description provided for @ledgersSearchCurrency.
   ///
-  /// In en, this message translates to:
-  /// **'Search: Chinese or code'**
+  /// In zh, this message translates to:
+  /// **'搜索：中文或代码'**
   String get ledgersSearchCurrency;
 
   /// No description provided for @ledgersCreate.
   ///
-  /// In en, this message translates to:
-  /// **'Create'**
+  /// In zh, this message translates to:
+  /// **'创建'**
   String get ledgersCreate;
 
   /// No description provided for @ledgersActions.
   ///
-  /// In en, this message translates to:
-  /// **'Actions'**
+  /// In zh, this message translates to:
+  /// **'操作'**
   String get ledgersActions;
 
   /// No description provided for @ledgersRecords.
   ///
-  /// In en, this message translates to:
-  /// **'Records: {count}'**
-  String ledgersRecords(String count);
+  /// In zh, this message translates to:
+  /// **'笔数：{count}'**
+  String ledgersRecords(Object count);
 
   /// No description provided for @ledgersBalance.
   ///
-  /// In en, this message translates to:
-  /// **'Balance: {balance}'**
-  String ledgersBalance(String balance);
+  /// In zh, this message translates to:
+  /// **'余额：{balance}'**
+  String ledgersBalance(Object balance);
 
   /// No description provided for @ledgerCardDownloadCloud.
   ///
-  /// In en, this message translates to:
-  /// **'Download from Cloud'**
+  /// In zh, this message translates to:
+  /// **'下载云账本'**
   String get ledgerCardDownloadCloud;
-
-  /// No description provided for @ledgersLocal.
-  ///
-  /// In en, this message translates to:
-  /// **'Local Ledgers'**
-  String get ledgersLocal;
-
-  /// No description provided for @ledgersRemote.
-  ///
-  /// In en, this message translates to:
-  /// **'Cloud Ledgers'**
-  String get ledgersRemote;
-
-  /// No description provided for @ledgersEmpty.
-  ///
-  /// In en, this message translates to:
-  /// **'No ledgers'**
-  String get ledgersEmpty;
-
-  /// No description provided for @ledgersRestoreAll.
-  ///
-  /// In en, this message translates to:
-  /// **'Restore All'**
-  String get ledgersRestoreAll;
-
-  /// No description provided for @ledgersSwitched.
-  ///
-  /// In en, this message translates to:
-  /// **'Switched to ledger \"{name}\"'**
-  String ledgersSwitched(String name);
-
-  /// No description provided for @ledgersDownloadTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Download Ledger'**
-  String get ledgersDownloadTitle;
-
-  /// No description provided for @ledgersDownloadMessage.
-  ///
-  /// In en, this message translates to:
-  /// **'Confirm download ledger \"{name}\" to local?'**
-  String ledgersDownloadMessage(String name);
-
-  /// No description provided for @ledgersDownloading.
-  ///
-  /// In en, this message translates to:
-  /// **'Downloading...'**
-  String get ledgersDownloading;
-
-  /// No description provided for @ledgersDownloadSuccess.
-  ///
-  /// In en, this message translates to:
-  /// **'Ledger \"{name}\" downloaded successfully'**
-  String ledgersDownloadSuccess(String name);
-
-  /// No description provided for @ledgersDownload.
-  ///
-  /// In en, this message translates to:
-  /// **'Download'**
-  String get ledgersDownload;
-
-  /// No description provided for @ledgersDeleteRemote.
-  ///
-  /// In en, this message translates to:
-  /// **'Delete Cloud Ledger'**
-  String get ledgersDeleteRemote;
-
-  /// No description provided for @ledgersDeleteRemoteConfirm.
-  ///
-  /// In en, this message translates to:
-  /// **'Delete Cloud Ledger'**
-  String get ledgersDeleteRemoteConfirm;
-
-  /// No description provided for @ledgersDeleteRemoteMessage.
-  ///
-  /// In en, this message translates to:
-  /// **'Confirm delete cloud ledger \"{name}\"? This action cannot be undone.'**
-  String ledgersDeleteRemoteMessage(String name);
-
-  /// No description provided for @ledgersDeleting.
-  ///
-  /// In en, this message translates to:
-  /// **'Deleting...'**
-  String get ledgersDeleting;
-
-  /// No description provided for @ledgersDeleteRemoteSuccess.
-  ///
-  /// In en, this message translates to:
-  /// **'Cloud ledger deleted'**
-  String get ledgersDeleteRemoteSuccess;
-
-  /// No description provided for @ledgersCannotDeleteLastOne.
-  ///
-  /// In en, this message translates to:
-  /// **'Cannot delete the last ledger'**
-  String get ledgersCannotDeleteLastOne;
-
-  /// No description provided for @ledgersRestoreAllTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Batch Restore'**
-  String get ledgersRestoreAllTitle;
-
-  /// No description provided for @ledgersRestoreAllMessage.
-  ///
-  /// In en, this message translates to:
-  /// **'Confirm restore all cloud ledgers? Total {count}.'**
-  String ledgersRestoreAllMessage(int count);
-
-  /// No description provided for @ledgersRestoring.
-  ///
-  /// In en, this message translates to:
-  /// **'Restoring...'**
-  String get ledgersRestoring;
-
-  /// No description provided for @ledgersRestoreComplete.
-  ///
-  /// In en, this message translates to:
-  /// **'Restore Complete'**
-  String get ledgersRestoreComplete;
-
-  /// No description provided for @ledgersRestoreResult.
-  ///
-  /// In en, this message translates to:
-  /// **'Success: {success}, Failed: {failed}'**
-  String ledgersRestoreResult(int success, int failed);
 
   /// No description provided for @categoryTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Category Management'**
+  /// In zh, this message translates to:
+  /// **'分类管理'**
   String get categoryTitle;
 
   /// No description provided for @categoryNew.
   ///
-  /// In en, this message translates to:
-  /// **'New Category'**
+  /// In zh, this message translates to:
+  /// **'新建分类'**
   String get categoryNew;
 
   /// No description provided for @categoryExpense.
   ///
-  /// In en, this message translates to:
-  /// **'Expense'**
+  /// In zh, this message translates to:
+  /// **'支出'**
   String get categoryExpense;
 
   /// No description provided for @categoryIncome.
   ///
-  /// In en, this message translates to:
-  /// **'Income'**
+  /// In zh, this message translates to:
+  /// **'收入'**
   String get categoryIncome;
 
   /// No description provided for @categoryEmpty.
   ///
-  /// In en, this message translates to:
-  /// **'No categories'**
+  /// In zh, this message translates to:
+  /// **'暂无分类'**
   String get categoryEmpty;
 
   /// No description provided for @categoryDefault.
   ///
-  /// In en, this message translates to:
-  /// **'Default Category'**
+  /// In zh, this message translates to:
+  /// **'默认分类'**
   String get categoryDefault;
 
   /// No description provided for @categoryReorderTip.
   ///
-  /// In en, this message translates to:
-  /// **'Long press to drag and reorder categories'**
+  /// In zh, this message translates to:
+  /// **'长按分类可拖拽调整顺序'**
   String get categoryReorderTip;
 
   /// No description provided for @categoryLoadFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Load failed: {error}'**
-  String categoryLoadFailed(String error);
+  /// In zh, this message translates to:
+  /// **'加载失败: {error}'**
+  String categoryLoadFailed(Object error);
 
   /// No description provided for @iconPickerTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Select Icon'**
+  /// In zh, this message translates to:
+  /// **'选择图标'**
   String get iconPickerTitle;
 
   /// No description provided for @iconCategoryTransport.
   ///
-  /// In en, this message translates to:
-  /// **'Transport'**
+  /// In zh, this message translates to:
+  /// **'交通'**
   String get iconCategoryTransport;
 
   /// No description provided for @iconCategoryShopping.
   ///
-  /// In en, this message translates to:
-  /// **'Shopping'**
+  /// In zh, this message translates to:
+  /// **'购物'**
   String get iconCategoryShopping;
 
   /// No description provided for @iconCategoryEntertainment.
   ///
-  /// In en, this message translates to:
-  /// **'Entertainment'**
+  /// In zh, this message translates to:
+  /// **'娱乐'**
   String get iconCategoryEntertainment;
 
   /// No description provided for @iconCategoryLife.
   ///
-  /// In en, this message translates to:
-  /// **'Life'**
+  /// In zh, this message translates to:
+  /// **'生活'**
   String get iconCategoryLife;
 
   /// No description provided for @iconCategoryHealth.
   ///
-  /// In en, this message translates to:
-  /// **'Health'**
+  /// In zh, this message translates to:
+  /// **'健康'**
   String get iconCategoryHealth;
 
   /// No description provided for @iconCategoryEducation.
   ///
-  /// In en, this message translates to:
-  /// **'Education'**
+  /// In zh, this message translates to:
+  /// **'学习'**
   String get iconCategoryEducation;
 
   /// No description provided for @iconCategoryWork.
   ///
-  /// In en, this message translates to:
-  /// **'Work'**
+  /// In zh, this message translates to:
+  /// **'工作'**
   String get iconCategoryWork;
 
   /// No description provided for @iconCategoryFinance.
   ///
-  /// In en, this message translates to:
-  /// **'Finance'**
+  /// In zh, this message translates to:
+  /// **'理财'**
   String get iconCategoryFinance;
 
   /// No description provided for @iconCategoryReward.
   ///
-  /// In en, this message translates to:
-  /// **'Reward'**
+  /// In zh, this message translates to:
+  /// **'奖励'**
   String get iconCategoryReward;
 
   /// No description provided for @iconCategoryOther.
   ///
-  /// In en, this message translates to:
-  /// **'Other'**
+  /// In zh, this message translates to:
+  /// **'其他'**
   String get iconCategoryOther;
-
-  /// No description provided for @iconCategoryDining.
-  ///
-  /// In en, this message translates to:
-  /// **'Dining'**
-  String get iconCategoryDining;
 
   /// No description provided for @importTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Import Bills'**
+  /// In zh, this message translates to:
+  /// **'导入账单'**
   String get importTitle;
 
   /// No description provided for @importBillType.
   ///
-  /// In en, this message translates to:
-  /// **'Bill Type'**
+  /// In zh, this message translates to:
+  /// **'账单类型'**
   String get importBillType;
 
   /// No description provided for @importBillTypeGeneric.
   ///
-  /// In en, this message translates to:
-  /// **'Generic CSV'**
+  /// In zh, this message translates to:
+  /// **'通用CSV'**
   String get importBillTypeGeneric;
 
   /// No description provided for @importBillTypeAlipay.
   ///
-  /// In en, this message translates to:
-  /// **'Alipay'**
+  /// In zh, this message translates to:
+  /// **'支付宝'**
   String get importBillTypeAlipay;
 
   /// No description provided for @importBillTypeWechat.
   ///
-  /// In en, this message translates to:
-  /// **'WeChat'**
+  /// In zh, this message translates to:
+  /// **'微信'**
   String get importBillTypeWechat;
 
   /// No description provided for @importChooseFile.
   ///
-  /// In en, this message translates to:
-  /// **'Choose File'**
+  /// In zh, this message translates to:
+  /// **'选择文件'**
   String get importChooseFile;
 
   /// No description provided for @importNoFileSelected.
   ///
-  /// In en, this message translates to:
-  /// **'No file selected'**
+  /// In zh, this message translates to:
+  /// **'未选择文件'**
   String get importNoFileSelected;
 
   /// No description provided for @importHint.
   ///
-  /// In en, this message translates to:
-  /// **'Tip: Please select a file to start importing (CSV/TSV/XLSX)'**
+  /// In zh, this message translates to:
+  /// **'提示：请选择一个文件开始导入（支持 CSV/TSV/XLSX）'**
   String get importHint;
 
   /// No description provided for @importReading.
   ///
-  /// In en, this message translates to:
-  /// **'Reading file…'**
+  /// In zh, this message translates to:
+  /// **'读取文件中…'**
   String get importReading;
 
   /// No description provided for @importPreparing.
   ///
-  /// In en, this message translates to:
-  /// **'Preparing…'**
+  /// In zh, this message translates to:
+  /// **'准备中…'**
   String get importPreparing;
-
-  /// No description provided for @importColumnNumber.
-  ///
-  /// In en, this message translates to:
-  /// **'Column {number}'**
-  String importColumnNumber(Object number);
-
-  /// No description provided for @importConfirmMapping.
-  ///
-  /// In en, this message translates to:
-  /// **'Confirm Mapping'**
-  String get importConfirmMapping;
-
-  /// No description provided for @importCategoryMapping.
-  ///
-  /// In en, this message translates to:
-  /// **'Category Mapping'**
-  String get importCategoryMapping;
-
-  /// No description provided for @importNoDataParsed.
-  ///
-  /// In en, this message translates to:
-  /// **'No data parsed. Please return to previous page to check CSV content or separator.'**
-  String get importNoDataParsed;
-
-  /// No description provided for @importFieldDate.
-  ///
-  /// In en, this message translates to:
-  /// **'Date'**
-  String get importFieldDate;
-
-  /// No description provided for @importFieldType.
-  ///
-  /// In en, this message translates to:
-  /// **'Type'**
-  String get importFieldType;
-
-  /// No description provided for @importFieldAmount.
-  ///
-  /// In en, this message translates to:
-  /// **'Amount'**
-  String get importFieldAmount;
-
-  /// No description provided for @importFieldCategory.
-  ///
-  /// In en, this message translates to:
-  /// **'Category'**
-  String get importFieldCategory;
-
-  /// No description provided for @importFieldAccount.
-  ///
-  /// In en, this message translates to:
-  /// **'Account'**
-  String get importFieldAccount;
-
-  /// No description provided for @importFieldNote.
-  ///
-  /// In en, this message translates to:
-  /// **'Note'**
-  String get importFieldNote;
-
-  /// No description provided for @importPreview.
-  ///
-  /// In en, this message translates to:
-  /// **'Data Preview'**
-  String get importPreview;
-
-  /// No description provided for @importPreviewLimit.
-  ///
-  /// In en, this message translates to:
-  /// **'Showing first {shown} of {total} records'**
-  String importPreviewLimit(Object shown, Object total);
-
-  /// No description provided for @importCategoryNotSelected.
-  ///
-  /// In en, this message translates to:
-  /// **'Category not selected'**
-  String get importCategoryNotSelected;
-
-  /// No description provided for @importCategoryMappingDescription.
-  ///
-  /// In en, this message translates to:
-  /// **'Please select corresponding local categories for each category name:'**
-  String get importCategoryMappingDescription;
-
-  /// No description provided for @importKeepOriginalName.
-  ///
-  /// In en, this message translates to:
-  /// **'Keep original name'**
-  String get importKeepOriginalName;
-
-  /// No description provided for @importProgress.
-  ///
-  /// In en, this message translates to:
-  /// **'Importing, success: {ok}, failed: {fail}'**
-  String importProgress(Object fail, Object ok);
-
-  /// No description provided for @importCancelImport.
-  ///
-  /// In en, this message translates to:
-  /// **'Cancel Import'**
-  String get importCancelImport;
-
-  /// No description provided for @importCompleteTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Import Complete'**
-  String get importCompleteTitle;
-
-  /// No description provided for @importSelectCategoryFirst.
-  ///
-  /// In en, this message translates to:
-  /// **'Please select category mapping first'**
-  String get importSelectCategoryFirst;
-
-  /// No description provided for @importNextStep.
-  ///
-  /// In en, this message translates to:
-  /// **'Next Step'**
-  String get importNextStep;
-
-  /// No description provided for @importPreviousStep.
-  ///
-  /// In en, this message translates to:
-  /// **'Previous Step'**
-  String get importPreviousStep;
-
-  /// No description provided for @importStartImport.
-  ///
-  /// In en, this message translates to:
-  /// **'Start Import'**
-  String get importStartImport;
-
-  /// No description provided for @importAutoDetect.
-  ///
-  /// In en, this message translates to:
-  /// **'Auto Detect'**
-  String get importAutoDetect;
-
-  /// No description provided for @importInProgress.
-  ///
-  /// In en, this message translates to:
-  /// **'Import in Progress'**
-  String get importInProgress;
-
-  /// No description provided for @importProgressDetail.
-  ///
-  /// In en, this message translates to:
-  /// **'Imported {done} / {total} records, success {ok}, failed {fail}'**
-  String importProgressDetail(Object done, Object fail, Object ok, Object total);
-
-  /// No description provided for @importBackgroundImport.
-  ///
-  /// In en, this message translates to:
-  /// **'Background Import'**
-  String get importBackgroundImport;
-
-  /// No description provided for @importCancelled.
-  ///
-  /// In en, this message translates to:
-  /// **'Import Cancelled'**
-  String get importCancelled;
-
-  /// No description provided for @importCompleted.
-  ///
-  /// In en, this message translates to:
-  /// **'Import Completed{cancelled}, success {ok}, failed {fail}'**
-  String importCompleted(Object cancelled, Object fail, Object ok);
-
-  /// No description provided for @importSkippedNonTransactionTypes.
-  ///
-  /// In en, this message translates to:
-  /// **'Skipped {count} non-transaction records (debts, etc.)'**
-  String importSkippedNonTransactionTypes(Object count);
-
-  /// No description provided for @importTransactionFailed.
-  ///
-  /// In en, this message translates to:
-  /// **'Import failed, all changes have been rolled back: {error}'**
-  String importTransactionFailed(Object error);
 
   /// No description provided for @importFileOpenError.
   ///
-  /// In en, this message translates to:
-  /// **'Unable to open file picker: {error}'**
+  /// In zh, this message translates to:
+  /// **'无法打开文件选择器：{error}'**
   String importFileOpenError(String error);
 
   /// No description provided for @mineTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Mine'**
+  /// In zh, this message translates to:
+  /// **'我的'**
   String get mineTitle;
 
   /// No description provided for @mineReminder.
   ///
-  /// In en, this message translates to:
-  /// **'Reminder Settings'**
+  /// In zh, this message translates to:
+  /// **'提醒设置'**
   String get mineReminder;
 
   /// No description provided for @mineImport.
   ///
-  /// In en, this message translates to:
-  /// **'Import Data'**
+  /// In zh, this message translates to:
+  /// **'导入数据'**
   String get mineImport;
 
   /// No description provided for @mineExport.
   ///
-  /// In en, this message translates to:
-  /// **'Export Data'**
+  /// In zh, this message translates to:
+  /// **'导出数据'**
   String get mineExport;
 
   /// No description provided for @mineCloud.
   ///
-  /// In en, this message translates to:
-  /// **'Cloud Service'**
+  /// In zh, this message translates to:
+  /// **'云服务'**
   String get mineCloud;
 
   /// No description provided for @mineUpdate.
   ///
-  /// In en, this message translates to:
-  /// **'Check for Updates'**
+  /// In zh, this message translates to:
+  /// **'检查更新'**
   String get mineUpdate;
 
   /// No description provided for @mineLanguageSettings.
   ///
-  /// In en, this message translates to:
-  /// **'Language'**
+  /// In zh, this message translates to:
+  /// **'语言'**
   String get mineLanguageSettings;
 
   /// No description provided for @languageTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Language Settings'**
+  /// In zh, this message translates to:
+  /// **'语言设置'**
   String get languageTitle;
 
   /// No description provided for @languageChinese.
   ///
-  /// In en, this message translates to:
+  /// In zh, this message translates to:
   /// **'中文'**
   String get languageChinese;
 
-  /// No description provided for @languageEnglish.
-  ///
-  /// In en, this message translates to:
-  /// **'English'**
-  String get languageEnglish;
-
   /// No description provided for @languageSystemDefault.
   ///
-  /// In en, this message translates to:
-  /// **'Follow System'**
+  /// In zh, this message translates to:
+  /// **'跟随系统'**
   String get languageSystemDefault;
 
   /// No description provided for @deleteConfirmTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Delete Confirmation'**
+  /// In zh, this message translates to:
+  /// **'删除确认'**
   String get deleteConfirmTitle;
 
   /// No description provided for @deleteConfirmMessage.
   ///
-  /// In en, this message translates to:
-  /// **'Are you sure you want to delete this record?'**
+  /// In zh, this message translates to:
+  /// **'确定要删除这条记账吗？'**
   String get deleteConfirmMessage;
 
   /// No description provided for @mineSlogan.
   ///
-  /// In en, this message translates to:
-  /// **'SmartBook, Smart & Automatic'**
+  /// In zh, this message translates to:
+  /// **'智记，智能自动'**
   String get mineSlogan;
 
   /// No description provided for @mineDisplayNameEditTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Set nickname'**
+  /// In zh, this message translates to:
+  /// **'设置昵称'**
   String get mineDisplayNameEditTitle;
 
   /// No description provided for @mineDisplayNameHint.
   ///
-  /// In en, this message translates to:
-  /// **'Enter a nickname'**
+  /// In zh, this message translates to:
+  /// **'输入昵称'**
   String get mineDisplayNameHint;
 
   /// No description provided for @mineDisplayNameSaved.
   ///
-  /// In en, this message translates to:
-  /// **'Nickname updated'**
+  /// In zh, this message translates to:
+  /// **'昵称已更新'**
   String get mineDisplayNameSaved;
 
   /// No description provided for @mineGreetingMorning.
   ///
-  /// In en, this message translates to:
-  /// **'Good morning'**
+  /// In zh, this message translates to:
+  /// **'早上好'**
   String get mineGreetingMorning;
 
   /// No description provided for @mineGreetingNoon.
   ///
-  /// In en, this message translates to:
-  /// **'Good noon'**
+  /// In zh, this message translates to:
+  /// **'中午好'**
   String get mineGreetingNoon;
 
   /// No description provided for @mineGreetingAfternoon.
   ///
-  /// In en, this message translates to:
-  /// **'Good afternoon'**
+  /// In zh, this message translates to:
+  /// **'下午好'**
   String get mineGreetingAfternoon;
 
   /// No description provided for @mineGreetingEvening.
   ///
-  /// In en, this message translates to:
-  /// **'Good evening'**
+  /// In zh, this message translates to:
+  /// **'晚上好'**
   String get mineGreetingEvening;
 
   /// No description provided for @mineGreetingNight.
   ///
-  /// In en, this message translates to:
-  /// **'Good night'**
+  /// In zh, this message translates to:
+  /// **'夜深了'**
   String get mineGreetingNight;
 
   /// No description provided for @mineGreetingNamed.
   ///
-  /// In en, this message translates to:
-  /// **'{greeting}, {name}'**
-  String mineGreetingNamed(String greeting, String name);
+  /// In zh, this message translates to:
+  /// **'{greeting}，{name}'**
+  String mineGreetingNamed(Object greeting, Object name);
 
   /// No description provided for @mineProfileEditTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Edit profile'**
+  /// In zh, this message translates to:
+  /// **'编辑资料'**
   String get mineProfileEditTitle;
 
   /// No description provided for @headerSkinTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Skin'**
+  /// In zh, this message translates to:
+  /// **'皮肤'**
   String get headerSkinTitle;
 
   /// No description provided for @headerSkinSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Follows your theme color, layered over the header'**
+  /// In zh, this message translates to:
+  /// **'跟随主题色,叠在头部之上'**
   String get headerSkinSubtitle;
 
   /// No description provided for @headerSkinGroupBasic.
   ///
-  /// In en, this message translates to:
-  /// **'Basic'**
+  /// In zh, this message translates to:
+  /// **'基础'**
   String get headerSkinGroupBasic;
 
   /// No description provided for @headerSkinGroupAnniversary.
   ///
-  /// In en, this message translates to:
-  /// **'Anniversary'**
+  /// In zh, this message translates to:
+  /// **'周年纪念'**
   String get headerSkinGroupAnniversary;
 
   /// No description provided for @headerSkinGroupGradient.
   ///
-  /// In en, this message translates to:
-  /// **'Gradient'**
+  /// In zh, this message translates to:
+  /// **'渐变'**
   String get headerSkinGroupGradient;
 
   /// No description provided for @headerSkinGroupScene.
   ///
-  /// In en, this message translates to:
-  /// **'Scenery'**
+  /// In zh, this message translates to:
+  /// **'场景'**
   String get headerSkinGroupScene;
 
   /// No description provided for @headerSkinGroupPattern.
   ///
-  /// In en, this message translates to:
-  /// **'Patterns'**
+  /// In zh, this message translates to:
+  /// **'图案'**
   String get headerSkinGroupPattern;
 
   /// No description provided for @headerSkinGroupGeometric.
   ///
-  /// In en, this message translates to:
-  /// **'Geometric'**
+  /// In zh, this message translates to:
+  /// **'几何艺术'**
   String get headerSkinGroupGeometric;
 
   /// No description provided for @headerSkinNone.
   ///
-  /// In en, this message translates to:
-  /// **'Solid'**
+  /// In zh, this message translates to:
+  /// **'纯色'**
   String get headerSkinNone;
 
   /// No description provided for @headerSkinAnniversary.
   ///
-  /// In en, this message translates to:
-  /// **'Constellation No.1'**
+  /// In zh, this message translates to:
+  /// **'一岁星座'**
   String get headerSkinAnniversary;
 
   /// No description provided for @headerSkinAnnivCake.
   ///
-  /// In en, this message translates to:
-  /// **'Birthday Cake'**
+  /// In zh, this message translates to:
+  /// **'周年蛋糕'**
   String get headerSkinAnnivCake;
 
   /// No description provided for @headerSkinTabAll.
   ///
-  /// In en, this message translates to:
-  /// **'All'**
+  /// In zh, this message translates to:
+  /// **'全部'**
   String get headerSkinTabAll;
 
   /// No description provided for @headerSkinTabAnimated.
   ///
-  /// In en, this message translates to:
-  /// **'Animated'**
+  /// In zh, this message translates to:
+  /// **'动态'**
   String get headerSkinTabAnimated;
 
   /// No description provided for @headerSkinTabStatic.
   ///
-  /// In en, this message translates to:
-  /// **'Static'**
+  /// In zh, this message translates to:
+  /// **'静态'**
   String get headerSkinTabStatic;
 
   /// No description provided for @headerSkinAnimatedBadge.
   ///
-  /// In en, this message translates to:
-  /// **'LIVE'**
+  /// In zh, this message translates to:
+  /// **'动'**
   String get headerSkinAnimatedBadge;
 
   /// No description provided for @headerSkinFixedPalette.
   ///
-  /// In en, this message translates to:
-  /// **'Own palette'**
+  /// In zh, this message translates to:
+  /// **'自带配色'**
   String get headerSkinFixedPalette;
 
   /// No description provided for @personalizeLockedBySkin.
   ///
-  /// In en, this message translates to:
-  /// **'The skin \"{skin}\" comes with its own palette, so the theme color is set by the skin and can\'t be changed. Switch to another skin to get your color back.'**
+  /// In zh, this message translates to:
+  /// **'当前皮肤「{skin}」自带配色,主题色已随皮肤设定,暂不可更改。换回其它皮肤即可恢复你原来的颜色。'**
   String personalizeLockedBySkin(String skin);
 
   /// No description provided for @personalizeFixedSkinAction.
   ///
-  /// In en, this message translates to:
-  /// **'Change skin'**
+  /// In zh, this message translates to:
+  /// **'换皮肤'**
   String get personalizeFixedSkinAction;
 
   /// No description provided for @headerSkinAurora.
   ///
-  /// In en, this message translates to:
-  /// **'Aurora'**
+  /// In zh, this message translates to:
+  /// **'极光'**
   String get headerSkinAurora;
 
   /// No description provided for @headerSkinMountains.
   ///
-  /// In en, this message translates to:
-  /// **'Mountains'**
+  /// In zh, this message translates to:
+  /// **'山峦'**
   String get headerSkinMountains;
 
   /// No description provided for @headerSkinBokeh.
   ///
-  /// In en, this message translates to:
-  /// **'Bokeh'**
+  /// In zh, this message translates to:
+  /// **'光斑'**
   String get headerSkinBokeh;
 
   /// No description provided for @headerSkinWaves.
   ///
-  /// In en, this message translates to:
-  /// **'Waves'**
+  /// In zh, this message translates to:
+  /// **'波浪'**
   String get headerSkinWaves;
 
   /// No description provided for @headerSkinSunset.
   ///
-  /// In en, this message translates to:
-  /// **'Sunset'**
+  /// In zh, this message translates to:
+  /// **'日落'**
   String get headerSkinSunset;
 
   /// No description provided for @headerSkinClouds.
   ///
-  /// In en, this message translates to:
-  /// **'Clouds'**
+  /// In zh, this message translates to:
+  /// **'云朵'**
   String get headerSkinClouds;
 
   /// No description provided for @headerSkinExample.
   ///
-  /// In en, this message translates to:
-  /// **'Example'**
+  /// In zh, this message translates to:
+  /// **'示例'**
   String get headerSkinExample;
 
   /// No description provided for @headerSkinHoneycomb.
   ///
-  /// In en, this message translates to:
-  /// **'Honeycomb'**
+  /// In zh, this message translates to:
+  /// **'蜂巢'**
   String get headerSkinHoneycomb;
 
   /// No description provided for @headerSkinStarry.
   ///
-  /// In en, this message translates to:
-  /// **'Starry'**
+  /// In zh, this message translates to:
+  /// **'星河'**
   String get headerSkinStarry;
 
   /// No description provided for @headerSkinStripes.
   ///
-  /// In en, this message translates to:
-  /// **'Stripes'**
+  /// In zh, this message translates to:
+  /// **'斜纹'**
   String get headerSkinStripes;
 
   /// No description provided for @headerSkinSkyline.
   ///
-  /// In en, this message translates to:
-  /// **'Skyline'**
+  /// In zh, this message translates to:
+  /// **'城市'**
   String get headerSkinSkyline;
 
   /// No description provided for @headerSkinSakura.
   ///
-  /// In en, this message translates to:
-  /// **'Sakura'**
+  /// In zh, this message translates to:
+  /// **'樱花'**
   String get headerSkinSakura;
 
   /// No description provided for @headerSkinMeteor.
   ///
-  /// In en, this message translates to:
-  /// **'Meteor'**
+  /// In zh, this message translates to:
+  /// **'流星'**
   String get headerSkinMeteor;
 
   /// No description provided for @headerSkinMemphis.
   ///
-  /// In en, this message translates to:
-  /// **'Memphis'**
+  /// In zh, this message translates to:
+  /// **'孟菲斯'**
   String get headerSkinMemphis;
 
   /// No description provided for @headerSkinSilk.
   ///
-  /// In en, this message translates to:
-  /// **'Silk'**
+  /// In zh, this message translates to:
+  /// **'丝带'**
   String get headerSkinSilk;
 
   /// No description provided for @headerSkinBubbles.
   ///
-  /// In en, this message translates to:
-  /// **'Bubbles'**
+  /// In zh, this message translates to:
+  /// **'气泡'**
   String get headerSkinBubbles;
 
   /// No description provided for @headerSkinGalaxy.
   ///
-  /// In en, this message translates to:
-  /// **'Galaxy'**
+  /// In zh, this message translates to:
+  /// **'星系'**
   String get headerSkinGalaxy;
 
   /// No description provided for @headerSkinLowPoly.
   ///
-  /// In en, this message translates to:
-  /// **'Low-poly'**
+  /// In zh, this message translates to:
+  /// **'低多边形'**
   String get headerSkinLowPoly;
 
   /// No description provided for @headerSkinPrism.
   ///
-  /// In en, this message translates to:
-  /// **'Prism'**
+  /// In zh, this message translates to:
+  /// **'棱镜'**
   String get headerSkinPrism;
 
   /// No description provided for @headerSkinTerrazzo.
   ///
-  /// In en, this message translates to:
-  /// **'Terrazzo'**
+  /// In zh, this message translates to:
+  /// **'水磨石'**
   String get headerSkinTerrazzo;
 
   /// No description provided for @mineAvatarTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Avatar Settings'**
+  /// In zh, this message translates to:
+  /// **'头像设置'**
   String get mineAvatarTitle;
 
   /// No description provided for @mineAvatarFromGallery.
   ///
-  /// In en, this message translates to:
-  /// **'Choose from Gallery'**
+  /// In zh, this message translates to:
+  /// **'从相册选择'**
   String get mineAvatarFromGallery;
 
   /// No description provided for @mineAvatarFromCamera.
   ///
-  /// In en, this message translates to:
-  /// **'Take Photo'**
+  /// In zh, this message translates to:
+  /// **'拍照'**
   String get mineAvatarFromCamera;
 
   /// No description provided for @mineAvatarDelete.
   ///
-  /// In en, this message translates to:
-  /// **'Delete Avatar'**
+  /// In zh, this message translates to:
+  /// **'删除头像'**
   String get mineAvatarDelete;
 
   /// No description provided for @annualReportTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Annual Report'**
+  /// In zh, this message translates to:
+  /// **'年度账单'**
   String get annualReportTitle;
 
   /// No description provided for @annualReportSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Review your {year} financial journey'**
+  /// In zh, this message translates to:
+  /// **'回顾你的{year}年财务足迹'**
   String annualReportSubtitle(int year);
 
   /// No description provided for @annualReportEntrySubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Create your personalized annual report to share'**
+  /// In zh, this message translates to:
+  /// **'生成专属年度报告，分享你的记账故事'**
   String get annualReportEntrySubtitle;
 
   /// No description provided for @annualReportNoData.
   ///
-  /// In en, this message translates to:
-  /// **'No data for {year}'**
+  /// In zh, this message translates to:
+  /// **'暂无{year}年数据'**
   String annualReportNoData(int year);
 
   /// No description provided for @annualReportPage1Title.
   ///
-  /// In en, this message translates to:
-  /// **'Annual Overview'**
+  /// In zh, this message translates to:
+  /// **'年度总览'**
   String get annualReportPage1Title;
 
   /// No description provided for @annualReportPage1Subtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Your {year} bookkeeping journey'**
+  /// In zh, this message translates to:
+  /// **'{year}年记账之旅'**
   String annualReportPage1Subtitle(int year);
 
   /// No description provided for @annualReportTotalDays.
   ///
-  /// In en, this message translates to:
-  /// **'Days Tracked'**
+  /// In zh, this message translates to:
+  /// **'记账天数'**
   String get annualReportTotalDays;
 
   /// No description provided for @annualReportTotalRecords.
   ///
-  /// In en, this message translates to:
-  /// **'Total Records'**
+  /// In zh, this message translates to:
+  /// **'记账笔数'**
   String get annualReportTotalRecords;
 
   /// No description provided for @annualReportTotalIncome.
   ///
-  /// In en, this message translates to:
-  /// **'Total Income'**
+  /// In zh, this message translates to:
+  /// **'总收入'**
   String get annualReportTotalIncome;
 
   /// No description provided for @annualReportTotalExpense.
   ///
-  /// In en, this message translates to:
-  /// **'Total Expense'**
+  /// In zh, this message translates to:
+  /// **'总支出'**
   String get annualReportTotalExpense;
 
   /// No description provided for @annualReportNetSavings.
   ///
-  /// In en, this message translates to:
-  /// **'Net Savings'**
+  /// In zh, this message translates to:
+  /// **'年度结余'**
   String get annualReportNetSavings;
 
   /// No description provided for @annualReportPage2Title.
   ///
-  /// In en, this message translates to:
-  /// **'Expense Analysis'**
+  /// In zh, this message translates to:
+  /// **'支出分析'**
   String get annualReportPage2Title;
 
   /// No description provided for @annualReportPage2Subtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Where your money went'**
+  /// In zh, this message translates to:
+  /// **'你的钱花在哪了'**
   String get annualReportPage2Subtitle;
 
   /// No description provided for @annualReportPage3Title.
   ///
-  /// In en, this message translates to:
-  /// **'Monthly Trends'**
+  /// In zh, this message translates to:
+  /// **'月度趋势'**
   String get annualReportPage3Title;
 
   /// No description provided for @annualReportPage3Subtitle.
   ///
-  /// In en, this message translates to:
-  /// **'12 months of income & expense'**
+  /// In zh, this message translates to:
+  /// **'12个月的收支变化'**
   String get annualReportPage3Subtitle;
 
   /// No description provided for @annualReportHighestMonth.
   ///
-  /// In en, this message translates to:
-  /// **'Highest Spending Month'**
+  /// In zh, this message translates to:
+  /// **'支出最高月份'**
   String get annualReportHighestMonth;
 
   /// No description provided for @annualReportLowestMonth.
   ///
-  /// In en, this message translates to:
-  /// **'Lowest Spending Month'**
+  /// In zh, this message translates to:
+  /// **'支出最低月份'**
   String get annualReportLowestMonth;
 
   /// No description provided for @annualReportPage4Title.
   ///
-  /// In en, this message translates to:
-  /// **'Special Moments'**
+  /// In zh, this message translates to:
+  /// **'特别时刻'**
   String get annualReportPage4Title;
 
   /// No description provided for @annualReportPage4Subtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Memorable transactions'**
+  /// In zh, this message translates to:
+  /// **'那些值得铭记的账单'**
   String get annualReportPage4Subtitle;
 
   /// No description provided for @annualReportLargestExpense.
   ///
-  /// In en, this message translates to:
-  /// **'Largest Expense'**
+  /// In zh, this message translates to:
+  /// **'年度最大支出'**
   String get annualReportLargestExpense;
 
   /// No description provided for @annualReportLargestIncome.
   ///
-  /// In en, this message translates to:
-  /// **'Largest Income'**
+  /// In zh, this message translates to:
+  /// **'年度最大收入'**
   String get annualReportLargestIncome;
 
   /// No description provided for @annualReportFirstRecord.
   ///
-  /// In en, this message translates to:
-  /// **'First Record'**
+  /// In zh, this message translates to:
+  /// **'第一笔记录'**
   String get annualReportFirstRecord;
 
   /// No description provided for @annualReportPage5Title.
   ///
-  /// In en, this message translates to:
-  /// **'Achievements'**
+  /// In zh, this message translates to:
+  /// **'年度成就'**
   String get annualReportPage5Title;
 
   /// No description provided for @annualReportPage5Subtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Your bookkeeping badges'**
+  /// In zh, this message translates to:
+  /// **'你的记账成就徽章'**
   String get annualReportPage5Subtitle;
 
   /// No description provided for @annualReportAchievementConsistent.
   ///
-  /// In en, this message translates to:
-  /// **'Consistent'**
+  /// In zh, this message translates to:
+  /// **'持之以恒'**
   String get annualReportAchievementConsistent;
 
   /// No description provided for @annualReportAchievementConsistentDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Tracked for over {days} days straight'**
+  /// In zh, this message translates to:
+  /// **'连续记账超过{days}天'**
   String annualReportAchievementConsistentDesc(int days);
 
   /// No description provided for @annualReportAchievementSaver.
   ///
-  /// In en, this message translates to:
-  /// **'Saver'**
+  /// In zh, this message translates to:
+  /// **'精打细算'**
   String get annualReportAchievementSaver;
 
   /// No description provided for @annualReportAchievementSaverDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Positive net savings this year'**
+  /// In zh, this message translates to:
+  /// **'年度结余为正'**
   String get annualReportAchievementSaverDesc;
 
   /// No description provided for @annualReportAchievementDetail.
   ///
-  /// In en, this message translates to:
-  /// **'Detail-Oriented'**
+  /// In zh, this message translates to:
+  /// **'明察秋毫'**
   String get annualReportAchievementDetail;
 
   /// No description provided for @annualReportAchievementDetailDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Over {count} records tracked'**
+  /// In zh, this message translates to:
+  /// **'记账笔数超过{count}笔'**
   String annualReportAchievementDetailDesc(int count);
 
   /// No description provided for @annualReportShareButton.
   ///
-  /// In en, this message translates to:
-  /// **'Generate Share Poster'**
+  /// In zh, this message translates to:
+  /// **'生成分享海报'**
   String get annualReportShareButton;
 
   /// No description provided for @annualReportGenerating.
   ///
-  /// In en, this message translates to:
-  /// **'Generating annual report...'**
+  /// In zh, this message translates to:
+  /// **'正在生成年度报告...'**
   String get annualReportGenerating;
 
   /// No description provided for @annualReportSaveSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'Annual report poster saved'**
+  /// In zh, this message translates to:
+  /// **'年度报告海报已保存'**
   String get annualReportSaveSuccess;
 
   /// No description provided for @mineShareApp.
   ///
-  /// In en, this message translates to:
-  /// **'Share App'**
+  /// In zh, this message translates to:
+  /// **'分享应用'**
   String get mineShareApp;
 
   /// No description provided for @mineShareWithFriends.
   ///
-  /// In en, this message translates to:
-  /// **'Share SmartBook with friends'**
+  /// In zh, this message translates to:
+  /// **'和好友分享智记'**
   String get mineShareWithFriends;
 
   /// No description provided for @mineCopyPromoText.
   ///
-  /// In en, this message translates to:
-  /// **'Copy Promo Text'**
+  /// In zh, this message translates to:
+  /// **'复制推广文案'**
   String get mineCopyPromoText;
 
   /// No description provided for @mineCopyPromoSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Copy and share with friends'**
+  /// In zh, this message translates to:
+  /// **'一键复制分享给好友'**
   String get mineCopyPromoSubtitle;
 
   /// No description provided for @mineShareGenerating.
   ///
-  /// In en, this message translates to:
-  /// **'Generating share poster...'**
+  /// In zh, this message translates to:
+  /// **'正在生成分享海报...'**
   String get mineShareGenerating;
 
   /// No description provided for @sharePosterAppName.
   ///
-  /// In en, this message translates to:
+  /// In zh, this message translates to:
   /// **'智记'**
   String get sharePosterAppName;
 
   /// No description provided for @sharePosterSlogan.
   ///
-  /// In en, this message translates to:
-  /// **'Smart Accounting, Beautiful Life'**
+  /// In zh, this message translates to:
+  /// **'一笔一蜜，记录美好生活'**
   String get sharePosterSlogan;
 
   /// No description provided for @sharePosterFeature1.
   ///
-  /// In en, this message translates to:
-  /// **'Data Security·You Control'**
+  /// In zh, this message translates to:
+  /// **'数据安全·你做主'**
   String get sharePosterFeature1;
 
   /// No description provided for @sharePosterFeature2.
   ///
-  /// In en, this message translates to:
-  /// **'Open Source·Auditable'**
+  /// In zh, this message translates to:
+  /// **'完全开源·可审计'**
   String get sharePosterFeature2;
 
   /// No description provided for @sharePosterFeature3.
   ///
-  /// In en, this message translates to:
-  /// **'AI Smart·Photo & Voice'**
+  /// In zh, this message translates to:
+  /// **'AI智能记账·图片语音'**
   String get sharePosterFeature3;
 
   /// No description provided for @sharePosterFeature4.
   ///
-  /// In en, this message translates to:
-  /// **'Photo Accounting·Auto Recognition'**
+  /// In zh, this message translates to:
+  /// **'拍照记账·自动识别'**
   String get sharePosterFeature4;
 
   /// No description provided for @sharePosterFeature5.
   ///
-  /// In en, this message translates to:
-  /// **'Multi Ledger·Dark Mode'**
+  /// In zh, this message translates to:
+  /// **'多账本·暗黑模式'**
   String get sharePosterFeature5;
 
   /// No description provided for @sharePosterFeature6.
   ///
-  /// In en, this message translates to:
-  /// **'Self-Hosted Cloud·Free Forever'**
+  /// In zh, this message translates to:
+  /// **'自建云同步·永久免费'**
   String get sharePosterFeature6;
 
   /// No description provided for @sharePosterScanText.
   ///
-  /// In en, this message translates to:
-  /// **'Scan to visit open source project'**
+  /// In zh, this message translates to:
+  /// **'扫码访问开源项目'**
   String get sharePosterScanText;
 
   /// No description provided for @appPromoTagOpenSource.
   ///
-  /// In en, this message translates to:
-  /// **'Open Source'**
+  /// In zh, this message translates to:
+  /// **'开源'**
   String get appPromoTagOpenSource;
 
   /// No description provided for @appPromoTagFree.
   ///
-  /// In en, this message translates to:
-  /// **'Free'**
+  /// In zh, this message translates to:
+  /// **'免费'**
   String get appPromoTagFree;
 
   /// No description provided for @appPromoFooterText.
   ///
-  /// In en, this message translates to:
-  /// **'Track every penny, trace every moment'**
+  /// In zh, this message translates to:
+  /// **'让每一笔都有迹可循'**
   String get appPromoFooterText;
 
   /// No description provided for @userProfileJourneyYears.
   ///
-  /// In en, this message translates to:
-  /// **'Bookkeeping Pro {years} Years'**
+  /// In zh, this message translates to:
+  /// **'记账达人 {years} 年'**
   String userProfileJourneyYears(int years);
 
   /// No description provided for @userProfileJourneyOneYear.
   ///
-  /// In en, this message translates to:
-  /// **'One Year of Bookkeeping'**
+  /// In zh, this message translates to:
+  /// **'记账满一年'**
   String get userProfileJourneyOneYear;
 
   /// No description provided for @userProfileJourneyHalfYear.
   ///
-  /// In en, this message translates to:
-  /// **'Six Months Strong'**
+  /// In zh, this message translates to:
+  /// **'坚持记账半年'**
   String get userProfileJourneyHalfYear;
 
   /// No description provided for @userProfileJourneyThreeMonths.
   ///
-  /// In en, this message translates to:
-  /// **'Three Months In'**
+  /// In zh, this message translates to:
+  /// **'记账三个月'**
   String get userProfileJourneyThreeMonths;
 
   /// No description provided for @userProfileJourneyOneMonth.
   ///
-  /// In en, this message translates to:
-  /// **'One Month Milestone'**
+  /// In zh, this message translates to:
+  /// **'记账满一个月'**
   String get userProfileJourneyOneMonth;
 
   /// No description provided for @userProfileJourneyOneWeek.
   ///
-  /// In en, this message translates to:
-  /// **'First Week Done'**
+  /// In zh, this message translates to:
+  /// **'记账一周'**
   String get userProfileJourneyOneWeek;
 
   /// No description provided for @userProfileJourneyStart.
   ///
-  /// In en, this message translates to:
-  /// **'Starting the Journey'**
+  /// In zh, this message translates to:
+  /// **'开始记账之旅'**
   String get userProfileJourneyStart;
 
   /// No description provided for @userProfileDailyAverage.
   ///
-  /// In en, this message translates to:
-  /// **'Daily Average'**
+  /// In zh, this message translates to:
+  /// **'日均记账'**
   String get userProfileDailyAverage;
 
   /// No description provided for @sharePosterSave.
   ///
-  /// In en, this message translates to:
-  /// **'Save to Gallery'**
+  /// In zh, this message translates to:
+  /// **'保存到相册'**
   String get sharePosterSave;
 
   /// No description provided for @sharePosterShare.
   ///
-  /// In en, this message translates to:
-  /// **'Share'**
+  /// In zh, this message translates to:
+  /// **'分享'**
   String get sharePosterShare;
 
   /// No description provided for @sharePosterHideIncome.
   ///
-  /// In en, this message translates to:
-  /// **'Hide Income'**
+  /// In zh, this message translates to:
+  /// **'隐藏收入'**
   String get sharePosterHideIncome;
 
   /// No description provided for @sharePosterShowIncome.
   ///
-  /// In en, this message translates to:
-  /// **'Show Income'**
+  /// In zh, this message translates to:
+  /// **'显示收入'**
   String get sharePosterShowIncome;
 
   /// No description provided for @sharePosterSaveSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'Saved to gallery'**
+  /// In zh, this message translates to:
+  /// **'已保存到相册'**
   String get sharePosterSaveSuccess;
 
   /// No description provided for @shareGuidanceCopyText.
   ///
-  /// In en, this message translates to:
-  /// **'Track my expenses with SmartBook - open source, free & ad-free! 🐝 Download: https://github.com/TNT-Likely/BeeCount'**
+  /// In zh, this message translates to:
+  /// **'用智记记录生活，开源免费无广告！🐝 下载地址：https://github.com/TNT-Likely/BeeCount'**
   String get shareGuidanceCopyText;
 
   /// No description provided for @shareGuidanceCopied.
   ///
-  /// In en, this message translates to:
-  /// **'Text copied'**
+  /// In zh, this message translates to:
+  /// **'文案已复制'**
   String get shareGuidanceCopied;
 
   /// No description provided for @sharePosterSaveFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Failed to save'**
+  /// In zh, this message translates to:
+  /// **'保存失败'**
   String get sharePosterSaveFailed;
 
   /// No description provided for @sharePosterPermissionDenied.
   ///
-  /// In en, this message translates to:
-  /// **'Gallery permission denied, please enable in settings'**
+  /// In zh, this message translates to:
+  /// **'相册权限被拒绝，请在设置中开启'**
   String get sharePosterPermissionDenied;
 
   /// No description provided for @sharePosterGenerating.
   ///
-  /// In en, this message translates to:
-  /// **'Generating...'**
+  /// In zh, this message translates to:
+  /// **'生成中...'**
   String get sharePosterGenerating;
 
   /// No description provided for @sharePosterGenerateFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Failed to generate poster, please try again'**
+  /// In zh, this message translates to:
+  /// **'生成海报失败，请重试'**
   String get sharePosterGenerateFailed;
 
   /// No description provided for @sharePosterNoLedger.
   ///
-  /// In en, this message translates to:
-  /// **'Please select a ledger first'**
+  /// In zh, this message translates to:
+  /// **'请先选择一个账本'**
   String get sharePosterNoLedger;
 
   /// No description provided for @sharePosterYearTitle.
   ///
-  /// In en, this message translates to:
-  /// **'My Annual Bookkeeping Report'**
+  /// In zh, this message translates to:
+  /// **'我的记账年度报告'**
   String get sharePosterYearTitle;
 
   /// No description provided for @sharePosterYearSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Record life with data, plan future with reason'**
+  /// In zh, this message translates to:
+  /// **'用数据记录生活 用理性规划未来'**
   String get sharePosterYearSubtitle;
 
   /// No description provided for @sharePosterMonthTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Monthly Bill Report'**
+  /// In zh, this message translates to:
+  /// **'月度账单报告'**
   String get sharePosterMonthTitle;
 
   /// No description provided for @sharePosterMonthSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Budget Wisely, Spend Rationally'**
+  /// In zh, this message translates to:
+  /// **'精打细算 理性消费'**
   String get sharePosterMonthSubtitle;
 
   /// No description provided for @sharePosterLedgerTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Ledger Statistics Report'**
+  /// In zh, this message translates to:
+  /// **'账本统计报告'**
   String get sharePosterLedgerTitle;
 
   /// No description provided for @sharePosterRecordDays.
   ///
-  /// In en, this message translates to:
-  /// **'Record Days'**
+  /// In zh, this message translates to:
+  /// **'记账天数'**
   String get sharePosterRecordDays;
 
   /// No description provided for @sharePosterRecordCount.
   ///
-  /// In en, this message translates to:
-  /// **'Record Count'**
+  /// In zh, this message translates to:
+  /// **'记账笔数'**
   String get sharePosterRecordCount;
 
   /// No description provided for @sharePosterTotalExpense.
   ///
-  /// In en, this message translates to:
-  /// **'Total Expense'**
+  /// In zh, this message translates to:
+  /// **'总支出'**
   String get sharePosterTotalExpense;
 
   /// No description provided for @sharePosterTotalIncome.
   ///
-  /// In en, this message translates to:
-  /// **'Total Income'**
+  /// In zh, this message translates to:
+  /// **'总收入'**
   String get sharePosterTotalIncome;
 
   /// No description provided for @sharePosterYearBalance.
   ///
-  /// In en, this message translates to:
-  /// **'Annual Balance'**
+  /// In zh, this message translates to:
+  /// **'年度结余'**
   String get sharePosterYearBalance;
 
   /// No description provided for @sharePosterYearDeficit.
   ///
-  /// In en, this message translates to:
-  /// **'Annual Deficit'**
+  /// In zh, this message translates to:
+  /// **'年度赤字'**
   String get sharePosterYearDeficit;
 
   /// No description provided for @sharePosterMonthBalance.
   ///
-  /// In en, this message translates to:
-  /// **'Monthly Balance'**
+  /// In zh, this message translates to:
+  /// **'月度结余'**
   String get sharePosterMonthBalance;
 
   /// No description provided for @sharePosterBalance.
   ///
-  /// In en, this message translates to:
-  /// **'Total Balance'**
+  /// In zh, this message translates to:
+  /// **'总结余'**
   String get sharePosterBalance;
 
   /// No description provided for @sharePosterAvgMonthlyExpense.
   ///
-  /// In en, this message translates to:
-  /// **'Avg. Monthly Expense'**
+  /// In zh, this message translates to:
+  /// **'月均支出'**
   String get sharePosterAvgMonthlyExpense;
 
   /// No description provided for @sharePosterAvgMonthlyIncome.
   ///
-  /// In en, this message translates to:
-  /// **'Avg. Monthly Income'**
+  /// In zh, this message translates to:
+  /// **'月均收入'**
   String get sharePosterAvgMonthlyIncome;
 
   /// No description provided for @sharePosterAvgDailyExpense.
   ///
-  /// In en, this message translates to:
-  /// **'Avg. Daily Expense'**
+  /// In zh, this message translates to:
+  /// **'日均支出'**
   String get sharePosterAvgDailyExpense;
 
   /// No description provided for @sharePosterMaxExpenseMonth.
   ///
-  /// In en, this message translates to:
-  /// **'Highest Expense Month'**
+  /// In zh, this message translates to:
+  /// **'支出最高月份'**
   String get sharePosterMaxExpenseMonth;
 
   /// No description provided for @sharePosterTopExpense.
   ///
-  /// In en, this message translates to:
-  /// **'TOP 3 Expenses'**
+  /// In zh, this message translates to:
+  /// **'TOP 3 支出'**
   String get sharePosterTopExpense;
 
   /// No description provided for @sharePosterCompareLastMonth.
   ///
-  /// In en, this message translates to:
-  /// **'vs Last Month'**
+  /// In zh, this message translates to:
+  /// **'环比上月'**
   String get sharePosterCompareLastMonth;
 
   /// No description provided for @sharePosterIncreaseRate.
   ///
-  /// In en, this message translates to:
-  /// **'Increase'**
+  /// In zh, this message translates to:
+  /// **'较上月增长'**
   String get sharePosterIncreaseRate;
 
   /// No description provided for @sharePosterDecreaseRate.
   ///
-  /// In en, this message translates to:
-  /// **'Decrease'**
+  /// In zh, this message translates to:
+  /// **'较上月减少'**
   String get sharePosterDecreaseRate;
 
   /// No description provided for @sharePosterSavedMoneyTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Congrats! You saved this month'**
+  /// In zh, this message translates to:
+  /// **'恭喜！本月比上月省了'**
   String get sharePosterSavedMoneyTitle;
 
   /// No description provided for @sharePosterLedgerName.
   ///
-  /// In en, this message translates to:
-  /// **'Ledger Name'**
+  /// In zh, this message translates to:
+  /// **'账本名称'**
   String get sharePosterLedgerName;
 
   /// No description provided for @sharePosterUnitDay.
   ///
-  /// In en, this message translates to:
-  /// **'days'**
+  /// In zh, this message translates to:
+  /// **'天'**
   String get sharePosterUnitDay;
 
   /// No description provided for @sharePosterUnitCount.
   ///
-  /// In en, this message translates to:
-  /// **''**
+  /// In zh, this message translates to:
+  /// **'笔'**
   String get sharePosterUnitCount;
 
   /// No description provided for @sharePosterUnitYuan.
   ///
-  /// In en, this message translates to:
-  /// **''**
+  /// In zh, this message translates to:
+  /// **'元'**
   String get sharePosterUnitYuan;
 
   /// No description provided for @userProfilePosterStartDate.
   ///
-  /// In en, this message translates to:
-  /// **'Bookkeeping since {date}'**
+  /// In zh, this message translates to:
+  /// **'记账始于 {date}'**
   String userProfilePosterStartDate(String date);
 
   /// No description provided for @userProfilePosterRecordDays.
   ///
-  /// In en, this message translates to:
-  /// **'Days'**
+  /// In zh, this message translates to:
+  /// **'记账天数'**
   String get userProfilePosterRecordDays;
 
   /// No description provided for @userProfilePosterDaysUnit.
   ///
-  /// In en, this message translates to:
-  /// **'days'**
+  /// In zh, this message translates to:
+  /// **'天'**
   String get userProfilePosterDaysUnit;
 
   /// No description provided for @userProfilePosterRecordCount.
   ///
-  /// In en, this message translates to:
-  /// **'Records'**
+  /// In zh, this message translates to:
+  /// **'记账笔数'**
   String get userProfilePosterRecordCount;
 
   /// No description provided for @userProfilePosterCountUnit.
   ///
-  /// In en, this message translates to:
-  /// **''**
+  /// In zh, this message translates to:
+  /// **'笔'**
   String get userProfilePosterCountUnit;
 
   /// No description provided for @userProfilePosterLedgerCount.
   ///
-  /// In en, this message translates to:
-  /// **'Ledgers'**
+  /// In zh, this message translates to:
+  /// **'账本数量'**
   String get userProfilePosterLedgerCount;
 
   /// No description provided for @userProfilePosterLedgerUnit.
   ///
-  /// In en, this message translates to:
-  /// **''**
+  /// In zh, this message translates to:
+  /// **'本'**
   String get userProfilePosterLedgerUnit;
 
   /// No description provided for @mineDaysCount.
   ///
-  /// In en, this message translates to:
-  /// **'Days'**
+  /// In zh, this message translates to:
+  /// **'记账天数'**
   String get mineDaysCount;
 
   /// No description provided for @mineTotalRecords.
   ///
-  /// In en, this message translates to:
-  /// **'Records'**
+  /// In zh, this message translates to:
+  /// **'总笔数'**
   String get mineTotalRecords;
 
   /// No description provided for @mineCurrentBalance.
   ///
-  /// In en, this message translates to:
-  /// **'Ledger balance'**
+  /// In zh, this message translates to:
+  /// **'账本结余'**
   String get mineCurrentBalance;
 
   /// No description provided for @mineCloudService.
   ///
-  /// In en, this message translates to:
-  /// **'Cloud Service'**
+  /// In zh, this message translates to:
+  /// **'云服务'**
   String get mineCloudService;
 
   /// No description provided for @mineCloudServiceLoading.
   ///
-  /// In en, this message translates to:
-  /// **'Loading...'**
+  /// In zh, this message translates to:
+  /// **'加载中…'**
   String get mineCloudServiceLoading;
 
   /// No description provided for @mineCloudServiceOffline.
   ///
-  /// In en, this message translates to:
-  /// **'Default Mode (Offline)'**
+  /// In zh, this message translates to:
+  /// **'默认模式 (离线)'**
   String get mineCloudServiceOffline;
 
   /// No description provided for @mineCloudServiceCustom.
   ///
-  /// In en, this message translates to:
-  /// **'Custom Supabase'**
+  /// In zh, this message translates to:
+  /// **'自定义 Supabase'**
   String get mineCloudServiceCustom;
 
   /// No description provided for @mineCloudServiceWebDAV.
   ///
-  /// In en, this message translates to:
-  /// **'Custom Cloud Service (WebDAV)'**
+  /// In zh, this message translates to:
+  /// **'自定义云服务 (WebDAV)'**
   String get mineCloudServiceWebDAV;
 
   /// No description provided for @mineSyncTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Sync'**
+  /// In zh, this message translates to:
+  /// **'同步'**
   String get mineSyncTitle;
 
   /// No description provided for @mineSyncNotLoggedIn.
   ///
-  /// In en, this message translates to:
-  /// **'Not logged in'**
+  /// In zh, this message translates to:
+  /// **'未登录'**
   String get mineSyncNotLoggedIn;
 
   /// No description provided for @mineSyncNotConfigured.
   ///
-  /// In en, this message translates to:
-  /// **'Cloud not configured'**
+  /// In zh, this message translates to:
+  /// **'未配置云端'**
   String get mineSyncNotConfigured;
 
   /// No description provided for @mineSyncNoRemote.
   ///
-  /// In en, this message translates to:
-  /// **'No cloud data'**
+  /// In zh, this message translates to:
+  /// **'云端暂无数据'**
   String get mineSyncNoRemote;
 
   /// No description provided for @mineSyncInSync.
   ///
-  /// In en, this message translates to:
-  /// **'Synced (local {count} records)'**
+  /// In zh, this message translates to:
+  /// **'已同步 (本地{count}条)'**
   String mineSyncInSync(Object count);
 
   /// No description provided for @mineSyncInSyncSimple.
   ///
-  /// In en, this message translates to:
-  /// **'Synced'**
+  /// In zh, this message translates to:
+  /// **'已同步'**
   String get mineSyncInSyncSimple;
 
   /// No description provided for @mineSyncLocalNewer.
   ///
-  /// In en, this message translates to:
-  /// **'Local updated ({count} records, upload recommended)'**
+  /// In zh, this message translates to:
+  /// **'本地有更新 (本地{count}条, 建议上传)'**
   String mineSyncLocalNewer(Object count);
 
   /// No description provided for @mineSyncLocalNewerSimple.
   ///
-  /// In en, this message translates to:
-  /// **'Local updated'**
+  /// In zh, this message translates to:
+  /// **'本地有更新'**
   String get mineSyncLocalNewerSimple;
 
   /// No description provided for @mineSyncCloudNewer.
   ///
-  /// In en, this message translates to:
-  /// **'Cloud updated (download to sync)'**
+  /// In zh, this message translates to:
+  /// **'云端有更新 (建议下载同步)'**
   String get mineSyncCloudNewer;
 
   /// No description provided for @mineSyncCloudNewerSimple.
   ///
-  /// In en, this message translates to:
-  /// **'Cloud updated'**
+  /// In zh, this message translates to:
+  /// **'云端有更新'**
   String get mineSyncCloudNewerSimple;
 
   /// No description provided for @mineSyncDifferent.
   ///
-  /// In en, this message translates to:
-  /// **'Local and cloud differ, download to compare'**
+  /// In zh, this message translates to:
+  /// **'本地与云端有差异，建议下载对比'**
   String get mineSyncDifferent;
 
   /// No description provided for @mineSyncError.
   ///
-  /// In en, this message translates to:
-  /// **'Failed to get status'**
+  /// In zh, this message translates to:
+  /// **'状态获取失败'**
   String get mineSyncError;
 
   /// No description provided for @mineSyncDetailTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Sync Status Details'**
+  /// In zh, this message translates to:
+  /// **'同步状态详情'**
   String get mineSyncDetailTitle;
 
   /// No description provided for @mineSyncLocalRecords.
   ///
-  /// In en, this message translates to:
-  /// **'Local records: {count}'**
+  /// In zh, this message translates to:
+  /// **'本地记录数: {count}'**
   String mineSyncLocalRecords(Object count);
 
   /// No description provided for @mineSyncCloudRecords.
   ///
-  /// In en, this message translates to:
-  /// **'Cloud records: {count}'**
+  /// In zh, this message translates to:
+  /// **'云端记录数: {count}'**
   String mineSyncCloudRecords(Object count);
 
   /// No description provided for @mineSyncCloudLatest.
   ///
-  /// In en, this message translates to:
-  /// **'Cloud latest record time: {time}'**
+  /// In zh, this message translates to:
+  /// **'云端最新记账时间: {time}'**
   String mineSyncCloudLatest(Object time);
 
   /// No description provided for @mineSyncLocalFingerprint.
   ///
-  /// In en, this message translates to:
-  /// **'Local fingerprint: {fingerprint}'**
+  /// In zh, this message translates to:
+  /// **'本地指纹: {fingerprint}'**
   String mineSyncLocalFingerprint(Object fingerprint);
 
   /// No description provided for @mineSyncCloudFingerprint.
   ///
-  /// In en, this message translates to:
-  /// **'Cloud fingerprint: {fingerprint}'**
+  /// In zh, this message translates to:
+  /// **'云端指纹: {fingerprint}'**
   String mineSyncCloudFingerprint(Object fingerprint);
 
   /// No description provided for @mineSyncMessage.
   ///
-  /// In en, this message translates to:
-  /// **'Message: {message}'**
+  /// In zh, this message translates to:
+  /// **'说明: {message}'**
   String mineSyncMessage(Object message);
 
   /// No description provided for @mineUploadTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Upload'**
+  /// In zh, this message translates to:
+  /// **'上传'**
   String get mineUploadTitle;
 
   /// No description provided for @mineUploadNeedLogin.
   ///
-  /// In en, this message translates to:
-  /// **'Login required'**
+  /// In zh, this message translates to:
+  /// **'需登录'**
   String get mineUploadNeedLogin;
 
   /// No description provided for @mineUploadNeedCloudService.
   ///
-  /// In en, this message translates to:
-  /// **'Available in cloud service mode only'**
+  /// In zh, this message translates to:
+  /// **'仅限云服务模式可用'**
   String get mineUploadNeedCloudService;
 
   /// No description provided for @mineUploadInProgress.
   ///
-  /// In en, this message translates to:
-  /// **'Uploading...'**
+  /// In zh, this message translates to:
+  /// **'正在上传中…'**
   String get mineUploadInProgress;
 
   /// No description provided for @mineUploadRefreshing.
   ///
-  /// In en, this message translates to:
-  /// **'Refreshing...'**
+  /// In zh, this message translates to:
+  /// **'刷新中…'**
   String get mineUploadRefreshing;
 
   /// No description provided for @mineUploadSynced.
   ///
-  /// In en, this message translates to:
-  /// **'Synced'**
+  /// In zh, this message translates to:
+  /// **'已同步'**
   String get mineUploadSynced;
 
   /// No description provided for @mineUploadSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'Uploaded'**
+  /// In zh, this message translates to:
+  /// **'已上传'**
   String get mineUploadSuccess;
 
   /// No description provided for @mineUploadSuccessMessage.
   ///
-  /// In en, this message translates to:
-  /// **'Current ledger synced to cloud'**
+  /// In zh, this message translates to:
+  /// **'当前账本已同步到云端'**
   String get mineUploadSuccessMessage;
 
   /// No description provided for @mineDownloadTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Download & Sync'**
+  /// In zh, this message translates to:
+  /// **'下载同步'**
   String get mineDownloadTitle;
 
   /// No description provided for @mineDownloadNeedCloudService.
   ///
-  /// In en, this message translates to:
-  /// **'Available in cloud service mode only'**
+  /// In zh, this message translates to:
+  /// **'仅限云服务模式可用'**
   String get mineDownloadNeedCloudService;
 
   /// No description provided for @mineDownloadComplete.
   ///
-  /// In en, this message translates to:
-  /// **'Sync Complete'**
+  /// In zh, this message translates to:
+  /// **'同步完成'**
   String get mineDownloadComplete;
 
   /// No description provided for @mineDownloadResult.
   ///
-  /// In en, this message translates to:
-  /// **'Imported: {inserted} records'**
+  /// In zh, this message translates to:
+  /// **'导入：{inserted} 条'**
   String mineDownloadResult(Object inserted);
 
   /// No description provided for @mineLoginTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Login'**
+  /// In zh, this message translates to:
+  /// **'登录'**
   String get mineLoginTitle;
 
   /// No description provided for @mineLoginSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Only needed for sync'**
+  /// In zh, this message translates to:
+  /// **'仅在同步时需要'**
   String get mineLoginSubtitle;
 
   /// No description provided for @cloudReloginTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Re-login'**
+  /// In zh, this message translates to:
+  /// **'重新登录'**
   String get cloudReloginTitle;
 
   /// No description provided for @cloudReloginSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'Re-logged in'**
+  /// In zh, this message translates to:
+  /// **'已重新登录'**
   String get cloudReloginSuccess;
 
   /// No description provided for @cloudReloginFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Re-login failed'**
+  /// In zh, this message translates to:
+  /// **'重新登录失败'**
   String get cloudReloginFailed;
 
   /// No description provided for @mineLoggedInEmail.
   ///
-  /// In en, this message translates to:
-  /// **'Logged in'**
+  /// In zh, this message translates to:
+  /// **'已登录'**
   String get mineLoggedInEmail;
 
   /// No description provided for @mineLogoutSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Tap to logout'**
+  /// In zh, this message translates to:
+  /// **'点击可退出登录'**
   String get mineLogoutSubtitle;
 
   /// No description provided for @mineLogoutConfirmTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Logout'**
+  /// In zh, this message translates to:
+  /// **'退出登录'**
   String get mineLogoutConfirmTitle;
 
   /// No description provided for @mineLogoutConfirmMessage.
   ///
-  /// In en, this message translates to:
-  /// **'Are you sure you want to logout?\nYou won\'t be able to use cloud sync after logout.'**
+  /// In zh, this message translates to:
+  /// **'确定要退出当前账号登录吗？\n退出后将无法使用云同步功能。'**
   String get mineLogoutConfirmMessage;
 
   /// No description provided for @mineLogoutButton.
   ///
-  /// In en, this message translates to:
-  /// **'Logout'**
+  /// In zh, this message translates to:
+  /// **'退出'**
   String get mineLogoutButton;
 
   /// No description provided for @mineAutoSyncTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Auto sync ledger'**
+  /// In zh, this message translates to:
+  /// **'自动同步账本'**
   String get mineAutoSyncTitle;
 
   /// No description provided for @mineAutoSyncSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Auto upload to cloud after recording'**
+  /// In zh, this message translates to:
+  /// **'记账后自动上传到云端'**
   String get mineAutoSyncSubtitle;
 
   /// No description provided for @mineAutoSyncNeedLogin.
   ///
-  /// In en, this message translates to:
-  /// **'Login required to enable'**
+  /// In zh, this message translates to:
+  /// **'需登录后可开启'**
   String get mineAutoSyncNeedLogin;
 
   /// No description provided for @mineImportProgressTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Importing in background...'**
+  /// In zh, this message translates to:
+  /// **'后台导入中…'**
   String get mineImportProgressTitle;
 
   /// No description provided for @mineImportProgressSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Progress: {done}/{total}, Success {ok}, Failed {fail}'**
+  /// In zh, this message translates to:
+  /// **'进度：{done}/{total}，成功 {ok}，失败 {fail}'**
   String mineImportProgressSubtitle(Object done, Object fail, Object ok, Object total);
 
   /// No description provided for @mineImportCompleteTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Import complete'**
+  /// In zh, this message translates to:
+  /// **'导入完成'**
   String get mineImportCompleteTitle;
 
   /// No description provided for @mineCategoryManagement.
   ///
-  /// In en, this message translates to:
-  /// **'Category Management'**
+  /// In zh, this message translates to:
+  /// **'分类管理'**
   String get mineCategoryManagement;
 
   /// No description provided for @mineCategoryManagementSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Edit custom categories'**
+  /// In zh, this message translates to:
+  /// **'编辑自定义分类'**
   String get mineCategoryManagementSubtitle;
 
   /// No description provided for @mineCategoryMigration.
   ///
-  /// In en, this message translates to:
-  /// **'Category Migration'**
+  /// In zh, this message translates to:
+  /// **'分类迁移'**
   String get mineCategoryMigration;
 
   /// No description provided for @mineCategoryMigrationSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Migrate category data to other categories'**
+  /// In zh, this message translates to:
+  /// **'将分类数据迁移到其他分类'**
   String get mineCategoryMigrationSubtitle;
 
   /// No description provided for @mineRecurringTransactions.
   ///
-  /// In en, this message translates to:
-  /// **'Recurring Bills'**
+  /// In zh, this message translates to:
+  /// **'周期账单'**
   String get mineRecurringTransactions;
 
   /// No description provided for @mineRecurringTransactionsSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Manage recurring bills'**
+  /// In zh, this message translates to:
+  /// **'管理周期性账单'**
   String get mineRecurringTransactionsSubtitle;
 
   /// No description provided for @mineReminderSettings.
   ///
-  /// In en, this message translates to:
-  /// **'Reminder Settings'**
+  /// In zh, this message translates to:
+  /// **'记账提醒'**
   String get mineReminderSettings;
 
   /// No description provided for @mineReminderSettingsSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Set daily recording reminders'**
+  /// In zh, this message translates to:
+  /// **'设置每日记账提醒'**
   String get mineReminderSettingsSubtitle;
 
   /// No description provided for @minePersonalize.
   ///
-  /// In en, this message translates to:
-  /// **'Personalization'**
+  /// In zh, this message translates to:
+  /// **'个性装扮'**
   String get minePersonalize;
 
   /// No description provided for @mineDisplayScale.
   ///
-  /// In en, this message translates to:
-  /// **'Display Scale'**
+  /// In zh, this message translates to:
+  /// **'显示缩放'**
   String get mineDisplayScale;
 
   /// No description provided for @mineDisplayScaleSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Adjust text and UI element sizes'**
+  /// In zh, this message translates to:
+  /// **'调整文字和界面元素大小'**
   String get mineDisplayScaleSubtitle;
 
   /// No description provided for @mineCheckUpdate.
   ///
-  /// In en, this message translates to:
-  /// **'Check Update'**
+  /// In zh, this message translates to:
+  /// **'检测更新'**
   String get mineCheckUpdate;
 
   /// No description provided for @mineCheckUpdateSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Checking for latest version'**
+  /// In zh, this message translates to:
+  /// **'正在检查最新版本'**
   String get mineCheckUpdateSubtitle;
 
   /// No description provided for @mineUpdateDownload.
   ///
-  /// In en, this message translates to:
-  /// **'Download Update'**
+  /// In zh, this message translates to:
+  /// **'下载更新'**
   String get mineUpdateDownload;
 
   /// No description provided for @mineFeedback.
   ///
-  /// In en, this message translates to:
-  /// **'Feedback'**
+  /// In zh, this message translates to:
+  /// **'问题反馈'**
   String get mineFeedback;
 
   /// No description provided for @mineFeedbackSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Report issues or suggestions'**
+  /// In zh, this message translates to:
+  /// **'提交问题或建议'**
   String get mineFeedbackSubtitle;
 
   /// No description provided for @mineHelp.
   ///
-  /// In en, this message translates to:
-  /// **'Help'**
+  /// In zh, this message translates to:
+  /// **'使用帮助'**
   String get mineHelp;
 
   /// No description provided for @helpCenterOpenInBrowser.
   ///
-  /// In en, this message translates to:
-  /// **'Open in browser'**
+  /// In zh, this message translates to:
+  /// **'在浏览器中打开'**
   String get helpCenterOpenInBrowser;
 
   /// No description provided for @helpCenterLoadFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Failed to load. Please check your network.'**
+  /// In zh, this message translates to:
+  /// **'加载失败，请检查网络'**
   String get helpCenterLoadFailed;
 
   /// No description provided for @helpCenterRetry.
   ///
-  /// In en, this message translates to:
-  /// **'Retry'**
+  /// In zh, this message translates to:
+  /// **'重试'**
   String get helpCenterRetry;
 
   /// No description provided for @mineHelpSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'View documentation and FAQ'**
+  /// In zh, this message translates to:
+  /// **'查看使用文档和常见问题'**
   String get mineHelpSubtitle;
 
   /// No description provided for @mineSupportAuthor.
   ///
-  /// In en, this message translates to:
-  /// **'Star the Project ⭐️'**
+  /// In zh, this message translates to:
+  /// **'给项目 Star ⭐️'**
   String get mineSupportAuthor;
 
   /// No description provided for @mineSupportAuthorSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Open source, {count} stars'**
+  /// In zh, this message translates to:
+  /// **'开源免费，已有 {count} 人 Star'**
   String mineSupportAuthorSubtitle(String count);
 
   /// No description provided for @githubStarGuideTitle.
   ///
-  /// In en, this message translates to:
-  /// **'How to Star the Project'**
+  /// In zh, this message translates to:
+  /// **'如何给项目 Star'**
   String get githubStarGuideTitle;
 
   /// No description provided for @githubStarGuideContent.
   ///
-  /// In en, this message translates to:
-  /// **'After tapping the button below to open GitHub, tap the area marked in the image to complete the Star'**
+  /// In zh, this message translates to:
+  /// **'点击下方按钮打开 GitHub 页面后，点击图中标注的位置即可完成 Star'**
   String get githubStarGuideContent;
 
   /// No description provided for @githubStarGuideButton.
   ///
-  /// In en, this message translates to:
-  /// **'Go to GitHub'**
+  /// In zh, this message translates to:
+  /// **'前往 GitHub'**
   String get githubStarGuideButton;
 
   /// No description provided for @categoryEditTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Edit Category'**
+  /// In zh, this message translates to:
+  /// **'编辑分类'**
   String get categoryEditTitle;
 
   /// No description provided for @categoryNewTitle.
   ///
-  /// In en, this message translates to:
-  /// **'New Category'**
+  /// In zh, this message translates to:
+  /// **'新建分类'**
   String get categoryNewTitle;
 
   /// No description provided for @categoryDetailTooltip.
   ///
-  /// In en, this message translates to:
-  /// **'Category Details'**
+  /// In zh, this message translates to:
+  /// **'分类详情'**
   String get categoryDetailTooltip;
 
   /// No description provided for @categoryMigrationTooltip.
   ///
-  /// In en, this message translates to:
-  /// **'Category Migration'**
+  /// In zh, this message translates to:
+  /// **'分类迁移'**
   String get categoryMigrationTooltip;
 
   /// No description provided for @categoryMigrationTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Category Migration'**
+  /// In zh, this message translates to:
+  /// **'分类迁移'**
   String get categoryMigrationTitle;
 
   /// No description provided for @categoryMigrationDescription.
   ///
-  /// In en, this message translates to:
-  /// **'Category Migration Instructions'**
+  /// In zh, this message translates to:
+  /// **'分类迁移说明'**
   String get categoryMigrationDescription;
 
   /// No description provided for @categoryMigrationDescriptionContent.
   ///
-  /// In en, this message translates to:
-  /// **'• Migrate all transaction records from one category to another\n• After migration, all transaction data from the source category will be transferred to the target category\n• This operation cannot be undone, please choose carefully'**
+  /// In zh, this message translates to:
+  /// **'• 将指定分类的所有交易记录迁移到另一个分类\n• 迁移后，原分类的交易数据将全部转移到目标分类\n• 此操作不可撤销，请谨慎选择'**
   String get categoryMigrationDescriptionContent;
 
   /// No description provided for @categoryMigrationTypeLabel.
   ///
-  /// In en, this message translates to:
-  /// **'Select Type'**
+  /// In zh, this message translates to:
+  /// **'选择类型'**
   String get categoryMigrationTypeLabel;
 
   /// No description provided for @categoryMigrationFromLabel.
   ///
-  /// In en, this message translates to:
-  /// **'From Category'**
+  /// In zh, this message translates to:
+  /// **'迁出分类'**
   String get categoryMigrationFromLabel;
 
   /// No description provided for @categoryMigrationFromHint.
   ///
-  /// In en, this message translates to:
-  /// **'Select category to migrate from'**
+  /// In zh, this message translates to:
+  /// **'选择要迁出的分类'**
   String get categoryMigrationFromHint;
 
   /// No description provided for @categoryMigrationToLabel.
   ///
-  /// In en, this message translates to:
-  /// **'To Category'**
+  /// In zh, this message translates to:
+  /// **'迁入分类'**
   String get categoryMigrationToLabel;
 
   /// No description provided for @categoryMigrationToHint.
   ///
-  /// In en, this message translates to:
-  /// **'Select target category'**
+  /// In zh, this message translates to:
+  /// **'选择迁入的分类'**
   String get categoryMigrationToHint;
 
   /// No description provided for @categoryMigrationToHintFirst.
   ///
-  /// In en, this message translates to:
-  /// **'Please select source category first'**
+  /// In zh, this message translates to:
+  /// **'请先选择迁出分类'**
   String get categoryMigrationToHintFirst;
 
   /// No description provided for @categoryMigrationStartButton.
   ///
-  /// In en, this message translates to:
-  /// **'Start Migration'**
+  /// In zh, this message translates to:
+  /// **'开始迁移'**
   String get categoryMigrationStartButton;
 
   /// No description provided for @categoryMigrationCannotTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Cannot Migrate'**
+  /// In zh, this message translates to:
+  /// **'无法迁移'**
   String get categoryMigrationCannotTitle;
 
   /// No description provided for @categoryMigrationCannotMessage.
   ///
-  /// In en, this message translates to:
-  /// **'Selected categories cannot be migrated, please check category status.'**
+  /// In zh, this message translates to:
+  /// **'选择的分类无法进行迁移，请检查分类状态。'**
   String get categoryMigrationCannotMessage;
 
   /// No description provided for @categoryExpenseType.
   ///
-  /// In en, this message translates to:
-  /// **'Expense Category'**
+  /// In zh, this message translates to:
+  /// **'支出分类'**
   String get categoryExpenseType;
 
   /// No description provided for @categoryIncomeType.
   ///
-  /// In en, this message translates to:
-  /// **'Income Category'**
+  /// In zh, this message translates to:
+  /// **'收入分类'**
   String get categoryIncomeType;
 
   /// No description provided for @categoryDefaultTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Default Category'**
+  /// In zh, this message translates to:
+  /// **'默认分类'**
   String get categoryDefaultTitle;
 
   /// No description provided for @categoryNameLabel.
   ///
-  /// In en, this message translates to:
-  /// **'Category Name'**
+  /// In zh, this message translates to:
+  /// **'分类名称'**
   String get categoryNameLabel;
 
   /// No description provided for @categoryNameHint.
   ///
-  /// In en, this message translates to:
-  /// **'Enter category name'**
+  /// In zh, this message translates to:
+  /// **'请输入分类名称'**
   String get categoryNameHint;
 
   /// No description provided for @categoryNameRequired.
   ///
-  /// In en, this message translates to:
-  /// **'Please enter category name'**
+  /// In zh, this message translates to:
+  /// **'请输入分类名称'**
   String get categoryNameRequired;
 
   /// No description provided for @categoryNameTooLong.
   ///
-  /// In en, this message translates to:
-  /// **'Category name cannot exceed 4 characters'**
+  /// In zh, this message translates to:
+  /// **'分类名称不能超过4个字'**
   String get categoryNameTooLong;
 
   /// No description provided for @categoryNameDuplicate.
   ///
-  /// In en, this message translates to:
-  /// **'Category name already exists'**
+  /// In zh, this message translates to:
+  /// **'分类名称已存在'**
   String get categoryNameDuplicate;
 
   /// No description provided for @categoryIconLabel.
   ///
-  /// In en, this message translates to:
-  /// **'Category Icon'**
+  /// In zh, this message translates to:
+  /// **'分类图标'**
   String get categoryIconLabel;
 
   /// No description provided for @categoryCustomIconTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Custom Icon'**
+  /// In zh, this message translates to:
+  /// **'自定义图标'**
   String get categoryCustomIconTitle;
 
   /// No description provided for @categoryCustomIconTapToSelect.
   ///
-  /// In en, this message translates to:
-  /// **'Tap to select image'**
+  /// In zh, this message translates to:
+  /// **'点击选择图片'**
   String get categoryCustomIconTapToSelect;
 
   /// No description provided for @categoryCustomIconTapToChange.
   ///
-  /// In en, this message translates to:
-  /// **'Tap to change image'**
+  /// In zh, this message translates to:
+  /// **'点击更换图片'**
   String get categoryCustomIconTapToChange;
 
   /// No description provided for @categoryCustomIconError.
   ///
-  /// In en, this message translates to:
-  /// **'Error selecting image'**
+  /// In zh, this message translates to:
+  /// **'选择图片时出错'**
   String get categoryCustomIconError;
 
   /// No description provided for @categoryCustomIconRequired.
   ///
-  /// In en, this message translates to:
-  /// **'Please select a custom icon image'**
+  /// In zh, this message translates to:
+  /// **'请选择自定义图标图片'**
   String get categoryCustomIconRequired;
 
   /// No description provided for @categoryCustomIconCrop.
   ///
-  /// In en, this message translates to:
-  /// **'Crop Icon'**
+  /// In zh, this message translates to:
+  /// **'裁剪图标'**
   String get categoryCustomIconCrop;
 
   /// No description provided for @categoryDangerousOperations.
   ///
-  /// In en, this message translates to:
-  /// **'Dangerous Operations'**
+  /// In zh, this message translates to:
+  /// **'危险操作'**
   String get categoryDangerousOperations;
 
   /// No description provided for @categoryDeleteTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Delete Category'**
+  /// In zh, this message translates to:
+  /// **'删除分类'**
   String get categoryDeleteTitle;
 
   /// No description provided for @categoryDeleteSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Cannot be recovered after deletion'**
+  /// In zh, this message translates to:
+  /// **'删除后无法恢复'**
   String get categoryDeleteSubtitle;
 
   /// No description provided for @categorySaveError.
   ///
-  /// In en, this message translates to:
-  /// **'Save failed'**
+  /// In zh, this message translates to:
+  /// **'保存失败'**
   String get categorySaveError;
 
   /// No description provided for @categoryUpdated.
   ///
-  /// In en, this message translates to:
-  /// **'Category \"{name}\" updated'**
+  /// In zh, this message translates to:
+  /// **'分类\"{name}\"已更新'**
   String categoryUpdated(Object name);
 
   /// No description provided for @categoryCreated.
   ///
-  /// In en, this message translates to:
-  /// **'Category \"{name}\" created'**
+  /// In zh, this message translates to:
+  /// **'分类\"{name}\"已创建'**
   String categoryCreated(Object name);
 
   /// No description provided for @categoryCannotDelete.
   ///
-  /// In en, this message translates to:
-  /// **'Cannot delete'**
+  /// In zh, this message translates to:
+  /// **'无法删除'**
   String get categoryCannotDelete;
 
   /// No description provided for @categoryCannotDeleteMessage.
   ///
-  /// In en, this message translates to:
-  /// **'This category has {count} transaction records. Please handle them first.'**
+  /// In zh, this message translates to:
+  /// **'该分类下还有 {count} 笔交易记录，请先处理这些记录。'**
   String categoryCannotDeleteMessage(Object count);
 
   /// No description provided for @categoryShare.
   ///
-  /// In en, this message translates to:
-  /// **'Share Categories'**
+  /// In zh, this message translates to:
+  /// **'分享分类'**
   String get categoryShare;
 
   /// No description provided for @categoryImport.
   ///
-  /// In en, this message translates to:
-  /// **'Import Categories'**
+  /// In zh, this message translates to:
+  /// **'导入分类'**
   String get categoryImport;
 
   /// No description provided for @categoryClearUnused.
   ///
-  /// In en, this message translates to:
-  /// **'Clear Unused Categories'**
+  /// In zh, this message translates to:
+  /// **'清空未使用分类'**
   String get categoryClearUnused;
 
   /// No description provided for @categoryClearUnusedTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Clear Unused Categories'**
+  /// In zh, this message translates to:
+  /// **'清空未使用分类'**
   String get categoryClearUnusedTitle;
 
   /// No description provided for @categoryClearUnusedMessage.
   ///
-  /// In en, this message translates to:
-  /// **'Are you sure you want to delete {count} unused categories? This action cannot be undone.'**
-  String categoryClearUnusedMessage(Object count);
+  /// In zh, this message translates to:
+  /// **'确定要删除 {count} 个未使用的分类吗？此操作无法撤销。'**
+  String categoryClearUnusedMessage(int count);
 
   /// No description provided for @categoryClearUnusedListTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Categories to be deleted:'**
+  /// In zh, this message translates to:
+  /// **'将被删除的分类：'**
   String get categoryClearUnusedListTitle;
 
   /// No description provided for @categoryClearUnusedEmpty.
   ///
-  /// In en, this message translates to:
-  /// **'No unused categories'**
+  /// In zh, this message translates to:
+  /// **'没有未使用的分类'**
   String get categoryClearUnusedEmpty;
 
   /// No description provided for @categoryClearUnusedSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'Deleted {count} categories'**
-  String categoryClearUnusedSuccess(Object count);
+  /// In zh, this message translates to:
+  /// **'已删除 {count} 个分类'**
+  String categoryClearUnusedSuccess(int count);
 
   /// No description provided for @categoryClearUnusedFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Clear failed'**
+  /// In zh, this message translates to:
+  /// **'清空失败'**
   String get categoryClearUnusedFailed;
 
   /// No description provided for @categoryShareScopeTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Select Scope'**
+  /// In zh, this message translates to:
+  /// **'选择分享范围'**
   String get categoryShareScopeTitle;
 
   /// No description provided for @categoryShareScopeExpense.
   ///
-  /// In en, this message translates to:
-  /// **'Expense categories only'**
+  /// In zh, this message translates to:
+  /// **'仅支出分类'**
   String get categoryShareScopeExpense;
 
   /// No description provided for @categoryShareScopeIncome.
   ///
-  /// In en, this message translates to:
-  /// **'Income categories only'**
+  /// In zh, this message translates to:
+  /// **'仅收入分类'**
   String get categoryShareScopeIncome;
 
   /// No description provided for @categoryShareScopeAll.
   ///
-  /// In en, this message translates to:
-  /// **'All categories'**
+  /// In zh, this message translates to:
+  /// **'全部分类'**
   String get categoryShareScopeAll;
 
   /// No description provided for @categoryShareSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'Saved to {path}'**
-  String categoryShareSuccess(Object path);
+  /// In zh, this message translates to:
+  /// **'已保存到 {path}'**
+  String categoryShareSuccess(String path);
 
   /// No description provided for @categoryShareSubject.
   ///
-  /// In en, this message translates to:
-  /// **'智记 Category Configuration'**
+  /// In zh, this message translates to:
+  /// **'智记 分类配置'**
   String get categoryShareSubject;
 
   /// No description provided for @categoryShareFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Share failed'**
+  /// In zh, this message translates to:
+  /// **'分享失败'**
   String get categoryShareFailed;
 
   /// No description provided for @categoryImportInvalidFile.
   ///
-  /// In en, this message translates to:
-  /// **'Please select a category package file (.zip)'**
+  /// In zh, this message translates to:
+  /// **'请选择分类包文件（.zip）'**
   String get categoryImportInvalidFile;
 
   /// No description provided for @categoryImportModeTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Select Import Mode'**
+  /// In zh, this message translates to:
+  /// **'选择导入模式'**
   String get categoryImportModeTitle;
 
   /// No description provided for @categoryImportModeMerge.
   ///
-  /// In en, this message translates to:
-  /// **'Merge'**
+  /// In zh, this message translates to:
+  /// **'合并'**
   String get categoryImportModeMerge;
 
   /// No description provided for @categoryImportModeMergeDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Keep existing, add new ones'**
+  /// In zh, this message translates to:
+  /// **'保留现有分类，新增不存在的'**
   String get categoryImportModeMergeDesc;
 
   /// No description provided for @categoryImportModeOverwrite.
   ///
-  /// In en, this message translates to:
-  /// **'Overwrite'**
+  /// In zh, this message translates to:
+  /// **'覆盖'**
   String get categoryImportModeOverwrite;
 
   /// No description provided for @categoryImportModeOverwriteDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Clear unused categories then import'**
+  /// In zh, this message translates to:
+  /// **'清空未使用分类后导入'**
   String get categoryImportModeOverwriteDesc;
 
   /// No description provided for @categoryImportSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'Import successful'**
+  /// In zh, this message translates to:
+  /// **'导入成功'**
   String get categoryImportSuccess;
 
   /// No description provided for @categoryImportSuccessDetail.
   ///
-  /// In en, this message translates to:
-  /// **'Imported {imported} categories, skipped {skipped}, imported {icons} icons'**
+  /// In zh, this message translates to:
+  /// **'已导入 {imported} 个分类，跳过 {skipped} 个，导入 {icons} 个图标'**
   String categoryImportSuccessDetail(int imported, int skipped, int icons);
 
   /// No description provided for @categoryImportFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Import failed'**
+  /// In zh, this message translates to:
+  /// **'导入失败'**
   String get categoryImportFailed;
 
   /// No description provided for @categoryDeleteConfirmTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Delete Category'**
+  /// In zh, this message translates to:
+  /// **'删除分类'**
   String get categoryDeleteConfirmTitle;
 
   /// No description provided for @categoryDeleteConfirmMessage.
   ///
-  /// In en, this message translates to:
-  /// **'Are you sure you want to delete category \"{name}\"? This action cannot be undone.'**
+  /// In zh, this message translates to:
+  /// **'确定要删除分类\"{name}\"吗？此操作无法撤销。'**
   String categoryDeleteConfirmMessage(Object name);
 
   /// No description provided for @categoryDeleteError.
   ///
-  /// In en, this message translates to:
-  /// **'Delete failed'**
+  /// In zh, this message translates to:
+  /// **'删除失败'**
   String get categoryDeleteError;
 
   /// No description provided for @categoryDeleted.
   ///
-  /// In en, this message translates to:
-  /// **'Category \"{name}\" deleted'**
+  /// In zh, this message translates to:
+  /// **'分类\"{name}\"已删除'**
   String categoryDeleted(Object name);
 
   /// No description provided for @categorySubCategoryTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Subcategory'**
+  /// In zh, this message translates to:
+  /// **'二级分类'**
   String get categorySubCategoryTitle;
 
   /// No description provided for @categorySubCategoryDescriptionEnabled.
   ///
-  /// In en, this message translates to:
-  /// **'This category belongs to a parent category'**
+  /// In zh, this message translates to:
+  /// **'此分类属于某个一级分类'**
   String get categorySubCategoryDescriptionEnabled;
 
   /// No description provided for @categorySubCategoryDescriptionDisabled.
   ///
-  /// In en, this message translates to:
-  /// **'This is an independent top-level category'**
+  /// In zh, this message translates to:
+  /// **'此分类为独立的一级分类'**
   String get categorySubCategoryDescriptionDisabled;
 
   /// No description provided for @categoryParentCategoryTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Parent Category'**
+  /// In zh, this message translates to:
+  /// **'父分类'**
   String get categoryParentCategoryTitle;
 
   /// No description provided for @categoryParentCategoryHint.
   ///
-  /// In en, this message translates to:
-  /// **'Please select parent category'**
+  /// In zh, this message translates to:
+  /// **'请选择父分类'**
   String get categoryParentCategoryHint;
 
   /// No description provided for @categorySelectParentTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Select Parent Category'**
+  /// In zh, this message translates to:
+  /// **'选择父分类'**
   String get categorySelectParentTitle;
 
   /// No description provided for @categorySubCategoryCreated.
   ///
-  /// In en, this message translates to:
-  /// **'Subcategory added: {name}'**
+  /// In zh, this message translates to:
+  /// **'已添加二级分类：{name}'**
   String categorySubCategoryCreated(Object name);
 
   /// No description provided for @categoryParentRequired.
   ///
-  /// In en, this message translates to:
-  /// **'Please select parent category'**
+  /// In zh, this message translates to:
+  /// **'请选择父分类'**
   String get categoryParentRequired;
 
   /// No description provided for @categoryParentRequiredTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Error'**
+  /// In zh, this message translates to:
+  /// **'错误'**
   String get categoryParentRequiredTitle;
 
   /// No description provided for @categoryExpenseList.
   ///
-  /// In en, this message translates to:
-  /// **'Dining-Transport-Shopping-Entertainment-Home-Family-Communication-Utilities-Housing-Medical-Education-Pets-Sports-Digital-Travel-Alcohol & Tobacco-Baby Care-Beauty-Repair-Social-Learning-Car-Taxi-Subway-Delivery-Property-Parking-Donation-Give Gift-Tax-Beverage-Clothing-Snacks-Send Red Packet-Fruit-Game-Book-Lover-Decoration-Daily Goods-Lottery-Stock-Social Security-Express-Work'**
+  /// In zh, this message translates to:
+  /// **'餐饮-交通-购物-娱乐-居家-家庭-通讯-水电-住房-医疗-教育-宠物-运动-数码-旅行-烟酒-母婴-美容-维修-社交-学习-汽车-打车-地铁-外卖-物业-停车-捐赠-送礼-纳税-饮料-服装-零食-发红包-水果-游戏-书-爱人-装修-日用品-彩票-股票-社保-快递-工作'**
   String get categoryExpenseList;
 
   /// No description provided for @categoryIncomeList.
   ///
-  /// In en, this message translates to:
-  /// **'Salary-Investment-Receive Red Packet-Bonus-Reimbursement-Part time-Receive Gift-Interest-Refund-Investment Income-Second hand-Social Benefit-Tax Refund-Provident Fund'**
+  /// In zh, this message translates to:
+  /// **'工资-理财-收红包-奖金-报销-兼职-收礼-利息-退款-投资收益-二手转卖-社会保障-退税退费-公积金'**
   String get categoryIncomeList;
 
   /// No description provided for @categoryExpenseDining.
   ///
-  /// In en, this message translates to:
-  /// **'Dining-Breakfast-Lunch-Dinner-Meituan Delivery-Ele.me Delivery-JD Delivery-Restaurant-Food'**
+  /// In zh, this message translates to:
+  /// **'餐饮-早餐-午餐-晚餐-美团外卖-饿了么外卖-京东外卖-餐厅-美食'**
   String get categoryExpenseDining;
 
   /// No description provided for @categoryExpenseSnacks.
   ///
-  /// In en, this message translates to:
-  /// **'Snacks-Cookies-Chips-Candy-Chocolate-Nuts'**
+  /// In zh, this message translates to:
+  /// **'零食-饼干-薯片-糖果-巧克力-坚果'**
   String get categoryExpenseSnacks;
 
   /// No description provided for @categoryExpenseFruit.
   ///
-  /// In en, this message translates to:
-  /// **'Fruit-Apple-Banana-Orange-Grape-Watermelon-Other Fruits'**
+  /// In zh, this message translates to:
+  /// **'水果-苹果-香蕉-橙子-葡萄-西瓜-其他水果'**
   String get categoryExpenseFruit;
 
   /// No description provided for @categoryExpenseBeverage.
   ///
-  /// In en, this message translates to:
-  /// **'Beverage-Milk Tea-Coffee-Juice-Soda-Mineral Water'**
+  /// In zh, this message translates to:
+  /// **'饮品-奶茶-咖啡-果汁-汽水-矿泉水'**
   String get categoryExpenseBeverage;
 
   /// No description provided for @categoryExpensePastry.
   ///
-  /// In en, this message translates to:
-  /// **'Pastry-Cake-Bread-Dessert-Baked Goods'**
+  /// In zh, this message translates to:
+  /// **'糕点-蛋糕-面包-甜点-曲奇'**
   String get categoryExpensePastry;
 
   /// No description provided for @categoryExpenseCooking.
   ///
-  /// In en, this message translates to:
-  /// **'Cooking Ingredients-Vegetables-Meat-Seafood-Seasoning-Grain & Oil'**
+  /// In zh, this message translates to:
+  /// **'做饭食材-蔬菜-肉类-水产-调料-粮油'**
   String get categoryExpenseCooking;
 
   /// No description provided for @categoryExpenseShopping.
   ///
-  /// In en, this message translates to:
-  /// **'Shopping-Clothing-Shoes & Hats-Bags-Accessories-Daily Necessities'**
+  /// In zh, this message translates to:
+  /// **'购物-服装-鞋帽-包包-配饰-日用百货'**
   String get categoryExpenseShopping;
 
   /// No description provided for @categoryExpensePets.
   ///
-  /// In en, this message translates to:
-  /// **'Pets-Pet Food-Pet Supplies-Pet Medical-Pet Grooming'**
+  /// In zh, this message translates to:
+  /// **'宠物-宠物食品-宠物用品-宠物医疗-宠物美容'**
   String get categoryExpensePets;
 
   /// No description provided for @categoryExpenseTransport.
   ///
-  /// In en, this message translates to:
-  /// **'Transport-Subway-Bus-Taxi-Ride hailing-Parking Fee-Fuel'**
+  /// In zh, this message translates to:
+  /// **'交通-地铁-公交-出租车-网约车-停车费-加油'**
   String get categoryExpenseTransport;
 
   /// No description provided for @categoryExpenseCar.
   ///
-  /// In en, this message translates to:
-  /// **'Car-Car Maintenance-Car Repair-Car Insurance-Car Wash-Traffic Fine'**
+  /// In zh, this message translates to:
+  /// **'汽车-汽车保养-汽车维修-汽车保险-洗车-违章罚款'**
   String get categoryExpenseCar;
 
   /// No description provided for @categoryExpenseClothing.
   ///
-  /// In en, this message translates to:
-  /// **'Apparel-Top-Pants-Dress-Shoes-Apparel Accessories'**
+  /// In zh, this message translates to:
+  /// **'服饰-上衣-裤子-裙子-鞋子-服饰配件'**
   String get categoryExpenseClothing;
 
   /// No description provided for @categoryExpenseDailyGoods.
   ///
-  /// In en, this message translates to:
-  /// **'Daily Goods-Personal Care-Paper Products-Cleaning Supplies-Kitchen Supplies'**
+  /// In zh, this message translates to:
+  /// **'日用品-洗护用品-纸品-清洁用品-厨房用品'**
   String get categoryExpenseDailyGoods;
 
   /// No description provided for @categoryExpenseEducation.
   ///
-  /// In en, this message translates to:
-  /// **'Education-Tuition-Training Fee-Books-Stationery-Office Supplies'**
+  /// In zh, this message translates to:
+  /// **'教育-学费-培训费-书籍-文具-办公用品'**
   String get categoryExpenseEducation;
 
   /// No description provided for @categoryExpenseInvestLoss.
   ///
-  /// In en, this message translates to:
-  /// **'Investment Loss-Stock Loss-Fund Loss-Other Investment Loss'**
+  /// In zh, this message translates to:
+  /// **'投资亏损-股票亏损-基金亏损-其他投资亏损'**
   String get categoryExpenseInvestLoss;
 
   /// No description provided for @categoryExpenseEntertainment.
   ///
-  /// In en, this message translates to:
-  /// **'Entertainment-Movie-KTV-Amusement Park-Bar-Other Entertainment'**
+  /// In zh, this message translates to:
+  /// **'娱乐-电影-KTV-游乐场-酒吧-其他娱乐'**
   String get categoryExpenseEntertainment;
 
   /// No description provided for @categoryExpenseGame.
   ///
-  /// In en, this message translates to:
-  /// **'Game-Game Top up-Game Equipment-Game Membership'**
+  /// In zh, this message translates to:
+  /// **'游戏-游戏充值-游戏装备-游戏会员'**
   String get categoryExpenseGame;
 
   /// No description provided for @categoryExpenseHealthProducts.
   ///
-  /// In en, this message translates to:
-  /// **'Health Products-Vitamins-Health Food-Nutritional Supplements'**
+  /// In zh, this message translates to:
+  /// **'保健品-维生素-保健食品-营养品'**
   String get categoryExpenseHealthProducts;
 
   /// No description provided for @categoryExpenseSubscription.
   ///
-  /// In en, this message translates to:
-  /// **'Subscription-Video Membership-Music Membership-Cloud Storage-Other Subscription'**
+  /// In zh, this message translates to:
+  /// **'订阅服务-视频会员-音乐会员-云存储-其他订阅'**
   String get categoryExpenseSubscription;
 
   /// No description provided for @categoryExpenseSports.
   ///
-  /// In en, this message translates to:
-  /// **'Sports-Gym-Sports Equipment-Sports Course-Outdoor Activity'**
+  /// In zh, this message translates to:
+  /// **'运动-健身房-运动装备-运动课程-户外活动'**
   String get categoryExpenseSports;
 
   /// No description provided for @categoryExpenseHousing.
   ///
-  /// In en, this message translates to:
-  /// **'Housing-Rent-Property Fee-Mortgage-Renovation'**
+  /// In zh, this message translates to:
+  /// **'住房-房租-物业费-房贷-装修'**
   String get categoryExpenseHousing;
 
   /// No description provided for @categoryExpenseHome.
   ///
-  /// In en, this message translates to:
-  /// **'Home-Furniture-Appliances-Decorations-Bedding'**
+  /// In zh, this message translates to:
+  /// **'居家-家具-家电-装饰品-床上用品'**
   String get categoryExpenseHome;
 
   /// No description provided for @categoryExpenseBeauty.
   ///
-  /// In en, this message translates to:
-  /// **'Beauty-Skincare-Cosmetics-Beauty Salon-Nail Care'**
+  /// In zh, this message translates to:
+  /// **'美容-护肤品-化妆品-美容美发-美甲'**
   String get categoryExpenseBeauty;
 
   /// No description provided for @categoryIncomeSalary.
   ///
-  /// In en, this message translates to:
-  /// **'Salary-Base Salary-Performance Bonus-Year end Bonus-Overtime Pay'**
+  /// In zh, this message translates to:
+  /// **'工资-基本工资-绩效奖金-年终奖-加班费'**
   String get categoryIncomeSalary;
 
   /// No description provided for @categoryIncomeInvestment.
   ///
-  /// In en, this message translates to:
-  /// **'Investment-Fund Earnings-Stock Dividend-Wealth Management-Other Wealth Management'**
+  /// In zh, this message translates to:
+  /// **'理财-基金收益-股票分红-理财产品-其他理财'**
   String get categoryIncomeInvestment;
 
   /// No description provided for @categoryIncomeRedPacket.
   ///
-  /// In en, this message translates to:
-  /// **'Red Packet-Holiday Red Packet-Birthday Red Packet-Return Gift'**
+  /// In zh, this message translates to:
+  /// **'红包-节日红包-生日红包-随礼回礼'**
   String get categoryIncomeRedPacket;
 
   /// No description provided for @categoryIncomeBonus.
   ///
-  /// In en, this message translates to:
-  /// **'Bonus-Annual Bonus-Quarterly Bonus-Project Bonus-Other Bonus'**
+  /// In zh, this message translates to:
+  /// **'奖金-年度奖金-季度奖-项目奖金-其他奖金'**
   String get categoryIncomeBonus;
 
   /// No description provided for @categoryIncomeReimbursement.
   ///
-  /// In en, this message translates to:
-  /// **'Reimbursement-Travel Reimbursement-Meal Reimbursement-Other Reimbursement'**
+  /// In zh, this message translates to:
+  /// **'报销-差旅报销-餐费报销-其他报销'**
   String get categoryIncomeReimbursement;
 
   /// No description provided for @categoryIncomePartTime.
   ///
-  /// In en, this message translates to:
-  /// **'Part time-Part time Income-Side Income'**
+  /// In zh, this message translates to:
+  /// **'兼职-兼职收入-外快'**
   String get categoryIncomePartTime;
 
   /// No description provided for @categoryIncomeGift.
   ///
-  /// In en, this message translates to:
-  /// **'Gift-Wedding Gift-Birthday Gift-Other Gift'**
+  /// In zh, this message translates to:
+  /// **'礼金-结婚礼金-生日礼金-其他礼金'**
   String get categoryIncomeGift;
 
   /// No description provided for @categoryIncomeInterest.
   ///
-  /// In en, this message translates to:
-  /// **'Interest-Bank Interest-Other Interest'**
+  /// In zh, this message translates to:
+  /// **'利息-银行利息-其他利息'**
   String get categoryIncomeInterest;
 
   /// No description provided for @categoryIncomeRefund.
   ///
-  /// In en, this message translates to:
-  /// **'Refund-Shopping Refund-Service Refund-Other Refund'**
+  /// In zh, this message translates to:
+  /// **'退款-购物退款-服务退款-其他退款'**
   String get categoryIncomeRefund;
 
   /// No description provided for @categoryIncomeInvestIncome.
   ///
-  /// In en, this message translates to:
-  /// **'Investment Income-Stock Earnings-Fund Investment-Other Investment Income'**
+  /// In zh, this message translates to:
+  /// **'投资收益-股票收益-基金投资-其他投资收益'**
   String get categoryIncomeInvestIncome;
 
   /// No description provided for @categoryIncomeSecondHand.
   ///
-  /// In en, this message translates to:
-  /// **'Second hand-Idle Items-Second hand Goods'**
+  /// In zh, this message translates to:
+  /// **'二手交易-闲置物品-二手商品'**
   String get categoryIncomeSecondHand;
 
   /// No description provided for @categoryIncomeSocialBenefit.
   ///
-  /// In en, this message translates to:
-  /// **'Social Benefit-Unemployment Insurance-Maternity Subsidy-Other Subsidy'**
+  /// In zh, this message translates to:
+  /// **'社会福利-失业保险-生育津贴-其他补贴'**
   String get categoryIncomeSocialBenefit;
 
   /// No description provided for @categoryIncomeTaxRefund.
   ///
-  /// In en, this message translates to:
-  /// **'Tax Refund-Individual Tax Refund-Other Tax Refund'**
+  /// In zh, this message translates to:
+  /// **'退税-个税退税-其他退费'**
   String get categoryIncomeTaxRefund;
 
   /// No description provided for @categoryIncomeProvidentFund.
   ///
-  /// In en, this message translates to:
-  /// **'Provident Fund-Provident Fund Withdrawal-Provident Fund Interest'**
+  /// In zh, this message translates to:
+  /// **'公积金-公积金提取-公积金利息'**
   String get categoryIncomeProvidentFund;
 
   /// No description provided for @personalizeTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Theme color'**
+  /// In zh, this message translates to:
+  /// **'主题色'**
   String get personalizeTitle;
 
   /// No description provided for @personalizeSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Pick or customize the app accent color'**
+  /// In zh, this message translates to:
+  /// **'选择或自定义应用主题色'**
   String get personalizeSubtitle;
 
   /// No description provided for @personalizeCustomColor.
   ///
-  /// In en, this message translates to:
-  /// **'Choose custom color'**
+  /// In zh, this message translates to:
+  /// **'选择自定义颜色'**
   String get personalizeCustomColor;
 
   /// No description provided for @personalizeCustomTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Custom'**
+  /// In zh, this message translates to:
+  /// **'自定义'**
   String get personalizeCustomTitle;
 
   /// No description provided for @personalizeHue.
   ///
-  /// In en, this message translates to:
-  /// **'Hue ({value}°)'**
+  /// In zh, this message translates to:
+  /// **'色相 ({value}°)'**
   String personalizeHue(Object value);
 
   /// No description provided for @personalizeSaturation.
   ///
-  /// In en, this message translates to:
-  /// **'Saturation ({value}%)'**
+  /// In zh, this message translates to:
+  /// **'饱和度 ({value}%)'**
   String personalizeSaturation(Object value);
 
   /// No description provided for @personalizeBrightness.
   ///
-  /// In en, this message translates to:
-  /// **'Brightness ({value}%)'**
+  /// In zh, this message translates to:
+  /// **'亮度 ({value}%)'**
   String personalizeBrightness(Object value);
 
   /// No description provided for @personalizeSelectColor.
   ///
-  /// In en, this message translates to:
-  /// **'Select this color'**
+  /// In zh, this message translates to:
+  /// **'选择此颜色'**
   String get personalizeSelectColor;
 
   /// No description provided for @appearanceThemeMode.
   ///
-  /// In en, this message translates to:
-  /// **'Appearance'**
+  /// In zh, this message translates to:
+  /// **'外观模式'**
   String get appearanceThemeMode;
 
   /// No description provided for @appearanceThemeModeSystem.
   ///
-  /// In en, this message translates to:
-  /// **'Follow System'**
+  /// In zh, this message translates to:
+  /// **'跟随系统'**
   String get appearanceThemeModeSystem;
 
   /// No description provided for @appearanceThemeModeLight.
   ///
-  /// In en, this message translates to:
-  /// **'Light Mode'**
+  /// In zh, this message translates to:
+  /// **'亮色模式'**
   String get appearanceThemeModeLight;
 
   /// No description provided for @appearanceThemeModeDark.
   ///
-  /// In en, this message translates to:
-  /// **'Dark Mode'**
+  /// In zh, this message translates to:
+  /// **'暗黑模式'**
   String get appearanceThemeModeDark;
 
   /// No description provided for @appearanceDarkModePattern.
   ///
-  /// In en, this message translates to:
-  /// **'Dark Mode Header Pattern'**
+  /// In zh, this message translates to:
+  /// **'暗黑模式头部图案'**
   String get appearanceDarkModePattern;
 
   /// No description provided for @appearancePatternNone.
   ///
-  /// In en, this message translates to:
-  /// **'None'**
+  /// In zh, this message translates to:
+  /// **'无'**
   String get appearancePatternNone;
 
   /// No description provided for @appearancePatternIcons.
   ///
-  /// In en, this message translates to:
-  /// **'Icon Tiling'**
+  /// In zh, this message translates to:
+  /// **'图标平铺'**
   String get appearancePatternIcons;
 
   /// No description provided for @appearancePatternParticles.
   ///
-  /// In en, this message translates to:
-  /// **'Particles'**
+  /// In zh, this message translates to:
+  /// **'粒子星星'**
   String get appearancePatternParticles;
 
   /// No description provided for @appearancePatternHoneycomb.
   ///
-  /// In en, this message translates to:
-  /// **'Honeycomb'**
+  /// In zh, this message translates to:
+  /// **'蜂巢六边形'**
   String get appearancePatternHoneycomb;
 
   /// No description provided for @appearanceAmountFormat.
   ///
-  /// In en, this message translates to:
-  /// **'Balance Display Format'**
+  /// In zh, this message translates to:
+  /// **'余额显示格式'**
   String get appearanceAmountFormat;
 
   /// No description provided for @appearanceAmountFormatFull.
   ///
-  /// In en, this message translates to:
-  /// **'Full Amount'**
+  /// In zh, this message translates to:
+  /// **'完整金额'**
   String get appearanceAmountFormatFull;
 
   /// No description provided for @appearanceAmountFormatFullDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Show full amount, e.g. 123,456.78'**
+  /// In zh, this message translates to:
+  /// **'显示完整金额，如 123,456.78'**
   String get appearanceAmountFormatFullDesc;
 
   /// No description provided for @appearanceAmountFormatCompact.
   ///
-  /// In en, this message translates to:
-  /// **'Compact'**
+  /// In zh, this message translates to:
+  /// **'简洁显示'**
   String get appearanceAmountFormatCompact;
 
   /// No description provided for @appearanceAmountFormatCompactDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Abbreviate large amounts, e.g. 12.3K (only affects account balance)'**
+  /// In zh, this message translates to:
+  /// **'大金额缩写，如 12.3万（仅对账户余额生效）'**
   String get appearanceAmountFormatCompactDesc;
 
   /// No description provided for @appearanceSkinAnimation.
   ///
-  /// In en, this message translates to:
-  /// **'Skin Animation'**
+  /// In zh, this message translates to:
+  /// **'皮肤动效'**
   String get appearanceSkinAnimation;
 
   /// No description provided for @appearanceSkinAnimationDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Turn off to freeze animated skins on a still frame and save power'**
+  /// In zh, this message translates to:
+  /// **'关闭后动态皮肤停在静止画面，更省电'**
   String get appearanceSkinAnimationDesc;
 
   /// No description provided for @appearanceShowTransactionTime.
   ///
-  /// In en, this message translates to:
-  /// **'Show Transaction Time'**
+  /// In zh, this message translates to:
+  /// **'显示交易时间'**
   String get appearanceShowTransactionTime;
 
   /// No description provided for @appearanceShowTransactionTimeDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Display time in transaction list, allow time selection when editing'**
+  /// In zh, this message translates to:
+  /// **'在账单列表显示时分，编辑时可选择时间'**
   String get appearanceShowTransactionTimeDesc;
 
   /// No description provided for @appearanceNoteDisplay.
   ///
-  /// In en, this message translates to:
-  /// **'Note display'**
+  /// In zh, this message translates to:
+  /// **'备注显示方式'**
   String get appearanceNoteDisplay;
 
   /// No description provided for @appearanceNoteDisplayCategory.
   ///
-  /// In en, this message translates to:
-  /// **'Category first'**
+  /// In zh, this message translates to:
+  /// **'分类优先'**
   String get appearanceNoteDisplayCategory;
 
   /// No description provided for @appearanceNoteDisplayCategoryDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Show category, note in parentheses'**
+  /// In zh, this message translates to:
+  /// **'显示分类名,备注以括号附在后面'**
   String get appearanceNoteDisplayCategoryDesc;
 
   /// No description provided for @appearanceNoteDisplayNote.
   ///
-  /// In en, this message translates to:
-  /// **'Note first'**
+  /// In zh, this message translates to:
+  /// **'备注优先'**
   String get appearanceNoteDisplayNote;
 
   /// No description provided for @appearanceNoteDisplayNoteDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Show note when present, else category'**
+  /// In zh, this message translates to:
+  /// **'有备注时显示备注,无备注时显示分类名'**
   String get appearanceNoteDisplayNoteDesc;
 
   /// No description provided for @appearanceNoteHistory.
   ///
-  /// In en, this message translates to:
-  /// **'Note history'**
+  /// In zh, this message translates to:
+  /// **'历史备注'**
   String get appearanceNoteHistory;
 
   /// No description provided for @appearanceNoteHistoryScope.
   ///
-  /// In en, this message translates to:
-  /// **'Show'**
+  /// In zh, this message translates to:
+  /// **'展示范围'**
   String get appearanceNoteHistoryScope;
 
   /// No description provided for @appearanceNoteHistoryScopeAllCategories.
   ///
-  /// In en, this message translates to:
-  /// **'All categories'**
+  /// In zh, this message translates to:
+  /// **'全部分类'**
   String get appearanceNoteHistoryScopeAllCategories;
 
   /// No description provided for @appearanceNoteHistoryScopeCurrentCategory.
   ///
-  /// In en, this message translates to:
-  /// **'Current category'**
+  /// In zh, this message translates to:
+  /// **'当前分类'**
   String get appearanceNoteHistoryScopeCurrentCategory;
 
   /// No description provided for @appearanceNoteHistorySort.
   ///
-  /// In en, this message translates to:
-  /// **'Sort by'**
+  /// In zh, this message translates to:
+  /// **'排序方式'**
   String get appearanceNoteHistorySort;
 
   /// No description provided for @appearanceNoteHistorySortFrequency.
   ///
-  /// In en, this message translates to:
-  /// **'Usage frequency'**
+  /// In zh, this message translates to:
+  /// **'使用频次'**
   String get appearanceNoteHistorySortFrequency;
 
   /// No description provided for @appearanceNoteHistorySortRecent.
   ///
-  /// In en, this message translates to:
-  /// **'Most recent'**
+  /// In zh, this message translates to:
+  /// **'最近使用'**
   String get appearanceNoteHistorySortRecent;
 
   /// No description provided for @appearanceNoteHistoryLimit.
   ///
-  /// In en, this message translates to:
-  /// **'Display limit'**
+  /// In zh, this message translates to:
+  /// **'显示数量'**
   String get appearanceNoteHistoryLimit;
 
   /// No description provided for @appearanceNoteHistoryLimitHint.
   ///
-  /// In en, this message translates to:
-  /// **'Enter a value from 1 to 100'**
+  /// In zh, this message translates to:
+  /// **'可设置 1 至 100 条'**
   String get appearanceNoteHistoryLimitHint;
 
   /// No description provided for @appearanceNoteHistoryLimitInvalid.
   ///
-  /// In en, this message translates to:
-  /// **'Enter an integer from 1 to 100'**
+  /// In zh, this message translates to:
+  /// **'请输入 1 至 100 的整数'**
   String get appearanceNoteHistoryLimitInvalid;
 
   /// No description provided for @appearanceColorScheme.
   ///
-  /// In en, this message translates to:
-  /// **'Income/Expense Color Scheme'**
+  /// In zh, this message translates to:
+  /// **'收支颜色方案'**
   String get appearanceColorScheme;
 
   /// No description provided for @appearanceColorSchemeOn.
   ///
-  /// In en, this message translates to:
-  /// **'Red for income · Green for expense'**
+  /// In zh, this message translates to:
+  /// **'红色收入 · 绿色支出'**
   String get appearanceColorSchemeOn;
 
   /// No description provided for @appearanceColorSchemeOff.
   ///
-  /// In en, this message translates to:
-  /// **'Red for expense · Green for income'**
+  /// In zh, this message translates to:
+  /// **'红色支出 · 绿色收入'**
   String get appearanceColorSchemeOff;
 
   /// No description provided for @appearanceColorSchemeOnDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Red represents income, green represents expense'**
+  /// In zh, this message translates to:
+  /// **'红色表示收入，绿色表示支出'**
   String get appearanceColorSchemeOnDesc;
 
   /// No description provided for @appearanceColorSchemeOffDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Red represents expense, green represents income'**
+  /// In zh, this message translates to:
+  /// **'红色表示支出，绿色表示收入'**
   String get appearanceColorSchemeOffDesc;
 
   /// No description provided for @fontSettingsCurrentScale.
   ///
-  /// In en, this message translates to:
-  /// **'Current scale: x{scale}'**
+  /// In zh, this message translates to:
+  /// **'当前缩放：x{scale}'**
   String fontSettingsCurrentScale(Object scale);
 
   /// No description provided for @fontSettingsPreview.
   ///
-  /// In en, this message translates to:
-  /// **'Live Preview'**
+  /// In zh, this message translates to:
+  /// **'实时预览'**
   String get fontSettingsPreview;
 
   /// No description provided for @fontSettingsPreviewText.
   ///
-  /// In en, this message translates to:
-  /// **'Spent 23.50 on lunch today, record it;\nRecorded for 45 days this month, 320 entries;\nPersistence is victory!'**
+  /// In zh, this message translates to:
+  /// **'今天吃饭花了 23.50 元，记一笔；\n本月已记账 45 天，共 320 条记录；\n坚持就是胜利！'**
   String get fontSettingsPreviewText;
 
   /// No description provided for @fontSettingsCurrentLevel.
   ///
-  /// In en, this message translates to:
-  /// **'Current level: {level} (scale x{scale})'**
+  /// In zh, this message translates to:
+  /// **'当前档位：{level}  (倍率 x{scale})'**
   String fontSettingsCurrentLevel(Object level, Object scale);
 
   /// No description provided for @fontSettingsQuickLevel.
   ///
-  /// In en, this message translates to:
-  /// **'Quick Levels'**
+  /// In zh, this message translates to:
+  /// **'快速档位'**
   String get fontSettingsQuickLevel;
 
   /// No description provided for @fontSettingsCustomAdjust.
   ///
-  /// In en, this message translates to:
-  /// **'Custom Adjustment'**
+  /// In zh, this message translates to:
+  /// **'自定义调整'**
   String get fontSettingsCustomAdjust;
 
   /// No description provided for @fontSettingsDescription.
   ///
-  /// In en, this message translates to:
-  /// **'Note: This setting ensures consistent display at 1.0x across all devices, with device differences auto-compensated; adjust values for personalized scaling on this consistent base.'**
+  /// In zh, this message translates to:
+  /// **'说明：此设置确保所有设备在1.0倍时显示效果一致，设备差异已自动补偿；调整数值可在一致基础上进行个性化缩放。'**
   String get fontSettingsDescription;
 
   /// No description provided for @fontSettingsExtraSmall.
   ///
-  /// In en, this message translates to:
-  /// **'Extra Small'**
+  /// In zh, this message translates to:
+  /// **'极小'**
   String get fontSettingsExtraSmall;
 
   /// No description provided for @fontSettingsVerySmall.
   ///
-  /// In en, this message translates to:
-  /// **'Very Small'**
+  /// In zh, this message translates to:
+  /// **'很小'**
   String get fontSettingsVerySmall;
 
   /// No description provided for @fontSettingsSmall.
   ///
-  /// In en, this message translates to:
-  /// **'Small'**
+  /// In zh, this message translates to:
+  /// **'较小'**
   String get fontSettingsSmall;
 
   /// No description provided for @fontSettingsStandard.
   ///
-  /// In en, this message translates to:
-  /// **'Standard'**
+  /// In zh, this message translates to:
+  /// **'标准'**
   String get fontSettingsStandard;
 
   /// No description provided for @fontSettingsLarge.
   ///
-  /// In en, this message translates to:
-  /// **'Large'**
+  /// In zh, this message translates to:
+  /// **'较大'**
   String get fontSettingsLarge;
 
   /// No description provided for @fontSettingsBig.
   ///
-  /// In en, this message translates to:
-  /// **'Big'**
+  /// In zh, this message translates to:
+  /// **'大'**
   String get fontSettingsBig;
 
   /// No description provided for @fontSettingsVeryBig.
   ///
-  /// In en, this message translates to:
-  /// **'Very Big'**
+  /// In zh, this message translates to:
+  /// **'很大'**
   String get fontSettingsVeryBig;
 
   /// No description provided for @fontSettingsExtraBig.
   ///
-  /// In en, this message translates to:
-  /// **'Extra Big'**
+  /// In zh, this message translates to:
+  /// **'极大'**
   String get fontSettingsExtraBig;
 
   /// No description provided for @fontSettingsMoreStyles.
   ///
-  /// In en, this message translates to:
-  /// **'More Styles'**
+  /// In zh, this message translates to:
+  /// **'更多风格'**
   String get fontSettingsMoreStyles;
 
   /// No description provided for @fontSettingsPageTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Page Title'**
+  /// In zh, this message translates to:
+  /// **'页面标题'**
   String get fontSettingsPageTitle;
 
   /// No description provided for @fontSettingsBlockTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Block Title'**
+  /// In zh, this message translates to:
+  /// **'区块标题'**
   String get fontSettingsBlockTitle;
 
   /// No description provided for @fontSettingsBodyExample.
   ///
-  /// In en, this message translates to:
-  /// **'Body Text'**
+  /// In zh, this message translates to:
+  /// **'正文示例'**
   String get fontSettingsBodyExample;
 
   /// No description provided for @fontSettingsLabelExample.
   ///
-  /// In en, this message translates to:
-  /// **'Label Text'**
+  /// In zh, this message translates to:
+  /// **'标签说明'**
   String get fontSettingsLabelExample;
 
   /// No description provided for @fontSettingsStrongNumber.
   ///
-  /// In en, this message translates to:
-  /// **'Strong Number'**
+  /// In zh, this message translates to:
+  /// **'强调数字'**
   String get fontSettingsStrongNumber;
 
   /// No description provided for @fontSettingsListTitle.
   ///
-  /// In en, this message translates to:
-  /// **'List Item Title'**
+  /// In zh, this message translates to:
+  /// **'列表项标题'**
   String get fontSettingsListTitle;
 
   /// No description provided for @fontSettingsListSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Helper Text'**
+  /// In zh, this message translates to:
+  /// **'辅助说明文本'**
   String get fontSettingsListSubtitle;
 
   /// No description provided for @fontSettingsScreenInfo.
   ///
-  /// In en, this message translates to:
-  /// **'Screen Adaptation Info'**
+  /// In zh, this message translates to:
+  /// **'屏幕适配信息'**
   String get fontSettingsScreenInfo;
 
   /// No description provided for @fontSettingsScreenDensity.
   ///
-  /// In en, this message translates to:
-  /// **'Screen Density'**
+  /// In zh, this message translates to:
+  /// **'屏幕密度'**
   String get fontSettingsScreenDensity;
 
   /// No description provided for @fontSettingsScreenWidth.
   ///
-  /// In en, this message translates to:
-  /// **'Screen Width'**
+  /// In zh, this message translates to:
+  /// **'屏幕宽度'**
   String get fontSettingsScreenWidth;
 
   /// No description provided for @fontSettingsDeviceScale.
   ///
-  /// In en, this message translates to:
-  /// **'Device Scale'**
+  /// In zh, this message translates to:
+  /// **'设备缩放'**
   String get fontSettingsDeviceScale;
 
   /// No description provided for @fontSettingsUserScale.
   ///
-  /// In en, this message translates to:
-  /// **'User Scale'**
+  /// In zh, this message translates to:
+  /// **'用户缩放'**
   String get fontSettingsUserScale;
 
   /// No description provided for @fontSettingsFinalScale.
   ///
-  /// In en, this message translates to:
-  /// **'Final Scale'**
+  /// In zh, this message translates to:
+  /// **'最终缩放'**
   String get fontSettingsFinalScale;
 
   /// No description provided for @fontSettingsBaseDevice.
   ///
-  /// In en, this message translates to:
-  /// **'Base Device'**
+  /// In zh, this message translates to:
+  /// **'基准设备'**
   String get fontSettingsBaseDevice;
 
   /// No description provided for @fontSettingsRecommendedScale.
   ///
-  /// In en, this message translates to:
-  /// **'Recommended Scale'**
+  /// In zh, this message translates to:
+  /// **'推荐缩放'**
   String get fontSettingsRecommendedScale;
 
   /// No description provided for @fontSettingsYes.
   ///
-  /// In en, this message translates to:
-  /// **'Yes'**
+  /// In zh, this message translates to:
+  /// **'是'**
   String get fontSettingsYes;
 
   /// No description provided for @fontSettingsNo.
   ///
-  /// In en, this message translates to:
-  /// **'No'**
+  /// In zh, this message translates to:
+  /// **'否'**
   String get fontSettingsNo;
 
   /// No description provided for @fontSettingsScaleExample.
   ///
-  /// In en, this message translates to:
-  /// **'This box and spacing auto-scale based on device'**
+  /// In zh, this message translates to:
+  /// **'此方框和间距会根据设备自动缩放'**
   String get fontSettingsScaleExample;
 
   /// No description provided for @fontSettingsPreciseAdjust.
   ///
-  /// In en, this message translates to:
-  /// **'Precise Adjustment'**
+  /// In zh, this message translates to:
+  /// **'精确调整'**
   String get fontSettingsPreciseAdjust;
 
   /// No description provided for @fontSettingsResetTo1x.
   ///
-  /// In en, this message translates to:
-  /// **'Reset to 1.0x'**
+  /// In zh, this message translates to:
+  /// **'重置到1.0x'**
   String get fontSettingsResetTo1x;
 
   /// No description provided for @fontSettingsAdaptBase.
   ///
-  /// In en, this message translates to:
-  /// **'Adapt to Base'**
+  /// In zh, this message translates to:
+  /// **'适配基准'**
   String get fontSettingsAdaptBase;
 
   /// No description provided for @reminderTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Recording Reminder'**
+  /// In zh, this message translates to:
+  /// **'记账提醒'**
   String get reminderTitle;
 
   /// No description provided for @reminderSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Set daily recording reminder time'**
+  /// In zh, this message translates to:
+  /// **'设置每日记账提醒时间'**
   String get reminderSubtitle;
 
   /// No description provided for @reminderDailyTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Daily Recording Reminder'**
+  /// In zh, this message translates to:
+  /// **'每日记账提醒'**
   String get reminderDailyTitle;
 
   /// No description provided for @reminderDailySubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'When enabled, will remind you to record at specified time'**
+  /// In zh, this message translates to:
+  /// **'开启后将在指定时间提醒您记账'**
   String get reminderDailySubtitle;
 
   /// No description provided for @reminderTimeTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Reminder Time'**
+  /// In zh, this message translates to:
+  /// **'提醒时间'**
   String get reminderTimeTitle;
 
   /// No description provided for @commonSelectTime.
   ///
-  /// In en, this message translates to:
-  /// **'Select Time'**
+  /// In zh, this message translates to:
+  /// **'选择时间'**
   String get commonSelectTime;
 
   /// No description provided for @reminderTestNotification.
   ///
-  /// In en, this message translates to:
-  /// **'Send Test Notification'**
+  /// In zh, this message translates to:
+  /// **'发送测试通知'**
   String get reminderTestNotification;
 
   /// No description provided for @reminderTestSent.
   ///
-  /// In en, this message translates to:
-  /// **'Test notification sent'**
+  /// In zh, this message translates to:
+  /// **'测试通知已发送'**
   String get reminderTestSent;
 
   /// No description provided for @reminderTestTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Test Notification'**
+  /// In zh, this message translates to:
+  /// **'测试通知'**
   String get reminderTestTitle;
 
   /// No description provided for @reminderTestBody.
   ///
-  /// In en, this message translates to:
-  /// **'This is a test notification, tap to see the effect'**
+  /// In zh, this message translates to:
+  /// **'这是一条测试通知，点击查看效果'**
   String get reminderTestBody;
 
   /// No description provided for @reminderCheckBattery.
   ///
-  /// In en, this message translates to:
-  /// **'Check Battery Optimization Status'**
+  /// In zh, this message translates to:
+  /// **'检查电池优化状态'**
   String get reminderCheckBattery;
 
   /// No description provided for @reminderBatteryStatus.
   ///
-  /// In en, this message translates to:
-  /// **'Battery Optimization Status'**
+  /// In zh, this message translates to:
+  /// **'电池优化状态'**
   String get reminderBatteryStatus;
 
   /// No description provided for @reminderManufacturer.
   ///
-  /// In en, this message translates to:
-  /// **'Manufacturer: {value}'**
+  /// In zh, this message translates to:
+  /// **'设备制造商: {value}'**
   String reminderManufacturer(Object value);
 
   /// No description provided for @reminderModel.
   ///
-  /// In en, this message translates to:
-  /// **'Model: {value}'**
+  /// In zh, this message translates to:
+  /// **'设备型号: {value}'**
   String reminderModel(Object value);
 
   /// No description provided for @reminderAndroidVersion.
   ///
-  /// In en, this message translates to:
-  /// **'Android Version: {value}'**
+  /// In zh, this message translates to:
+  /// **'Android版本: {value}'**
   String reminderAndroidVersion(Object value);
 
   /// No description provided for @reminderBatteryIgnored.
   ///
-  /// In en, this message translates to:
-  /// **'Battery optimization: Ignored ✅'**
+  /// In zh, this message translates to:
+  /// **'电池优化状态: 已忽略 ✅'**
   String get reminderBatteryIgnored;
 
   /// No description provided for @reminderBatteryNotIgnored.
   ///
-  /// In en, this message translates to:
-  /// **'Battery optimization: Not ignored ⚠️'**
+  /// In zh, this message translates to:
+  /// **'电池优化状态: 未忽略 ⚠️'**
   String get reminderBatteryNotIgnored;
 
   /// No description provided for @reminderBatteryAdvice.
   ///
-  /// In en, this message translates to:
-  /// **'Recommend disabling battery optimization for proper notifications'**
+  /// In zh, this message translates to:
+  /// **'建议关闭电池优化以确保通知正常工作'**
   String get reminderBatteryAdvice;
 
   /// No description provided for @reminderCheckChannel.
   ///
-  /// In en, this message translates to:
-  /// **'Check Notification Channel Settings'**
+  /// In zh, this message translates to:
+  /// **'检查通知渠道设置'**
   String get reminderCheckChannel;
 
   /// No description provided for @reminderChannelStatus.
   ///
-  /// In en, this message translates to:
-  /// **'Notification Channel Status'**
+  /// In zh, this message translates to:
+  /// **'通知渠道状态'**
   String get reminderChannelStatus;
 
   /// No description provided for @reminderChannelEnabled.
   ///
-  /// In en, this message translates to:
-  /// **'Channel enabled: Yes ✅'**
+  /// In zh, this message translates to:
+  /// **'渠道启用: 是 ✅'**
   String get reminderChannelEnabled;
 
   /// No description provided for @reminderChannelDisabled.
   ///
-  /// In en, this message translates to:
-  /// **'Channel enabled: No ❌'**
+  /// In zh, this message translates to:
+  /// **'渠道启用: 否 ❌'**
   String get reminderChannelDisabled;
 
   /// No description provided for @reminderChannelImportance.
   ///
-  /// In en, this message translates to:
-  /// **'Importance: {value}'**
+  /// In zh, this message translates to:
+  /// **'重要性: {value}'**
   String reminderChannelImportance(Object value);
 
   /// No description provided for @reminderChannelSoundOn.
   ///
-  /// In en, this message translates to:
-  /// **'Sound: On 🔊'**
+  /// In zh, this message translates to:
+  /// **'声音: 开启 🔊'**
   String get reminderChannelSoundOn;
 
   /// No description provided for @reminderChannelSoundOff.
   ///
-  /// In en, this message translates to:
-  /// **'Sound: Off 🔇'**
+  /// In zh, this message translates to:
+  /// **'声音: 关闭 🔇'**
   String get reminderChannelSoundOff;
 
   /// No description provided for @reminderChannelVibrationOn.
   ///
-  /// In en, this message translates to:
-  /// **'Vibration: On 📳'**
+  /// In zh, this message translates to:
+  /// **'震动: 开启 📳'**
   String get reminderChannelVibrationOn;
 
   /// No description provided for @reminderChannelVibrationOff.
   ///
-  /// In en, this message translates to:
-  /// **'Vibration: Off'**
+  /// In zh, this message translates to:
+  /// **'震动: 关闭'**
   String get reminderChannelVibrationOff;
 
   /// No description provided for @reminderChannelDndBypass.
   ///
-  /// In en, this message translates to:
-  /// **'Do Not Disturb: Can bypass'**
+  /// In zh, this message translates to:
+  /// **'勿扰模式: 可绕过'**
   String get reminderChannelDndBypass;
 
   /// No description provided for @reminderChannelDndNoBypass.
   ///
-  /// In en, this message translates to:
-  /// **'Do Not Disturb: Cannot bypass'**
+  /// In zh, this message translates to:
+  /// **'勿扰模式: 不可绕过'**
   String get reminderChannelDndNoBypass;
 
   /// No description provided for @reminderChannelAdvice.
   ///
-  /// In en, this message translates to:
-  /// **'⚠️ Recommended settings:'**
+  /// In zh, this message translates to:
+  /// **'⚠️ 建议设置：'**
   String get reminderChannelAdvice;
 
   /// No description provided for @reminderChannelAdviceImportance.
   ///
-  /// In en, this message translates to:
-  /// **'• Importance: Urgent or High'**
+  /// In zh, this message translates to:
+  /// **'• 重要性：紧急或高'**
   String get reminderChannelAdviceImportance;
 
   /// No description provided for @reminderChannelAdviceSound.
   ///
-  /// In en, this message translates to:
-  /// **'• Enable sound and vibration'**
+  /// In zh, this message translates to:
+  /// **'• 开启声音和震动'**
   String get reminderChannelAdviceSound;
 
   /// No description provided for @reminderChannelAdviceBanner.
   ///
-  /// In en, this message translates to:
-  /// **'• Allow banner notifications'**
+  /// In zh, this message translates to:
+  /// **'• 允许横幅通知'**
   String get reminderChannelAdviceBanner;
 
   /// No description provided for @reminderChannelAdviceXiaomi.
   ///
-  /// In en, this message translates to:
-  /// **'• Xiaomi phones need individual channel setup'**
+  /// In zh, this message translates to:
+  /// **'• 小米手机需单独设置每个渠道'**
   String get reminderChannelAdviceXiaomi;
 
   /// No description provided for @reminderChannelGood.
   ///
-  /// In en, this message translates to:
-  /// **'✅ Notification channel well configured'**
+  /// In zh, this message translates to:
+  /// **'✅ 通知渠道配置良好'**
   String get reminderChannelGood;
 
   /// No description provided for @reminderOpenAppSettings.
   ///
-  /// In en, this message translates to:
-  /// **'Open App Settings'**
+  /// In zh, this message translates to:
+  /// **'打开应用设置'**
   String get reminderOpenAppSettings;
 
   /// No description provided for @reminderAppSettingsMessage.
   ///
-  /// In en, this message translates to:
-  /// **'Please allow notifications and disable battery optimization in settings'**
+  /// In zh, this message translates to:
+  /// **'请在设置中允许通知、关闭电池优化'**
   String get reminderAppSettingsMessage;
 
   /// No description provided for @reminderDescription.
   ///
-  /// In en, this message translates to:
-  /// **'Tip: When recording reminder is enabled, the system will send notifications at the specified time daily to remind you to record income and expenses.'**
+  /// In zh, this message translates to:
+  /// **'提示：开启记账提醒后，系统会在每天指定时间发送通知提醒您记录收支。'**
   String get reminderDescription;
 
   /// No description provided for @reminderIOSInstructions.
   ///
-  /// In en, this message translates to:
-  /// **'🍎 iOS notification settings:\n• Settings > Notifications > Bee Accounting\n• Enable \"Allow Notifications\"\n• Set notification style: Banner or Alert\n• Enable sound and vibration\n\n⚠️ Important Note:\n• iOS local notifications depend on app process\n• Do not force quit app from task manager\n• Notifications work when app is in background or foreground\n• Force quitting will disable notifications\n\n💡 Usage Tips:\n• Simply press Home button to exit app\n• iOS will manage background apps automatically\n• Keep app in background to receive reminders'**
+  /// In zh, this message translates to:
+  /// **'🍎 iOS通知设置：\n• 设置 > 通知 > 智记\n• 开启\"允许通知\"\n• 设置通知样式：横幅或提醒\n• 开启声音和震动\n\n⚠️ 重要提示：\n• iOS本地通知依赖应用进程\n• 请勿在任务管理器中划掉应用\n• 应用在后台或前台时通知正常\n• 完全关闭应用会导致通知失效\n\n💡 使用建议：\n• 日常使用后直接按Home键退出\n• iOS会自动管理后台应用\n• 保持应用在后台即可收到提醒'**
   String get reminderIOSInstructions;
 
   /// No description provided for @reminderAndroidInstructions.
   ///
-  /// In en, this message translates to:
-  /// **'If notifications don\'t work properly, check:\n• App is allowed to send notifications\n• Disable battery optimization/power saving for app\n• Allow app to run in background and auto-start\n• Android 12+ needs exact alarm permission\n\n📱 Xiaomi phone special settings:\n• Settings > App Management > Bee Accounting > Notification Management\n• Tap \"Recording Reminder\" channel\n• Set importance to \"Urgent\" or \"High\"\n• Enable \"Banner notifications\", \"Sound\", \"Vibration\"\n• Security Center > App Management > Permissions > Auto-start\n\n🔒 Lock background methods:\n• Find Bee Accounting in recent tasks\n• Pull down app card to show lock icon\n• Tap lock icon to prevent cleanup'**
+  /// In zh, this message translates to:
+  /// **'如果通知无法正常工作，请检查：\n• 已允许应用发送通知\n• 关闭应用的电池优化/省电模式\n• 允许应用在后台运行和自启动\n• Android 12+需要精确闹钟权限\n\n📱 小米手机特殊设置：\n• 设置 > 应用管理 > 智记 > 通知管理\n• 点击\"记账提醒\"渠道\n• 设置重要性为\"紧急\"或\"高\"\n• 开启\"横幅通知\"、\"声音\"、\"震动\"\n• 安全中心 > 应用管理 > 权限 > 自启动\n\n🔒 锁定后台方法：\n• 最近任务中找到智记\n• 向下拉动应用卡片显示锁定图标\n• 点击锁定图标防止被清理'**
   String get reminderAndroidInstructions;
 
   /// No description provided for @categoryDetailLoadFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Load failed'**
+  /// In zh, this message translates to:
+  /// **'加载失败'**
   String get categoryDetailLoadFailed;
 
   /// No description provided for @categoryDetailSummaryTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Category Summary'**
+  /// In zh, this message translates to:
+  /// **'分类汇总'**
   String get categoryDetailSummaryTitle;
 
   /// No description provided for @categoryDetailTotalCount.
   ///
-  /// In en, this message translates to:
-  /// **'Total Count'**
+  /// In zh, this message translates to:
+  /// **'总笔数'**
   String get categoryDetailTotalCount;
 
   /// No description provided for @categoryDetailTotalAmount.
   ///
-  /// In en, this message translates to:
-  /// **'Total Amount'**
+  /// In zh, this message translates to:
+  /// **'总金额'**
   String get categoryDetailTotalAmount;
 
   /// No description provided for @categoryDetailAverageAmount.
   ///
-  /// In en, this message translates to:
-  /// **'Average Amount'**
+  /// In zh, this message translates to:
+  /// **'平均金额'**
   String get categoryDetailAverageAmount;
 
   /// No description provided for @categoryDetailSortTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Sort'**
+  /// In zh, this message translates to:
+  /// **'排序'**
   String get categoryDetailSortTitle;
 
   /// No description provided for @categoryDetailSortTimeDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Time ↓'**
+  /// In zh, this message translates to:
+  /// **'时间↓'**
   String get categoryDetailSortTimeDesc;
 
   /// No description provided for @categoryDetailSortTimeAsc.
   ///
-  /// In en, this message translates to:
-  /// **'Time ↑'**
+  /// In zh, this message translates to:
+  /// **'时间↑'**
   String get categoryDetailSortTimeAsc;
 
   /// No description provided for @categoryDetailSortAmountDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Amount ↓'**
+  /// In zh, this message translates to:
+  /// **'金额↓'**
   String get categoryDetailSortAmountDesc;
 
   /// No description provided for @categoryDetailSortAmountAsc.
   ///
-  /// In en, this message translates to:
-  /// **'Amount ↑'**
+  /// In zh, this message translates to:
+  /// **'金额↑'**
   String get categoryDetailSortAmountAsc;
 
   /// No description provided for @categoryDetailNoTransactions.
   ///
-  /// In en, this message translates to:
-  /// **'No transactions'**
+  /// In zh, this message translates to:
+  /// **'暂无交易记录'**
   String get categoryDetailNoTransactions;
 
   /// No description provided for @categoryDetailNoTransactionsSubtext.
   ///
-  /// In en, this message translates to:
-  /// **'No transactions in this category yet'**
+  /// In zh, this message translates to:
+  /// **'该分类下还没有任何交易记录'**
   String get categoryDetailNoTransactionsSubtext;
 
   /// No description provided for @categoryDetailDeleteFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Delete failed'**
+  /// In zh, this message translates to:
+  /// **'删除失败'**
   String get categoryDetailDeleteFailed;
 
   /// No description provided for @categoryMigrationConfirmTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Confirm Migration'**
+  /// In zh, this message translates to:
+  /// **'确认迁移'**
   String get categoryMigrationConfirmTitle;
 
   /// No description provided for @categoryMigrationConfirmMessage.
   ///
-  /// In en, this message translates to:
-  /// **'Migrate {count} transactions from \"{fromName}\" to \"{toName}\"?\n\nThis operation cannot be undone!'**
+  /// In zh, this message translates to:
+  /// **'确定要将「{fromName}」的 {count} 笔交易迁移到「{toName}」吗？\n\n此操作不可撤销！'**
   String categoryMigrationConfirmMessage(Object count, Object fromName, Object toName);
 
   /// No description provided for @categoryMigrationConfirmOk.
   ///
-  /// In en, this message translates to:
-  /// **'Confirm Migration'**
+  /// In zh, this message translates to:
+  /// **'确认迁移'**
   String get categoryMigrationConfirmOk;
 
   /// No description provided for @categoryMigrationCompleteTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Migration Complete'**
+  /// In zh, this message translates to:
+  /// **'迁移完成'**
   String get categoryMigrationCompleteTitle;
 
   /// No description provided for @categoryMigrationCompleteMessage.
   ///
-  /// In en, this message translates to:
-  /// **'Successfully migrated {count} transactions from \"{fromName}\" to \"{toName}\".'**
+  /// In zh, this message translates to:
+  /// **'成功将 {count} 笔交易从「{fromName}」迁移到「{toName}」。'**
   String categoryMigrationCompleteMessage(Object count, Object fromName, Object toName);
 
   /// No description provided for @categoryMigrationFailedTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Migration Failed'**
+  /// In zh, this message translates to:
+  /// **'迁移失败'**
   String get categoryMigrationFailedTitle;
 
   /// No description provided for @categoryMigrationFailedMessage.
   ///
-  /// In en, this message translates to:
-  /// **'Migration error: {error}'**
+  /// In zh, this message translates to:
+  /// **'迁移过程中发生错误：{error}'**
   String categoryMigrationFailedMessage(Object error);
 
   /// No description provided for @categoryMigrationTransactionLabel.
   ///
-  /// In en, this message translates to:
-  /// **'{count} records'**
-  String categoryMigrationTransactionLabel(int count);
+  /// In zh, this message translates to:
+  /// **'{count}笔'**
+  String categoryMigrationTransactionLabel(Object count);
+
+  /// No description provided for @importColumnNumber.
+  ///
+  /// In zh, this message translates to:
+  /// **'第 {number} 列'**
+  String importColumnNumber(Object number);
+
+  /// No description provided for @importConfirmMapping.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认映射'**
+  String get importConfirmMapping;
+
+  /// No description provided for @importCategoryMapping.
+  ///
+  /// In zh, this message translates to:
+  /// **'分类映射'**
+  String get importCategoryMapping;
+
+  /// No description provided for @importNoDataParsed.
+  ///
+  /// In zh, this message translates to:
+  /// **'未解析到任何数据，请返回上一页检查 CSV 内容或分隔符。'**
+  String get importNoDataParsed;
+
+  /// No description provided for @importFieldDate.
+  ///
+  /// In zh, this message translates to:
+  /// **'日期'**
+  String get importFieldDate;
+
+  /// No description provided for @importFieldType.
+  ///
+  /// In zh, this message translates to:
+  /// **'类型'**
+  String get importFieldType;
+
+  /// No description provided for @importFieldAmount.
+  ///
+  /// In zh, this message translates to:
+  /// **'金额'**
+  String get importFieldAmount;
+
+  /// No description provided for @importFieldCategory.
+  ///
+  /// In zh, this message translates to:
+  /// **'分类'**
+  String get importFieldCategory;
+
+  /// No description provided for @importFieldAccount.
+  ///
+  /// In zh, this message translates to:
+  /// **'账户'**
+  String get importFieldAccount;
+
+  /// No description provided for @importFieldNote.
+  ///
+  /// In zh, this message translates to:
+  /// **'备注'**
+  String get importFieldNote;
+
+  /// No description provided for @importPreview.
+  ///
+  /// In zh, this message translates to:
+  /// **'预览：'**
+  String get importPreview;
+
+  /// No description provided for @importPreviewLimit.
+  ///
+  /// In zh, this message translates to:
+  /// **'仅预览前 {shown} 行，共 {total} 行'**
+  String importPreviewLimit(Object shown, Object total);
+
+  /// No description provided for @importCategoryNotSelected.
+  ///
+  /// In zh, this message translates to:
+  /// **'未选择\"分类\"列，请点击\"上一步\"返回并设置\"分类\"的列，再继续。'**
+  String get importCategoryNotSelected;
+
+  /// No description provided for @importCategoryMappingDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'请将左侧\"源分类名\"映射到系统内已有分类（或保持原名自动创建/合并）'**
+  String get importCategoryMappingDescription;
+
+  /// No description provided for @importKeepOriginalName.
+  ///
+  /// In zh, this message translates to:
+  /// **'保持原名（自动创建/合并）'**
+  String get importKeepOriginalName;
+
+  /// No description provided for @importProgress.
+  ///
+  /// In zh, this message translates to:
+  /// **'导入中… 成功 {ok}，失败 {fail}'**
+  String importProgress(Object fail, Object ok);
+
+  /// No description provided for @importCancelImport.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消导入'**
+  String get importCancelImport;
+
+  /// No description provided for @importCompleteTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'导入完成'**
+  String get importCompleteTitle;
+
+  /// No description provided for @importSelectCategoryFirst.
+  ///
+  /// In zh, this message translates to:
+  /// **'请先选择\"分类\"列再继续'**
+  String get importSelectCategoryFirst;
+
+  /// No description provided for @importNextStep.
+  ///
+  /// In zh, this message translates to:
+  /// **'下一步'**
+  String get importNextStep;
+
+  /// No description provided for @importPreviousStep.
+  ///
+  /// In zh, this message translates to:
+  /// **'上一步'**
+  String get importPreviousStep;
+
+  /// No description provided for @importStartImport.
+  ///
+  /// In zh, this message translates to:
+  /// **'开始导入'**
+  String get importStartImport;
+
+  /// No description provided for @importAutoDetect.
+  ///
+  /// In zh, this message translates to:
+  /// **'自动'**
+  String get importAutoDetect;
+
+  /// No description provided for @importInProgress.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在导入…'**
+  String get importInProgress;
+
+  /// No description provided for @importProgressDetail.
+  ///
+  /// In zh, this message translates to:
+  /// **'已完成：{done}/{total}，成功 {ok}，失败 {fail}'**
+  String importProgressDetail(Object done, Object fail, Object ok, Object total);
+
+  /// No description provided for @importBackgroundImport.
+  ///
+  /// In zh, this message translates to:
+  /// **'后台导入'**
+  String get importBackgroundImport;
+
+  /// No description provided for @importCancelled.
+  ///
+  /// In zh, this message translates to:
+  /// **'（已取消）'**
+  String get importCancelled;
+
+  /// No description provided for @importCompleted.
+  ///
+  /// In zh, this message translates to:
+  /// **'导入完成{cancelled}：成功 {ok} 条，失败 {fail} 条'**
+  String importCompleted(Object cancelled, Object fail, Object ok);
+
+  /// No description provided for @importSkippedNonTransactionTypes.
+  ///
+  /// In zh, this message translates to:
+  /// **'跳过 {count} 条非收支记录（债务等）'**
+  String importSkippedNonTransactionTypes(Object count);
+
+  /// No description provided for @importTransactionFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'导入失败，已回滚所有更改：{error}'**
+  String importTransactionFailed(Object error);
 
   /// No description provided for @mineImportCompleteAllSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'All Success'**
+  /// In zh, this message translates to:
+  /// **'全部成功'**
   String get mineImportCompleteAllSuccess;
 
   /// No description provided for @mineCheckUpdateDetecting.
   ///
-  /// In en, this message translates to:
-  /// **'Checking update...'**
+  /// In zh, this message translates to:
+  /// **'检测更新中...'**
   String get mineCheckUpdateDetecting;
 
   /// No description provided for @mineCheckUpdateSubtitleDetecting.
   ///
-  /// In en, this message translates to:
-  /// **'Checking for latest version'**
+  /// In zh, this message translates to:
+  /// **'正在检查最新版本'**
   String get mineCheckUpdateSubtitleDetecting;
 
   /// No description provided for @mineUpdateDownloadTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Download Update'**
+  /// In zh, this message translates to:
+  /// **'下载更新'**
   String get mineUpdateDownloadTitle;
 
   /// No description provided for @cloudTest.
   ///
-  /// In en, this message translates to:
-  /// **'Test'**
+  /// In zh, this message translates to:
+  /// **'测试'**
   String get cloudTest;
 
   /// No description provided for @cloudSwitched.
   ///
-  /// In en, this message translates to:
-  /// **'Switched'**
+  /// In zh, this message translates to:
+  /// **'已切换'**
   String get cloudSwitched;
 
   /// No description provided for @cloudSwitchFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Switch failed'**
+  /// In zh, this message translates to:
+  /// **'切换失败'**
   String get cloudSwitchFailed;
 
   /// No description provided for @cloudSupabaseUrlLabel.
   ///
-  /// In en, this message translates to:
+  /// In zh, this message translates to:
   /// **'Supabase URL'**
   String get cloudSupabaseUrlLabel;
 
   /// No description provided for @cloudSupabaseUrlHint.
   ///
-  /// In en, this message translates to:
+  /// In zh, this message translates to:
   /// **'https://xxx.supabase.co'**
   String get cloudSupabaseUrlHint;
 
   /// No description provided for @cloudAnonKeyLabel.
   ///
-  /// In en, this message translates to:
+  /// In zh, this message translates to:
   /// **'Anon Key'**
   String get cloudAnonKeyLabel;
 
   /// No description provided for @cloudSelectServiceType.
   ///
-  /// In en, this message translates to:
-  /// **'Select Cloud Service Type'**
+  /// In zh, this message translates to:
+  /// **'选择云服务类型'**
   String get cloudSelectServiceType;
 
   /// No description provided for @cloudMultiDeviceWarningTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Multi-Device Tips'**
+  /// In zh, this message translates to:
+  /// **'多设备使用提醒'**
   String get cloudMultiDeviceWarningTitle;
 
   /// No description provided for @cloudMultiDeviceWarningMessage.
   ///
-  /// In en, this message translates to:
-  /// **'Upload before switching devices, download on the new device before editing. Don\'t edit the same ledger on two devices at once. Tap for details →'**
+  /// In zh, this message translates to:
+  /// **'换设备前记得先上传，到新设备后先下载再记账。不要同时在两台设备上记同一个账本。点击查看详情 →'**
   String get cloudMultiDeviceWarningMessage;
 
   /// No description provided for @cloudWebdavUrlLabel.
   ///
-  /// In en, this message translates to:
-  /// **'WebDAV Server URL'**
+  /// In zh, this message translates to:
+  /// **'WebDAV 服务器地址'**
   String get cloudWebdavUrlLabel;
 
   /// No description provided for @cloudWebdavUrlHint.
   ///
-  /// In en, this message translates to:
+  /// In zh, this message translates to:
   /// **'https://dav.jianguoyun.com/dav/'**
   String get cloudWebdavUrlHint;
 
   /// No description provided for @cloudWebdavUsernameLabel.
   ///
-  /// In en, this message translates to:
-  /// **'Username'**
+  /// In zh, this message translates to:
+  /// **'用户名'**
   String get cloudWebdavUsernameLabel;
 
   /// No description provided for @cloudWebdavPasswordLabel.
   ///
-  /// In en, this message translates to:
-  /// **'Password'**
+  /// In zh, this message translates to:
+  /// **'密码'**
   String get cloudWebdavPasswordLabel;
 
   /// No description provided for @cloudWebdavPathHint.
   ///
-  /// In en, this message translates to:
-  /// **'/SmartBook'**
+  /// In zh, this message translates to:
+  /// **'/SmartBook 智记'**
   String get cloudWebdavPathHint;
 
   /// No description provided for @cloudS3EndpointLabel.
   ///
-  /// In en, this message translates to:
-  /// **'Endpoint'**
+  /// In zh, this message translates to:
+  /// **'端点地址'**
   String get cloudS3EndpointLabel;
 
   /// No description provided for @cloudS3EndpointHint.
   ///
-  /// In en, this message translates to:
-  /// **'s3.amazonaws.com or custom endpoint'**
+  /// In zh, this message translates to:
+  /// **'s3.amazonaws.com 或自定义端点'**
   String get cloudS3EndpointHint;
 
   /// No description provided for @cloudS3RegionLabel.
   ///
-  /// In en, this message translates to:
-  /// **'Region'**
+  /// In zh, this message translates to:
+  /// **'区域'**
   String get cloudS3RegionLabel;
 
   /// No description provided for @cloudS3RegionHint.
   ///
-  /// In en, this message translates to:
-  /// **'us-east-1 (leave blank for auto)'**
+  /// In zh, this message translates to:
+  /// **'us-east-1（留空自动）'**
   String get cloudS3RegionHint;
 
   /// No description provided for @cloudS3AccessKeyLabel.
   ///
-  /// In en, this message translates to:
+  /// In zh, this message translates to:
   /// **'Access Key'**
   String get cloudS3AccessKeyLabel;
 
   /// No description provided for @cloudS3AccessKeyHint.
   ///
-  /// In en, this message translates to:
-  /// **'Your Access Key ID'**
+  /// In zh, this message translates to:
+  /// **'您的 Access Key ID'**
   String get cloudS3AccessKeyHint;
 
   /// No description provided for @cloudS3SecretKeyLabel.
   ///
-  /// In en, this message translates to:
+  /// In zh, this message translates to:
   /// **'Secret Key'**
   String get cloudS3SecretKeyLabel;
 
   /// No description provided for @cloudS3SecretKeyHint.
   ///
-  /// In en, this message translates to:
-  /// **'Your Secret Access Key'**
+  /// In zh, this message translates to:
+  /// **'您的 Secret Access Key'**
   String get cloudS3SecretKeyHint;
 
   /// No description provided for @cloudS3BucketLabel.
   ///
-  /// In en, this message translates to:
-  /// **'Bucket Name'**
+  /// In zh, this message translates to:
+  /// **'存储桶名称'**
   String get cloudS3BucketLabel;
 
   /// No description provided for @cloudS3BucketHint.
   ///
-  /// In en, this message translates to:
+  /// In zh, this message translates to:
   /// **'smartbook-data'**
   String get cloudS3BucketHint;
 
   /// No description provided for @cloudS3UseSSLLabel.
   ///
-  /// In en, this message translates to:
-  /// **'Use HTTPS'**
+  /// In zh, this message translates to:
+  /// **'使用 HTTPS'**
   String get cloudS3UseSSLLabel;
 
   /// No description provided for @cloudS3PortLabel.
   ///
-  /// In en, this message translates to:
-  /// **'Port (optional)'**
+  /// In zh, this message translates to:
+  /// **'端口（可选）'**
   String get cloudS3PortLabel;
 
   /// No description provided for @cloudS3PortHint.
   ///
-  /// In en, this message translates to:
-  /// **'Leave blank for default'**
+  /// In zh, this message translates to:
+  /// **'留空使用默认端口'**
   String get cloudS3PortHint;
 
   /// No description provided for @cloudSupabaseBucketLabel.
   ///
-  /// In en, this message translates to:
-  /// **'Storage Bucket Name'**
+  /// In zh, this message translates to:
+  /// **'Storage Bucket 名称'**
   String get cloudSupabaseBucketLabel;
 
   /// No description provided for @cloudSupabaseBucketHint.
   ///
-  /// In en, this message translates to:
-  /// **'Leave blank for default: beecount-backups'**
+  /// In zh, this message translates to:
+  /// **'留空使用默认值 beecount-backups'**
   String get cloudSupabaseBucketHint;
 
   /// No description provided for @authRememberAccount.
   ///
-  /// In en, this message translates to:
-  /// **'Remember account'**
+  /// In zh, this message translates to:
+  /// **'记住账号密码'**
   String get authRememberAccount;
 
   /// No description provided for @authRememberAccountHint.
   ///
-  /// In en, this message translates to:
-  /// **'Auto-fill on next login (Supabase only)'**
+  /// In zh, this message translates to:
+  /// **'下次登录时自动填充（仅Supabase）'**
   String get authRememberAccountHint;
 
   /// No description provided for @cloudConfigSaved.
   ///
-  /// In en, this message translates to:
-  /// **'Configuration saved'**
+  /// In zh, this message translates to:
+  /// **'配置已保存'**
   String get cloudConfigSaved;
 
   /// No description provided for @cloudTestSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'Connection test successful!'**
+  /// In zh, this message translates to:
+  /// **'连接测试成功！'**
   String get cloudTestSuccess;
 
   /// No description provided for @cloudTestFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Connection test failed, please check if the configuration is correct.'**
+  /// In zh, this message translates to:
+  /// **'连接测试失败，请检查配置是否正确。'**
   String get cloudTestFailed;
 
   /// No description provided for @cloudTestError.
   ///
-  /// In en, this message translates to:
-  /// **'Test failed'**
+  /// In zh, this message translates to:
+  /// **'测试失败'**
   String get cloudTestError;
-
-  /// No description provided for @authLogin.
-  ///
-  /// In en, this message translates to:
-  /// **'Login'**
-  String get authLogin;
-
-  /// No description provided for @authEmail.
-  ///
-  /// In en, this message translates to:
-  /// **'Email'**
-  String get authEmail;
-
-  /// No description provided for @authPassword.
-  ///
-  /// In en, this message translates to:
-  /// **'Password'**
-  String get authPassword;
-
-  /// No description provided for @authInvalidEmail.
-  ///
-  /// In en, this message translates to:
-  /// **'Please enter a valid email address'**
-  String get authInvalidEmail;
-
-  /// No description provided for @authNoAccountYet.
-  ///
-  /// In en, this message translates to:
-  /// **'No account yet? '**
-  String get authNoAccountYet;
-
-  /// No description provided for @authViewRegisterGuide.
-  ///
-  /// In en, this message translates to:
-  /// **'See how to register'**
-  String get authViewRegisterGuide;
-
-  /// No description provided for @authErrorInvalidCredentials.
-  ///
-  /// In en, this message translates to:
-  /// **'Email or password is incorrect.'**
-  String get authErrorInvalidCredentials;
-
-  /// No description provided for @authErrorEmailNotConfirmed.
-  ///
-  /// In en, this message translates to:
-  /// **'Email not verified, please complete verification in your email before logging in.'**
-  String get authErrorEmailNotConfirmed;
-
-  /// No description provided for @authErrorRateLimit.
-  ///
-  /// In en, this message translates to:
-  /// **'Too many attempts, please try again later.'**
-  String get authErrorRateLimit;
-
-  /// No description provided for @authErrorNetworkIssue.
-  ///
-  /// In en, this message translates to:
-  /// **'Network error, please check your connection and try again.'**
-  String get authErrorNetworkIssue;
-
-  /// No description provided for @authErrorLoginFailed.
-  ///
-  /// In en, this message translates to:
-  /// **'Login failed, please try again later.'**
-  String get authErrorLoginFailed;
-
-  /// No description provided for @authErrorEmailInvalid.
-  ///
-  /// In en, this message translates to:
-  /// **'Email address is invalid, please check for spelling errors.'**
-  String get authErrorEmailInvalid;
-
-  /// No description provided for @authErrorWeakPassword.
-  ///
-  /// In en, this message translates to:
-  /// **'Password is too simple, please include letters and numbers, at least 6 characters.'**
-  String get authErrorWeakPassword;
-
-  /// No description provided for @importSelectCsvFile.
-  ///
-  /// In en, this message translates to:
-  /// **'Please select a file to import (CSV/TSV/XLSX supported)'**
-  String get importSelectCsvFile;
-
-  /// No description provided for @exportTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Export'**
-  String get exportTitle;
-
-  /// No description provided for @exportDescription.
-  ///
-  /// In en, this message translates to:
-  /// **'Supported export types:\n• Transactions (Income/Expense/Transfer)\n• Categories\n• Accounts\n\nClick the button below to select save location and export current ledger to CSV file.'**
-  String get exportDescription;
-
-  /// No description provided for @exportButtonIOS.
-  ///
-  /// In en, this message translates to:
-  /// **'Export and Share'**
-  String get exportButtonIOS;
-
-  /// No description provided for @exportButtonAndroid.
-  ///
-  /// In en, this message translates to:
-  /// **'Export Data'**
-  String get exportButtonAndroid;
-
-  /// No description provided for @exportJsonButton.
-  ///
-  /// In en, this message translates to:
-  /// **'JSON structured export (backup)'**
-  String get exportJsonButton;
-
-  /// No description provided for @privacyPanelTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Privacy panel'**
-  String get privacyPanelTitle;
-
-  /// No description provided for @privacyPanelDesc.
-  ///
-  /// In en, this message translates to:
-  /// **'Raw-data retention policy and one-tap cleanup'**
-  String get privacyPanelDesc;
-
-  /// No description provided for @privacyStatsAttachments.
-  ///
-  /// In en, this message translates to:
-  /// **'Screenshot/image originals'**
-  String get privacyStatsAttachments;
-
-  /// No description provided for @privacyStatsAttachmentsDesc.
-  ///
-  /// In en, this message translates to:
-  /// **'{count} file(s), {size}'**
-  String privacyStatsAttachmentsDesc(Object count, Object size);
-
-  /// No description provided for @privacyStatsPending.
-  ///
-  /// In en, this message translates to:
-  /// **'Pending candidates: {count}'**
-  String privacyStatsPending(Object count);
-
-  /// No description provided for @privacyNoOriginalForSmsNotifyTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'SMS/notification originals are not stored'**
-  String get privacyNoOriginalForSmsNotifyTitle;
-
-  /// No description provided for @privacyNoOriginalForSmsNotifyDesc.
-  ///
-  /// In en, this message translates to:
-  /// **'SMS and payment-notification text is dropped right after AI parsing (by design); only structured transactions are kept.'**
-  String get privacyNoOriginalForSmsNotifyDesc;
-
-  /// No description provided for @privacyClearAttachments.
-  ///
-  /// In en, this message translates to:
-  /// **'Clear screenshot/image originals'**
-  String get privacyClearAttachments;
-
-  /// No description provided for @privacyClearAttachmentsConfirmTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Clear originals?'**
-  String get privacyClearAttachmentsConfirmTitle;
-
-  /// No description provided for @privacyClearAttachmentsConfirmBody.
-  ///
-  /// In en, this message translates to:
-  /// **'This deletes {count} screenshot/image original files; transactions and statistics are unaffected. Consider exporting a backup first.'**
-  String privacyClearAttachmentsConfirmBody(Object count);
-
-  /// No description provided for @privacyCleared.
-  ///
-  /// In en, this message translates to:
-  /// **'Cleared {count} original file(s) (transactions kept)'**
-  String privacyCleared(Object count);
-
-  /// No description provided for @exportSavedTo.
-  ///
-  /// In en, this message translates to:
-  /// **'Saved to: {path}'**
-  String exportSavedTo(String path);
-
-  /// No description provided for @exportCsvHeaderType.
-  ///
-  /// In en, this message translates to:
-  /// **'Type'**
-  String get exportCsvHeaderType;
-
-  /// No description provided for @exportCsvHeaderCategory.
-  ///
-  /// In en, this message translates to:
-  /// **'Category'**
-  String get exportCsvHeaderCategory;
-
-  /// No description provided for @exportCsvHeaderSubCategory.
-  ///
-  /// In en, this message translates to:
-  /// **'Subcategory'**
-  String get exportCsvHeaderSubCategory;
-
-  /// No description provided for @exportCsvHeaderAmount.
-  ///
-  /// In en, this message translates to:
-  /// **'Amount'**
-  String get exportCsvHeaderAmount;
-
-  /// No description provided for @exportCsvHeaderAccount.
-  ///
-  /// In en, this message translates to:
-  /// **'Account'**
-  String get exportCsvHeaderAccount;
-
-  /// No description provided for @exportCsvHeaderFromAccount.
-  ///
-  /// In en, this message translates to:
-  /// **'From Account'**
-  String get exportCsvHeaderFromAccount;
-
-  /// No description provided for @exportCsvHeaderToAccount.
-  ///
-  /// In en, this message translates to:
-  /// **'To Account'**
-  String get exportCsvHeaderToAccount;
-
-  /// No description provided for @exportCsvHeaderNote.
-  ///
-  /// In en, this message translates to:
-  /// **'Note'**
-  String get exportCsvHeaderNote;
-
-  /// No description provided for @exportCsvHeaderTime.
-  ///
-  /// In en, this message translates to:
-  /// **'Time'**
-  String get exportCsvHeaderTime;
-
-  /// No description provided for @exportCsvHeaderTags.
-  ///
-  /// In en, this message translates to:
-  /// **'Tags'**
-  String get exportCsvHeaderTags;
-
-  /// No description provided for @exportCsvHeaderAttachments.
-  ///
-  /// In en, this message translates to:
-  /// **'Attachments'**
-  String get exportCsvHeaderAttachments;
-
-  /// No description provided for @exportShareText.
-  ///
-  /// In en, this message translates to:
-  /// **'智记 Export File'**
-  String get exportShareText;
-
-  /// No description provided for @exportSuccessTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Export Successful'**
-  String get exportSuccessTitle;
-
-  /// No description provided for @exportSuccessMessageIOS.
-  ///
-  /// In en, this message translates to:
-  /// **'Saved and available in share history:\n{path}'**
-  String exportSuccessMessageIOS(String path);
-
-  /// No description provided for @exportSuccessMessageAndroid.
-  ///
-  /// In en, this message translates to:
-  /// **'Saved to:\n{path}'**
-  String exportSuccessMessageAndroid(String path);
-
-  /// No description provided for @exportFailedTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Export Failed'**
-  String get exportFailedTitle;
-
-  /// No description provided for @exportTypeIncome.
-  ///
-  /// In en, this message translates to:
-  /// **'Income'**
-  String get exportTypeIncome;
-
-  /// No description provided for @exportTypeExpense.
-  ///
-  /// In en, this message translates to:
-  /// **'Expense'**
-  String get exportTypeExpense;
-
-  /// No description provided for @exportTypeTransfer.
-  ///
-  /// In en, this message translates to:
-  /// **'Transfer'**
-  String get exportTypeTransfer;
-
-  /// No description provided for @personalizeThemeHoney.
-  ///
-  /// In en, this message translates to:
-  /// **'Bee Yellow'**
-  String get personalizeThemeHoney;
-
-  /// No description provided for @personalizeThemeOrange.
-  ///
-  /// In en, this message translates to:
-  /// **'Flame Orange'**
-  String get personalizeThemeOrange;
-
-  /// No description provided for @personalizeThemeGreen.
-  ///
-  /// In en, this message translates to:
-  /// **'Emerald Green'**
-  String get personalizeThemeGreen;
-
-  /// No description provided for @personalizeThemePurple.
-  ///
-  /// In en, this message translates to:
-  /// **'Purple Lotus'**
-  String get personalizeThemePurple;
-
-  /// No description provided for @personalizeThemePink.
-  ///
-  /// In en, this message translates to:
-  /// **'Cherry Pink'**
-  String get personalizeThemePink;
-
-  /// No description provided for @personalizeThemeBlue.
-  ///
-  /// In en, this message translates to:
-  /// **'Sky Blue'**
-  String get personalizeThemeBlue;
-
-  /// No description provided for @personalizeThemeMint.
-  ///
-  /// In en, this message translates to:
-  /// **'Forest Moon'**
-  String get personalizeThemeMint;
-
-  /// No description provided for @personalizeThemeSand.
-  ///
-  /// In en, this message translates to:
-  /// **'Sunset Dune'**
-  String get personalizeThemeSand;
-
-  /// No description provided for @personalizeThemeLavender.
-  ///
-  /// In en, this message translates to:
-  /// **'Snow & Pine'**
-  String get personalizeThemeLavender;
-
-  /// No description provided for @personalizeThemeSky.
-  ///
-  /// In en, this message translates to:
-  /// **'Misty Wonderland'**
-  String get personalizeThemeSky;
-
-  /// No description provided for @personalizeThemeWarmOrange.
-  ///
-  /// In en, this message translates to:
-  /// **'Warm Orange'**
-  String get personalizeThemeWarmOrange;
-
-  /// No description provided for @personalizeThemeMintGreen.
-  ///
-  /// In en, this message translates to:
-  /// **'Mint Green'**
-  String get personalizeThemeMintGreen;
-
-  /// No description provided for @personalizeThemeRoseGold.
-  ///
-  /// In en, this message translates to:
-  /// **'Rose Gold'**
-  String get personalizeThemeRoseGold;
-
-  /// No description provided for @personalizeThemeDeepBlue.
-  ///
-  /// In en, this message translates to:
-  /// **'Deep Blue'**
-  String get personalizeThemeDeepBlue;
-
-  /// No description provided for @personalizeThemeMapleRed.
-  ///
-  /// In en, this message translates to:
-  /// **'Maple Red'**
-  String get personalizeThemeMapleRed;
-
-  /// No description provided for @personalizeThemeEmerald.
-  ///
-  /// In en, this message translates to:
-  /// **'Emerald'**
-  String get personalizeThemeEmerald;
-
-  /// No description provided for @personalizeThemeLavenderPurple.
-  ///
-  /// In en, this message translates to:
-  /// **'Lavender'**
-  String get personalizeThemeLavenderPurple;
-
-  /// No description provided for @personalizeThemeAmber.
-  ///
-  /// In en, this message translates to:
-  /// **'Amber'**
-  String get personalizeThemeAmber;
-
-  /// No description provided for @personalizeThemeRouge.
-  ///
-  /// In en, this message translates to:
-  /// **'Rouge Red'**
-  String get personalizeThemeRouge;
-
-  /// No description provided for @personalizeThemeIndigo.
-  ///
-  /// In en, this message translates to:
-  /// **'Indigo Blue'**
-  String get personalizeThemeIndigo;
-
-  /// No description provided for @personalizeThemeOlive.
-  ///
-  /// In en, this message translates to:
-  /// **'Olive Green'**
-  String get personalizeThemeOlive;
-
-  /// No description provided for @personalizeThemeCoral.
-  ///
-  /// In en, this message translates to:
-  /// **'Coral Pink'**
-  String get personalizeThemeCoral;
-
-  /// No description provided for @personalizeThemeDarkGreen.
-  ///
-  /// In en, this message translates to:
-  /// **'Dark Green'**
-  String get personalizeThemeDarkGreen;
-
-  /// No description provided for @personalizeThemeViolet.
-  ///
-  /// In en, this message translates to:
-  /// **'Violet'**
-  String get personalizeThemeViolet;
-
-  /// No description provided for @personalizeThemeSunset.
-  ///
-  /// In en, this message translates to:
-  /// **'Sunset Orange'**
-  String get personalizeThemeSunset;
-
-  /// No description provided for @personalizeThemePeacock.
-  ///
-  /// In en, this message translates to:
-  /// **'Peacock Blue'**
-  String get personalizeThemePeacock;
-
-  /// No description provided for @personalizeThemeLime.
-  ///
-  /// In en, this message translates to:
-  /// **'Lime Green'**
-  String get personalizeThemeLime;
-
-  /// No description provided for @analyticsMonthlyAvg.
-  ///
-  /// In en, this message translates to:
-  /// **'Monthly Avg'**
-  String get analyticsMonthlyAvg;
-
-  /// No description provided for @analyticsDailyAvg.
-  ///
-  /// In en, this message translates to:
-  /// **'Daily Avg'**
-  String get analyticsDailyAvg;
-
-  /// No description provided for @analyticsOverallAvg.
-  ///
-  /// In en, this message translates to:
-  /// **'Overall Avg'**
-  String get analyticsOverallAvg;
-
-  /// No description provided for @analyticsTotalIncome.
-  ///
-  /// In en, this message translates to:
-  /// **'Total Income: '**
-  String get analyticsTotalIncome;
-
-  /// No description provided for @analyticsTotalExpense.
-  ///
-  /// In en, this message translates to:
-  /// **'Total Expense: '**
-  String get analyticsTotalExpense;
-
-  /// No description provided for @analyticsBalance.
-  ///
-  /// In en, this message translates to:
-  /// **'Balance: '**
-  String get analyticsBalance;
-
-  /// No description provided for @analyticsAvgIncome.
-  ///
-  /// In en, this message translates to:
-  /// **'{avgLabel} Income: '**
-  String analyticsAvgIncome(String avgLabel);
-
-  /// No description provided for @analyticsAvgExpense.
-  ///
-  /// In en, this message translates to:
-  /// **'{avgLabel} Expense: '**
-  String analyticsAvgExpense(String avgLabel);
-
-  /// No description provided for @analyticsExpense.
-  ///
-  /// In en, this message translates to:
-  /// **'Expense'**
-  String get analyticsExpense;
-
-  /// No description provided for @analyticsIncome.
-  ///
-  /// In en, this message translates to:
-  /// **'Income'**
-  String get analyticsIncome;
-
-  /// No description provided for @analyticsTotal.
-  ///
-  /// In en, this message translates to:
-  /// **'Total {type}: '**
-  String analyticsTotal(String type);
-
-  /// No description provided for @analyticsAverage.
-  ///
-  /// In en, this message translates to:
-  /// **'{avgLabel}: '**
-  String analyticsAverage(String avgLabel);
-
-  /// No description provided for @updateCheckTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Check Update'**
-  String get updateCheckTitle;
-
-  /// No description provided for @updateNewVersionTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'New Version {version} Found'**
-  String updateNewVersionTitle(String version);
-
-  /// No description provided for @updateNoApkFound.
-  ///
-  /// In en, this message translates to:
-  /// **'APK download link not found'**
-  String get updateNoApkFound;
-
-  /// No description provided for @updateAlreadyLatest.
-  ///
-  /// In en, this message translates to:
-  /// **'Already latest version'**
-  String get updateAlreadyLatest;
-
-  /// No description provided for @updateCheckFailed.
-  ///
-  /// In en, this message translates to:
-  /// **'Update check failed'**
-  String get updateCheckFailed;
-
-  /// No description provided for @updatePermissionDenied.
-  ///
-  /// In en, this message translates to:
-  /// **'Permission denied'**
-  String get updatePermissionDenied;
-
-  /// No description provided for @updateUserCancelled.
-  ///
-  /// In en, this message translates to:
-  /// **'User cancelled'**
-  String get updateUserCancelled;
-
-  /// No description provided for @updateDownloadTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Download Update'**
-  String get updateDownloadTitle;
-
-  /// No description provided for @updateDownloading.
-  ///
-  /// In en, this message translates to:
-  /// **'Downloading: {percent}%'**
-  String updateDownloading(String percent);
-
-  /// No description provided for @updateDownloadBackgroundHint.
-  ///
-  /// In en, this message translates to:
-  /// **'You can switch the app to background, download will continue'**
-  String get updateDownloadBackgroundHint;
-
-  /// No description provided for @updateCancelButton.
-  ///
-  /// In en, this message translates to:
-  /// **'Cancel'**
-  String get updateCancelButton;
-
-  /// No description provided for @updateBackgroundDownload.
-  ///
-  /// In en, this message translates to:
-  /// **'Background Download'**
-  String get updateBackgroundDownload;
-
-  /// No description provided for @updateLaterButton.
-  ///
-  /// In en, this message translates to:
-  /// **'Later'**
-  String get updateLaterButton;
-
-  /// No description provided for @updateDownloadButton.
-  ///
-  /// In en, this message translates to:
-  /// **'Download'**
-  String get updateDownloadButton;
-
-  /// No description provided for @updateInstallingCachedApk.
-  ///
-  /// In en, this message translates to:
-  /// **'Installing cached APK'**
-  String get updateInstallingCachedApk;
-
-  /// No description provided for @updateDownloadComplete.
-  ///
-  /// In en, this message translates to:
-  /// **'Download Complete'**
-  String get updateDownloadComplete;
-
-  /// No description provided for @updateInstallStarted.
-  ///
-  /// In en, this message translates to:
-  /// **'Download complete, installer started'**
-  String get updateInstallStarted;
-
-  /// No description provided for @updateInstallFailed.
-  ///
-  /// In en, this message translates to:
-  /// **'Installation failed'**
-  String get updateInstallFailed;
-
-  /// No description provided for @updateDownloadFailed.
-  ///
-  /// In en, this message translates to:
-  /// **'Download failed'**
-  String get updateDownloadFailed;
-
-  /// No description provided for @updateInstallNow.
-  ///
-  /// In en, this message translates to:
-  /// **'Install Now'**
-  String get updateInstallNow;
-
-  /// No description provided for @updateNotificationPermissionTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Notification Permission Denied'**
-  String get updateNotificationPermissionTitle;
-
-  /// No description provided for @updateCheckFailedTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Update Check Failed'**
-  String get updateCheckFailedTitle;
-
-  /// No description provided for @updateDownloadFailedTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Download Failed'**
-  String get updateDownloadFailedTitle;
-
-  /// No description provided for @updateGoToGitHub.
-  ///
-  /// In en, this message translates to:
-  /// **'Go to GitHub'**
-  String get updateGoToGitHub;
-
-  /// No description provided for @updateCannotOpenLink.
-  ///
-  /// In en, this message translates to:
-  /// **'Cannot open link'**
-  String get updateCannotOpenLink;
-
-  /// No description provided for @updateManualVisit.
-  ///
-  /// In en, this message translates to:
-  /// **'Please manually visit in browser:\\nhttps://github.com/TNT-Likely/BeeCount/releases'**
-  String get updateManualVisit;
-
-  /// No description provided for @updateNoLocalApkTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'No Update Package Found'**
-  String get updateNoLocalApkTitle;
-
-  /// No description provided for @updateInstallPackageTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Install Update Package'**
-  String get updateInstallPackageTitle;
-
-  /// No description provided for @updateMultiplePackagesTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Found Multiple Update Packages'**
-  String get updateMultiplePackagesTitle;
-
-  /// No description provided for @updateSearchFailedTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Search Failed'**
-  String get updateSearchFailedTitle;
-
-  /// No description provided for @updateFoundCachedPackageTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Found Downloaded Update Package'**
-  String get updateFoundCachedPackageTitle;
-
-  /// No description provided for @updateIgnoreButton.
-  ///
-  /// In en, this message translates to:
-  /// **'Ignore'**
-  String get updateIgnoreButton;
-
-  /// No description provided for @updateInstallFailedTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Installation Failed'**
-  String get updateInstallFailedTitle;
-
-  /// No description provided for @updateInstallFailedMessage.
-  ///
-  /// In en, this message translates to:
-  /// **'Cannot start APK installer, please check file permissions.'**
-  String get updateInstallFailedMessage;
-
-  /// No description provided for @updateErrorTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Error'**
-  String get updateErrorTitle;
-
-  /// No description provided for @updateCheckingPermissions.
-  ///
-  /// In en, this message translates to:
-  /// **'Checking permissions...'**
-  String get updateCheckingPermissions;
-
-  /// No description provided for @updateCheckingCache.
-  ///
-  /// In en, this message translates to:
-  /// **'Checking local cache...'**
-  String get updateCheckingCache;
-
-  /// No description provided for @updatePreparingDownload.
-  ///
-  /// In en, this message translates to:
-  /// **'Preparing download...'**
-  String get updatePreparingDownload;
-
-  /// No description provided for @updateUserCancelledDownload.
-  ///
-  /// In en, this message translates to:
-  /// **'User cancelled download'**
-  String get updateUserCancelledDownload;
-
-  /// No description provided for @updateStartingInstaller.
-  ///
-  /// In en, this message translates to:
-  /// **'Starting installer...'**
-  String get updateStartingInstaller;
-
-  /// No description provided for @updateInstallerStarted.
-  ///
-  /// In en, this message translates to:
-  /// **'Installer started'**
-  String get updateInstallerStarted;
-
-  /// No description provided for @updateInstallationFailed.
-  ///
-  /// In en, this message translates to:
-  /// **'Installation failed'**
-  String get updateInstallationFailed;
-
-  /// No description provided for @updateDownloadCompleted.
-  ///
-  /// In en, this message translates to:
-  /// **'Download completed'**
-  String get updateDownloadCompleted;
-
-  /// No description provided for @updateDownloadCompletedManual.
-  ///
-  /// In en, this message translates to:
-  /// **'Download completed, can install manually'**
-  String get updateDownloadCompletedManual;
-
-  /// No description provided for @updateDownloadCompletedDialog.
-  ///
-  /// In en, this message translates to:
-  /// **'Download completed, please install manually (dialog exception)'**
-  String get updateDownloadCompletedDialog;
-
-  /// No description provided for @updateDownloadCompletedContext.
-  ///
-  /// In en, this message translates to:
-  /// **'Download completed, please install manually'**
-  String get updateDownloadCompletedContext;
-
-  /// No description provided for @updateDownloadFailedGeneric.
-  ///
-  /// In en, this message translates to:
-  /// **'Download failed'**
-  String get updateDownloadFailedGeneric;
-
-  /// No description provided for @updateCheckingUpdate.
-  ///
-  /// In en, this message translates to:
-  /// **'Checking for updates...'**
-  String get updateCheckingUpdate;
-
-  /// No description provided for @updateCurrentLatestVersion.
-  ///
-  /// In en, this message translates to:
-  /// **'Already latest version'**
-  String get updateCurrentLatestVersion;
-
-  /// No description provided for @updateCheckFailedGeneric.
-  ///
-  /// In en, this message translates to:
-  /// **'Update check failed'**
-  String get updateCheckFailedGeneric;
-
-  /// No description provided for @updateDownloadProgress.
-  ///
-  /// In en, this message translates to:
-  /// **'Downloading: {percent}%'**
-  String updateDownloadProgress(String percent);
-
-  /// No description provided for @updateCheckingUpdateError.
-  ///
-  /// In en, this message translates to:
-  /// **'Update check failed: {error}'**
-  String updateCheckingUpdateError(String error);
-
-  /// No description provided for @updateNoLocalApkFoundMessage.
-  ///
-  /// In en, this message translates to:
-  /// **'No downloaded update package file found.\\n\\nPlease first download new version through \"Check Update\".'**
-  String get updateNoLocalApkFoundMessage;
-
-  /// No description provided for @updateInstallPackageFoundMessage.
-  ///
-  /// In en, this message translates to:
-  /// **'Found update package:\\n\\nFile name: {fileName}\\nSize: {fileSize}MB\\nDownload time: {time}\\n\\nInstall immediately?'**
-  String updateInstallPackageFoundMessage(String fileName, String fileSize, String time);
-
-  /// No description provided for @updateMultiplePackagesFoundMessage.
-  ///
-  /// In en, this message translates to:
-  /// **'Found {count} update package files.\\n\\nRecommend using the latest downloaded version, or manually install in file manager.\\n\\nFile location: {path}'**
-  String updateMultiplePackagesFoundMessage(int count, String path);
-
-  /// No description provided for @updateSearchLocalApkError.
-  ///
-  /// In en, this message translates to:
-  /// **'Error occurred while searching for local update packages: {error}'**
-  String updateSearchLocalApkError(String error);
-
-  /// No description provided for @updateCachedPackageFoundMessage.
-  ///
-  /// In en, this message translates to:
-  /// **'Detected previously downloaded update package:\\n\\nFile name: {fileName}\\nSize: {fileSize}MB\\n\\nInstall immediately?'**
-  String updateCachedPackageFoundMessage(String fileName, String fileSize);
-
-  /// No description provided for @updateReadCachedPackageError.
-  ///
-  /// In en, this message translates to:
-  /// **'Failed to read cached update package: {error}'**
-  String updateReadCachedPackageError(String error);
-
-  /// No description provided for @updateOk.
-  ///
-  /// In en, this message translates to:
-  /// **'OK'**
-  String get updateOk;
-
-  /// No description provided for @updateCannotOpenLinkTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Cannot Open Link'**
-  String get updateCannotOpenLinkTitle;
-
-  /// No description provided for @updateCachedVersionTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Found Downloaded Version'**
-  String get updateCachedVersionTitle;
-
-  /// No description provided for @updateCachedVersionMessage.
-  ///
-  /// In en, this message translates to:
-  /// **'Found previously downloaded installation package... Click \\\"OK\\\" to install immediately, click \\\"Cancel\\\" to close...'**
-  String get updateCachedVersionMessage;
-
-  /// No description provided for @updateConfirmDownload.
-  ///
-  /// In en, this message translates to:
-  /// **'Download and Install Now'**
-  String get updateConfirmDownload;
-
-  /// No description provided for @updateDownloadCompleteTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Download Complete'**
-  String get updateDownloadCompleteTitle;
-
-  /// No description provided for @updateInstallConfirmMessage.
-  ///
-  /// In en, this message translates to:
-  /// **'New version has been downloaded. Install now?'**
-  String get updateInstallConfirmMessage;
-
-  /// No description provided for @updateMirrorSelectTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Select Download Accelerator'**
-  String get updateMirrorSelectTitle;
-
-  /// No description provided for @updateMirrorSelectHint.
-  ///
-  /// In en, this message translates to:
-  /// **'If download is slow, select an accelerated mirror. Click \"Test\" to check latency.'**
-  String get updateMirrorSelectHint;
-
-  /// No description provided for @updateMirrorTestButton.
-  ///
-  /// In en, this message translates to:
-  /// **'Test'**
-  String get updateMirrorTestButton;
-
-  /// No description provided for @updateMirrorTesting.
-  ///
-  /// In en, this message translates to:
-  /// **'Testing {completed}/{total}...'**
-  String updateMirrorTesting(int completed, int total);
-
-  /// No description provided for @updateMirrorDirectHint.
-  ///
-  /// In en, this message translates to:
-  /// **'For users with good network'**
-  String get updateMirrorDirectHint;
-
-  /// No description provided for @updateDownloadMirror.
-  ///
-  /// In en, this message translates to:
-  /// **'Source: {mirror}'**
-  String updateDownloadMirror(String mirror);
-
-  /// No description provided for @updateMirrorSettingTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Download Accelerator'**
-  String get updateMirrorSettingTitle;
-
-  /// No description provided for @updateNotificationPermissionGuideText.
-  ///
-  /// In en, this message translates to:
-  /// **'Download progress notifications are disabled, but this doesn\'t affect download functionality. To view progress:'**
-  String get updateNotificationPermissionGuideText;
-
-  /// No description provided for @updateNotificationGuideStep1.
-  ///
-  /// In en, this message translates to:
-  /// **'Go to System Settings > App Management'**
-  String get updateNotificationGuideStep1;
-
-  /// No description provided for @updateNotificationGuideStep2.
-  ///
-  /// In en, this message translates to:
-  /// **'Find \\\"SmartBook\\\" app'**
-  String get updateNotificationGuideStep2;
-
-  /// No description provided for @updateNotificationGuideStep3.
-  ///
-  /// In en, this message translates to:
-  /// **'Enable notification permissions'**
-  String get updateNotificationGuideStep3;
-
-  /// No description provided for @updateNotificationGuideInfo.
-  ///
-  /// In en, this message translates to:
-  /// **'Downloads will continue normally in the background even without notifications'**
-  String get updateNotificationGuideInfo;
-
-  /// No description provided for @currencyCNY.
-  ///
-  /// In en, this message translates to:
-  /// **'Chinese Yuan'**
-  String get currencyCNY;
-
-  /// No description provided for @currencyUSD.
-  ///
-  /// In en, this message translates to:
-  /// **'US Dollar'**
-  String get currencyUSD;
-
-  /// No description provided for @currencyEUR.
-  ///
-  /// In en, this message translates to:
-  /// **'Euro'**
-  String get currencyEUR;
-
-  /// No description provided for @currencyJPY.
-  ///
-  /// In en, this message translates to:
-  /// **'Japanese Yen'**
-  String get currencyJPY;
-
-  /// No description provided for @currencyHKD.
-  ///
-  /// In en, this message translates to:
-  /// **'Hong Kong Dollar'**
-  String get currencyHKD;
-
-  /// No description provided for @currencyTWD.
-  ///
-  /// In en, this message translates to:
-  /// **'New Taiwan Dollar'**
-  String get currencyTWD;
-
-  /// No description provided for @currencyGBP.
-  ///
-  /// In en, this message translates to:
-  /// **'British Pound'**
-  String get currencyGBP;
-
-  /// No description provided for @currencyAUD.
-  ///
-  /// In en, this message translates to:
-  /// **'Australian Dollar'**
-  String get currencyAUD;
-
-  /// No description provided for @currencyCAD.
-  ///
-  /// In en, this message translates to:
-  /// **'Canadian Dollar'**
-  String get currencyCAD;
-
-  /// No description provided for @currencyKRW.
-  ///
-  /// In en, this message translates to:
-  /// **'South Korean Won'**
-  String get currencyKRW;
-
-  /// No description provided for @currencySGD.
-  ///
-  /// In en, this message translates to:
-  /// **'Singapore Dollar'**
-  String get currencySGD;
-
-  /// No description provided for @currencyMYR.
-  ///
-  /// In en, this message translates to:
-  /// **'Malaysian Ringgit'**
-  String get currencyMYR;
-
-  /// No description provided for @currencyTHB.
-  ///
-  /// In en, this message translates to:
-  /// **'Thai Baht'**
-  String get currencyTHB;
-
-  /// No description provided for @currencyIDR.
-  ///
-  /// In en, this message translates to:
-  /// **'Indonesian Rupiah'**
-  String get currencyIDR;
-
-  /// No description provided for @currencyPHP.
-  ///
-  /// In en, this message translates to:
-  /// **'Philippine Peso'**
-  String get currencyPHP;
-
-  /// No description provided for @currencyVND.
-  ///
-  /// In en, this message translates to:
-  /// **'Vietnamese Dong'**
-  String get currencyVND;
-
-  /// No description provided for @currencyINR.
-  ///
-  /// In en, this message translates to:
-  /// **'Indian Rupee'**
-  String get currencyINR;
-
-  /// No description provided for @currencyRUB.
-  ///
-  /// In en, this message translates to:
-  /// **'Russian Ruble'**
-  String get currencyRUB;
-
-  /// No description provided for @currencyBYN.
-  ///
-  /// In en, this message translates to:
-  /// **'Belarusian Ruble'**
-  String get currencyBYN;
-
-  /// No description provided for @currencyNZD.
-  ///
-  /// In en, this message translates to:
-  /// **'New Zealand Dollar'**
-  String get currencyNZD;
-
-  /// No description provided for @currencyCHF.
-  ///
-  /// In en, this message translates to:
-  /// **'Swiss Franc'**
-  String get currencyCHF;
-
-  /// No description provided for @currencySEK.
-  ///
-  /// In en, this message translates to:
-  /// **'Swedish Krona'**
-  String get currencySEK;
-
-  /// No description provided for @currencyNOK.
-  ///
-  /// In en, this message translates to:
-  /// **'Norwegian Krone'**
-  String get currencyNOK;
-
-  /// No description provided for @currencyDKK.
-  ///
-  /// In en, this message translates to:
-  /// **'Danish Krone'**
-  String get currencyDKK;
-
-  /// No description provided for @currencyBRL.
-  ///
-  /// In en, this message translates to:
-  /// **'Brazilian Real'**
-  String get currencyBRL;
-
-  /// No description provided for @currencyMXN.
-  ///
-  /// In en, this message translates to:
-  /// **'Mexican Peso'**
-  String get currencyMXN;
-
-  /// No description provided for @currencyTRY.
-  ///
-  /// In en, this message translates to:
-  /// **'Turkish Lira'**
-  String get currencyTRY;
-
-  /// No description provided for @currencyZAR.
-  ///
-  /// In en, this message translates to:
-  /// **'South African Rand'**
-  String get currencyZAR;
-
-  /// No description provided for @currencyAED.
-  ///
-  /// In en, this message translates to:
-  /// **'UAE Dirham'**
-  String get currencyAED;
-
-  /// No description provided for @currencySAR.
-  ///
-  /// In en, this message translates to:
-  /// **'Saudi Riyal'**
-  String get currencySAR;
-
-  /// No description provided for @currencyPLN.
-  ///
-  /// In en, this message translates to:
-  /// **'Polish Zloty'**
-  String get currencyPLN;
-
-  /// No description provided for @currencyCZK.
-  ///
-  /// In en, this message translates to:
-  /// **'Czech Koruna'**
-  String get currencyCZK;
-
-  /// No description provided for @currencyHUF.
-  ///
-  /// In en, this message translates to:
-  /// **'Hungarian Forint'**
-  String get currencyHUF;
-
-  /// No description provided for @currencyARS.
-  ///
-  /// In en, this message translates to:
-  /// **'Argentine Peso'**
-  String get currencyARS;
-
-  /// No description provided for @currencyCLP.
-  ///
-  /// In en, this message translates to:
-  /// **'Chilean Peso'**
-  String get currencyCLP;
-
-  /// No description provided for @currencyCOP.
-  ///
-  /// In en, this message translates to:
-  /// **'Colombian Peso'**
-  String get currencyCOP;
-
-  /// No description provided for @currencyPEN.
-  ///
-  /// In en, this message translates to:
-  /// **'Peruvian Sol'**
-  String get currencyPEN;
-
-  /// No description provided for @currencyEGP.
-  ///
-  /// In en, this message translates to:
-  /// **'Egyptian Pound'**
-  String get currencyEGP;
-
-  /// No description provided for @currencyNGN.
-  ///
-  /// In en, this message translates to:
-  /// **'Nigerian Naira'**
-  String get currencyNGN;
-
-  /// No description provided for @currencyKZT.
-  ///
-  /// In en, this message translates to:
-  /// **'Kazakhstani Tenge'**
-  String get currencyKZT;
-
-  /// No description provided for @currencyUAH.
-  ///
-  /// In en, this message translates to:
-  /// **'Ukrainian Hryvnia'**
-  String get currencyUAH;
-
-  /// No description provided for @currencyILS.
-  ///
-  /// In en, this message translates to:
-  /// **'Israeli New Shekel'**
-  String get currencyILS;
-
-  /// No description provided for @currencyPKR.
-  ///
-  /// In en, this message translates to:
-  /// **'Pakistani Rupee'**
-  String get currencyPKR;
-
-  /// No description provided for @currencyBDT.
-  ///
-  /// In en, this message translates to:
-  /// **'Bangladeshi Taka'**
-  String get currencyBDT;
-
-  /// No description provided for @currencyLKR.
-  ///
-  /// In en, this message translates to:
-  /// **'Sri Lankan Rupee'**
-  String get currencyLKR;
-
-  /// No description provided for @currencyMMK.
-  ///
-  /// In en, this message translates to:
-  /// **'Myanmar Kyat'**
-  String get currencyMMK;
-
-  /// No description provided for @webdavConfiguredTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'WebDAV Cloud Service Configured'**
-  String get webdavConfiguredTitle;
-
-  /// No description provided for @webdavConfiguredMessage.
-  ///
-  /// In en, this message translates to:
-  /// **'WebDAV cloud service uses the credentials provided during configuration, no additional login required.'**
-  String get webdavConfiguredMessage;
-
-  /// No description provided for @recurringTransactionTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Recurring Bills'**
-  String get recurringTransactionTitle;
-
-  /// No description provided for @recurringTransactionAdd.
-  ///
-  /// In en, this message translates to:
-  /// **'Add Recurring Bill'**
-  String get recurringTransactionAdd;
-
-  /// No description provided for @recurringTransactionEdit.
-  ///
-  /// In en, this message translates to:
-  /// **'Edit Recurring Bill'**
-  String get recurringTransactionEdit;
-
-  /// No description provided for @recurringTransactionFrequency.
-  ///
-  /// In en, this message translates to:
-  /// **'Frequency'**
-  String get recurringTransactionFrequency;
-
-  /// No description provided for @recurringTransactionDaily.
-  ///
-  /// In en, this message translates to:
-  /// **'Daily'**
-  String get recurringTransactionDaily;
-
-  /// No description provided for @recurringTransactionWeekly.
-  ///
-  /// In en, this message translates to:
-  /// **'Weekly'**
-  String get recurringTransactionWeekly;
-
-  /// No description provided for @recurringTransactionMonthly.
-  ///
-  /// In en, this message translates to:
-  /// **'Monthly'**
-  String get recurringTransactionMonthly;
-
-  /// No description provided for @recurringTransactionYearly.
-  ///
-  /// In en, this message translates to:
-  /// **'Yearly'**
-  String get recurringTransactionYearly;
-
-  /// No description provided for @recurringTransactionInterval.
-  ///
-  /// In en, this message translates to:
-  /// **'Interval'**
-  String get recurringTransactionInterval;
-
-  /// No description provided for @recurringTransactionDayOfMonth.
-  ///
-  /// In en, this message translates to:
-  /// **'Day of Month'**
-  String get recurringTransactionDayOfMonth;
-
-  /// No description provided for @recurringTransactionStartDate.
-  ///
-  /// In en, this message translates to:
-  /// **'Start Date'**
-  String get recurringTransactionStartDate;
-
-  /// No description provided for @recurringTransactionEndDate.
-  ///
-  /// In en, this message translates to:
-  /// **'End Date'**
-  String get recurringTransactionEndDate;
-
-  /// No description provided for @recurringTransactionNoEndDate.
-  ///
-  /// In en, this message translates to:
-  /// **'Perpetual'**
-  String get recurringTransactionNoEndDate;
-
-  /// No description provided for @recurringTransactionDeleteConfirm.
-  ///
-  /// In en, this message translates to:
-  /// **'Are you sure you want to delete this recurring bill?'**
-  String get recurringTransactionDeleteConfirm;
-
-  /// No description provided for @recurringTransactionEmpty.
-  ///
-  /// In en, this message translates to:
-  /// **'No Recurring Bills'**
-  String get recurringTransactionEmpty;
-
-  /// No description provided for @recurringTransactionEmptyHint.
-  ///
-  /// In en, this message translates to:
-  /// **'Tap the + button in the top right corner to add'**
-  String get recurringTransactionEmptyHint;
-
-  /// No description provided for @recurringTransactionEveryNDays.
-  ///
-  /// In en, this message translates to:
-  /// **'Every {n} day(s)'**
-  String recurringTransactionEveryNDays(int n);
-
-  /// No description provided for @recurringTransactionEveryNWeeks.
-  ///
-  /// In en, this message translates to:
-  /// **'Every {n} week(s)'**
-  String recurringTransactionEveryNWeeks(int n);
-
-  /// No description provided for @recurringTransactionEveryNMonths.
-  ///
-  /// In en, this message translates to:
-  /// **'Every {n} month(s)'**
-  String recurringTransactionEveryNMonths(int n);
-
-  /// No description provided for @recurringTransactionEveryNYears.
-  ///
-  /// In en, this message translates to:
-  /// **'Every {n} year(s)'**
-  String recurringTransactionEveryNYears(int n);
-
-  /// No description provided for @recurringTransactionUsageTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Usage Guide'**
-  String get recurringTransactionUsageTitle;
-
-  /// No description provided for @recurringTransactionUsageContent.
-  ///
-  /// In en, this message translates to:
-  /// **'Recurring transactions are automatically scanned and generated when the app cold starts. After setting a date, the system will create corresponding bills on the first startup after that date. For example: if set to Nov 27, bills will be auto-recorded on the first launch after Nov 27.'**
-  String get recurringTransactionUsageContent;
-
-  /// No description provided for @ledgerSelectTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Select Ledger'**
-  String get ledgerSelectTitle;
-
-  /// No description provided for @ledgerSelect.
-  ///
-  /// In en, this message translates to:
-  /// **'Select Ledger'**
-  String get ledgerSelect;
-
-  /// No description provided for @syncNotConfiguredMessage.
-  ///
-  /// In en, this message translates to:
-  /// **'Cloud not configured'**
-  String get syncNotConfiguredMessage;
-
-  /// No description provided for @syncNotLoggedInMessage.
-  ///
-  /// In en, this message translates to:
-  /// **'Not logged in'**
-  String get syncNotLoggedInMessage;
-
-  /// No description provided for @syncCloudBackupCorruptedMessage.
-  ///
-  /// In en, this message translates to:
-  /// **'Cloud backup content is corrupted, possibly due to encoding issues from earlier versions. Please click \'Upload Current Ledger to Cloud\' to overwrite and fix.'**
-  String get syncCloudBackupCorruptedMessage;
-
-  /// No description provided for @syncNoCloudBackupMessage.
-  ///
-  /// In en, this message translates to:
-  /// **'No cloud backup'**
-  String get syncNoCloudBackupMessage;
-
-  /// No description provided for @syncAccessDeniedMessage.
-  ///
-  /// In en, this message translates to:
-  /// **'403 Access denied (check storage RLS policy and path)'**
-  String get syncAccessDeniedMessage;
-
-  /// No description provided for @cloudTestConnection.
-  ///
-  /// In en, this message translates to:
-  /// **'Test Connection'**
-  String get cloudTestConnection;
 
   /// No description provided for @cloudLocalStorageTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Local Storage'**
+  /// In zh, this message translates to:
+  /// **'本地存储'**
   String get cloudLocalStorageTitle;
 
   /// No description provided for @cloudLocalStorageSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Data is only saved on local device'**
+  /// In zh, this message translates to:
+  /// **'数据仅保存在本地设备'**
   String get cloudLocalStorageSubtitle;
 
   /// No description provided for @cloudCustomSupabaseTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Custom Supabase'**
+  /// In zh, this message translates to:
+  /// **'自定义 Supabase'**
   String get cloudCustomSupabaseTitle;
-
-  /// No description provided for @cloudCustomSupabaseSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Click to configure self-hosted Supabase'**
-  String get cloudCustomSupabaseSubtitle;
 
   /// No description provided for @cloudCustomWebdavTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Custom WebDAV'**
+  /// In zh, this message translates to:
+  /// **'自定义 WebDAV'**
   String get cloudCustomWebdavTitle;
+
+  /// No description provided for @cloudSwitchConfirmTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'切换云服务'**
+  String get cloudSwitchConfirmTitle;
+
+  /// No description provided for @cloudSwitchConfirmMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'切换云服务将登出当前账号,确认切换?'**
+  String get cloudSwitchConfirmMessage;
+
+  /// No description provided for @cloudSwitchFailedTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'切换失败'**
+  String get cloudSwitchFailedTitle;
+
+  /// No description provided for @cloudSwitchFailedConfigMissing.
+  ///
+  /// In zh, this message translates to:
+  /// **'请先配置该云服务'**
+  String get cloudSwitchFailedConfigMissing;
+
+  /// No description provided for @cloudConfigInvalidTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'配置无效'**
+  String get cloudConfigInvalidTitle;
+
+  /// No description provided for @cloudConfigInvalidMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'请填写完整信息'**
+  String get cloudConfigInvalidMessage;
+
+  /// No description provided for @cloudSaveFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存失败'**
+  String get cloudSaveFailed;
+
+  /// No description provided for @cloudSwitchedTo.
+  ///
+  /// In zh, this message translates to:
+  /// **'已切换到{type}'**
+  String cloudSwitchedTo(String type);
+
+  /// No description provided for @cloudConfigureSupabaseTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'配置 Supabase'**
+  String get cloudConfigureSupabaseTitle;
+
+  /// No description provided for @cloudConfigureWebdavTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'配置 WebDAV'**
+  String get cloudConfigureWebdavTitle;
+
+  /// No description provided for @cloudConfigureS3Title.
+  ///
+  /// In zh, this message translates to:
+  /// **'配置 S3'**
+  String get cloudConfigureS3Title;
+
+  /// No description provided for @cloudWebdavRemotePathHelp.
+  ///
+  /// In zh, this message translates to:
+  /// **'数据存储的远程目录路径'**
+  String get cloudWebdavRemotePathHelp;
+
+  /// No description provided for @authLogin.
+  ///
+  /// In zh, this message translates to:
+  /// **'登录'**
+  String get authLogin;
+
+  /// No description provided for @authEmail.
+  ///
+  /// In zh, this message translates to:
+  /// **'邮箱'**
+  String get authEmail;
+
+  /// No description provided for @authPassword.
+  ///
+  /// In zh, this message translates to:
+  /// **'密码'**
+  String get authPassword;
+
+  /// No description provided for @authInvalidEmail.
+  ///
+  /// In zh, this message translates to:
+  /// **'请输入有效的邮箱地址'**
+  String get authInvalidEmail;
+
+  /// No description provided for @authNoAccountYet.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没有账号？'**
+  String get authNoAccountYet;
+
+  /// No description provided for @authViewRegisterGuide.
+  ///
+  /// In zh, this message translates to:
+  /// **'查看注册指引'**
+  String get authViewRegisterGuide;
+
+  /// No description provided for @authErrorInvalidCredentials.
+  ///
+  /// In zh, this message translates to:
+  /// **'邮箱或密码不正确。'**
+  String get authErrorInvalidCredentials;
+
+  /// No description provided for @authErrorEmailNotConfirmed.
+  ///
+  /// In zh, this message translates to:
+  /// **'邮箱未验证，请先到邮箱完成验证再登录。'**
+  String get authErrorEmailNotConfirmed;
+
+  /// No description provided for @authErrorRateLimit.
+  ///
+  /// In zh, this message translates to:
+  /// **'操作过于频繁，请稍后再试。'**
+  String get authErrorRateLimit;
+
+  /// No description provided for @authErrorNetworkIssue.
+  ///
+  /// In zh, this message translates to:
+  /// **'网络异常，请检查网络后重试。'**
+  String get authErrorNetworkIssue;
+
+  /// No description provided for @authErrorLoginFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'登录失败，请稍后再试。'**
+  String get authErrorLoginFailed;
+
+  /// No description provided for @authErrorEmailInvalid.
+  ///
+  /// In zh, this message translates to:
+  /// **'邮箱地址无效，请检查是否拼写有误。'**
+  String get authErrorEmailInvalid;
+
+  /// No description provided for @authErrorWeakPassword.
+  ///
+  /// In zh, this message translates to:
+  /// **'密码过于简单，请包含字母和数字，长度至少 6 位。'**
+  String get authErrorWeakPassword;
+
+  /// No description provided for @importSelectCsvFile.
+  ///
+  /// In zh, this message translates to:
+  /// **'请选择文件进行导入（支持 CSV/TSV/XLSX 格式）'**
+  String get importSelectCsvFile;
+
+  /// No description provided for @exportTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'导出'**
+  String get exportTitle;
+
+  /// No description provided for @exportDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'支持导出的数据类型：\n• 交易记录（收入/支出/转账）\n• 分类信息\n• 账户信息\n\n点击下方按钮选择保存位置，开始导出当前账本为 CSV 文件。'**
+  String get exportDescription;
+
+  /// No description provided for @exportButtonIOS.
+  ///
+  /// In zh, this message translates to:
+  /// **'导出并分享'**
+  String get exportButtonIOS;
+
+  /// No description provided for @exportButtonAndroid.
+  ///
+  /// In zh, this message translates to:
+  /// **'导出数据'**
+  String get exportButtonAndroid;
+
+  /// No description provided for @exportJsonButton.
+  ///
+  /// In zh, this message translates to:
+  /// **'JSON 结构化导出(备份)'**
+  String get exportJsonButton;
+
+  /// No description provided for @privacyPanelTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'隐私面板'**
+  String get privacyPanelTitle;
+
+  /// No description provided for @privacyPanelDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'原文数据保留策略与一键清理'**
+  String get privacyPanelDesc;
+
+  /// No description provided for @privacyStatsAttachments.
+  ///
+  /// In zh, this message translates to:
+  /// **'截图/图片原文'**
+  String get privacyStatsAttachments;
+
+  /// No description provided for @privacyStatsAttachmentsDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count} 个文件,占用 {size}'**
+  String privacyStatsAttachmentsDesc(Object count, Object size);
+
+  /// No description provided for @privacyStatsPending.
+  ///
+  /// In zh, this message translates to:
+  /// **'待确认候选:{count} 项'**
+  String privacyStatsPending(Object count);
+
+  /// No description provided for @privacyNoOriginalForSmsNotifyTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'短信/通知原文不落盘'**
+  String get privacyNoOriginalForSmsNotifyTitle;
+
+  /// No description provided for @privacyNoOriginalForSmsNotifyDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'短信与支付通知原文在 AI 解析后即丢弃,不持久化(设计保证);仅保留解析出的结构化交易。'**
+  String get privacyNoOriginalForSmsNotifyDesc;
+
+  /// No description provided for @privacyClearAttachments.
+  ///
+  /// In zh, this message translates to:
+  /// **'一键清除截图/图片原文'**
+  String get privacyClearAttachments;
+
+  /// No description provided for @privacyClearAttachmentsConfirmTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认清除原文?'**
+  String get privacyClearAttachmentsConfirmTitle;
+
+  /// No description provided for @privacyClearAttachmentsConfirmBody.
+  ///
+  /// In zh, this message translates to:
+  /// **'将删除 {count} 个截图/图片原文文件,不影响交易记录与统计。建议先导出备份。'**
+  String privacyClearAttachmentsConfirmBody(Object count);
+
+  /// No description provided for @privacyCleared.
+  ///
+  /// In zh, this message translates to:
+  /// **'已清除 {count} 个原文文件(交易数据保留)'**
+  String privacyCleared(Object count);
+
+  /// No description provided for @exportSavedTo.
+  ///
+  /// In zh, this message translates to:
+  /// **'已保存到：{path}'**
+  String exportSavedTo(String path);
+
+  /// No description provided for @exportCsvHeaderType.
+  ///
+  /// In zh, this message translates to:
+  /// **'类型'**
+  String get exportCsvHeaderType;
+
+  /// No description provided for @exportCsvHeaderCategory.
+  ///
+  /// In zh, this message translates to:
+  /// **'分类'**
+  String get exportCsvHeaderCategory;
+
+  /// No description provided for @exportCsvHeaderSubCategory.
+  ///
+  /// In zh, this message translates to:
+  /// **'二级分类'**
+  String get exportCsvHeaderSubCategory;
+
+  /// No description provided for @exportCsvHeaderAmount.
+  ///
+  /// In zh, this message translates to:
+  /// **'金额'**
+  String get exportCsvHeaderAmount;
+
+  /// No description provided for @exportCsvHeaderAccount.
+  ///
+  /// In zh, this message translates to:
+  /// **'账户'**
+  String get exportCsvHeaderAccount;
+
+  /// No description provided for @exportCsvHeaderFromAccount.
+  ///
+  /// In zh, this message translates to:
+  /// **'转出账户'**
+  String get exportCsvHeaderFromAccount;
+
+  /// No description provided for @exportCsvHeaderToAccount.
+  ///
+  /// In zh, this message translates to:
+  /// **'转入账户'**
+  String get exportCsvHeaderToAccount;
+
+  /// No description provided for @exportCsvHeaderNote.
+  ///
+  /// In zh, this message translates to:
+  /// **'备注'**
+  String get exportCsvHeaderNote;
+
+  /// No description provided for @exportCsvHeaderTime.
+  ///
+  /// In zh, this message translates to:
+  /// **'时间'**
+  String get exportCsvHeaderTime;
+
+  /// No description provided for @exportCsvHeaderTags.
+  ///
+  /// In zh, this message translates to:
+  /// **'标签'**
+  String get exportCsvHeaderTags;
+
+  /// No description provided for @exportCsvHeaderAttachments.
+  ///
+  /// In zh, this message translates to:
+  /// **'附件'**
+  String get exportCsvHeaderAttachments;
+
+  /// No description provided for @exportShareText.
+  ///
+  /// In zh, this message translates to:
+  /// **'智记 导出文件'**
+  String get exportShareText;
+
+  /// No description provided for @exportSuccessTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'导出成功'**
+  String get exportSuccessTitle;
+
+  /// No description provided for @exportSuccessMessageIOS.
+  ///
+  /// In zh, this message translates to:
+  /// **'已保存并可在分享历史中找到：\n{path}'**
+  String exportSuccessMessageIOS(String path);
+
+  /// No description provided for @exportSuccessMessageAndroid.
+  ///
+  /// In zh, this message translates to:
+  /// **'已保存到：\n{path}'**
+  String exportSuccessMessageAndroid(String path);
+
+  /// No description provided for @exportFailedTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'导出失败'**
+  String get exportFailedTitle;
+
+  /// No description provided for @exportTypeIncome.
+  ///
+  /// In zh, this message translates to:
+  /// **'收入'**
+  String get exportTypeIncome;
+
+  /// No description provided for @exportTypeExpense.
+  ///
+  /// In zh, this message translates to:
+  /// **'支出'**
+  String get exportTypeExpense;
+
+  /// No description provided for @exportTypeTransfer.
+  ///
+  /// In zh, this message translates to:
+  /// **'转账'**
+  String get exportTypeTransfer;
+
+  /// No description provided for @personalizeThemeHoney.
+  ///
+  /// In zh, this message translates to:
+  /// **'蜜蜂黄'**
+  String get personalizeThemeHoney;
+
+  /// No description provided for @personalizeThemeOrange.
+  ///
+  /// In zh, this message translates to:
+  /// **'火焰橙'**
+  String get personalizeThemeOrange;
+
+  /// No description provided for @personalizeThemeGreen.
+  ///
+  /// In zh, this message translates to:
+  /// **'琉璃绿'**
+  String get personalizeThemeGreen;
+
+  /// No description provided for @personalizeThemePurple.
+  ///
+  /// In zh, this message translates to:
+  /// **'青莲紫'**
+  String get personalizeThemePurple;
+
+  /// No description provided for @personalizeThemePink.
+  ///
+  /// In zh, this message translates to:
+  /// **'樱绯红'**
+  String get personalizeThemePink;
+
+  /// No description provided for @personalizeThemeBlue.
+  ///
+  /// In zh, this message translates to:
+  /// **'晴空蓝'**
+  String get personalizeThemeBlue;
+
+  /// No description provided for @personalizeThemeMint.
+  ///
+  /// In zh, this message translates to:
+  /// **'林间月'**
+  String get personalizeThemeMint;
+
+  /// No description provided for @personalizeThemeSand.
+  ///
+  /// In zh, this message translates to:
+  /// **'黄昏沙丘'**
+  String get personalizeThemeSand;
+
+  /// No description provided for @personalizeThemeLavender.
+  ///
+  /// In zh, this message translates to:
+  /// **'雪与松'**
+  String get personalizeThemeLavender;
+
+  /// No description provided for @personalizeThemeSky.
+  ///
+  /// In zh, this message translates to:
+  /// **'迷雾仙境'**
+  String get personalizeThemeSky;
+
+  /// No description provided for @personalizeThemeWarmOrange.
+  ///
+  /// In zh, this message translates to:
+  /// **'暖阳橘'**
+  String get personalizeThemeWarmOrange;
+
+  /// No description provided for @personalizeThemeMintGreen.
+  ///
+  /// In zh, this message translates to:
+  /// **'薄荷青'**
+  String get personalizeThemeMintGreen;
+
+  /// No description provided for @personalizeThemeRoseGold.
+  ///
+  /// In zh, this message translates to:
+  /// **'玫瑰金'**
+  String get personalizeThemeRoseGold;
+
+  /// No description provided for @personalizeThemeDeepBlue.
+  ///
+  /// In zh, this message translates to:
+  /// **'深海蓝'**
+  String get personalizeThemeDeepBlue;
+
+  /// No description provided for @personalizeThemeMapleRed.
+  ///
+  /// In zh, this message translates to:
+  /// **'枫叶红'**
+  String get personalizeThemeMapleRed;
+
+  /// No description provided for @personalizeThemeEmerald.
+  ///
+  /// In zh, this message translates to:
+  /// **'翡翠绿'**
+  String get personalizeThemeEmerald;
+
+  /// No description provided for @personalizeThemeLavenderPurple.
+  ///
+  /// In zh, this message translates to:
+  /// **'薰衣草'**
+  String get personalizeThemeLavenderPurple;
+
+  /// No description provided for @personalizeThemeAmber.
+  ///
+  /// In zh, this message translates to:
+  /// **'琥珀黄'**
+  String get personalizeThemeAmber;
+
+  /// No description provided for @personalizeThemeRouge.
+  ///
+  /// In zh, this message translates to:
+  /// **'胭脂红'**
+  String get personalizeThemeRouge;
+
+  /// No description provided for @personalizeThemeIndigo.
+  ///
+  /// In zh, this message translates to:
+  /// **'靛青蓝'**
+  String get personalizeThemeIndigo;
+
+  /// No description provided for @personalizeThemeOlive.
+  ///
+  /// In zh, this message translates to:
+  /// **'橄榄绿'**
+  String get personalizeThemeOlive;
+
+  /// No description provided for @personalizeThemeCoral.
+  ///
+  /// In zh, this message translates to:
+  /// **'珊瑚粉'**
+  String get personalizeThemeCoral;
+
+  /// No description provided for @personalizeThemeDarkGreen.
+  ///
+  /// In zh, this message translates to:
+  /// **'墨绿色'**
+  String get personalizeThemeDarkGreen;
+
+  /// No description provided for @personalizeThemeViolet.
+  ///
+  /// In zh, this message translates to:
+  /// **'紫罗兰'**
+  String get personalizeThemeViolet;
+
+  /// No description provided for @personalizeThemeSunset.
+  ///
+  /// In zh, this message translates to:
+  /// **'日落橙'**
+  String get personalizeThemeSunset;
+
+  /// No description provided for @personalizeThemePeacock.
+  ///
+  /// In zh, this message translates to:
+  /// **'孔雀蓝'**
+  String get personalizeThemePeacock;
+
+  /// No description provided for @personalizeThemeLime.
+  ///
+  /// In zh, this message translates to:
+  /// **'柠檬绿'**
+  String get personalizeThemeLime;
+
+  /// No description provided for @analyticsMonthlyAvg.
+  ///
+  /// In zh, this message translates to:
+  /// **'月均'**
+  String get analyticsMonthlyAvg;
+
+  /// No description provided for @analyticsDailyAvg.
+  ///
+  /// In zh, this message translates to:
+  /// **'日均'**
+  String get analyticsDailyAvg;
+
+  /// No description provided for @analyticsOverallAvg.
+  ///
+  /// In zh, this message translates to:
+  /// **'平均值'**
+  String get analyticsOverallAvg;
+
+  /// No description provided for @analyticsTotalIncome.
+  ///
+  /// In zh, this message translates to:
+  /// **'总收入： '**
+  String get analyticsTotalIncome;
+
+  /// No description provided for @analyticsTotalExpense.
+  ///
+  /// In zh, this message translates to:
+  /// **'总支出： '**
+  String get analyticsTotalExpense;
+
+  /// No description provided for @analyticsBalance.
+  ///
+  /// In zh, this message translates to:
+  /// **'结余： '**
+  String get analyticsBalance;
+
+  /// No description provided for @analyticsAvgIncome.
+  ///
+  /// In zh, this message translates to:
+  /// **'{avgLabel}收入： '**
+  String analyticsAvgIncome(Object avgLabel);
+
+  /// No description provided for @analyticsAvgExpense.
+  ///
+  /// In zh, this message translates to:
+  /// **'{avgLabel}支出： '**
+  String analyticsAvgExpense(Object avgLabel);
+
+  /// No description provided for @analyticsExpense.
+  ///
+  /// In zh, this message translates to:
+  /// **'支出'**
+  String get analyticsExpense;
+
+  /// No description provided for @analyticsIncome.
+  ///
+  /// In zh, this message translates to:
+  /// **'收入'**
+  String get analyticsIncome;
+
+  /// No description provided for @analyticsTotal.
+  ///
+  /// In zh, this message translates to:
+  /// **'总{type}： '**
+  String analyticsTotal(Object type);
+
+  /// No description provided for @analyticsAverage.
+  ///
+  /// In zh, this message translates to:
+  /// **'{avgLabel}： '**
+  String analyticsAverage(Object avgLabel);
+
+  /// No description provided for @updateCheckTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'检查更新'**
+  String get updateCheckTitle;
+
+  /// No description provided for @updateNewVersionTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'发现新版本 {version}'**
+  String updateNewVersionTitle(Object version);
+
+  /// No description provided for @updateNoApkFound.
+  ///
+  /// In zh, this message translates to:
+  /// **'未找到APK下载链接'**
+  String get updateNoApkFound;
+
+  /// No description provided for @updateAlreadyLatest.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前已是最新版本'**
+  String get updateAlreadyLatest;
+
+  /// No description provided for @updateCheckFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'检查更新失败'**
+  String get updateCheckFailed;
+
+  /// No description provided for @updatePermissionDenied.
+  ///
+  /// In zh, this message translates to:
+  /// **'权限被拒绝'**
+  String get updatePermissionDenied;
+
+  /// No description provided for @updateUserCancelled.
+  ///
+  /// In zh, this message translates to:
+  /// **'用户取消'**
+  String get updateUserCancelled;
+
+  /// No description provided for @updateDownloadTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'下载更新'**
+  String get updateDownloadTitle;
+
+  /// No description provided for @updateDownloading.
+  ///
+  /// In zh, this message translates to:
+  /// **'下载中: {percent}%'**
+  String updateDownloading(Object percent);
+
+  /// No description provided for @updateDownloadBackgroundHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'可以将应用切换到后台，下载会继续进行'**
+  String get updateDownloadBackgroundHint;
+
+  /// No description provided for @updateCancelButton.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消'**
+  String get updateCancelButton;
+
+  /// No description provided for @updateBackgroundDownload.
+  ///
+  /// In zh, this message translates to:
+  /// **'后台下载'**
+  String get updateBackgroundDownload;
+
+  /// No description provided for @updateLaterButton.
+  ///
+  /// In zh, this message translates to:
+  /// **'稍后'**
+  String get updateLaterButton;
+
+  /// No description provided for @updateDownloadButton.
+  ///
+  /// In zh, this message translates to:
+  /// **'下载'**
+  String get updateDownloadButton;
+
+  /// No description provided for @updateInstallingCachedApk.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在安装缓存的APK'**
+  String get updateInstallingCachedApk;
+
+  /// No description provided for @updateDownloadComplete.
+  ///
+  /// In zh, this message translates to:
+  /// **'下载完成'**
+  String get updateDownloadComplete;
+
+  /// No description provided for @updateInstallStarted.
+  ///
+  /// In zh, this message translates to:
+  /// **'下载完成，安装程序已启动'**
+  String get updateInstallStarted;
+
+  /// No description provided for @updateInstallFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'安装失败'**
+  String get updateInstallFailed;
+
+  /// No description provided for @updateDownloadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'下载失败'**
+  String get updateDownloadFailed;
+
+  /// No description provided for @updateInstallNow.
+  ///
+  /// In zh, this message translates to:
+  /// **'立即安装'**
+  String get updateInstallNow;
+
+  /// No description provided for @updateNotificationPermissionTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'通知权限被拒绝'**
+  String get updateNotificationPermissionTitle;
+
+  /// No description provided for @updateCheckFailedTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'检测更新失败'**
+  String get updateCheckFailedTitle;
+
+  /// No description provided for @updateDownloadFailedTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'下载失败'**
+  String get updateDownloadFailedTitle;
+
+  /// No description provided for @updateGoToGitHub.
+  ///
+  /// In zh, this message translates to:
+  /// **'前往GitHub'**
+  String get updateGoToGitHub;
+
+  /// No description provided for @updateCannotOpenLink.
+  ///
+  /// In zh, this message translates to:
+  /// **'无法打开链接'**
+  String get updateCannotOpenLink;
+
+  /// No description provided for @updateManualVisit.
+  ///
+  /// In zh, this message translates to:
+  /// **'请手动在浏览器中访问：\\nhttps://github.com/TNT-Likely/BeeCount/releases'**
+  String get updateManualVisit;
+
+  /// No description provided for @updateNoLocalApkTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'未找到更新包'**
+  String get updateNoLocalApkTitle;
+
+  /// No description provided for @updateInstallPackageTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'安装更新包'**
+  String get updateInstallPackageTitle;
+
+  /// No description provided for @updateMultiplePackagesTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'找到多个更新包'**
+  String get updateMultiplePackagesTitle;
+
+  /// No description provided for @updateSearchFailedTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'查找失败'**
+  String get updateSearchFailedTitle;
+
+  /// No description provided for @updateFoundCachedPackageTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'发现已下载的更新包'**
+  String get updateFoundCachedPackageTitle;
+
+  /// No description provided for @updateIgnoreButton.
+  ///
+  /// In zh, this message translates to:
+  /// **'忽略'**
+  String get updateIgnoreButton;
+
+  /// No description provided for @updateInstallFailedTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'安装失败'**
+  String get updateInstallFailedTitle;
+
+  /// No description provided for @updateInstallFailedMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'无法启动APK安装程序，请检查文件权限。'**
+  String get updateInstallFailedMessage;
+
+  /// No description provided for @updateErrorTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'错误'**
+  String get updateErrorTitle;
+
+  /// No description provided for @updateCheckingPermissions.
+  ///
+  /// In zh, this message translates to:
+  /// **'检查权限...'**
+  String get updateCheckingPermissions;
+
+  /// No description provided for @updateCheckingCache.
+  ///
+  /// In zh, this message translates to:
+  /// **'检查本地缓存...'**
+  String get updateCheckingCache;
+
+  /// No description provided for @updatePreparingDownload.
+  ///
+  /// In zh, this message translates to:
+  /// **'准备下载...'**
+  String get updatePreparingDownload;
+
+  /// No description provided for @updateUserCancelledDownload.
+  ///
+  /// In zh, this message translates to:
+  /// **'用户取消下载'**
+  String get updateUserCancelledDownload;
+
+  /// No description provided for @updateStartingInstaller.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在启动安装...'**
+  String get updateStartingInstaller;
+
+  /// No description provided for @updateInstallerStarted.
+  ///
+  /// In zh, this message translates to:
+  /// **'安装程序已启动'**
+  String get updateInstallerStarted;
+
+  /// No description provided for @updateInstallationFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'安装失败'**
+  String get updateInstallationFailed;
+
+  /// No description provided for @updateDownloadCompleted.
+  ///
+  /// In zh, this message translates to:
+  /// **'下载完成'**
+  String get updateDownloadCompleted;
+
+  /// No description provided for @updateDownloadCompletedManual.
+  ///
+  /// In zh, this message translates to:
+  /// **'下载完成，可以手动安装'**
+  String get updateDownloadCompletedManual;
+
+  /// No description provided for @updateDownloadCompletedDialog.
+  ///
+  /// In zh, this message translates to:
+  /// **'下载完成，请手动安装（弹窗异常）'**
+  String get updateDownloadCompletedDialog;
+
+  /// No description provided for @updateDownloadCompletedContext.
+  ///
+  /// In zh, this message translates to:
+  /// **'下载完成，请手动安装'**
+  String get updateDownloadCompletedContext;
+
+  /// No description provided for @updateDownloadFailedGeneric.
+  ///
+  /// In zh, this message translates to:
+  /// **'下载失败'**
+  String get updateDownloadFailedGeneric;
+
+  /// No description provided for @updateCheckingUpdate.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在检查更新...'**
+  String get updateCheckingUpdate;
+
+  /// No description provided for @updateCurrentLatestVersion.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前已是最新版本'**
+  String get updateCurrentLatestVersion;
+
+  /// No description provided for @updateCheckFailedGeneric.
+  ///
+  /// In zh, this message translates to:
+  /// **'检查更新失败'**
+  String get updateCheckFailedGeneric;
+
+  /// No description provided for @updateDownloadProgress.
+  ///
+  /// In zh, this message translates to:
+  /// **'下载中: {percent}%'**
+  String updateDownloadProgress(Object percent);
+
+  /// No description provided for @updateCheckingUpdateError.
+  ///
+  /// In zh, this message translates to:
+  /// **'检查更新失败: {error}'**
+  String updateCheckingUpdateError(Object error);
+
+  /// No description provided for @updateNoLocalApkFoundMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'没有找到已下载的更新包文件。\n\n请先通过\"检查更新\"下载新版本。'**
+  String get updateNoLocalApkFoundMessage;
+
+  /// No description provided for @updateInstallPackageFoundMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'找到更新包：\n\n文件名：{fileName}\n大小：{fileSize}MB\n下载时间：{time}\n\n是否立即安装？'**
+  String updateInstallPackageFoundMessage(Object fileName, Object fileSize, Object time);
+
+  /// No description provided for @updateMultiplePackagesFoundMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'找到 {count} 个更新包文件。\n\n建议使用最新下载的版本，或手动到文件管理器中安装。\n\n文件位置：{path}'**
+  String updateMultiplePackagesFoundMessage(Object count, Object path);
+
+  /// No description provided for @updateSearchLocalApkError.
+  ///
+  /// In zh, this message translates to:
+  /// **'查找本地更新包时发生错误：{error}'**
+  String updateSearchLocalApkError(Object error);
+
+  /// No description provided for @updateCachedPackageFoundMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'检测到之前下载的更新包：\n\n文件名：{fileName}\n大小：{fileSize}MB\n\n是否立即安装？'**
+  String updateCachedPackageFoundMessage(Object fileName, Object fileSize);
+
+  /// No description provided for @updateReadCachedPackageError.
+  ///
+  /// In zh, this message translates to:
+  /// **'读取缓存更新包失败：{error}'**
+  String updateReadCachedPackageError(Object error);
+
+  /// No description provided for @iconCategoryDining.
+  ///
+  /// In zh, this message translates to:
+  /// **'餐饮'**
+  String get iconCategoryDining;
+
+  /// No description provided for @updateOk.
+  ///
+  /// In zh, this message translates to:
+  /// **'知道了'**
+  String get updateOk;
+
+  /// No description provided for @updateCannotOpenLinkTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'无法打开链接'**
+  String get updateCannotOpenLinkTitle;
+
+  /// No description provided for @updateNotificationPermissionGuideText.
+  ///
+  /// In zh, this message translates to:
+  /// **'下载进度通知被关闭，但不影响下载功能。如需查看进度：'**
+  String get updateNotificationPermissionGuideText;
+
+  /// No description provided for @updateNotificationGuideStep1.
+  ///
+  /// In zh, this message translates to:
+  /// **'进入系统设置 > 应用管理'**
+  String get updateNotificationGuideStep1;
+
+  /// No description provided for @updateNotificationGuideStep2.
+  ///
+  /// In zh, this message translates to:
+  /// **'找到\\\"智记\\\"应用'**
+  String get updateNotificationGuideStep2;
+
+  /// No description provided for @updateNotificationGuideStep3.
+  ///
+  /// In zh, this message translates to:
+  /// **'开启通知权限'**
+  String get updateNotificationGuideStep3;
+
+  /// No description provided for @updateNotificationGuideInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'即使不开启通知，下载也会在后台正常进行'**
+  String get updateNotificationGuideInfo;
+
+  /// No description provided for @updateCachedVersionTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'发现已下载版本'**
+  String get updateCachedVersionTitle;
+
+  /// No description provided for @updateCachedVersionMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'已找到之前下载的安装包...点击\\\"确定\\\"立即安装，点击\\\"取消\\\"关闭...'**
+  String get updateCachedVersionMessage;
+
+  /// No description provided for @updateCorruptedFileTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'安装包已损坏'**
+  String get updateCorruptedFileTitle;
+
+  /// No description provided for @updateCorruptedFileMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'检测到之前下载的安装包不完整或已损坏，是否删除并重新下载？'**
+  String get updateCorruptedFileMessage;
+
+  /// No description provided for @updateConfirmDownload.
+  ///
+  /// In zh, this message translates to:
+  /// **'立即下载并安装'**
+  String get updateConfirmDownload;
+
+  /// No description provided for @updateDownloadCompleteTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'下载完成'**
+  String get updateDownloadCompleteTitle;
+
+  /// No description provided for @updateInstallConfirmMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'新版本已下载完成，是否立即安装？'**
+  String get updateInstallConfirmMessage;
+
+  /// No description provided for @updateMirrorSelectTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择下载加速器'**
+  String get updateMirrorSelectTitle;
+
+  /// No description provided for @updateMirrorSelectHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'如果下载缓慢，可以选择一个加速镜像。点击「测速」检测各镜像延迟。'**
+  String get updateMirrorSelectHint;
+
+  /// No description provided for @updateMirrorTestButton.
+  ///
+  /// In zh, this message translates to:
+  /// **'测速'**
+  String get updateMirrorTestButton;
+
+  /// No description provided for @updateMirrorTesting.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在测试 {completed}/{total}...'**
+  String updateMirrorTesting(int completed, int total);
+
+  /// No description provided for @updateMirrorDirectHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'适合网络通畅的用户'**
+  String get updateMirrorDirectHint;
+
+  /// No description provided for @updateDownloadMirror.
+  ///
+  /// In zh, this message translates to:
+  /// **'下载源: {mirror}'**
+  String updateDownloadMirror(String mirror);
+
+  /// No description provided for @updateMirrorSettingTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'下载加速器'**
+  String get updateMirrorSettingTitle;
+
+  /// No description provided for @currencyCNY.
+  ///
+  /// In zh, this message translates to:
+  /// **'人民币'**
+  String get currencyCNY;
+
+  /// No description provided for @currencyUSD.
+  ///
+  /// In zh, this message translates to:
+  /// **'美元'**
+  String get currencyUSD;
+
+  /// No description provided for @currencyEUR.
+  ///
+  /// In zh, this message translates to:
+  /// **'欧元'**
+  String get currencyEUR;
+
+  /// No description provided for @currencyJPY.
+  ///
+  /// In zh, this message translates to:
+  /// **'日元'**
+  String get currencyJPY;
+
+  /// No description provided for @currencyHKD.
+  ///
+  /// In zh, this message translates to:
+  /// **'港币'**
+  String get currencyHKD;
+
+  /// No description provided for @currencyTWD.
+  ///
+  /// In zh, this message translates to:
+  /// **'新台币'**
+  String get currencyTWD;
+
+  /// No description provided for @currencyGBP.
+  ///
+  /// In zh, this message translates to:
+  /// **'英镑'**
+  String get currencyGBP;
+
+  /// No description provided for @currencyAUD.
+  ///
+  /// In zh, this message translates to:
+  /// **'澳元'**
+  String get currencyAUD;
+
+  /// No description provided for @currencyCAD.
+  ///
+  /// In zh, this message translates to:
+  /// **'加元'**
+  String get currencyCAD;
+
+  /// No description provided for @currencyKRW.
+  ///
+  /// In zh, this message translates to:
+  /// **'韩元'**
+  String get currencyKRW;
+
+  /// No description provided for @currencySGD.
+  ///
+  /// In zh, this message translates to:
+  /// **'新加坡元'**
+  String get currencySGD;
+
+  /// No description provided for @currencyMYR.
+  ///
+  /// In zh, this message translates to:
+  /// **'马来西亚林吉特'**
+  String get currencyMYR;
+
+  /// No description provided for @currencyTHB.
+  ///
+  /// In zh, this message translates to:
+  /// **'泰铢'**
+  String get currencyTHB;
+
+  /// No description provided for @currencyIDR.
+  ///
+  /// In zh, this message translates to:
+  /// **'印尼卢比'**
+  String get currencyIDR;
+
+  /// No description provided for @currencyPHP.
+  ///
+  /// In zh, this message translates to:
+  /// **'菲律宾比索'**
+  String get currencyPHP;
+
+  /// No description provided for @currencyVND.
+  ///
+  /// In zh, this message translates to:
+  /// **'越南盾'**
+  String get currencyVND;
+
+  /// No description provided for @currencyINR.
+  ///
+  /// In zh, this message translates to:
+  /// **'印度卢比'**
+  String get currencyINR;
+
+  /// No description provided for @currencyRUB.
+  ///
+  /// In zh, this message translates to:
+  /// **'俄罗斯卢布'**
+  String get currencyRUB;
+
+  /// No description provided for @currencyBYN.
+  ///
+  /// In zh, this message translates to:
+  /// **'白俄罗斯卢布'**
+  String get currencyBYN;
+
+  /// No description provided for @currencyNZD.
+  ///
+  /// In zh, this message translates to:
+  /// **'新西兰元'**
+  String get currencyNZD;
+
+  /// No description provided for @currencyCHF.
+  ///
+  /// In zh, this message translates to:
+  /// **'瑞士法郎'**
+  String get currencyCHF;
+
+  /// No description provided for @currencySEK.
+  ///
+  /// In zh, this message translates to:
+  /// **'瑞典克朗'**
+  String get currencySEK;
+
+  /// No description provided for @currencyNOK.
+  ///
+  /// In zh, this message translates to:
+  /// **'挪威克朗'**
+  String get currencyNOK;
+
+  /// No description provided for @currencyDKK.
+  ///
+  /// In zh, this message translates to:
+  /// **'丹麦克朗'**
+  String get currencyDKK;
+
+  /// No description provided for @currencyBRL.
+  ///
+  /// In zh, this message translates to:
+  /// **'巴西雷亚尔'**
+  String get currencyBRL;
+
+  /// No description provided for @currencyMXN.
+  ///
+  /// In zh, this message translates to:
+  /// **'墨西哥比索'**
+  String get currencyMXN;
+
+  /// No description provided for @currencyTRY.
+  ///
+  /// In zh, this message translates to:
+  /// **'土耳其里拉'**
+  String get currencyTRY;
+
+  /// No description provided for @currencyZAR.
+  ///
+  /// In zh, this message translates to:
+  /// **'南非兰特'**
+  String get currencyZAR;
+
+  /// No description provided for @currencyAED.
+  ///
+  /// In zh, this message translates to:
+  /// **'阿联酋迪拉姆'**
+  String get currencyAED;
+
+  /// No description provided for @currencySAR.
+  ///
+  /// In zh, this message translates to:
+  /// **'沙特里亚尔'**
+  String get currencySAR;
+
+  /// No description provided for @currencyPLN.
+  ///
+  /// In zh, this message translates to:
+  /// **'波兰兹罗提'**
+  String get currencyPLN;
+
+  /// No description provided for @currencyCZK.
+  ///
+  /// In zh, this message translates to:
+  /// **'捷克克朗'**
+  String get currencyCZK;
+
+  /// No description provided for @currencyHUF.
+  ///
+  /// In zh, this message translates to:
+  /// **'匈牙利福林'**
+  String get currencyHUF;
+
+  /// No description provided for @currencyARS.
+  ///
+  /// In zh, this message translates to:
+  /// **'阿根廷比索'**
+  String get currencyARS;
+
+  /// No description provided for @currencyCLP.
+  ///
+  /// In zh, this message translates to:
+  /// **'智利比索'**
+  String get currencyCLP;
+
+  /// No description provided for @currencyCOP.
+  ///
+  /// In zh, this message translates to:
+  /// **'哥伦比亚比索'**
+  String get currencyCOP;
+
+  /// No description provided for @currencyPEN.
+  ///
+  /// In zh, this message translates to:
+  /// **'秘鲁索尔'**
+  String get currencyPEN;
+
+  /// No description provided for @currencyEGP.
+  ///
+  /// In zh, this message translates to:
+  /// **'埃及镑'**
+  String get currencyEGP;
+
+  /// No description provided for @currencyNGN.
+  ///
+  /// In zh, this message translates to:
+  /// **'尼日利亚奈拉'**
+  String get currencyNGN;
+
+  /// No description provided for @currencyKZT.
+  ///
+  /// In zh, this message translates to:
+  /// **'哈萨克斯坦坚戈'**
+  String get currencyKZT;
+
+  /// No description provided for @currencyUAH.
+  ///
+  /// In zh, this message translates to:
+  /// **'乌克兰格里夫纳'**
+  String get currencyUAH;
+
+  /// No description provided for @currencyILS.
+  ///
+  /// In zh, this message translates to:
+  /// **'以色列新谢克尔'**
+  String get currencyILS;
+
+  /// No description provided for @currencyPKR.
+  ///
+  /// In zh, this message translates to:
+  /// **'巴基斯坦卢比'**
+  String get currencyPKR;
+
+  /// No description provided for @currencyBDT.
+  ///
+  /// In zh, this message translates to:
+  /// **'孟加拉塔卡'**
+  String get currencyBDT;
+
+  /// No description provided for @currencyLKR.
+  ///
+  /// In zh, this message translates to:
+  /// **'斯里兰卡卢比'**
+  String get currencyLKR;
+
+  /// No description provided for @currencyMMK.
+  ///
+  /// In zh, this message translates to:
+  /// **'缅甸元'**
+  String get currencyMMK;
+
+  /// No description provided for @webdavConfiguredTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'WebDAV 云服务已配置'**
+  String get webdavConfiguredTitle;
+
+  /// No description provided for @webdavConfiguredMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'WebDAV 云服务使用配置时提供的凭据，无需额外登录。'**
+  String get webdavConfiguredMessage;
+
+  /// No description provided for @recurringTransactionTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'周期账单'**
+  String get recurringTransactionTitle;
+
+  /// No description provided for @recurringTransactionAdd.
+  ///
+  /// In zh, this message translates to:
+  /// **'添加周期账单'**
+  String get recurringTransactionAdd;
+
+  /// No description provided for @recurringTransactionEdit.
+  ///
+  /// In zh, this message translates to:
+  /// **'编辑周期账单'**
+  String get recurringTransactionEdit;
+
+  /// No description provided for @recurringTransactionFrequency.
+  ///
+  /// In zh, this message translates to:
+  /// **'周期频率'**
+  String get recurringTransactionFrequency;
+
+  /// No description provided for @recurringTransactionDaily.
+  ///
+  /// In zh, this message translates to:
+  /// **'每天'**
+  String get recurringTransactionDaily;
+
+  /// No description provided for @recurringTransactionWeekly.
+  ///
+  /// In zh, this message translates to:
+  /// **'每周'**
+  String get recurringTransactionWeekly;
+
+  /// No description provided for @recurringTransactionMonthly.
+  ///
+  /// In zh, this message translates to:
+  /// **'每月'**
+  String get recurringTransactionMonthly;
+
+  /// No description provided for @recurringTransactionYearly.
+  ///
+  /// In zh, this message translates to:
+  /// **'每年'**
+  String get recurringTransactionYearly;
+
+  /// No description provided for @recurringTransactionInterval.
+  ///
+  /// In zh, this message translates to:
+  /// **'间隔'**
+  String get recurringTransactionInterval;
+
+  /// No description provided for @recurringTransactionDayOfMonth.
+  ///
+  /// In zh, this message translates to:
+  /// **'每月第几天'**
+  String get recurringTransactionDayOfMonth;
+
+  /// No description provided for @recurringTransactionStartDate.
+  ///
+  /// In zh, this message translates to:
+  /// **'开始日期'**
+  String get recurringTransactionStartDate;
+
+  /// No description provided for @recurringTransactionEndDate.
+  ///
+  /// In zh, this message translates to:
+  /// **'结束日期'**
+  String get recurringTransactionEndDate;
+
+  /// No description provided for @recurringTransactionNoEndDate.
+  ///
+  /// In zh, this message translates to:
+  /// **'永久周期'**
+  String get recurringTransactionNoEndDate;
+
+  /// No description provided for @recurringTransactionDeleteConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'确定要删除这个周期账单吗？'**
+  String get recurringTransactionDeleteConfirm;
+
+  /// No description provided for @recurringTransactionEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂无周期账单'**
+  String get recurringTransactionEmpty;
+
+  /// No description provided for @recurringTransactionEmptyHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'点击右上角 + 按钮添加'**
+  String get recurringTransactionEmptyHint;
+
+  /// No description provided for @recurringTransactionEveryNDays.
+  ///
+  /// In zh, this message translates to:
+  /// **'每 {n} 天'**
+  String recurringTransactionEveryNDays(int n);
+
+  /// No description provided for @recurringTransactionEveryNWeeks.
+  ///
+  /// In zh, this message translates to:
+  /// **'每 {n} 周'**
+  String recurringTransactionEveryNWeeks(int n);
+
+  /// No description provided for @recurringTransactionEveryNMonths.
+  ///
+  /// In zh, this message translates to:
+  /// **'每 {n} 个月'**
+  String recurringTransactionEveryNMonths(int n);
+
+  /// No description provided for @recurringTransactionEveryNYears.
+  ///
+  /// In zh, this message translates to:
+  /// **'每 {n} 年'**
+  String recurringTransactionEveryNYears(int n);
+
+  /// No description provided for @recurringTransactionUsageTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'使用说明'**
+  String get recurringTransactionUsageTitle;
+
+  /// No description provided for @recurringTransactionUsageContent.
+  ///
+  /// In zh, this message translates to:
+  /// **'周期记账会在每次冷启动进入App时自动扫描并生成账单。设置日期后，系统会在该日期之后的冷启动时创建对应账单。例如：设置11月27日，则会在11月27日之后的首次启动时自动记账。'**
+  String get recurringTransactionUsageContent;
+
+  /// No description provided for @ledgerSelectTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择账本'**
+  String get ledgerSelectTitle;
+
+  /// No description provided for @ledgerSelect.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择账本'**
+  String get ledgerSelect;
+
+  /// No description provided for @syncNotConfiguredMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'未配置云端'**
+  String get syncNotConfiguredMessage;
+
+  /// No description provided for @syncNotLoggedInMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'未登录'**
+  String get syncNotLoggedInMessage;
+
+  /// No description provided for @syncCloudBackupCorruptedMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'云端备份内容无法解析，可能是早期版本编码问题造成的损坏。请点击\\\"上传当前账本到云端\\\"覆盖修复。'**
+  String get syncCloudBackupCorruptedMessage;
+
+  /// No description provided for @syncNoCloudBackupMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'云端暂无备份'**
+  String get syncNoCloudBackupMessage;
+
+  /// No description provided for @syncAccessDeniedMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'403 拒绝访问（检查 storage RLS 策略与路径）'**
+  String get syncAccessDeniedMessage;
+
+  /// No description provided for @cloudTestConnection.
+  ///
+  /// In zh, this message translates to:
+  /// **'测试连接'**
+  String get cloudTestConnection;
+
+  /// No description provided for @cloudCustomSupabaseSubtitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'点击配置自建Supabase服务'**
+  String get cloudCustomSupabaseSubtitle;
 
   /// No description provided for @cloudCustomWebdavSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Click to configure Nutstore/Nextcloud etc.'**
+  /// In zh, this message translates to:
+  /// **'点击配置坚果云/Nextcloud等'**
   String get cloudCustomWebdavSubtitle;
 
   /// No description provided for @cloudCustomS3Title.
   ///
-  /// In en, this message translates to:
-  /// **'S3 Protocol Storage'**
+  /// In zh, this message translates to:
+  /// **'S3 协议存储'**
   String get cloudCustomS3Title;
 
   /// No description provided for @cloudCustomS3Subtitle.
   ///
-  /// In en, this message translates to:
+  /// In zh, this message translates to:
   /// **'AWS S3 / Cloudflare R2 / MinIO'**
   String get cloudCustomS3Subtitle;
 
   /// No description provided for @cloudSmartBookCloudTitle.
   ///
-  /// In en, this message translates to:
-  /// **'SmartBook'**
+  /// In zh, this message translates to:
+  /// **'智记'**
   String get cloudSmartBookCloudTitle;
 
   /// No description provided for @cloudSmartBookCloudSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Self-hosted · Incremental sync · Multi-device'**
+  /// In zh, this message translates to:
+  /// **'自建云服务 · 增量同步 · 多设备协同'**
   String get cloudSmartBookCloudSubtitle;
 
   /// No description provided for @cloudConfigureSmartBookCloudTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Configure SmartBook'**
+  /// In zh, this message translates to:
+  /// **'配置智记'**
   String get cloudConfigureSmartBookCloudTitle;
 
   /// No description provided for @cloudSmartBookCloudUrlLabel.
   ///
-  /// In en, this message translates to:
-  /// **'Server URL'**
+  /// In zh, this message translates to:
+  /// **'服务器地址'**
   String get cloudSmartBookCloudUrlLabel;
 
   /// No description provided for @cloudSmartBookCloudUrlHint.
   ///
-  /// In en, this message translates to:
+  /// In zh, this message translates to:
   /// **'https://your-server.com'**
   String get cloudSmartBookCloudUrlHint;
 
   /// No description provided for @cloudSmartBookCloudApiPrefixLabel.
   ///
-  /// In en, this message translates to:
-  /// **'API Prefix'**
+  /// In zh, this message translates to:
+  /// **'API 前缀'**
   String get cloudSmartBookCloudApiPrefixLabel;
 
   /// No description provided for @cloudSmartBookCloudApiPrefixHint.
   ///
-  /// In en, this message translates to:
+  /// In zh, this message translates to:
   /// **'/api/v1'**
   String get cloudSmartBookCloudApiPrefixHint;
 
   /// No description provided for @cloudSmartBookCloudEmailLabel.
   ///
-  /// In en, this message translates to:
-  /// **'Email'**
+  /// In zh, this message translates to:
+  /// **'邮箱'**
   String get cloudSmartBookCloudEmailLabel;
 
   /// No description provided for @cloudSmartBookCloudEmailHint.
   ///
-  /// In en, this message translates to:
+  /// In zh, this message translates to:
   /// **'your@email.com'**
   String get cloudSmartBookCloudEmailHint;
 
   /// No description provided for @cloudSmartBookCloudPasswordLabel.
   ///
-  /// In en, this message translates to:
-  /// **'Password'**
+  /// In zh, this message translates to:
+  /// **'密码'**
   String get cloudSmartBookCloudPasswordLabel;
 
   /// No description provided for @cloudSmartBookCloudPasswordHint.
   ///
-  /// In en, this message translates to:
-  /// **'Enter password'**
+  /// In zh, this message translates to:
+  /// **'输入密码'**
   String get cloudSmartBookCloudPasswordHint;
 
   /// No description provided for @cloudSmartBookCloudLoginSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'Login successful'**
+  /// In zh, this message translates to:
+  /// **'登录成功'**
   String get cloudSmartBookCloudLoginSuccess;
 
   /// No description provided for @cloudSmartBookCloudLoginFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Login failed'**
+  /// In zh, this message translates to:
+  /// **'登录失败'**
   String get cloudSmartBookCloudLoginFailed;
 
   /// No description provided for @cloudSmartBookCloudSyncSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Incremental sync · Multi-device'**
+  /// In zh, this message translates to:
+  /// **'增量同步 · 多设备协同'**
   String get cloudSmartBookCloudSyncSubtitle;
 
   /// No description provided for @cloudSmartBookCloudConnected.
   ///
-  /// In en, this message translates to:
-  /// **'Connected'**
+  /// In zh, this message translates to:
+  /// **'已连接'**
   String get cloudSmartBookCloudConnected;
 
   /// No description provided for @cloudSmartBookCloudNotConnected.
   ///
-  /// In en, this message translates to:
-  /// **'Not connected'**
+  /// In zh, this message translates to:
+  /// **'未连接'**
   String get cloudSmartBookCloudNotConnected;
 
   /// No description provided for @cloudSmartBookCloudNotConnectedHint.
   ///
-  /// In en, this message translates to:
-  /// **'Configure and login in cloud service settings'**
+  /// In zh, this message translates to:
+  /// **'请先在云服务设置中配置并登录'**
   String get cloudSmartBookCloudNotConnectedHint;
 
   /// No description provided for @cloudSmartBookCloudAutoSync.
   ///
-  /// In en, this message translates to:
-  /// **'Incremental Sync'**
+  /// In zh, this message translates to:
+  /// **'增量同步'**
   String get cloudSmartBookCloudAutoSync;
 
   /// No description provided for @cloudSmartBookCloudAutoSyncHint.
   ///
-  /// In en, this message translates to:
-  /// **'Changes sync to cloud automatically'**
+  /// In zh, this message translates to:
+  /// **'数据变更自动同步到云端，无需手动操作'**
   String get cloudSmartBookCloudAutoSyncHint;
 
   /// No description provided for @cloudSmartBookCloudMultiDevice.
   ///
-  /// In en, this message translates to:
-  /// **'Multi-device Sync'**
+  /// In zh, this message translates to:
+  /// **'多设备协同'**
   String get cloudSmartBookCloudMultiDevice;
 
   /// No description provided for @cloudSmartBookCloudMultiDeviceHint.
   ///
-  /// In en, this message translates to:
-  /// **'Keep data consistent across devices'**
+  /// In zh, this message translates to:
+  /// **'多台设备间自动保持数据一致'**
   String get cloudSmartBookCloudMultiDeviceHint;
 
   /// No description provided for @cloudSmartBookCloudAttachment.
   ///
-  /// In en, this message translates to:
-  /// **'Attachment Sync'**
+  /// In zh, this message translates to:
+  /// **'附件同步'**
   String get cloudSmartBookCloudAttachment;
 
   /// No description provided for @cloudSmartBookCloudAttachmentHint.
   ///
-  /// In en, this message translates to:
-  /// **'Receipt images backed up to cloud automatically'**
+  /// In zh, this message translates to:
+  /// **'账单图片等附件自动云端备份'**
   String get cloudSmartBookCloudAttachmentHint;
 
   /// No description provided for @cloudTabOffline.
   ///
-  /// In en, this message translates to:
-  /// **'Offline'**
+  /// In zh, this message translates to:
+  /// **'离线模式'**
   String get cloudTabOffline;
 
   /// No description provided for @cloudTabBackup.
   ///
-  /// In en, this message translates to:
-  /// **'Backup'**
+  /// In zh, this message translates to:
+  /// **'备份同步'**
   String get cloudTabBackup;
 
   /// No description provided for @cloudTabCloudSync.
   ///
-  /// In en, this message translates to:
-  /// **'Cloud Sync'**
+  /// In zh, this message translates to:
+  /// **'云端协同'**
   String get cloudTabCloudSync;
 
   /// No description provided for @cloudIcloudSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Auto sync with Apple ID'**
+  /// In zh, this message translates to:
+  /// **'使用 Apple ID 自动同步'**
   String get cloudIcloudSubtitle;
 
   /// No description provided for @cloudIcloudNotAvailableTitle.
   ///
-  /// In en, this message translates to:
-  /// **'iCloud Not Available'**
+  /// In zh, this message translates to:
+  /// **'iCloud 不可用'**
   String get cloudIcloudNotAvailableTitle;
 
   /// No description provided for @cloudIcloudNotAvailableMessage.
   ///
-  /// In en, this message translates to:
-  /// **'Please sign in to iCloud in Settings and try again'**
+  /// In zh, this message translates to:
+  /// **'请在系统设置中登录 iCloud 账户后再试'**
   String get cloudIcloudNotAvailableMessage;
 
   /// No description provided for @cloudIcloudHelpTitle.
   ///
-  /// In en, this message translates to:
-  /// **'iCloud Instructions'**
+  /// In zh, this message translates to:
+  /// **'iCloud 使用说明'**
   String get cloudIcloudHelpTitle;
 
   /// No description provided for @cloudIcloudHelpPrerequisites.
   ///
-  /// In en, this message translates to:
-  /// **'Prerequisites'**
+  /// In zh, this message translates to:
+  /// **'前提条件'**
   String get cloudIcloudHelpPrerequisites;
 
   /// No description provided for @cloudIcloudHelpPrereq1.
   ///
-  /// In en, this message translates to:
-  /// **'1. Device is signed in with Apple ID'**
+  /// In zh, this message translates to:
+  /// **'1. 设备已登录 Apple ID'**
   String get cloudIcloudHelpPrereq1;
 
   /// No description provided for @cloudIcloudHelpPrereq2.
   ///
-  /// In en, this message translates to:
-  /// **'2. iCloud Drive is enabled'**
+  /// In zh, this message translates to:
+  /// **'2. 已开启 iCloud Drive'**
   String get cloudIcloudHelpPrereq2;
 
   /// No description provided for @cloudIcloudHelpPrereq3.
   ///
-  /// In en, this message translates to:
-  /// **'3. Device is connected to internet'**
+  /// In zh, this message translates to:
+  /// **'3. 设备已联网'**
   String get cloudIcloudHelpPrereq3;
 
   /// No description provided for @cloudIcloudHelpCheckTitle.
   ///
-  /// In en, this message translates to:
-  /// **'How to Check iCloud Drive'**
+  /// In zh, this message translates to:
+  /// **'如何检查 iCloud Drive'**
   String get cloudIcloudHelpCheckTitle;
 
   /// No description provided for @cloudIcloudHelpCheck1.
   ///
-  /// In en, this message translates to:
-  /// **'1. Open Settings'**
+  /// In zh, this message translates to:
+  /// **'1. 打开「设置」'**
   String get cloudIcloudHelpCheck1;
 
   /// No description provided for @cloudIcloudHelpCheck2.
   ///
-  /// In en, this message translates to:
-  /// **'2. Tap your Apple ID at the top'**
+  /// In zh, this message translates to:
+  /// **'2. 点击顶部的 Apple ID'**
   String get cloudIcloudHelpCheck2;
 
   /// No description provided for @cloudIcloudHelpCheck3.
   ///
-  /// In en, this message translates to:
-  /// **'3. Tap iCloud'**
+  /// In zh, this message translates to:
+  /// **'3. 点击「iCloud」'**
   String get cloudIcloudHelpCheck3;
 
   /// No description provided for @cloudIcloudHelpCheck4.
   ///
-  /// In en, this message translates to:
-  /// **'4. Make sure iCloud Drive is enabled'**
+  /// In zh, this message translates to:
+  /// **'4. 确保「iCloud 云盘」已开启'**
   String get cloudIcloudHelpCheck4;
 
   /// No description provided for @cloudIcloudHelpFaqTitle.
   ///
-  /// In en, this message translates to:
-  /// **'FAQ'**
+  /// In zh, this message translates to:
+  /// **'常见问题'**
   String get cloudIcloudHelpFaqTitle;
 
   /// No description provided for @cloudIcloudHelpFaq1.
   ///
-  /// In en, this message translates to:
-  /// **'If not available, check if iCloud Drive is enabled'**
+  /// In zh, this message translates to:
+  /// **'如果提示不可用，请检查 iCloud Drive 是否开启'**
   String get cloudIcloudHelpFaq1;
 
   /// No description provided for @cloudIcloudHelpFaq2.
   ///
-  /// In en, this message translates to:
-  /// **'First time use may take a few seconds to initialize'**
+  /// In zh, this message translates to:
+  /// **'首次使用可能需要等待几秒钟初始化'**
   String get cloudIcloudHelpFaq2;
 
   /// No description provided for @cloudIcloudHelpFaq3.
   ///
-  /// In en, this message translates to:
-  /// **'Data is stored in your private iCloud space'**
+  /// In zh, this message translates to:
+  /// **'数据存储在您的私人 iCloud 空间中'**
   String get cloudIcloudHelpFaq3;
 
   /// No description provided for @cloudIcloudHelpFaq4.
   ///
-  /// In en, this message translates to:
-  /// **'Devices with same Apple ID sync automatically'**
+  /// In zh, this message translates to:
+  /// **'同一 Apple ID 的设备可自动同步'**
   String get cloudIcloudHelpFaq4;
 
   /// No description provided for @cloudIcloudHelpNote.
   ///
-  /// In en, this message translates to:
-  /// **'iCloud sync uses your Apple ID, no extra configuration needed'**
+  /// In zh, this message translates to:
+  /// **'iCloud 同步使用您的 Apple ID，无需额外配置'**
   String get cloudIcloudHelpNote;
 
   /// No description provided for @cloudSupabaseHelpTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Supabase Setup Guide'**
+  /// In zh, this message translates to:
+  /// **'Supabase 配置说明'**
   String get cloudSupabaseHelpTitle;
 
   /// No description provided for @cloudSupabaseHelpIntro.
   ///
-  /// In en, this message translates to:
-  /// **'What is Supabase'**
+  /// In zh, this message translates to:
+  /// **'什么是 Supabase'**
   String get cloudSupabaseHelpIntro;
 
   /// No description provided for @cloudSupabaseHelpIntro1.
   ///
-  /// In en, this message translates to:
-  /// **'Supabase is an open-source backend-as-a-service platform'**
+  /// In zh, this message translates to:
+  /// **'Supabase 是一个开源的后端即服务平台'**
   String get cloudSupabaseHelpIntro1;
 
   /// No description provided for @cloudSupabaseHelpIntro2.
   ///
-  /// In en, this message translates to:
-  /// **'Offers a free tier, sufficient for personal use'**
+  /// In zh, this message translates to:
+  /// **'提供免费套餐，足够个人使用'**
   String get cloudSupabaseHelpIntro2;
 
   /// No description provided for @cloudSupabaseHelpIntro3.
   ///
-  /// In en, this message translates to:
-  /// **'You have full control over your data'**
+  /// In zh, this message translates to:
+  /// **'数据完全由您掌控'**
   String get cloudSupabaseHelpIntro3;
 
   /// No description provided for @cloudSupabaseHelpSteps.
   ///
-  /// In en, this message translates to:
-  /// **'Setup Steps'**
+  /// In zh, this message translates to:
+  /// **'配置步骤'**
   String get cloudSupabaseHelpSteps;
 
   /// No description provided for @cloudSupabaseHelpStep1.
   ///
-  /// In en, this message translates to:
-  /// **'1. Visit supabase.com to create an account'**
+  /// In zh, this message translates to:
+  /// **'1. 访问 supabase.com 注册账号'**
   String get cloudSupabaseHelpStep1;
 
   /// No description provided for @cloudSupabaseHelpStep2.
   ///
-  /// In en, this message translates to:
-  /// **'2. Create a new project (select free tier)'**
+  /// In zh, this message translates to:
+  /// **'2. 创建新项目（选择免费套餐）'**
   String get cloudSupabaseHelpStep2;
 
   /// No description provided for @cloudSupabaseHelpStep3.
   ///
-  /// In en, this message translates to:
-  /// **'3. Go to Project Settings > API'**
+  /// In zh, this message translates to:
+  /// **'3. 进入项目设置 > API'**
   String get cloudSupabaseHelpStep3;
 
   /// No description provided for @cloudSupabaseHelpStep4.
   ///
-  /// In en, this message translates to:
-  /// **'4. Copy Project URL and anon key'**
+  /// In zh, this message translates to:
+  /// **'4. 复制 Project URL 和 anon key'**
   String get cloudSupabaseHelpStep4;
 
   /// No description provided for @cloudSupabaseHelpStep5.
   ///
-  /// In en, this message translates to:
-  /// **'5. Paste them into the app configuration'**
+  /// In zh, this message translates to:
+  /// **'5. 粘贴到应用的配置中'**
   String get cloudSupabaseHelpStep5;
 
   /// No description provided for @cloudSupabaseHelpFaq.
   ///
-  /// In en, this message translates to:
-  /// **'FAQ'**
+  /// In zh, this message translates to:
+  /// **'常见问题'**
   String get cloudSupabaseHelpFaq;
 
   /// No description provided for @cloudSupabaseHelpFaq1.
   ///
-  /// In en, this message translates to:
-  /// **'Free tier includes 500MB storage'**
+  /// In zh, this message translates to:
+  /// **'免费套餐有 500MB 存储空间'**
   String get cloudSupabaseHelpFaq1;
 
   /// No description provided for @cloudSupabaseHelpFaq2.
   ///
-  /// In en, this message translates to:
-  /// **'Data is encrypted and secure'**
+  /// In zh, this message translates to:
+  /// **'数据加密存储，安全可靠'**
   String get cloudSupabaseHelpFaq2;
 
   /// No description provided for @cloudSupabaseHelpFaq3.
   ///
-  /// In en, this message translates to:
-  /// **'Supports multi-device sync'**
+  /// In zh, this message translates to:
+  /// **'支持多设备同步'**
   String get cloudSupabaseHelpFaq3;
 
   /// No description provided for @cloudSupabaseHelpNote.
   ///
-  /// In en, this message translates to:
-  /// **'After configuration, you need to register/login to use sync'**
+  /// In zh, this message translates to:
+  /// **'配置完成后需要注册/登录账号才能使用同步功能'**
   String get cloudSupabaseHelpNote;
 
   /// No description provided for @cloudDetailedTutorial.
   ///
-  /// In en, this message translates to:
-  /// **'Detailed Tutorial'**
+  /// In zh, this message translates to:
+  /// **'详细教程'**
   String get cloudDetailedTutorial;
 
   /// No description provided for @cloudWebdavHelpTitle.
   ///
-  /// In en, this message translates to:
-  /// **'WebDAV Setup Guide'**
+  /// In zh, this message translates to:
+  /// **'WebDAV 配置说明'**
   String get cloudWebdavHelpTitle;
 
   /// No description provided for @cloudWebdavHelpIntro.
   ///
-  /// In en, this message translates to:
-  /// **'What is WebDAV'**
+  /// In zh, this message translates to:
+  /// **'什么是 WebDAV'**
   String get cloudWebdavHelpIntro;
 
   /// No description provided for @cloudWebdavHelpIntro1.
   ///
-  /// In en, this message translates to:
-  /// **'WebDAV is a network file protocol'**
+  /// In zh, this message translates to:
+  /// **'WebDAV 是一种网络文件协议'**
   String get cloudWebdavHelpIntro1;
 
   /// No description provided for @cloudWebdavHelpIntro2.
   ///
-  /// In en, this message translates to:
-  /// **'Supported by many cloud storage and NAS devices'**
+  /// In zh, this message translates to:
+  /// **'支持多种云盘和NAS设备'**
   String get cloudWebdavHelpIntro2;
 
   /// No description provided for @cloudWebdavHelpIntro3.
   ///
-  /// In en, this message translates to:
-  /// **'Data is stored on your own server'**
+  /// In zh, this message translates to:
+  /// **'数据存储在您自己的服务器上'**
   String get cloudWebdavHelpIntro3;
 
   /// No description provided for @cloudWebdavHelpProviders.
   ///
-  /// In en, this message translates to:
-  /// **'Supported Providers'**
+  /// In zh, this message translates to:
+  /// **'支持的服务商'**
   String get cloudWebdavHelpProviders;
 
   /// No description provided for @cloudWebdavHelpProvider1.
   ///
-  /// In en, this message translates to:
-  /// **'- Nutstore (recommended for China users)'**
+  /// In zh, this message translates to:
+  /// **'• 坚果云（推荐国内用户）'**
   String get cloudWebdavHelpProvider1;
 
   /// No description provided for @cloudWebdavHelpProvider2.
   ///
-  /// In en, this message translates to:
-  /// **'- Nextcloud / ownCloud'**
+  /// In zh, this message translates to:
+  /// **'• Nextcloud / ownCloud'**
   String get cloudWebdavHelpProvider2;
 
   /// No description provided for @cloudWebdavHelpProvider3.
   ///
-  /// In en, this message translates to:
-  /// **'- Synology / QNAP NAS'**
+  /// In zh, this message translates to:
+  /// **'• 群晖 / 威联通 NAS'**
   String get cloudWebdavHelpProvider3;
 
   /// No description provided for @cloudWebdavHelpProvider4.
   ///
-  /// In en, this message translates to:
-  /// **'- Other WebDAV-compatible services'**
+  /// In zh, this message translates to:
+  /// **'• 其他支持 WebDAV 的服务'**
   String get cloudWebdavHelpProvider4;
 
   /// No description provided for @cloudWebdavHelpSteps.
   ///
-  /// In en, this message translates to:
-  /// **'Setup Steps (Nutstore example)'**
+  /// In zh, this message translates to:
+  /// **'配置步骤（以坚果云为例）'**
   String get cloudWebdavHelpSteps;
 
   /// No description provided for @cloudWebdavHelpStep1.
   ///
-  /// In en, this message translates to:
-  /// **'1. Login to Nutstore web version'**
+  /// In zh, this message translates to:
+  /// **'1. 登录坚果云网页版'**
   String get cloudWebdavHelpStep1;
 
   /// No description provided for @cloudWebdavHelpStep2.
   ///
-  /// In en, this message translates to:
-  /// **'2. Click account name > Account Info'**
+  /// In zh, this message translates to:
+  /// **'2. 点击右上角账户名 > 账户信息'**
   String get cloudWebdavHelpStep2;
 
   /// No description provided for @cloudWebdavHelpStep3.
   ///
-  /// In en, this message translates to:
-  /// **'3. Select Security Options tab'**
+  /// In zh, this message translates to:
+  /// **'3. 选择「安全选项」标签'**
   String get cloudWebdavHelpStep3;
 
   /// No description provided for @cloudWebdavHelpStep4.
   ///
-  /// In en, this message translates to:
-  /// **'4. Add application password (for third-party apps)'**
+  /// In zh, this message translates to:
+  /// **'4. 添加应用密码（用于第三方应用）'**
   String get cloudWebdavHelpStep4;
 
   /// No description provided for @cloudWebdavHelpStep5.
   ///
-  /// In en, this message translates to:
-  /// **'5. Copy server address, account, and app password'**
+  /// In zh, this message translates to:
+  /// **'5. 复制服务器地址、账号、应用密码'**
   String get cloudWebdavHelpStep5;
 
   /// No description provided for @cloudWebdavHelpNote.
   ///
-  /// In en, this message translates to:
-  /// **'Use an app-specific password instead of your account password'**
+  /// In zh, this message translates to:
+  /// **'建议使用应用专用密码，而非账号密码'**
   String get cloudWebdavHelpNote;
 
   /// No description provided for @cloudS3HelpTitle.
   ///
-  /// In en, this message translates to:
-  /// **'S3 Storage Setup Guide'**
+  /// In zh, this message translates to:
+  /// **'S3 存储配置说明'**
   String get cloudS3HelpTitle;
 
   /// No description provided for @cloudS3HelpIntro.
   ///
-  /// In en, this message translates to:
-  /// **'What is S3'**
+  /// In zh, this message translates to:
+  /// **'什么是 S3'**
   String get cloudS3HelpIntro;
 
   /// No description provided for @cloudS3HelpIntro1.
   ///
-  /// In en, this message translates to:
-  /// **'S3 is a standard object storage protocol'**
+  /// In zh, this message translates to:
+  /// **'S3 是一种标准的对象存储协议'**
   String get cloudS3HelpIntro1;
 
   /// No description provided for @cloudS3HelpIntro2.
   ///
-  /// In en, this message translates to:
-  /// **'Supported by many cloud providers'**
+  /// In zh, this message translates to:
+  /// **'支持多家云服务商'**
   String get cloudS3HelpIntro2;
 
   /// No description provided for @cloudS3HelpIntro3.
   ///
-  /// In en, this message translates to:
-  /// **'Data is stored on your chosen cloud service'**
+  /// In zh, this message translates to:
+  /// **'数据存储在您选择的云服务中'**
   String get cloudS3HelpIntro3;
 
   /// No description provided for @cloudS3HelpProviders.
   ///
-  /// In en, this message translates to:
-  /// **'Supported Providers'**
+  /// In zh, this message translates to:
+  /// **'支持的服务商'**
   String get cloudS3HelpProviders;
 
   /// No description provided for @cloudS3HelpProvider1.
   ///
-  /// In en, this message translates to:
-  /// **'- AWS S3 (Amazon Web Services)'**
+  /// In zh, this message translates to:
+  /// **'• AWS S3（Amazon Web Services）'**
   String get cloudS3HelpProvider1;
 
   /// No description provided for @cloudS3HelpProvider2.
   ///
-  /// In en, this message translates to:
-  /// **'- Cloudflare R2 (free 10GB/month)'**
+  /// In zh, this message translates to:
+  /// **'• Cloudflare R2（免费 10GB/月）'**
   String get cloudS3HelpProvider2;
 
   /// No description provided for @cloudS3HelpProvider3.
   ///
-  /// In en, this message translates to:
-  /// **'- Backblaze B2 (free 10GB)'**
+  /// In zh, this message translates to:
+  /// **'• Backblaze B2（免费 10GB）'**
   String get cloudS3HelpProvider3;
 
   /// No description provided for @cloudS3HelpProvider4.
   ///
-  /// In en, this message translates to:
-  /// **'- MinIO (self-hosted)'**
+  /// In zh, this message translates to:
+  /// **'• MinIO（自建服务）'**
   String get cloudS3HelpProvider4;
 
   /// No description provided for @cloudS3HelpProvider5.
   ///
-  /// In en, this message translates to:
-  /// **'- Alibaba Cloud OSS'**
+  /// In zh, this message translates to:
+  /// **'• 阿里云 OSS'**
   String get cloudS3HelpProvider5;
 
   /// No description provided for @cloudS3HelpProvider6.
   ///
-  /// In en, this message translates to:
-  /// **'- Tencent Cloud COS'**
+  /// In zh, this message translates to:
+  /// **'• 腾讯云 COS'**
   String get cloudS3HelpProvider6;
 
   /// No description provided for @cloudS3HelpProvider7.
   ///
-  /// In en, this message translates to:
-  /// **'- Qiniu Kodo'**
+  /// In zh, this message translates to:
+  /// **'• 七牛云 Kodo'**
   String get cloudS3HelpProvider7;
 
   /// No description provided for @cloudS3HelpSteps.
   ///
-  /// In en, this message translates to:
-  /// **'Setup Steps (Cloudflare R2 example)'**
+  /// In zh, this message translates to:
+  /// **'配置步骤（以 Cloudflare R2 为例）'**
   String get cloudS3HelpSteps;
 
   /// No description provided for @cloudS3HelpStep1.
   ///
-  /// In en, this message translates to:
-  /// **'1. Login to Cloudflare Dashboard'**
+  /// In zh, this message translates to:
+  /// **'1. 登录 Cloudflare 控制台'**
   String get cloudS3HelpStep1;
 
   /// No description provided for @cloudS3HelpStep2.
   ///
-  /// In en, this message translates to:
-  /// **'2. Go to R2 > Create Bucket'**
+  /// In zh, this message translates to:
+  /// **'2. 进入 R2 > 创建存储桶'**
   String get cloudS3HelpStep2;
 
   /// No description provided for @cloudS3HelpStep3.
   ///
-  /// In en, this message translates to:
-  /// **'3. Go to R2 > Manage R2 API Tokens'**
+  /// In zh, this message translates to:
+  /// **'3. 进入 R2 > 管理 R2 API 令牌'**
   String get cloudS3HelpStep3;
 
   /// No description provided for @cloudS3HelpStep4.
   ///
-  /// In en, this message translates to:
-  /// **'4. Create API Token and copy credentials'**
+  /// In zh, this message translates to:
+  /// **'4. 创建 API 令牌并复制凭据'**
   String get cloudS3HelpStep4;
 
   /// No description provided for @cloudS3HelpStep5.
   ///
-  /// In en, this message translates to:
-  /// **'5. Paste endpoint, access key, secret key, and bucket name'**
+  /// In zh, this message translates to:
+  /// **'5. 粘贴端点、访问密钥、私密密钥和存储桶名称'**
   String get cloudS3HelpStep5;
 
   /// No description provided for @cloudS3HelpNote.
   ///
-  /// In en, this message translates to:
-  /// **'Recommended: Cloudflare R2 offers 10GB free storage without egress fees'**
+  /// In zh, this message translates to:
+  /// **'推荐使用 Cloudflare R2，提供 10GB 免费存储且无流量费'**
   String get cloudS3HelpNote;
 
   /// No description provided for @cloudStatusNotTested.
   ///
-  /// In en, this message translates to:
-  /// **'Not tested'**
+  /// In zh, this message translates to:
+  /// **'未测试'**
   String get cloudStatusNotTested;
 
   /// No description provided for @cloudStatusNormal.
   ///
-  /// In en, this message translates to:
-  /// **'Connection normal'**
+  /// In zh, this message translates to:
+  /// **'连接正常'**
   String get cloudStatusNormal;
 
   /// No description provided for @cloudStatusFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Connection failed'**
+  /// In zh, this message translates to:
+  /// **'连接失败'**
   String get cloudStatusFailed;
 
   /// No description provided for @cloudCannotOpenLink.
   ///
-  /// In en, this message translates to:
-  /// **'Cannot open link'**
+  /// In zh, this message translates to:
+  /// **'无法打开链接'**
   String get cloudCannotOpenLink;
 
   /// No description provided for @cloudErrorAuthFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Authentication failed: Invalid API Key'**
+  /// In zh, this message translates to:
+  /// **'认证失败: API Key 无效'**
   String get cloudErrorAuthFailed;
 
   /// No description provided for @cloudErrorServerStatus.
   ///
-  /// In en, this message translates to:
-  /// **'Server returned status code {code}'**
+  /// In zh, this message translates to:
+  /// **'服务器返回状态码 {code}'**
   String cloudErrorServerStatus(String code);
 
   /// No description provided for @cloudErrorWebdavNotSupported.
   ///
-  /// In en, this message translates to:
-  /// **'Server does not support WebDAV protocol'**
+  /// In zh, this message translates to:
+  /// **'服务器不支持 WebDAV 协议'**
   String get cloudErrorWebdavNotSupported;
 
   /// No description provided for @cloudErrorAuthFailedCredentials.
   ///
-  /// In en, this message translates to:
-  /// **'Authentication failed: Incorrect username or password'**
+  /// In zh, this message translates to:
+  /// **'认证失败: 用户名或密码错误'**
   String get cloudErrorAuthFailedCredentials;
 
   /// No description provided for @cloudErrorAccessDenied.
   ///
-  /// In en, this message translates to:
-  /// **'Access denied: Please check permissions'**
+  /// In zh, this message translates to:
+  /// **'访问被拒绝: 请检查权限'**
   String get cloudErrorAccessDenied;
 
   /// No description provided for @cloudErrorPathNotFound.
   ///
-  /// In en, this message translates to:
-  /// **'Server path not found: {path}'**
+  /// In zh, this message translates to:
+  /// **'服务器路径不存在: {path}'**
   String cloudErrorPathNotFound(String path);
 
   /// No description provided for @cloudErrorNetwork.
   ///
-  /// In en, this message translates to:
-  /// **'Network error: {message}'**
+  /// In zh, this message translates to:
+  /// **'网络错误: {message}'**
   String cloudErrorNetwork(String message);
 
   /// No description provided for @cloudTestSuccessTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Test Successful'**
+  /// In zh, this message translates to:
+  /// **'测试成功'**
   String get cloudTestSuccessTitle;
 
   /// No description provided for @cloudTestSuccessMessage.
   ///
-  /// In en, this message translates to:
-  /// **'Connection normal, configuration valid'**
+  /// In zh, this message translates to:
+  /// **'连接正常,配置有效'**
   String get cloudTestSuccessMessage;
 
   /// No description provided for @cloudTestFailedTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Test Failed'**
+  /// In zh, this message translates to:
+  /// **'测试失败'**
   String get cloudTestFailedTitle;
 
   /// No description provided for @cloudTestFailedMessage.
   ///
-  /// In en, this message translates to:
-  /// **'Connection failed'**
+  /// In zh, this message translates to:
+  /// **'连接失败'**
   String get cloudTestFailedMessage;
 
   /// No description provided for @cloudTestErrorTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Test Error'**
+  /// In zh, this message translates to:
+  /// **'测试错误'**
   String get cloudTestErrorTitle;
-
-  /// No description provided for @cloudSwitchConfirmTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Switch Cloud Service'**
-  String get cloudSwitchConfirmTitle;
-
-  /// No description provided for @cloudSwitchConfirmMessage.
-  ///
-  /// In en, this message translates to:
-  /// **'Switching cloud service will log out current account. Confirm switch?'**
-  String get cloudSwitchConfirmMessage;
-
-  /// No description provided for @cloudSwitchFailedTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Switch Failed'**
-  String get cloudSwitchFailedTitle;
-
-  /// No description provided for @cloudSwitchFailedConfigMissing.
-  ///
-  /// In en, this message translates to:
-  /// **'Please configure this cloud service first'**
-  String get cloudSwitchFailedConfigMissing;
-
-  /// No description provided for @cloudConfigInvalidTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Invalid Configuration'**
-  String get cloudConfigInvalidTitle;
-
-  /// No description provided for @cloudConfigInvalidMessage.
-  ///
-  /// In en, this message translates to:
-  /// **'Please fill in complete information'**
-  String get cloudConfigInvalidMessage;
-
-  /// No description provided for @cloudSaveFailed.
-  ///
-  /// In en, this message translates to:
-  /// **'Save Failed'**
-  String get cloudSaveFailed;
-
-  /// No description provided for @cloudSwitchedTo.
-  ///
-  /// In en, this message translates to:
-  /// **'Switched to {type}'**
-  String cloudSwitchedTo(String type);
-
-  /// No description provided for @cloudConfigureSupabaseTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Configure Supabase'**
-  String get cloudConfigureSupabaseTitle;
-
-  /// No description provided for @cloudConfigureWebdavTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Configure WebDAV'**
-  String get cloudConfigureWebdavTitle;
-
-  /// No description provided for @cloudConfigureS3Title.
-  ///
-  /// In en, this message translates to:
-  /// **'Configure S3'**
-  String get cloudConfigureS3Title;
 
   /// No description provided for @cloudSupabaseAnonKeyHintLong.
   ///
-  /// In en, this message translates to:
-  /// **'Paste complete anon key'**
+  /// In zh, this message translates to:
+  /// **'粘贴完整的 anon key'**
   String get cloudSupabaseAnonKeyHintLong;
-
-  /// No description provided for @cloudWebdavRemotePathHelp.
-  ///
-  /// In en, this message translates to:
-  /// **'Remote directory path for data storage'**
-  String get cloudWebdavRemotePathHelp;
 
   /// No description provided for @cloudWebdavRemotePathLabel.
   ///
-  /// In en, this message translates to:
-  /// **'Remote Path'**
+  /// In zh, this message translates to:
+  /// **'远程路径'**
   String get cloudWebdavRemotePathLabel;
 
   /// No description provided for @cloudWebdavRemotePathHelperText.
   ///
-  /// In en, this message translates to:
-  /// **'Remote directory path for data storage'**
+  /// In zh, this message translates to:
+  /// **'数据存储的远程目录路径'**
   String get cloudWebdavRemotePathHelperText;
 
   /// No description provided for @accountsTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Asset Management'**
+  /// In zh, this message translates to:
+  /// **'资产管理'**
   String get accountsTitle;
 
   /// No description provided for @accountsEmptyMessage.
   ///
-  /// In en, this message translates to:
-  /// **'No accounts yet, tap the top right to add'**
+  /// In zh, this message translates to:
+  /// **'还没有账户，点击右上角添加'**
   String get accountsEmptyMessage;
 
   /// No description provided for @accountAddTooltip.
   ///
-  /// In en, this message translates to:
-  /// **'Add Account'**
+  /// In zh, this message translates to:
+  /// **'添加账户'**
   String get accountAddTooltip;
 
   /// No description provided for @accountAddButton.
   ///
-  /// In en, this message translates to:
-  /// **'Add Account'**
+  /// In zh, this message translates to:
+  /// **'添加账户'**
   String get accountAddButton;
 
   /// No description provided for @accountBalance.
   ///
-  /// In en, this message translates to:
-  /// **'Balance'**
+  /// In zh, this message translates to:
+  /// **'余额'**
   String get accountBalance;
 
   /// No description provided for @accountEditTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Edit Account'**
+  /// In zh, this message translates to:
+  /// **'编辑账户'**
   String get accountEditTitle;
 
   /// No description provided for @accountNewTitle.
   ///
-  /// In en, this message translates to:
-  /// **'New Account'**
+  /// In zh, this message translates to:
+  /// **'新建账户'**
   String get accountNewTitle;
 
   /// No description provided for @accountNameLabel.
   ///
-  /// In en, this message translates to:
-  /// **'Account Name'**
+  /// In zh, this message translates to:
+  /// **'账户名称'**
   String get accountNameLabel;
 
   /// No description provided for @accountNameHint.
   ///
-  /// In en, this message translates to:
-  /// **'e.g.: ICBC, Alipay, etc.'**
+  /// In zh, this message translates to:
+  /// **'例如：工商银行、支付宝等'**
   String get accountNameHint;
 
   /// No description provided for @accountNameRequired.
   ///
-  /// In en, this message translates to:
-  /// **'Please enter account name'**
+  /// In zh, this message translates to:
+  /// **'请输入账户名称'**
   String get accountNameRequired;
 
   /// No description provided for @accountNameDuplicate.
   ///
-  /// In en, this message translates to:
-  /// **'Account name already exists, please use a different name'**
+  /// In zh, this message translates to:
+  /// **'账户名称已存在，请使用其他名称'**
   String get accountNameDuplicate;
 
   /// No description provided for @accountTypeLabel.
   ///
-  /// In en, this message translates to:
-  /// **'Account Type'**
+  /// In zh, this message translates to:
+  /// **'账户类型'**
   String get accountTypeLabel;
 
   /// No description provided for @accountTypeCash.
   ///
-  /// In en, this message translates to:
-  /// **'Cash'**
+  /// In zh, this message translates to:
+  /// **'现金'**
   String get accountTypeCash;
 
   /// No description provided for @accountTypeBankCard.
   ///
-  /// In en, this message translates to:
-  /// **'Bank Card'**
+  /// In zh, this message translates to:
+  /// **'银行卡'**
   String get accountTypeBankCard;
 
   /// No description provided for @accountTypeCreditCard.
   ///
-  /// In en, this message translates to:
-  /// **'Credit Card'**
+  /// In zh, this message translates to:
+  /// **'信用卡'**
   String get accountTypeCreditCard;
 
   /// No description provided for @accountTypeAlipay.
   ///
-  /// In en, this message translates to:
-  /// **'Alipay'**
+  /// In zh, this message translates to:
+  /// **'支付宝'**
   String get accountTypeAlipay;
 
   /// No description provided for @accountTypeWechat.
   ///
-  /// In en, this message translates to:
-  /// **'WeChat'**
+  /// In zh, this message translates to:
+  /// **'微信'**
   String get accountTypeWechat;
 
   /// No description provided for @accountTypeOther.
   ///
-  /// In en, this message translates to:
-  /// **'Other'**
+  /// In zh, this message translates to:
+  /// **'其他'**
   String get accountTypeOther;
 
   /// No description provided for @accountInitialBalance.
   ///
-  /// In en, this message translates to:
-  /// **'Initial Balance'**
+  /// In zh, this message translates to:
+  /// **'初始资金'**
   String get accountInitialBalance;
 
   /// No description provided for @accountInitialBalanceHint.
   ///
-  /// In en, this message translates to:
-  /// **'Enter initial balance (optional)'**
+  /// In zh, this message translates to:
+  /// **'请输入初始资金（可选）'**
   String get accountInitialBalanceHint;
 
   /// No description provided for @accountInitialBalanceLocked.
   ///
-  /// In en, this message translates to:
-  /// **'Cannot be modified after creation. Use \"Adjust balance\" instead.'**
+  /// In zh, this message translates to:
+  /// **'初始值创建后不可修改，如需调整请使用「调整余额」'**
   String get accountInitialBalanceLocked;
 
   /// No description provided for @accountAdjustBalanceLabel.
   ///
-  /// In en, this message translates to:
-  /// **'Adjust Balance'**
+  /// In zh, this message translates to:
+  /// **'调整余额'**
   String get accountAdjustBalanceLabel;
 
   /// No description provided for @accountAdjustBalanceHint.
   ///
-  /// In en, this message translates to:
-  /// **'Enter the adjusted current balance (e.g. reconcile with bank statement)'**
+  /// In zh, this message translates to:
+  /// **'输入调整后的当前余额（如与银行对账单核对）'**
   String get accountAdjustBalanceHint;
 
   /// No description provided for @accountAdjustBalanceNote.
   ///
-  /// In en, this message translates to:
-  /// **'Balance adjustment'**
+  /// In zh, this message translates to:
+  /// **'余额调整'**
   String get accountAdjustBalanceNote;
 
   /// No description provided for @accountAdjustmentsTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Adjustment History'**
+  /// In zh, this message translates to:
+  /// **'调整记录'**
   String get accountAdjustmentsTitle;
 
   /// No description provided for @accountAdjustmentsEmpty.
   ///
-  /// In en, this message translates to:
-  /// **'No balance adjustments yet'**
+  /// In zh, this message translates to:
+  /// **'暂无余额调整记录'**
   String get accountAdjustmentsEmpty;
 
   /// No description provided for @accountAdjustmentsViewAction.
   ///
-  /// In en, this message translates to:
-  /// **'Adjustment history'**
+  /// In zh, this message translates to:
+  /// **'调整记录'**
   String get accountAdjustmentsViewAction;
 
   /// No description provided for @accountBalanceAdjustedToast.
   ///
-  /// In en, this message translates to:
-  /// **'Balance adjustment recorded, syncing…'**
+  /// In zh, this message translates to:
+  /// **'已记录余额调整，入账同步中'**
   String get accountBalanceAdjustedToast;
 
   /// No description provided for @accountAdjustBalanceSame.
   ///
-  /// In en, this message translates to:
-  /// **'Balance already matches, no adjustment needed'**
+  /// In zh, this message translates to:
+  /// **'余额与输入一致，无需调整'**
   String get accountAdjustBalanceSame;
 
   /// No description provided for @accountAdjustBalanceNewValue.
   ///
-  /// In en, this message translates to:
-  /// **'Adjusted balance'**
+  /// In zh, this message translates to:
+  /// **'调整后余额'**
   String get accountAdjustBalanceNewValue;
 
   /// No description provided for @accountAdjustBalanceUpdate.
   ///
-  /// In en, this message translates to:
-  /// **'Update Balance'**
+  /// In zh, this message translates to:
+  /// **'确认更新'**
   String get accountAdjustBalanceUpdate;
 
   /// No description provided for @accountAdjustBalanceInvalid.
   ///
-  /// In en, this message translates to:
-  /// **'Please enter a valid amount'**
+  /// In zh, this message translates to:
+  /// **'请输入有效的金额'**
   String get accountAdjustBalanceInvalid;
 
   /// No description provided for @accountDeleteWarningTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Confirm Delete'**
+  /// In zh, this message translates to:
+  /// **'确认删除'**
   String get accountDeleteWarningTitle;
 
   /// No description provided for @accountDeleteWarningMessage.
   ///
-  /// In en, this message translates to:
-  /// **'This account has {count} related transactions. After deletion, account information in transaction records will be cleared. Confirm deletion?'**
+  /// In zh, this message translates to:
+  /// **'该账户有 {count} 笔关联交易，删除后交易记录中的账户信息将被清空。确认删除吗？'**
   String accountDeleteWarningMessage(int count);
 
   /// No description provided for @accountDeleteConfirm.
   ///
-  /// In en, this message translates to:
-  /// **'Confirm to delete this account?'**
+  /// In zh, this message translates to:
+  /// **'确认删除该账户吗？'**
   String get accountDeleteConfirm;
 
   /// No description provided for @accountSelectTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Select Account'**
+  /// In zh, this message translates to:
+  /// **'选择账户'**
   String get accountSelectTitle;
 
   /// No description provided for @accountNone.
   ///
-  /// In en, this message translates to:
-  /// **'No Account'**
+  /// In zh, this message translates to:
+  /// **'不选择账户'**
   String get accountNone;
 
   /// No description provided for @accountsEnableFeature.
   ///
-  /// In en, this message translates to:
-  /// **'Enable Account Feature'**
+  /// In zh, this message translates to:
+  /// **'启用账户功能'**
   String get accountsEnableFeature;
 
   /// No description provided for @accountHide.
   ///
-  /// In en, this message translates to:
-  /// **'Hide account'**
+  /// In zh, this message translates to:
+  /// **'隐藏账户'**
   String get accountHide;
 
   /// No description provided for @accountUnhide.
   ///
-  /// In en, this message translates to:
-  /// **'Restore account'**
+  /// In zh, this message translates to:
+  /// **'恢复账户'**
   String get accountUnhide;
 
   /// No description provided for @accountRestore.
   ///
-  /// In en, this message translates to:
-  /// **'Restore'**
+  /// In zh, this message translates to:
+  /// **'恢复'**
   String get accountRestore;
 
   /// No description provided for @accountHiddenTag.
   ///
-  /// In en, this message translates to:
-  /// **'Hidden'**
+  /// In zh, this message translates to:
+  /// **'已隐藏'**
   String get accountHiddenTag;
 
   /// No description provided for @accountHiddenSection.
   ///
-  /// In en, this message translates to:
-  /// **'Hidden'**
+  /// In zh, this message translates to:
+  /// **'已隐藏'**
   String get accountHiddenSection;
 
   /// No description provided for @accountHiddenSectionSummary.
   ///
-  /// In en, this message translates to:
-  /// **'{count} hidden · {total}'**
-  String accountHiddenSectionSummary(int count, String total);
+  /// In zh, this message translates to:
+  /// **'已隐藏 {count} · 合计 {total}'**
+  String accountHiddenSectionSummary(Object count, Object total);
 
   /// No description provided for @accountHideConfirmTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Hide this account?'**
+  /// In zh, this message translates to:
+  /// **'隐藏此账户？'**
   String get accountHideConfirmTitle;
 
   /// No description provided for @accountHideConfirmBody.
   ///
-  /// In en, this message translates to:
-  /// **'It won\'t be selectable for new records; history and balance are kept and you can restore it anytime.'**
+  /// In zh, this message translates to:
+  /// **'隐藏后无法再记账到它，新增记账时也不再显示；历史交易与余额保留，可随时恢复。'**
   String get accountHideConfirmBody;
 
   /// No description provided for @accountHideRecurringWarn.
   ///
-  /// In en, this message translates to:
-  /// **'{count} recurring bills use this account; they\'ll be skipped while hidden.'**
-  String accountHideRecurringWarn(int count);
+  /// In zh, this message translates to:
+  /// **'有 {count} 个周期账单在用此账户，隐藏后这些账单将跳过生成，建议先改到其他账户。'**
+  String accountHideRecurringWarn(Object count);
 
   /// No description provided for @accountHideClearedDefault.
   ///
-  /// In en, this message translates to:
-  /// **'Cleared its default-account setting'**
+  /// In zh, this message translates to:
+  /// **'已取消其默认账户设置'**
   String get accountHideClearedDefault;
 
   /// No description provided for @accountHiddenToast.
   ///
-  /// In en, this message translates to:
-  /// **'Hidden'**
+  /// In zh, this message translates to:
+  /// **'已隐藏'**
   String get accountHiddenToast;
 
   /// No description provided for @accountRestoredToast.
   ///
-  /// In en, this message translates to:
-  /// **'Restored'**
+  /// In zh, this message translates to:
+  /// **'已恢复'**
   String get accountRestoredToast;
 
   /// No description provided for @privacyOpenSourceUrlError.
   ///
-  /// In en, this message translates to:
-  /// **'Cannot open link'**
+  /// In zh, this message translates to:
+  /// **'无法打开链接'**
   String get privacyOpenSourceUrlError;
-
-  /// No description provided for @updateCorruptedFileTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Corrupted Installation Package'**
-  String get updateCorruptedFileTitle;
-
-  /// No description provided for @updateCorruptedFileMessage.
-  ///
-  /// In en, this message translates to:
-  /// **'The previously downloaded installation package is incomplete or corrupted. Delete and re-download?'**
-  String get updateCorruptedFileMessage;
 
   /// No description provided for @welcomeTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Welcome to 智记'**
+  /// In zh, this message translates to:
+  /// **'欢迎使用智记'**
   String get welcomeTitle;
 
   /// No description provided for @welcomeDescription.
   ///
-  /// In en, this message translates to:
-  /// **'An accounting app that truly respects your privacy'**
+  /// In zh, this message translates to:
+  /// **'一个真正尊重您隐私的记账应用'**
   String get welcomeDescription;
 
   /// No description provided for @welcomeCurrencyDescription.
   ///
-  /// In en, this message translates to:
-  /// **'Choose your preferred currency, you can change it anytime in settings'**
+  /// In zh, this message translates to:
+  /// **'选择您常用的货币，之后可以随时在设置中更改'**
   String get welcomeCurrencyDescription;
 
   /// No description provided for @welcomeCreateDefaultLedger.
   ///
-  /// In en, this message translates to:
-  /// **'Create a default ledger'**
+  /// In zh, this message translates to:
+  /// **'创建默认账本'**
   String get welcomeCreateDefaultLedger;
 
   /// No description provided for @welcomePrivacyTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Open Source · Community Driven'**
+  /// In zh, this message translates to:
+  /// **'开源透明 · 社群驱动'**
   String get welcomePrivacyTitle;
 
   /// No description provided for @welcomePrivacyFeature1.
   ///
-  /// In en, this message translates to:
-  /// **'100% open source code, supervised by community'**
+  /// In zh, this message translates to:
+  /// **'100% 开源代码，接受社区监督'**
   String get welcomePrivacyFeature1;
 
   /// No description provided for @welcomePrivacyFeature2.
   ///
-  /// In en, this message translates to:
-  /// **'No privacy concerns, data stored locally'**
+  /// In zh, this message translates to:
+  /// **'无隐私顾虑，数据完全本地存储'**
   String get welcomePrivacyFeature2;
 
   /// No description provided for @welcomeOpenSourceFeature1.
   ///
-  /// In en, this message translates to:
-  /// **'Active developer community, continuous improvement'**
+  /// In zh, this message translates to:
+  /// **'活跃的开发者社群，持续改进'**
   String get welcomeOpenSourceFeature1;
 
   /// No description provided for @welcomeViewGitHub.
   ///
-  /// In en, this message translates to:
-  /// **'Visit GitHub Repository'**
+  /// In zh, this message translates to:
+  /// **'访问 GitHub 仓库'**
   String get welcomeViewGitHub;
 
   /// No description provided for @welcomeCloudSyncTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Optional Cloud Sync'**
+  /// In zh, this message translates to:
+  /// **'可选的云同步'**
   String get welcomeCloudSyncTitle;
 
   /// No description provided for @welcomeCloudSyncDescription.
   ///
-  /// In en, this message translates to:
-  /// **'SmartBook supports multiple sync methods - your data, your control'**
+  /// In zh, this message translates to:
+  /// **'智记 支持多种同步方式，数据完全由你掌控'**
   String get welcomeCloudSyncDescription;
 
   /// No description provided for @welcomeCloudSyncFeature1.
   ///
-  /// In en, this message translates to:
-  /// **'Completely offline usage, no cloud needed'**
+  /// In zh, this message translates to:
+  /// **'完全离线使用，无需云服务'**
   String get welcomeCloudSyncFeature1;
 
   /// No description provided for @welcomeCloudSyncFeature2.
   ///
-  /// In en, this message translates to:
-  /// **'SmartBook self-hosted (real-time multi-device + Web UI)'**
+  /// In zh, this message translates to:
+  /// **'智记 自建云（多设备实时协同 + Web 端）'**
   String get welcomeCloudSyncFeature2;
 
   /// No description provided for @welcomeCloudSyncFeature3.
   ///
-  /// In en, this message translates to:
-  /// **'Or pick iCloud / WebDAV / Supabase / S3'**
+  /// In zh, this message translates to:
+  /// **'iCloud / WebDAV / Supabase / S3 任选'**
   String get welcomeCloudSyncFeature3;
 
   /// No description provided for @widgetManagement.
   ///
-  /// In en, this message translates to:
-  /// **'Home Screen Widget'**
+  /// In zh, this message translates to:
+  /// **'桌面小组件'**
   String get widgetManagement;
 
   /// No description provided for @widgetManagementDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Quick view of income and expenses on home screen'**
+  /// In zh, this message translates to:
+  /// **'在主屏幕快速查看收支情况'**
   String get widgetManagementDesc;
 
   /// No description provided for @widgetPreview.
   ///
-  /// In en, this message translates to:
-  /// **'Widget Preview'**
+  /// In zh, this message translates to:
+  /// **'小组件预览'**
   String get widgetPreview;
 
   /// No description provided for @widgetPreviewDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Widget automatically displays actual data from current ledger, theme color follows app settings'**
+  /// In zh, this message translates to:
+  /// **'小组件会自动显示当前账本的实际数据，主题色跟随应用设置'**
   String get widgetPreviewDesc;
 
   /// No description provided for @widgetGalleryTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Widget Gallery'**
+  /// In zh, this message translates to:
+  /// **'组件库'**
   String get widgetGalleryTitle;
 
   /// No description provided for @widgetGalleryDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Previews use sample data — the real widget shows your current ledger and follows your theme color.'**
+  /// In zh, this message translates to:
+  /// **'以下为示例效果，实际将显示当前账本的真实数据，主题色跟随 App 设置'**
   String get widgetGalleryDesc;
 
   /// No description provided for @widgetGalleryGlanceTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Overview'**
+  /// In zh, this message translates to:
+  /// **'收支速览'**
   String get widgetGalleryGlanceTitle;
 
   /// No description provided for @widgetGalleryGlanceDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Today\'s and this month\'s income and expenses at a glance'**
+  /// In zh, this message translates to:
+  /// **'今日和本月收支一目了然'**
   String get widgetGalleryGlanceDesc;
 
   /// No description provided for @widgetGalleryNetWorthDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Total assets, liabilities and net worth trend'**
+  /// In zh, this message translates to:
+  /// **'总资产、总负债与净值趋势'**
   String get widgetGalleryNetWorthDesc;
 
   /// No description provided for @widgetGalleryQuickAddTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Quick Add'**
+  /// In zh, this message translates to:
+  /// **'快速记账'**
   String get widgetGalleryQuickAddTitle;
 
   /// No description provided for @widgetGalleryQuickAddDesc.
   ///
-  /// In en, this message translates to:
-  /// **'One-tap entry for your frequent categories'**
+  /// In zh, this message translates to:
+  /// **'常用分类一键速记'**
   String get widgetGalleryQuickAddDesc;
 
   /// No description provided for @widgetGalleryBudgetDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Track your budget progress at a glance'**
+  /// In zh, this message translates to:
+  /// **'预算进度实时掌握'**
   String get widgetGalleryBudgetDesc;
 
   /// No description provided for @widgetGalleryRecentDesc.
   ///
-  /// In en, this message translates to:
-  /// **'See your latest transactions'**
+  /// In zh, this message translates to:
+  /// **'快速查看最近几笔账单'**
   String get widgetGalleryRecentDesc;
 
   /// No description provided for @widgetGalleryDashboardTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Dashboard'**
+  /// In zh, this message translates to:
+  /// **'综合仪表盘'**
   String get widgetGalleryDashboardTitle;
 
   /// No description provided for @widgetDashboardTitle.
   ///
-  /// In en, this message translates to:
-  /// **'This Month'**
+  /// In zh, this message translates to:
+  /// **'本月概览'**
   String get widgetDashboardTitle;
 
   /// No description provided for @widgetGalleryDashboardDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Income, trend and recent transactions in one view'**
+  /// In zh, this message translates to:
+  /// **'收支、趋势与最近交易一屏看尽'**
   String get widgetGalleryDashboardDesc;
 
   /// No description provided for @widgetSizeSmall.
   ///
-  /// In en, this message translates to:
-  /// **'Small'**
+  /// In zh, this message translates to:
+  /// **'小号'**
   String get widgetSizeSmall;
 
   /// No description provided for @widgetSizeMedium.
   ///
-  /// In en, this message translates to:
-  /// **'Medium'**
+  /// In zh, this message translates to:
+  /// **'中号'**
   String get widgetSizeMedium;
 
   /// No description provided for @widgetSizeLarge.
   ///
-  /// In en, this message translates to:
-  /// **'Large'**
+  /// In zh, this message translates to:
+  /// **'大号'**
   String get widgetSizeLarge;
 
   /// No description provided for @howToAddWidget.
   ///
-  /// In en, this message translates to:
-  /// **'How to Add Widget'**
+  /// In zh, this message translates to:
+  /// **'如何添加小组件'**
   String get howToAddWidget;
 
   /// No description provided for @iosWidgetStep1.
   ///
-  /// In en, this message translates to:
-  /// **'Long press on home screen blank area to enter edit mode'**
+  /// In zh, this message translates to:
+  /// **'长按主屏幕空白区域，进入编辑模式'**
   String get iosWidgetStep1;
 
   /// No description provided for @iosWidgetStep2.
   ///
-  /// In en, this message translates to:
-  /// **'Tap the \"+\" button in upper left corner'**
+  /// In zh, this message translates to:
+  /// **'点击左上角的\"+\"按钮'**
   String get iosWidgetStep2;
 
   /// No description provided for @iosWidgetStep3.
   ///
-  /// In en, this message translates to:
-  /// **'Search and select \"SmartBook\"'**
+  /// In zh, this message translates to:
+  /// **'搜索并选择\"智记\"'**
   String get iosWidgetStep3;
 
   /// No description provided for @iosWidgetStep4.
   ///
-  /// In en, this message translates to:
-  /// **'Select medium widget and add to home screen'**
+  /// In zh, this message translates to:
+  /// **'选择中型小组件，添加到主屏幕'**
   String get iosWidgetStep4;
 
   /// No description provided for @androidWidgetStep1.
   ///
-  /// In en, this message translates to:
-  /// **'Long press on home screen blank area'**
+  /// In zh, this message translates to:
+  /// **'长按主屏幕空白区域'**
   String get androidWidgetStep1;
 
   /// No description provided for @androidWidgetStep2.
   ///
-  /// In en, this message translates to:
-  /// **'Select \"Widgets\"'**
+  /// In zh, this message translates to:
+  /// **'选择\"小组件\"或\"Widgets\"'**
   String get androidWidgetStep2;
 
   /// No description provided for @androidWidgetStep3.
   ///
-  /// In en, this message translates to:
-  /// **'Find and long press \"SmartBook\" widget'**
+  /// In zh, this message translates to:
+  /// **'找到并长按\"智记\"小组件'**
   String get androidWidgetStep3;
 
   /// No description provided for @androidWidgetStep4.
   ///
-  /// In en, this message translates to:
-  /// **'Drag to suitable position on home screen'**
+  /// In zh, this message translates to:
+  /// **'拖动到主屏幕合适位置'**
   String get androidWidgetStep4;
 
   /// No description provided for @aboutWidget.
   ///
-  /// In en, this message translates to:
-  /// **'About Widget'**
+  /// In zh, this message translates to:
+  /// **'关于小组件'**
   String get aboutWidget;
 
   /// No description provided for @widgetDescription.
   ///
-  /// In en, this message translates to:
-  /// **'Widget automatically syncs to display today\'s and this month\'s income and expense data, refreshing every 30 minutes. Data updates immediately when app is opened.'**
+  /// In zh, this message translates to:
+  /// **'小组件会自动同步显示今日和本月的收支数据，每30分钟自动刷新一次。打开应用后会立即更新数据。'**
   String get widgetDescription;
 
   /// No description provided for @widgetQuickEntryTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Quick Entry'**
+  /// In zh, this message translates to:
+  /// **'快捷记账'**
   String get widgetQuickEntryTitle;
 
   /// No description provided for @widgetQuickEntryDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Tap the left side of the widget to quickly add an expense, or tap the right side to add an income. You can also use smartbook://new?type=transfer via Shortcuts to quickly start a transfer.'**
+  /// In zh, this message translates to:
+  /// **'点击小组件左侧区域可快速新建支出，点击右侧区域可快速新建收入。也可通过快捷指令使用 smartbook://new?type=transfer 快速发起转账。'**
   String get widgetQuickEntryDesc;
 
   /// No description provided for @appName.
   ///
-  /// In en, this message translates to:
+  /// In zh, this message translates to:
   /// **'智记'**
   String get appName;
 
   /// No description provided for @monthSuffix.
   ///
-  /// In en, this message translates to:
-  /// **''**
+  /// In zh, this message translates to:
+  /// **'月'**
   String get monthSuffix;
 
   /// No description provided for @todayExpense.
   ///
-  /// In en, this message translates to:
-  /// **'Today\'s Expense'**
+  /// In zh, this message translates to:
+  /// **'今日支出'**
   String get todayExpense;
 
   /// No description provided for @todayIncome.
   ///
-  /// In en, this message translates to:
-  /// **'Today\'s Income'**
+  /// In zh, this message translates to:
+  /// **'今日收入'**
   String get todayIncome;
 
   /// No description provided for @monthExpense.
   ///
-  /// In en, this message translates to:
-  /// **'Month\'s Expense'**
+  /// In zh, this message translates to:
+  /// **'本月支出'**
   String get monthExpense;
 
   /// No description provided for @monthIncome.
   ///
-  /// In en, this message translates to:
-  /// **'Month\'s Income'**
+  /// In zh, this message translates to:
+  /// **'本月收入'**
   String get monthIncome;
 
   /// No description provided for @autoScreenshotBilling.
   ///
-  /// In en, this message translates to:
-  /// **'Auto Screenshot Billing'**
+  /// In zh, this message translates to:
+  /// **'截图自动记账'**
   String get autoScreenshotBilling;
 
   /// No description provided for @autoScreenshotBillingDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Auto-recognize payment info from screenshots'**
+  /// In zh, this message translates to:
+  /// **'截图后自动识别支付信息'**
   String get autoScreenshotBillingDesc;
 
   /// No description provided for @autoScreenshotBillingTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Auto Screenshot Billing'**
+  /// In zh, this message translates to:
+  /// **'截图自动记账'**
   String get autoScreenshotBillingTitle;
 
   /// No description provided for @featureDescription.
   ///
-  /// In en, this message translates to:
-  /// **'Feature Description'**
+  /// In zh, this message translates to:
+  /// **'功能说明'**
   String get featureDescription;
 
   /// No description provided for @featureDescriptionContent.
   ///
-  /// In en, this message translates to:
-  /// **'After taking a screenshot of payment page, the system will automatically recognize amount and merchant info, and create expense record.\n\n⚡ Recognition speed: 2-3 seconds (may be longer on some devices)\n🤖 Smart category matching\n📝 Auto-fill notes\n\n⚠️ Note:\n• Different devices have different screenshot save speeds, delay may be 5-10 seconds\n• May not work on some devices, depending on system implementation\n• Recognized screenshots will be skipped automatically\n• Due to Android Scoped Storage restrictions (Android 10+), apps cannot delete system screenshots. Manual cleanup required'**
+  /// In zh, this message translates to:
+  /// **'截图支付页面后，系统会自动识别金额和商家信息，并创建支出记录。\n\n⚡ 识别速度约 2-3 秒（部分设备可能更长）\n🤖 智能匹配分类\n📝 自动填写备注\n\n⚠️ 注意：\n• 不同设备截图入库速度不同，识别延迟可能 5-10 秒\n• 部分设备可能无法正常工作，取决于系统实现\n• 识别成功后会自动跳过已处理的截图\n• 受Android分区存储限制（Android 10+），应用无法删除系统截图，需手动清理相册'**
   String get featureDescriptionContent;
 
   /// No description provided for @autoBilling.
   ///
-  /// In en, this message translates to:
-  /// **'Auto Billing'**
+  /// In zh, this message translates to:
+  /// **'自动记账'**
   String get autoBilling;
 
   /// No description provided for @enabled.
   ///
-  /// In en, this message translates to:
-  /// **'Enabled'**
+  /// In zh, this message translates to:
+  /// **'已启用'**
   String get enabled;
 
   /// No description provided for @disabled.
   ///
-  /// In en, this message translates to:
-  /// **'Disabled'**
+  /// In zh, this message translates to:
+  /// **'已禁用'**
   String get disabled;
 
   /// No description provided for @photosPermissionRequired.
   ///
-  /// In en, this message translates to:
-  /// **'Photos permission required for screenshot monitoring'**
+  /// In zh, this message translates to:
+  /// **'需要照片权限才能监听截图'**
   String get photosPermissionRequired;
 
   /// No description provided for @photosPermissionLimitedHint.
   ///
-  /// In en, this message translates to:
-  /// **'Screenshot auto-bookkeeping requires access to ALL photos. In system settings choose \"Allow all photos\" for SmartBook'**
+  /// In zh, this message translates to:
+  /// **'截图自动记账需要「允许所有照片」权限,请在系统设置中把智记的照片权限改为「允许所有照片」'**
   String get photosPermissionLimitedHint;
 
   /// No description provided for @enableSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'Auto billing enabled'**
+  /// In zh, this message translates to:
+  /// **'自动记账已启用'**
   String get enableSuccess;
 
   /// No description provided for @disableSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'Auto billing disabled'**
+  /// In zh, this message translates to:
+  /// **'自动记账已禁用'**
   String get disableSuccess;
 
   /// No description provided for @autoBillingBatteryTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Keep Running in Background'**
+  /// In zh, this message translates to:
+  /// **'保持后台运行'**
   String get autoBillingBatteryTitle;
 
   /// No description provided for @autoBillingBatteryGuideTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Battery Optimization Settings'**
+  /// In zh, this message translates to:
+  /// **'电池优化设置'**
   String get autoBillingBatteryGuideTitle;
 
   /// No description provided for @autoBillingBatteryDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Auto billing requires the app to keep running in the background. Some phones automatically clean background apps when locked, which may cause auto billing to fail. It is recommended to disable battery optimization to ensure proper functionality.'**
+  /// In zh, this message translates to:
+  /// **'自动记账需要应用在后台保持运行。部分手机会在锁屏后自动清理后台应用，导致自动记账功能失效。建议关闭电池优化以确保功能正常工作。'**
   String get autoBillingBatteryDesc;
 
   /// No description provided for @autoBillingCheckBattery.
   ///
-  /// In en, this message translates to:
-  /// **'Check Battery Optimization'**
+  /// In zh, this message translates to:
+  /// **'检查电池优化状态'**
   String get autoBillingCheckBattery;
 
   /// No description provided for @autoBillingBatteryWarning.
   ///
-  /// In en, this message translates to:
-  /// **'⚠️ Battery optimization is not disabled. The app may be automatically cleaned by the system, causing auto billing to fail. Please tap the \"Settings\" button above to disable battery optimization.'**
+  /// In zh, this message translates to:
+  /// **'⚠️ 未关闭电池优化，应用可能会被系统自动清理，导致自动记账失效。建议点击上方\"去设置\"按钮关闭电池优化。'**
   String get autoBillingBatteryWarning;
 
   /// No description provided for @enableFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Enable failed'**
+  /// In zh, this message translates to:
+  /// **'启用失败'**
   String get enableFailed;
 
   /// No description provided for @disableFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Disable failed'**
+  /// In zh, this message translates to:
+  /// **'禁用失败'**
   String get disableFailed;
 
   /// No description provided for @iosAutoFeatureDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Use iOS \"Shortcuts\" app to automatically identify payment information from screenshots and create transactions. Once set up, it will automatically trigger on every screenshot.'**
+  /// In zh, this message translates to:
+  /// **'通过iOS\"快捷指令\"应用，实现截图后自动识别支付信息并记账。设置后，每次截图都会自动触发识别。'**
   String get iosAutoFeatureDesc;
 
   /// No description provided for @iosAutoShortcutConfigTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Configuration Steps:'**
+  /// In zh, this message translates to:
+  /// **'配置步骤：'**
   String get iosAutoShortcutConfigTitle;
 
   /// No description provided for @iosAutoShortcutStep1.
   ///
-  /// In en, this message translates to:
-  /// **'Open \"Shortcuts\" app, tap \"+\" in top right to create new shortcut'**
+  /// In zh, this message translates to:
+  /// **'打开\"快捷指令\"应用，点击右上角\"+\"创建新快捷指令'**
   String get iosAutoShortcutStep1;
 
   /// No description provided for @iosAutoShortcutStep2.
   ///
-  /// In en, this message translates to:
-  /// **'Add \"Take Screenshot\" action'**
+  /// In zh, this message translates to:
+  /// **'添加\"截屏\"操作'**
   String get iosAutoShortcutStep2;
 
   /// No description provided for @iosAutoShortcutStep3.
   ///
-  /// In en, this message translates to:
-  /// **'Search and add \"SmartBook - Auto Billing\" action'**
+  /// In zh, this message translates to:
+  /// **'搜索并添加\"智记 - 截图自动记账\"操作'**
   String get iosAutoShortcutStep3;
 
   /// No description provided for @iosAutoShortcutStep4.
   ///
-  /// In en, this message translates to:
-  /// **'Set the screenshot parameter of \"SmartBook\" to the previous \"Screenshot\"'**
+  /// In zh, this message translates to:
+  /// **'将\"智记\"的截图参数设置为上一步的\"截屏\"'**
   String get iosAutoShortcutStep4;
 
   /// No description provided for @iosAutoShortcutStep5.
   ///
-  /// In en, this message translates to:
-  /// **'(Optional) Go to Settings > Accessibility > Touch > Back Tap, bind this shortcut'**
+  /// In zh, this message translates to:
+  /// **'（可选）在系统设置 > 辅助功能 > 触控 > 轻点背面中，绑定此快捷指令'**
   String get iosAutoShortcutStep5;
 
   /// No description provided for @iosAutoShortcutStep6.
   ///
-  /// In en, this message translates to:
-  /// **'Done! Double tap phone back during payment for quick billing'**
+  /// In zh, this message translates to:
+  /// **'完成！支付时双击手机背部即可快速记账'**
   String get iosAutoShortcutStep6;
 
   /// No description provided for @iosAutoShortcutRecommendedTip.
   ///
-  /// In en, this message translates to:
-  /// **'✅ Recommended: After binding the shortcut to \"Back Tap\", double tap phone back during payment to auto-screenshot and recognize billing, no manual screenshot needed.'**
+  /// In zh, this message translates to:
+  /// **'✅ 推荐：在\"轻点背面\"中绑定快捷指令后，支付时双击手机背部即可自动截图并识别记账，无需手动截图。'**
   String get iosAutoShortcutRecommendedTip;
 
   /// No description provided for @iosAutoBackTapTitle.
   ///
-  /// In en, this message translates to:
-  /// **'💡 Double Tap Back to Trigger (Recommended)'**
+  /// In zh, this message translates to:
+  /// **'💡 双击背部快速触发（推荐）'**
   String get iosAutoBackTapTitle;
 
   /// No description provided for @iosAutoBackTapDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Settings > Accessibility > Touch > Back Tap\n• Select \"Double Tap\" or \"Triple Tap\"\n• Choose the shortcut you just created\n• After setup, double tap phone back during payment to auto-record, no screenshot needed'**
+  /// In zh, this message translates to:
+  /// **'设置 > 辅助功能 > 触控 > 轻点背面\n• 选择\"轻点两下\"或\"轻点三下\"\n• 选择刚创建的快捷指令\n• 完成后，支付时双击手机背面即可自动记账，无需截图'**
   String get iosAutoBackTapDesc;
 
   /// No description provided for @iosAutoTutorialTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Video Tutorial'**
+  /// In zh, this message translates to:
+  /// **'视频教程'**
   String get iosAutoTutorialTitle;
 
   /// No description provided for @iosAutoTutorialDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Watch detailed setup video tutorial'**
+  /// In zh, this message translates to:
+  /// **'查看详细配置视频教程'**
   String get iosAutoTutorialDesc;
 
   /// No description provided for @iosAutoImportTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Get Shortcut in One Tap'**
+  /// In zh, this message translates to:
+  /// **'一键获取快捷指令'**
   String get iosAutoImportTitle;
 
   /// No description provided for @iosAutoImportDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Tap the button below to import the ready-made \"Screenshot → Auto Billing\" shortcut — no need to add the \"Take Screenshot\" action or connect parameters manually. After importing, binding it to \"Back Tap\" is recommended.'**
+  /// In zh, this message translates to:
+  /// **'点击下方按钮，自动导入已配置好的「截屏 → 自动记账」快捷指令，无需手动添加“截屏”操作和连接参数。导入后建议在「轻点背面」中绑定它。'**
   String get iosAutoImportDesc;
 
   /// No description provided for @iosAutoImportButton.
   ///
-  /// In en, this message translates to:
-  /// **'Get Shortcut'**
+  /// In zh, this message translates to:
+  /// **'获取快捷指令'**
   String get iosAutoImportButton;
 
   /// No description provided for @iosAutoImportFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Couldn\'t open the shortcut link. Check your connection and try again.'**
+  /// In zh, this message translates to:
+  /// **'无法打开快捷指令链接，请检查网络后重试'**
   String get iosAutoImportFailed;
 
   /// No description provided for @iosAutoManualConfigTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Manual Setup (Advanced)'**
+  /// In zh, this message translates to:
+  /// **'手动配置（高级）'**
   String get iosAutoManualConfigTitle;
 
   /// No description provided for @iosAutoManualConfigDesc.
   ///
-  /// In en, this message translates to:
-  /// **'If one-tap import isn\'t available, follow these steps to create the shortcut manually.'**
+  /// In zh, this message translates to:
+  /// **'若一键导入不可用，可按以下步骤手动创建快捷指令。'**
   String get iosAutoManualConfigDesc;
 
   /// No description provided for @aiSettingsTitle.
   ///
-  /// In en, this message translates to:
-  /// **'AI Assistant'**
+  /// In zh, this message translates to:
+  /// **'AI小助手'**
   String get aiSettingsTitle;
 
   /// No description provided for @aiSettingsSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Configure AI models and recognition strategy'**
+  /// In zh, this message translates to:
+  /// **'配置AI模型和识别策略'**
   String get aiSettingsSubtitle;
 
   /// No description provided for @aiEnableTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Enable AI Assistant'**
+  /// In zh, this message translates to:
+  /// **'启用AI小助手'**
   String get aiEnableTitle;
 
   /// No description provided for @aiEnableSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Use AI vision to recognize bill screenshots, extract amount, merchant, time, and support natural language conversation'**
+  /// In zh, this message translates to:
+  /// **'使用 AI 视觉识别账单截图,提取金额、商家、时间等信息,并支持自然语言对话'**
   String get aiEnableSubtitle;
 
   /// No description provided for @aiEnableToastOn.
   ///
-  /// In en, this message translates to:
-  /// **'AI Assistant enabled'**
+  /// In zh, this message translates to:
+  /// **'AI小助手已启用'**
   String get aiEnableToastOn;
 
   /// No description provided for @aiEnableToastOff.
   ///
-  /// In en, this message translates to:
-  /// **'AI Assistant disabled'**
+  /// In zh, this message translates to:
+  /// **'AI小助手已关闭'**
   String get aiEnableToastOff;
 
   /// No description provided for @aiStrategyTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Execution Strategy'**
+  /// In zh, this message translates to:
+  /// **'执行策略'**
   String get aiStrategyTitle;
 
   /// No description provided for @aiStrategyLocalFirst.
   ///
-  /// In en, this message translates to:
-  /// **'Local First (Recommended)'**
+  /// In zh, this message translates to:
+  /// **'本地优先（推荐）'**
   String get aiStrategyLocalFirst;
 
   /// No description provided for @aiStrategyCloudFirst.
   ///
-  /// In en, this message translates to:
-  /// **'Cloud First'**
+  /// In zh, this message translates to:
+  /// **'云端优先'**
   String get aiStrategyCloudFirst;
 
   /// No description provided for @aiStrategyCloudFirstDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Use cloud API first, downgrade to local if failed'**
+  /// In zh, this message translates to:
+  /// **'优先使用云端API，失败后降级到本地'**
   String get aiStrategyCloudFirstDesc;
 
   /// No description provided for @aiStrategyLocalOnly.
   ///
-  /// In en, this message translates to:
-  /// **'Local Only'**
+  /// In zh, this message translates to:
+  /// **'仅本地'**
   String get aiStrategyLocalOnly;
 
   /// No description provided for @aiStrategyCloudOnly.
   ///
-  /// In en, this message translates to:
-  /// **'Cloud Only'**
+  /// In zh, this message translates to:
+  /// **'仅云端'**
   String get aiStrategyCloudOnly;
 
   /// No description provided for @aiStrategyCloudOnlyDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Use cloud API only, no model download'**
+  /// In zh, this message translates to:
+  /// **'只使用云端API，不下载模型'**
   String get aiStrategyCloudOnlyDesc;
 
   /// No description provided for @aiStrategyUnavailable.
   ///
-  /// In en, this message translates to:
-  /// **'Local model in training, coming soon'**
+  /// In zh, this message translates to:
+  /// **'本地模型训练中，敬请期待'**
   String get aiStrategyUnavailable;
 
   /// No description provided for @aiStrategySwitched.
   ///
-  /// In en, this message translates to:
-  /// **'Switched to: {strategy}'**
+  /// In zh, this message translates to:
+  /// **'已切换: {strategy}'**
   String aiStrategySwitched(String strategy);
 
   /// No description provided for @aiCloudApiKeyHint.
   ///
-  /// In en, this message translates to:
-  /// **'Enter your Zhipu AI API Key'**
+  /// In zh, this message translates to:
+  /// **'输入智谱AI的API Key'**
   String get aiCloudApiKeyHint;
 
   /// No description provided for @aiCloudApiKeyHintCustom.
   ///
-  /// In en, this message translates to:
-  /// **'Enter API Key'**
+  /// In zh, this message translates to:
+  /// **'输入API Key'**
   String get aiCloudApiKeyHintCustom;
 
   /// No description provided for @aiCloudApiKeyHelper.
   ///
-  /// In en, this message translates to:
-  /// **'GLM-*-Flash model is completely free'**
+  /// In zh, this message translates to:
+  /// **'GLM-*-Flash模型完全免费'**
   String get aiCloudApiKeyHelper;
 
   /// No description provided for @aiCloudApiGetKey.
   ///
-  /// In en, this message translates to:
-  /// **'Get API Key'**
+  /// In zh, this message translates to:
+  /// **'获取API Key'**
   String get aiCloudApiGetKey;
 
   /// No description provided for @aiCloudApiTutorial.
   ///
-  /// In en, this message translates to:
-  /// **'Tutorial'**
+  /// In zh, this message translates to:
+  /// **'详细教程'**
   String get aiCloudApiTutorial;
 
   /// No description provided for @aiCloudApiTestKey.
   ///
-  /// In en, this message translates to:
-  /// **'Test Connection'**
+  /// In zh, this message translates to:
+  /// **'测试连接'**
   String get aiCloudApiTestKey;
 
   /// No description provided for @aiChatConfigWarning.
   ///
-  /// In en, this message translates to:
-  /// **'AI provider not configured. Please add and bind one in Settings'**
+  /// In zh, this message translates to:
+  /// **'未配置 AI 服务商，请先在设置中添加并绑定'**
   String get aiChatConfigWarning;
 
   /// No description provided for @aiChatGoToSettings.
   ///
-  /// In en, this message translates to:
-  /// **'Go to Settings'**
+  /// In zh, this message translates to:
+  /// **'去设置'**
   String get aiChatGoToSettings;
 
   /// No description provided for @aiOcrRecognizing.
   ///
-  /// In en, this message translates to:
-  /// **'Recognizing bill...'**
+  /// In zh, this message translates to:
+  /// **'正在识别账单...'**
   String get aiOcrRecognizing;
 
   /// No description provided for @aiOcrNoAmount.
   ///
-  /// In en, this message translates to:
-  /// **'No valid amount recognized, please add manually'**
+  /// In zh, this message translates to:
+  /// **'未识别到有效金额，请手动记账'**
   String get aiOcrNoAmount;
 
   /// No description provided for @aiNotConfiguredHint.
   ///
-  /// In en, this message translates to:
-  /// **'AI service not configured. Go to \"Me → AI Settings\" to set up.'**
+  /// In zh, this message translates to:
+  /// **'未配置 AI 服务，请前往「我的 → AI 设置」配置'**
   String get aiNotConfiguredHint;
 
   /// No description provided for @aiOcrCheckLog.
   ///
-  /// In en, this message translates to:
-  /// **'Recognition failed. Check logs for details.'**
+  /// In zh, this message translates to:
+  /// **'识别失败，请查看日志了解详情'**
   String get aiOcrCheckLog;
 
   /// No description provided for @aiOcrNoBill.
   ///
-  /// In en, this message translates to:
-  /// **'No bill recognized. Make sure the image is a bill, then try again.'**
+  /// In zh, this message translates to:
+  /// **'未识别到账单信息，请确认图片是账单后重试'**
   String get aiOcrNoBill;
 
   /// No description provided for @aiNotConfiguredNotificationTitle.
   ///
-  /// In en, this message translates to:
-  /// **'❌ Cannot recognize screenshot'**
+  /// In zh, this message translates to:
+  /// **'❌ 无法识别截图'**
   String get aiNotConfiguredNotificationTitle;
 
   /// No description provided for @aiNotConfiguredNotificationBody.
   ///
-  /// In en, this message translates to:
-  /// **'AI service not configured. Tap to set up.'**
+  /// In zh, this message translates to:
+  /// **'未配置 AI 服务，点击前往设置'**
   String get aiNotConfiguredNotificationBody;
 
   /// No description provided for @autoBillingNotifyDetectedTitle.
   ///
-  /// In en, this message translates to:
-  /// **'✅ Screenshot detected'**
+  /// In zh, this message translates to:
+  /// **'✅ 检测到截图'**
   String get autoBillingNotifyDetectedTitle;
 
   /// No description provided for @autoBillingNotifyWaitingFileBody.
   ///
-  /// In en, this message translates to:
-  /// **'Waiting for file to be written...'**
+  /// In zh, this message translates to:
+  /// **'正在等待文件写入...'**
   String get autoBillingNotifyWaitingFileBody;
 
   /// No description provided for @autoBillingNotifyRecognizingScreenshotTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Recognizing screenshot...'**
+  /// In zh, this message translates to:
+  /// **'正在识别截图...'**
   String get autoBillingNotifyRecognizingScreenshotTitle;
 
   /// No description provided for @autoBillingNotifyVisionAnalyzingBody.
   ///
-  /// In en, this message translates to:
-  /// **'Calling AI vision to analyze payment info, please wait'**
+  /// In zh, this message translates to:
+  /// **'正在调用 AI 视觉分析支付信息，请稍候'**
   String get autoBillingNotifyVisionAnalyzingBody;
 
   /// No description provided for @autoBillingNotifyRecognizingTextTitle.
   ///
-  /// In en, this message translates to:
-  /// **'⏳ Recognizing'**
+  /// In zh, this message translates to:
+  /// **'⏳ 正在识别'**
   String get autoBillingNotifyRecognizingTextTitle;
 
   /// No description provided for @autoBillingNotifyTextAnalyzingBody.
   ///
-  /// In en, this message translates to:
-  /// **'Calling AI to parse payment info...'**
+  /// In zh, this message translates to:
+  /// **'正在调用 AI 解析支付信息...'**
   String get autoBillingNotifyTextAnalyzingBody;
 
   /// No description provided for @autoSmsBillingRecognizingTitle.
   ///
-  /// In en, this message translates to:
-  /// **'⏳ Analyzing SMS'**
+  /// In zh, this message translates to:
+  /// **'⏳ 正在识别短信'**
   String get autoSmsBillingRecognizingTitle;
 
   /// No description provided for @autoNotifyBillingRecognizingTitle.
   ///
-  /// In en, this message translates to:
-  /// **'⏳ Analyzing Notification'**
+  /// In zh, this message translates to:
+  /// **'⏳ 正在识别通知'**
   String get autoNotifyBillingRecognizingTitle;
 
   /// No description provided for @autoNotifyBillingAnalyzingBody.
   ///
-  /// In en, this message translates to:
-  /// **'Calling AI to parse payment notification...'**
+  /// In zh, this message translates to:
+  /// **'正在从通知中提取记账信息...'**
   String get autoNotifyBillingAnalyzingBody;
 
   /// No description provided for @autoScreenBillingRecognizingTitle.
   ///
-  /// In en, this message translates to:
-  /// **'⏳ Analyzing bill page'**
+  /// In zh, this message translates to:
+  /// **'⏳ 正在识别账单页'**
   String get autoScreenBillingRecognizingTitle;
 
   /// No description provided for @autoScreenBillingAnalyzingBody.
   ///
-  /// In en, this message translates to:
-  /// **'Extracting bookkeeping info from page text...'**
+  /// In zh, this message translates to:
+  /// **'正在从页面文本中提取记账信息...'**
   String get autoScreenBillingAnalyzingBody;
 
   /// No description provided for @autoSmsBillingAnalyzingBody.
   ///
-  /// In en, this message translates to:
-  /// **'Extracting bill info from the SMS...'**
+  /// In zh, this message translates to:
+  /// **'正在从短信中提取记账信息...'**
   String get autoSmsBillingAnalyzingBody;
 
   /// No description provided for @autoSmsBillingTitle.
   ///
-  /// In en, this message translates to:
-  /// **'SMS auto billing'**
+  /// In zh, this message translates to:
+  /// **'短信自动记账'**
   String get autoSmsBillingTitle;
 
   /// No description provided for @autoSmsBillingDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Listen to bank/payment SMS and auto-record with AI'**
+  /// In zh, this message translates to:
+  /// **'监听银行/支付短信,用 AI 自动记账'**
   String get autoSmsBillingDesc;
 
   /// No description provided for @autoSmsBillingDescEnabled.
   ///
-  /// In en, this message translates to:
-  /// **'Listening — bank/payment SMS will be auto-recorded'**
+  /// In zh, this message translates to:
+  /// **'监听中,银行/支付短信将自动入账'**
   String get autoSmsBillingDescEnabled;
 
   /// No description provided for @smsPermissionRequired.
   ///
-  /// In en, this message translates to:
-  /// **'SMS permission is required for auto billing'**
+  /// In zh, this message translates to:
+  /// **'需要「短信」权限才能自动记账'**
   String get smsPermissionRequired;
 
   /// No description provided for @autoBillingEntryTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Auto billing'**
+  /// In zh, this message translates to:
+  /// **'自动记账'**
   String get autoBillingEntryTitle;
 
   /// No description provided for @autoBillingHealthy.
   ///
-  /// In en, this message translates to:
-  /// **'Working normally'**
+  /// In zh, this message translates to:
+  /// **'运行正常'**
   String get autoBillingHealthy;
 
   /// No description provided for @autoBillingPartial.
   ///
-  /// In en, this message translates to:
-  /// **'{count} item(s) not ready: {issues}'**
+  /// In zh, this message translates to:
+  /// **'有 {count} 项未就绪:{issues}'**
   String autoBillingPartial(Object count, Object issues);
 
   /// No description provided for @autoBillingSmsPermissionMissing.
   ///
-  /// In en, this message translates to:
-  /// **'SMS permission revoked - auto billing incomplete'**
+  /// In zh, this message translates to:
+  /// **'短信权限未授权,自动记账不完整'**
   String get autoBillingSmsPermissionMissing;
 
   /// No description provided for @autoBillingNotifyPermissionMissing.
   ///
-  /// In en, this message translates to:
-  /// **'Notification access not granted - auto billing incomplete'**
+  /// In zh, this message translates to:
+  /// **'「通知使用权」未授权,通知自动记账不完整'**
   String get autoBillingNotifyPermissionMissing;
 
   /// No description provided for @autoBillingNotifyTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Notification auto billing'**
+  /// In zh, this message translates to:
+  /// **'通知自动记账'**
   String get autoBillingNotifyTitle;
 
   /// No description provided for @autoBillingNotifyDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Listen to payment notifications (WeChat/Alipay/bank apps)'**
+  /// In zh, this message translates to:
+  /// **'监听微信/支付宝/银行 App 支付通知自动记账'**
   String get autoBillingNotifyDesc;
 
   /// No description provided for @autoBillingNotifyDescEnabled.
   ///
-  /// In en, this message translates to:
-  /// **'Listening - payment notifications will be auto-recorded'**
+  /// In zh, this message translates to:
+  /// **'监听中,支付通知将自动入账'**
   String get autoBillingNotifyDescEnabled;
 
   /// No description provided for @autoBillingNotifyPermissionTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Enable notification access'**
+  /// In zh, this message translates to:
+  /// **'开启「通知使用权」'**
   String get autoBillingNotifyPermissionTitle;
 
   /// No description provided for @autoBillingNotifyPermissionContent.
   ///
-  /// In en, this message translates to:
-  /// **'Notification auto billing requires system \"Notification access\". Tap to open system settings, find this app and enable it.'**
+  /// In zh, this message translates to:
+  /// **'通知自动记账需要系统「通知使用权」授权。点击后跳转系统设置页,找到本应用并开启。'**
   String get autoBillingNotifyPermissionContent;
 
   /// No description provided for @autoBillingScreenTextTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Detail page auto billing'**
+  /// In zh, this message translates to:
+  /// **'详情页自动记账'**
   String get autoBillingScreenTextTitle;
 
   /// No description provided for @autoBillingScreenTextDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Auto bill from Alipay / Douyin / JD / WeChat bill & order detail pages'**
+  /// In zh, this message translates to:
+  /// **'监听支付宝/抖音/京东/微信账单详情页,自动记账'**
   String get autoBillingScreenTextDesc;
 
   /// No description provided for @autoBillingScreenTextDescEnabled.
   ///
-  /// In en, this message translates to:
-  /// **'Watching — bill detail pages will be recorded automatically'**
+  /// In zh, this message translates to:
+  /// **'监听中,打开账单详情页将自动入账'**
   String get autoBillingScreenTextDescEnabled;
 
   /// No description provided for @autoBillingScreenTextPermissionMissing.
   ///
-  /// In en, this message translates to:
-  /// **'\"Accessibility\" not granted, detail-page auto billing inactive'**
+  /// In zh, this message translates to:
+  /// **'「无障碍」未授权,详情页自动记账不生效'**
   String get autoBillingScreenTextPermissionMissing;
 
   /// No description provided for @autoBillingScreenTextVivoHint.
   ///
-  /// In en, this message translates to:
-  /// **'vivo/iQOO users: if the toggle bounces back off right after enabling, open Settings → Shortcuts & Accessibility, find this service and enable it. If still turned off, allow this app in i Manager → Privacy permissions → Restricted settings, and allow SmartBook in Settings → Battery → Background power consumption.'**
+  /// In zh, this message translates to:
+  /// **'vivo/iQOO 用户注意:若开启后开关自动回弹关闭,请到「设置 → 快速与辅助 → 无障碍」找到本服务开启;仍被关闭时,需在「i 管家 → 隐私权限 → 受限设置」中允许本应用,并在「设置 → 电池 → 后台高耗电」中允许智记。'**
   String get autoBillingScreenTextVivoHint;
 
   /// No description provided for @autoBillingScreenTextPermissionTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Enable “Accessibility Service”'**
+  /// In zh, this message translates to:
+  /// **'开启「无障碍服务」'**
   String get autoBillingScreenTextPermissionTitle;
 
   /// No description provided for @autoBillingScreenTextPermissionContent.
   ///
-  /// In en, this message translates to:
-  /// **'Detail-page auto billing requires system “Accessibility” permission. Only reads text (amount, merchant) from Alipay/Douyin/JD/WeChat pages for billing; text is not logged or stored and is deleted right after processing.'**
+  /// In zh, this message translates to:
+  /// **'详情页自动记账需要系统「无障碍」授权。仅读取支付宝/抖音/京东/微信页面文字(含金额、商户),用于自动记账;文字不入日志、不存储,处理完即删。'**
   String get autoBillingScreenTextPermissionContent;
 
   /// No description provided for @autoBillingHealthIssueScreenshot.
   ///
-  /// In en, this message translates to:
-  /// **'Screenshot monitor'**
+  /// In zh, this message translates to:
+  /// **'截图监听'**
   String get autoBillingHealthIssueScreenshot;
 
   /// No description provided for @autoBillingHealthIssueSms.
   ///
-  /// In en, this message translates to:
-  /// **'SMS monitor'**
+  /// In zh, this message translates to:
+  /// **'短信监听'**
   String get autoBillingHealthIssueSms;
 
   /// No description provided for @autoBillingHealthIssueSmsPermission.
   ///
-  /// In en, this message translates to:
-  /// **'SMS permission'**
+  /// In zh, this message translates to:
+  /// **'短信权限'**
   String get autoBillingHealthIssueSmsPermission;
 
   /// No description provided for @autoBillingHealthIssueNotify.
   ///
-  /// In en, this message translates to:
-  /// **'Notification monitor'**
+  /// In zh, this message translates to:
+  /// **'通知监听'**
   String get autoBillingHealthIssueNotify;
 
   /// No description provided for @autoBillingHealthIssueNotifyListener.
   ///
-  /// In en, this message translates to:
-  /// **'Notification access'**
+  /// In zh, this message translates to:
+  /// **'通知使用权'**
   String get autoBillingHealthIssueNotifyListener;
 
   /// No description provided for @autoBillingHealthIssueAiText.
   ///
-  /// In en, this message translates to:
-  /// **'AI text model'**
+  /// In zh, this message translates to:
+  /// **'AI 文本模型'**
   String get autoBillingHealthIssueAiText;
 
   /// No description provided for @autoBillingHealthIssueAiVision.
   ///
-  /// In en, this message translates to:
-  /// **'AI vision model'**
+  /// In zh, this message translates to:
+  /// **'AI 视觉模型'**
   String get autoBillingHealthIssueAiVision;
 
   /// No description provided for @autoBillingHealthIssueBattery.
   ///
-  /// In en, this message translates to:
-  /// **'Battery optimization'**
+  /// In zh, this message translates to:
+  /// **'电池优化'**
   String get autoBillingHealthIssueBattery;
 
   /// No description provided for @autoStartTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Auto-start & background persistence'**
+  /// In zh, this message translates to:
+  /// **'自启动与后台保活'**
   String get autoStartTitle;
 
   /// No description provided for @autoStartDesc.
   ///
-  /// In en, this message translates to:
-  /// **'On vivo/OriginOS you must also allow auto-start, disable the \"high background power\" limit and lock the app in recent tasks, otherwise SMS/notifications are missed after the app is cleaned up'**
+  /// In zh, this message translates to:
+  /// **'vivo/OriginOS 等需手动允许自启动、关闭「后台高耗电」限制、最近任务锁定 App,否则被清理后收不到短信/通知'**
   String get autoStartDesc;
 
   /// No description provided for @autoStartGo.
   ///
-  /// In en, this message translates to:
-  /// **'Open settings'**
+  /// In zh, this message translates to:
+  /// **'去设置'**
   String get autoStartGo;
 
   /// No description provided for @autoStartOpened.
   ///
-  /// In en, this message translates to:
-  /// **'Settings opened - enable auto-start for this app'**
+  /// In zh, this message translates to:
+  /// **'已跳转系统设置,请找到本应用开启自启动'**
   String get autoStartOpened;
 
   /// No description provided for @autoStartOpenFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Could not open vendor settings - enable auto-start manually in app details'**
+  /// In zh, this message translates to:
+  /// **'无法打开厂商设置,请手动在应用详情页开启自启动'**
   String get autoStartOpenFailed;
 
   /// No description provided for @channelMappingTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Channel → account mapping'**
+  /// In zh, this message translates to:
+  /// **'渠道→账户映射'**
   String get channelMappingTitle;
 
   /// No description provided for @channelMappingDesc.
   ///
-  /// In en, this message translates to:
-  /// **'When AI cannot identify an account, fall back to the mapped asset account for the channel (e.g. 招商银行, 支付宝)'**
+  /// In zh, this message translates to:
+  /// **'短信/通知来源(如 招商银行、支付宝)忽略 AI 账户识别,直接记到指定资产账户'**
   String get channelMappingDesc;
 
   /// No description provided for @channelMappingAdd.
   ///
-  /// In en, this message translates to:
-  /// **'Add mapping'**
+  /// In zh, this message translates to:
+  /// **'添加映射'**
   String get channelMappingAdd;
 
   /// No description provided for @channelMappingChannelLabel.
   ///
-  /// In en, this message translates to:
-  /// **'Channel name'**
+  /// In zh, this message translates to:
+  /// **'渠道名称'**
   String get channelMappingChannelLabel;
 
   /// No description provided for @channelMappingAccountLabel.
   ///
-  /// In en, this message translates to:
-  /// **'Target account'**
+  /// In zh, this message translates to:
+  /// **'目标账户'**
   String get channelMappingAccountLabel;
 
   /// No description provided for @channelMappingEmpty.
   ///
-  /// In en, this message translates to:
-  /// **'No mappings yet - auto billing will fall back by source channel'**
+  /// In zh, this message translates to:
+  /// **'暂无映射规则,添加后自动记账将按来源渠道落账'**
   String get channelMappingEmpty;
 
   /// No description provided for @channelMappingSaved.
   ///
-  /// In en, this message translates to:
-  /// **'Mapping saved'**
+  /// In zh, this message translates to:
+  /// **'映射已保存'**
   String get channelMappingSaved;
 
   /// No description provided for @channelMappingDeleted.
   ///
-  /// In en, this message translates to:
-  /// **'Mapping deleted'**
+  /// In zh, this message translates to:
+  /// **'映射已删除'**
   String get channelMappingDeleted;
 
   /// No description provided for @autoBillingMockTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Manual mock test'**
+  /// In zh, this message translates to:
+  /// **'手动模拟测试'**
   String get autoBillingMockTitle;
 
   /// No description provided for @autoBillingMockDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Inject a mock SMS/notification to verify the AI bookkeeping pipeline without real messages'**
+  /// In zh, this message translates to:
+  /// **'不依赖真实短信/通知,注入模拟数据验证 AI 记账链路是否正常'**
   String get autoBillingMockDesc;
 
   /// No description provided for @autoBillingMockSms.
   ///
-  /// In en, this message translates to:
-  /// **'Mock SMS'**
+  /// In zh, this message translates to:
+  /// **'模拟短信'**
   String get autoBillingMockSms;
 
   /// No description provided for @autoBillingMockNotify.
   ///
-  /// In en, this message translates to:
-  /// **'Mock notification'**
+  /// In zh, this message translates to:
+  /// **'模拟通知'**
   String get autoBillingMockNotify;
 
   /// No description provided for @autoBillingMockScreen.
   ///
-  /// In en, this message translates to:
-  /// **'Mock page text'**
+  /// In zh, this message translates to:
+  /// **'模拟屏幕文本'**
   String get autoBillingMockScreen;
 
   /// No description provided for @autoBillingMockSubmitted.
   ///
-  /// In en, this message translates to:
-  /// **'Submitted - result will show in system notification'**
+  /// In zh, this message translates to:
+  /// **'已提交,处理结果见系统通知'**
   String get autoBillingMockSubmitted;
 
   /// No description provided for @autoBillingMockCustom.
   ///
-  /// In en, this message translates to:
-  /// **'Custom content'**
+  /// In zh, this message translates to:
+  /// **'自定义内容'**
   String get autoBillingMockCustom;
 
   /// No description provided for @autoBillingMockNotice.
   ///
-  /// In en, this message translates to:
-  /// **'Mock data goes through the same AI pipeline as real messages'**
+  /// In zh, this message translates to:
+  /// **'模拟数据与真实消息走同一套 AI 解析流程'**
   String get autoBillingMockNotice;
 
   /// No description provided for @autoRecognitionRecordsTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Auto recognition records'**
+  /// In zh, this message translates to:
+  /// **'自动识别记录'**
   String get autoRecognitionRecordsTitle;
 
   /// No description provided for @autoRecognitionRecordsDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Recognition decisions & outcomes from auto bookkeeping'**
+  /// In zh, this message translates to:
+  /// **'自动记账的识别决策与入账结果'**
   String get autoRecognitionRecordsDesc;
 
   /// No description provided for @autoRecognitionRecordsEmpty.
   ///
-  /// In en, this message translates to:
-  /// **'No records yet. Open a bill/order detail page, then come back and tap refresh:\n· New record appears → the decision code shows which gate blocked it (or that it was booked)\n· No record at all → accessibility monitoring is not active; check the system accessibility switch'**
+  /// In zh, this message translates to:
+  /// **'暂无记录。去打开一笔账单/订单详情页，再回到此页点刷新：\n· 出现新记录 → 决策码说明被哪道闸拦截（或已正常入账）\n· 始终无记录 → 无障碍监听未生效，请检查系统无障碍开关'**
   String get autoRecognitionRecordsEmpty;
 
   /// No description provided for @commonRefresh.
   ///
-  /// In en, this message translates to:
-  /// **'Refresh'**
+  /// In zh, this message translates to:
+  /// **'刷新'**
   String get commonRefresh;
 
   /// No description provided for @pendingConfirmationTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Pending confirmation'**
+  /// In zh, this message translates to:
+  /// **'待确认记账'**
   String get pendingConfirmationTitle;
 
   /// No description provided for @pendingConfirmationDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Review candidates from auto billing (low-confidence / large / duplicate)'**
+  /// In zh, this message translates to:
+  /// **'自动记账中低置信/大额/疑似重复的候选,人工审核'**
   String get pendingConfirmationDesc;
 
   /// No description provided for @pendingConfirmationEmpty.
   ///
-  /// In en, this message translates to:
-  /// **'No pending entries'**
+  /// In zh, this message translates to:
+  /// **'没有待确认的记账'**
   String get pendingConfirmationEmpty;
 
   /// No description provided for @pendingConfirmationCountBadge.
   ///
-  /// In en, this message translates to:
-  /// **'{count} pending - tap to review'**
+  /// In zh, this message translates to:
+  /// **'有 {count} 笔待确认,点击审核'**
   String pendingConfirmationCountBadge(Object count);
 
   /// No description provided for @pendingConfirmationConfirm.
   ///
-  /// In en, this message translates to:
-  /// **'Book'**
+  /// In zh, this message translates to:
+  /// **'确认入账'**
   String get pendingConfirmationConfirm;
 
   /// No description provided for @pendingConfirmationEdit.
   ///
-  /// In en, this message translates to:
-  /// **'Edit & book'**
+  /// In zh, this message translates to:
+  /// **'编辑后入账'**
   String get pendingConfirmationEdit;
 
   /// No description provided for @pendingConfirmationReject.
   ///
-  /// In en, this message translates to:
-  /// **'Discard'**
+  /// In zh, this message translates to:
+  /// **'拒绝'**
   String get pendingConfirmationReject;
 
   /// No description provided for @pendingConfirmationRejectAsk.
   ///
-  /// In en, this message translates to:
-  /// **'Discard this pending entry?'**
+  /// In zh, this message translates to:
+  /// **'确定拒绝并删除这条待确认记账?'**
   String get pendingConfirmationRejectAsk;
 
   /// No description provided for @pendingConfirmationApproved.
   ///
-  /// In en, this message translates to:
-  /// **'Booked'**
+  /// In zh, this message translates to:
+  /// **'已入账'**
   String get pendingConfirmationApproved;
 
   /// No description provided for @pendingConfirmationRejected.
   ///
-  /// In en, this message translates to:
-  /// **'Discarded'**
+  /// In zh, this message translates to:
+  /// **'已拒绝'**
   String get pendingConfirmationRejected;
 
   /// No description provided for @pendingConfirmationEditFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Invalid amount'**
+  /// In zh, this message translates to:
+  /// **'金额无效'**
   String get pendingConfirmationEditFailed;
 
   /// No description provided for @pendingConfirmationApproveFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Failed to book'**
+  /// In zh, this message translates to:
+  /// **'入账失败'**
   String get pendingConfirmationApproveFailed;
 
   /// No description provided for @pendingConfirmationAmount.
   ///
-  /// In en, this message translates to:
-  /// **'Amount'**
+  /// In zh, this message translates to:
+  /// **'金额'**
   String get pendingConfirmationAmount;
 
   /// No description provided for @pendingConfirmationNote.
   ///
-  /// In en, this message translates to:
-  /// **'Note'**
+  /// In zh, this message translates to:
+  /// **'备注'**
   String get pendingConfirmationNote;
 
   /// No description provided for @pendingConfirmationUncheckedReason.
   ///
-  /// In en, this message translates to:
-  /// **'Unconfirmed'**
+  /// In zh, this message translates to:
+  /// **'待确认'**
   String get pendingConfirmationUncheckedReason;
 
   /// No description provided for @pendingCandidateReasonDuplicate.
   ///
-  /// In en, this message translates to:
-  /// **'Possible duplicate - similar transaction recently'**
+  /// In zh, this message translates to:
+  /// **'疑似重复:近期已有相似交易'**
   String get pendingCandidateReasonDuplicate;
 
   /// No description provided for @pendingCandidateReasonLarge.
   ///
-  /// In en, this message translates to:
-  /// **'Large amount'**
+  /// In zh, this message translates to:
+  /// **'大额消费'**
   String get pendingCandidateReasonLarge;
 
   /// No description provided for @pendingCandidateReasonLowConfidence.
   ///
-  /// In en, this message translates to:
-  /// **'Low confidence - please verify'**
+  /// In zh, this message translates to:
+  /// **'低置信度,请核对'**
   String get pendingCandidateReasonLowConfidence;
 
   /// No description provided for @pendingCandidateReasonAnomaly.
   ///
-  /// In en, this message translates to:
-  /// **'Anomalous - above recent baseline'**
+  /// In zh, this message translates to:
+  /// **'异常消费:高于近期基线'**
   String get pendingCandidateReasonAnomaly;
 
   /// No description provided for @pendingCandidateReasonAutoBookDisabled.
   ///
-  /// In en, this message translates to:
-  /// **'Auto-booking is off; confirmation required'**
+  /// In zh, this message translates to:
+  /// **'自动入账已关闭,需手动确认'**
   String get pendingCandidateReasonAutoBookDisabled;
 
   /// No description provided for @pendingCandidatesArchivedHint.
   ///
-  /// In en, this message translates to:
-  /// **'Some older candidates were archived - please review soon'**
+  /// In zh, this message translates to:
+  /// **'部分较旧候选已归档,请尽快处理'**
   String get pendingCandidatesArchivedHint;
 
   /// No description provided for @autoBookDetailTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Auto-booking detail'**
+  /// In zh, this message translates to:
+  /// **'自动记账详情'**
   String get autoBookDetailTitle;
 
   /// No description provided for @autoBookDetailState.
   ///
-  /// In en, this message translates to:
-  /// **'State'**
+  /// In zh, this message translates to:
+  /// **'状态'**
   String get autoBookDetailState;
 
   /// No description provided for @autoBookDetailSource.
   ///
-  /// In en, this message translates to:
-  /// **'Source'**
+  /// In zh, this message translates to:
+  /// **'来源'**
   String get autoBookDetailSource;
 
   /// No description provided for @autoBookDetailCapturedAt.
   ///
-  /// In en, this message translates to:
-  /// **'Captured at'**
+  /// In zh, this message translates to:
+  /// **'捕获时间'**
   String get autoBookDetailCapturedAt;
 
   /// No description provided for @autoBookDetailUpdatedAt.
   ///
-  /// In en, this message translates to:
-  /// **'Updated at'**
+  /// In zh, this message translates to:
+  /// **'更新时间'**
   String get autoBookDetailUpdatedAt;
 
   /// No description provided for @autoBookDetailAttempts.
   ///
-  /// In en, this message translates to:
-  /// **'Attempts'**
+  /// In zh, this message translates to:
+  /// **'尝试次数'**
   String get autoBookDetailAttempts;
 
   /// No description provided for @autoBookDetailError.
   ///
-  /// In en, this message translates to:
-  /// **'Error'**
+  /// In zh, this message translates to:
+  /// **'错误信息'**
   String get autoBookDetailError;
 
   /// No description provided for @autoBookDetailReason.
   ///
-  /// In en, this message translates to:
-  /// **'Reason'**
+  /// In zh, this message translates to:
+  /// **'原因'**
   String get autoBookDetailReason;
 
   /// No description provided for @autoBookDetailEvidence.
   ///
-  /// In en, this message translates to:
-  /// **'Original evidence'**
+  /// In zh, this message translates to:
+  /// **'原始证据'**
   String get autoBookDetailEvidence;
 
   /// No description provided for @autoBookDetailEvidenceCleared.
   ///
-  /// In en, this message translates to:
-  /// **'Original evidence was cleared by the retention policy or never stored'**
+  /// In zh, this message translates to:
+  /// **'原始证据已按留存策略清理或未留存'**
   String get autoBookDetailEvidenceCleared;
 
   /// No description provided for @autoBookDetailItems.
   ///
-  /// In en, this message translates to:
-  /// **'Parsed items'**
+  /// In zh, this message translates to:
+  /// **'解析子项'**
   String get autoBookDetailItems;
 
   /// No description provided for @autoBookDetailNoItems.
   ///
-  /// In en, this message translates to:
-  /// **'No item records'**
+  /// In zh, this message translates to:
+  /// **'无子项记录'**
   String get autoBookDetailNoItems;
 
   /// No description provided for @autoBookDetailRelatedTx.
   ///
-  /// In en, this message translates to:
-  /// **'Related transaction'**
+  /// In zh, this message translates to:
+  /// **'关联交易'**
   String get autoBookDetailRelatedTx;
 
   /// No description provided for @autoBookDetailOpenTx.
   ///
-  /// In en, this message translates to:
-  /// **'View transaction #{id}'**
+  /// In zh, this message translates to:
+  /// **'查看交易 #{id}'**
   String autoBookDetailOpenTx(int id);
 
   /// No description provided for @autoBookDetailRetry.
   ///
-  /// In en, this message translates to:
-  /// **'Retry manually'**
+  /// In zh, this message translates to:
+  /// **'手动重试'**
   String get autoBookDetailRetry;
 
   /// No description provided for @autoBillingNotifyMergeTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Merged into an existing transaction'**
+  /// In zh, this message translates to:
+  /// **'已合并到已有交易'**
   String get autoBillingNotifyMergeTitle;
 
   /// No description provided for @autoBillingNotifyMergeBody.
   ///
-  /// In en, this message translates to:
-  /// **'{count} transaction(s) merged with the {date} ¥{amount} entry; undo available in auto-booking history'**
+  /// In zh, this message translates to:
+  /// **'{count} 笔与 {date} 的 ¥{amount} 判为同一笔，已合并，可在自动记账历史中撤销'**
   String autoBillingNotifyMergeBody(int count, String date, String amount);
 
   /// No description provided for @autoBookUndoMerge.
   ///
-  /// In en, this message translates to:
-  /// **'Undo merge (restore as separate entry)'**
+  /// In zh, this message translates to:
+  /// **'撤销合并（恢复为一笔）'**
   String get autoBookUndoMerge;
 
   /// No description provided for @autoBookUndoMergeDone.
   ///
-  /// In en, this message translates to:
-  /// **'Restored to pending; please review'**
+  /// In zh, this message translates to:
+  /// **'已恢复到待确认，请处理'**
   String get autoBookUndoMergeDone;
 
   /// No description provided for @autoBookUndoMergeEmpty.
   ///
-  /// In en, this message translates to:
-  /// **'Nothing to restore'**
+  /// In zh, this message translates to:
+  /// **'没有可恢复的记录'**
   String get autoBookUndoMergeEmpty;
 
   /// No description provided for @dedupExemptTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Dedup exemptions'**
+  /// In zh, this message translates to:
+  /// **'判重豁免'**
   String get dedupExemptTitle;
 
   /// No description provided for @dedupExemptDesc.
   ///
-  /// In en, this message translates to:
-  /// **'After confirming \'keep as new entry\', the same merchant and amount range won\'t be deduplicated again'**
+  /// In zh, this message translates to:
+  /// **'确认「仍记一笔」后，同商户同金额段不再被判重'**
   String get dedupExemptDesc;
 
   /// No description provided for @dedupExemptEmpty.
   ///
-  /// In en, this message translates to:
-  /// **'No exemption rules'**
+  /// In zh, this message translates to:
+  /// **'暂无豁免规则'**
   String get dedupExemptEmpty;
 
   /// No description provided for @dedupExemptClear.
   ///
-  /// In en, this message translates to:
-  /// **'Clear exemptions'**
+  /// In zh, this message translates to:
+  /// **'清空豁免'**
   String get dedupExemptClear;
 
   /// No description provided for @pendingBatchMode.
   ///
-  /// In en, this message translates to:
-  /// **'Batch mode'**
+  /// In zh, this message translates to:
+  /// **'批量管理'**
   String get pendingBatchMode;
 
   /// No description provided for @pendingBatchSelectAll.
   ///
-  /// In en, this message translates to:
-  /// **'Select all'**
+  /// In zh, this message translates to:
+  /// **'全选'**
   String get pendingBatchSelectAll;
 
   /// No description provided for @pendingBatchApprove.
   ///
-  /// In en, this message translates to:
-  /// **'Approve all'**
+  /// In zh, this message translates to:
+  /// **'批量确认'**
   String get pendingBatchApprove;
 
   /// No description provided for @pendingBatchReject.
   ///
-  /// In en, this message translates to:
-  /// **'Reject all'**
+  /// In zh, this message translates to:
+  /// **'批量拒绝'**
   String get pendingBatchReject;
 
   /// No description provided for @pendingBatchApproved.
   ///
-  /// In en, this message translates to:
-  /// **'Approved {count}, failed {failed} (kept)'**
+  /// In zh, this message translates to:
+  /// **'成功确认 {count} 条，失败 {failed} 条（已保留）'**
   String pendingBatchApproved(int count, int failed);
 
   /// No description provided for @pendingBatchRejected.
   ///
-  /// In en, this message translates to:
-  /// **'Rejected {count}, failed {failed} (kept)'**
+  /// In zh, this message translates to:
+  /// **'成功拒绝 {count} 条，失败 {failed} 条（已保留）'**
   String pendingBatchRejected(Object count, Object failed);
 
   /// No description provided for @pendingBatchRejectAsk.
   ///
-  /// In en, this message translates to:
-  /// **'Reject {count} selected candidates?'**
+  /// In zh, this message translates to:
+  /// **'确定拒绝选中的 {count} 条候选吗？'**
   String pendingBatchRejectAsk(Object count);
 
   /// No description provided for @pendingConfirmationPickCategory.
   ///
-  /// In en, this message translates to:
-  /// **'Pick a category'**
+  /// In zh, this message translates to:
+  /// **'选择分类'**
   String get pendingConfirmationPickCategory;
 
   /// No description provided for @pendingConfirmationSimilarTransaction.
   ///
-  /// In en, this message translates to:
-  /// **'Similar existing transaction'**
+  /// In zh, this message translates to:
+  /// **'相似已有交易'**
   String get pendingConfirmationSimilarTransaction;
 
   /// No description provided for @pendingConfirmationCompare.
   ///
-  /// In en, this message translates to:
-  /// **'Compare'**
+  /// In zh, this message translates to:
+  /// **'查看对比'**
   String get pendingConfirmationCompare;
 
   /// No description provided for @pendingConfirmationCandidate.
   ///
-  /// In en, this message translates to:
-  /// **'Pending candidate'**
+  /// In zh, this message translates to:
+  /// **'待确认候选'**
   String get pendingConfirmationCandidate;
 
   /// No description provided for @pendingConfirmationExisting.
   ///
-  /// In en, this message translates to:
-  /// **'Existing transaction'**
+  /// In zh, this message translates to:
+  /// **'已有交易'**
   String get pendingConfirmationExisting;
 
   /// No description provided for @pendingConfirmationRecordedAt.
   ///
-  /// In en, this message translates to:
-  /// **'Recorded at'**
+  /// In zh, this message translates to:
+  /// **'记录时间'**
   String get pendingConfirmationRecordedAt;
 
   /// No description provided for @pendingConfirmationMatchedMissing.
   ///
-  /// In en, this message translates to:
-  /// **'This transaction no longer exists or was deleted'**
+  /// In zh, this message translates to:
+  /// **'这条已有交易已不存在或已删除'**
   String get pendingConfirmationMatchedMissing;
 
   /// No description provided for @pendingConfirmationOpenMatched.
   ///
-  /// In en, this message translates to:
-  /// **'Open existing transaction'**
+  /// In zh, this message translates to:
+  /// **'打开已有交易'**
   String get pendingConfirmationOpenMatched;
 
   /// No description provided for @pendingConfirmationMatchScoreLabel.
   ///
-  /// In en, this message translates to:
-  /// **'Match'**
+  /// In zh, this message translates to:
+  /// **'匹配度'**
   String get pendingConfirmationMatchScoreLabel;
 
   /// No description provided for @autoDeleteScreenshotTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Auto-delete screenshot after billing'**
+  /// In zh, this message translates to:
+  /// **'记账成功自动删截图'**
   String get autoDeleteScreenshotTitle;
 
   /// No description provided for @autoDeleteScreenshotDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Delete the phone screenshot after it was recognized as a bill and booked. It is kept when not a bill, on failure, or when sent to pending.'**
+  /// In zh, this message translates to:
+  /// **'截图被识别为账单并成功入账后,自动从相册删除;非账单、失败或进入「待确认」时保留'**
   String get autoDeleteScreenshotDesc;
 
   /// No description provided for @screenshotSourceFilterTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Only screenshots in billing apps'**
+  /// In zh, this message translates to:
+  /// **'仅消费类App截图记账'**
   String get screenshotSourceFilterTitle;
 
   /// No description provided for @screenshotSourceFilterDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Auto-book screenshots only when taken inside finance or shopping apps (Alipay, WeChat, banks, Taobao, JD, etc.). Screenshots from other apps are skipped.'**
+  /// In zh, this message translates to:
+  /// **'仅在金融/电商类App(支付宝、微信、银行、淘宝、京东等)内截图才自动记账,其它App截图不触发识别'**
   String get screenshotSourceFilterDesc;
 
   /// No description provided for @screenshotSourceFilterDescOff.
   ///
-  /// In en, this message translates to:
-  /// **'Off: every screenshot is sent for recognition'**
+  /// In zh, this message translates to:
+  /// **'已关闭:所有截图都会尝试识别记账'**
   String get screenshotSourceFilterDescOff;
 
   /// No description provided for @screenshotSourceFilterPermissionMissing.
   ///
-  /// In en, this message translates to:
-  /// **'Cannot detect the foreground app: enable the accessibility service or grant Usage access, otherwise screenshots will not be auto-booked'**
+  /// In zh, this message translates to:
+  /// **'无法识别截图来源App:需开启无障碍服务或授权「使用情况访问」,否则截图不会自动记账'**
   String get screenshotSourceFilterPermissionMissing;
 
   /// No description provided for @autoBookCheckTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Auto-book master switch'**
+  /// In zh, this message translates to:
+  /// **'自动入账总闸'**
   String get autoBookCheckTitle;
 
   /// No description provided for @autoBookCheckDesc.
   ///
-  /// In en, this message translates to:
-  /// **'On: low-confidence / likely duplicates go to pending; the rest book automatically'**
+  /// In zh, this message translates to:
+  /// **'开启:低置信/疑似重复进待确认,其余自动入账'**
   String get autoBookCheckDesc;
 
   /// No description provided for @autoBookCheckDisabledDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Off: every recognition result needs manual confirmation'**
+  /// In zh, this message translates to:
+  /// **'已关闭:所有识别结果需手动确认后入账'**
   String get autoBookCheckDisabledDesc;
 
   /// No description provided for @smartBillingChecking.
   ///
-  /// In en, this message translates to:
-  /// **'Checking...'**
+  /// In zh, this message translates to:
+  /// **'正在检查…'**
   String get smartBillingChecking;
 
   /// No description provided for @autoBillingNotifyRecognizeFailedTitle.
   ///
-  /// In en, this message translates to:
-  /// **'❌ Recognition failed'**
+  /// In zh, this message translates to:
+  /// **'❌ 识别失败'**
   String get autoBillingNotifyRecognizeFailedTitle;
 
   /// No description provided for @autoBillingNotifyRecognizeFailedBody.
   ///
-  /// In en, this message translates to:
-  /// **'Could not extract billing info from screenshot. Check AI config or the image.'**
+  /// In zh, this message translates to:
+  /// **'无法从截图提取账单信息，请检查 AI 配置或图片'**
   String get autoBillingNotifyRecognizeFailedBody;
 
   /// No description provided for @autoBillingNotifyNoBillTitle.
   ///
-  /// In en, this message translates to:
-  /// **'No bill found'**
+  /// In zh, this message translates to:
+  /// **'未识别到账单'**
   String get autoBillingNotifyNoBillTitle;
 
   /// No description provided for @autoBillingNotifyNoBillBody.
   ///
-  /// In en, this message translates to:
-  /// **'No billing info found in this screenshot — it may not be a bill.'**
+  /// In zh, this message translates to:
+  /// **'这张截图未识别到账单信息，可能不是账单'**
   String get autoBillingNotifyNoBillBody;
 
   /// No description provided for @autoScreenBillingNoBillTitle.
   ///
-  /// In en, this message translates to:
-  /// **'No bill found on this page'**
+  /// In zh, this message translates to:
+  /// **'该页面未识别到账单'**
   String get autoScreenBillingNoBillTitle;
 
   /// No description provided for @autoScreenBillingNoBillBody.
   ///
-  /// In en, this message translates to:
-  /// **'No completed transaction found on this page — skipped'**
+  /// In zh, this message translates to:
+  /// **'页面未识别到已成交交易,已跳过'**
   String get autoScreenBillingNoBillBody;
 
   /// No description provided for @autoScreenBillingRecognizeFailedTitle.
   ///
-  /// In en, this message translates to:
-  /// **'❌ Recognition failed'**
+  /// In zh, this message translates to:
+  /// **'❌ 识别失败'**
   String get autoScreenBillingRecognizeFailedTitle;
 
   /// No description provided for @autoScreenBillingRecognizeFailedBody.
   ///
-  /// In en, this message translates to:
-  /// **'Could not extract billing info from page text. Check AI config.'**
+  /// In zh, this message translates to:
+  /// **'无法从页面文本提取账单信息,请检查 AI 配置'**
   String get autoScreenBillingRecognizeFailedBody;
 
   /// No description provided for @autoScreenBillingProcessFailedTitle.
   ///
-  /// In en, this message translates to:
-  /// **'❌ Process failed'**
+  /// In zh, this message translates to:
+  /// **'❌ 处理失败'**
   String get autoScreenBillingProcessFailedTitle;
 
   /// No description provided for @autoBillingNotifyFileUnavailableTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Recognition failed'**
+  /// In zh, this message translates to:
+  /// **'识别失败'**
   String get autoBillingNotifyFileUnavailableTitle;
 
   /// No description provided for @autoBillingNotifyFileUnavailableBody.
   ///
-  /// In en, this message translates to:
-  /// **'Screenshot file is not available'**
+  /// In zh, this message translates to:
+  /// **'截图文件不可用'**
   String get autoBillingNotifyFileUnavailableBody;
 
   /// No description provided for @autoBillingNotifyNoLedgerTitle.
   ///
-  /// In en, this message translates to:
-  /// **'❌ Auto billing failed'**
+  /// In zh, this message translates to:
+  /// **'❌ 自动记账失败'**
   String get autoBillingNotifyNoLedgerTitle;
 
   /// No description provided for @autoBillingNotifyNoLedgerBody.
   ///
-  /// In en, this message translates to:
-  /// **'No ledger available. Please create one first.'**
+  /// In zh, this message translates to:
+  /// **'无可用账本，请先创建账本'**
   String get autoBillingNotifyNoLedgerBody;
 
   /// No description provided for @autoBillingNotifyNoAmountBody.
   ///
-  /// In en, this message translates to:
-  /// **'Could not recognize the amount'**
+  /// In zh, this message translates to:
+  /// **'未能识别出金额信息'**
   String get autoBillingNotifyNoAmountBody;
 
   /// No description provided for @autoBillingNotifyCreateFailedTitle.
   ///
-  /// In en, this message translates to:
-  /// **'❌ Failed to create'**
+  /// In zh, this message translates to:
+  /// **'❌ 创建失败'**
   String get autoBillingNotifyCreateFailedTitle;
 
   /// No description provided for @autoBillingNotifyCreateFailedBody.
   ///
-  /// In en, this message translates to:
-  /// **'Could not create transaction record'**
+  /// In zh, this message translates to:
+  /// **'无法创建交易记录'**
   String get autoBillingNotifyCreateFailedBody;
 
   /// No description provided for @autoBillingNotifyProcessFailedTitle.
   ///
-  /// In en, this message translates to:
-  /// **'❌ Processing failed'**
+  /// In zh, this message translates to:
+  /// **'❌ 处理失败'**
   String get autoBillingNotifyProcessFailedTitle;
 
   /// No description provided for @autoBillingNotifyProcessFailedBody.
   ///
-  /// In en, this message translates to:
-  /// **'Error: {error}'**
+  /// In zh, this message translates to:
+  /// **'错误：{error}'**
   String autoBillingNotifyProcessFailedBody(String error);
 
   /// No description provided for @autoBillingNotifySuccessSingleTitle.
   ///
-  /// In en, this message translates to:
-  /// **'✅ Auto billing succeeded ¥{amount}'**
+  /// In zh, this message translates to:
+  /// **'✅ 自动记账成功 ¥{amount}'**
   String autoBillingNotifySuccessSingleTitle(String amount);
 
   /// No description provided for @autoBillingNotifySuccessMultiTitle.
   ///
-  /// In en, this message translates to:
-  /// **'✅ Auto billing succeeded ({count} entries)'**
+  /// In zh, this message translates to:
+  /// **'✅ 自动记账成功 {count} 笔'**
   String autoBillingNotifySuccessMultiTitle(int count);
 
   /// No description provided for @autoBillingNotifySuccessMultiBody.
   ///
-  /// In en, this message translates to:
-  /// **'Total ¥{amount}'**
+  /// In zh, this message translates to:
+  /// **'合计 ¥{amount}'**
   String autoBillingNotifySuccessMultiBody(String amount);
 
   /// No description provided for @autoBillingNotifyPendingTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Auto-bookkeeping needs confirmation'**
+  /// In zh, this message translates to:
+  /// **'自动记账待确认'**
   String get autoBillingNotifyPendingTitle;
 
   /// No description provided for @homePendingConfirmBanner.
   ///
-  /// In en, this message translates to:
-  /// **'{count} auto-bookkeeping entries awaiting confirmation'**
-  String homePendingConfirmBanner(int count);
+  /// In zh, this message translates to:
+  /// **'有 {count} 笔自动记账待确认'**
+  String homePendingConfirmBanner(Object count);
 
   /// No description provided for @autoBillingNotifyPendingBody.
   ///
-  /// In en, this message translates to:
-  /// **'{count} transaction(s) awaiting confirmation, total ¥{amount}'**
-  String autoBillingNotifyPendingBody(int count, String amount);
+  /// In zh, this message translates to:
+  /// **'{count} 笔支出待确认，合计 ¥{amount}'**
+  String autoBillingNotifyPendingBody(Object amount, Object count);
 
   /// No description provided for @autoBillingNotifySuccessSingleBodyNote.
   ///
-  /// In en, this message translates to:
-  /// **'Note: {note}'**
+  /// In zh, this message translates to:
+  /// **'备注：{note}'**
   String autoBillingNotifySuccessSingleBodyNote(String note);
 
   /// No description provided for @autoBillingNotifySuccessSingleBodyDefault.
   ///
-  /// In en, this message translates to:
-  /// **'Record created automatically'**
+  /// In zh, this message translates to:
+  /// **'已自动创建记录'**
   String get autoBillingNotifySuccessSingleBodyDefault;
 
   /// No description provided for @aiOcrNoLedger.
   ///
-  /// In en, this message translates to:
-  /// **'Ledger not found'**
+  /// In zh, this message translates to:
+  /// **'未找到账本'**
   String get aiOcrNoLedger;
 
   /// No description provided for @aiBillingRateMissingHint.
   ///
-  /// In en, this message translates to:
-  /// **'⚠️ No {currency} rate available — recorded 1:1 for now; use “Reconvert” on the stats page to fix.'**
+  /// In zh, this message translates to:
+  /// **'⚠️ 未取到 {currency} 汇率，已按 1:1 暂记，可在统计页「补折算」修正'**
   String aiBillingRateMissingHint(String currency);
 
   /// No description provided for @aiPromptVarCurrencies.
   ///
-  /// In en, this message translates to:
-  /// **'Ledger base currency + foreign-currency accounts in use'**
+  /// In zh, this message translates to:
+  /// **'账本主币种 + 已在用的外币账户'**
   String get aiPromptVarCurrencies;
 
   /// No description provided for @aiPromptVarBillGuard.
   ///
-  /// In en, this message translates to:
-  /// **'Non-bill filter (injected for screenshot / auto bookkeeping only)'**
+  /// In zh, this message translates to:
+  /// **'账单过滤段（仅截图 / 自动记账时注入）'**
   String get aiPromptVarBillGuard;
 
   /// No description provided for @aiPromptMissingVarsHint.
   ///
-  /// In en, this message translates to:
-  /// **'Your custom template is missing these variables, so the matching features stop working: {vars}'**
+  /// In zh, this message translates to:
+  /// **'你的自定义模板缺少这些变量，对应能力会失效：{vars}'**
   String aiPromptMissingVarsHint(String vars);
 
   /// No description provided for @aiPromptInsertVarSection.
   ///
-  /// In en, this message translates to:
-  /// **'Insert {name} section'**
+  /// In zh, this message translates to:
+  /// **'插入 {name} 段落'**
   String aiPromptInsertVarSection(String name);
 
   /// No description provided for @aiPromptVarSectionInserted.
   ///
-  /// In en, this message translates to:
-  /// **'{name} section appended — review, then save'**
+  /// In zh, this message translates to:
+  /// **'已追加 {name} 段落，确认后保存'**
   String aiPromptVarSectionInserted(String name);
 
   /// No description provided for @aiOcrSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'✅ {type} bill created ¥{amount}'**
+  /// In zh, this message translates to:
+  /// **'✅ {type}账单创建成功 ¥{amount}'**
   String aiOcrSuccess(String type, String amount);
 
   /// No description provided for @aiOcrFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Recognition failed: {error}'**
+  /// In zh, this message translates to:
+  /// **'识别失败: {error}'**
   String aiOcrFailed(String error);
 
   /// No description provided for @aiOcrCreateFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Failed to create bill'**
+  /// In zh, this message translates to:
+  /// **'创建账单失败'**
   String get aiOcrCreateFailed;
 
   /// No description provided for @aiTypeIncome.
   ///
-  /// In en, this message translates to:
-  /// **'Income'**
+  /// In zh, this message translates to:
+  /// **'收入'**
   String get aiTypeIncome;
 
   /// No description provided for @aiTypeExpense.
   ///
-  /// In en, this message translates to:
-  /// **'Expense'**
+  /// In zh, this message translates to:
+  /// **'支出'**
   String get aiTypeExpense;
 
   /// No description provided for @cloudSyncPageTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Cloud Sync'**
+  /// In zh, this message translates to:
+  /// **'云同步'**
   String get cloudSyncPageTitle;
 
   /// No description provided for @cloudSyncPageSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Manual upload and download ledger data'**
+  /// In zh, this message translates to:
+  /// **'手动上传和下载账本数据'**
   String get cloudSyncPageSubtitle;
 
   /// No description provided for @cloudTutorialTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Getting Started'**
+  /// In zh, this message translates to:
+  /// **'使用教程'**
   String get cloudTutorialTitle;
 
   /// No description provided for @cloudTutorialIntro.
   ///
-  /// In en, this message translates to:
-  /// **'SmartBook is a self-hosted sync server that supports real-time multi-device collaboration. The flow is simple:'**
+  /// In zh, this message translates to:
+  /// **'智记 是可以自建的云同步服务端,支持多设备实时协同。流程很简单:'**
   String get cloudTutorialIntro;
 
   /// No description provided for @cloudTutorialStep1Title.
   ///
-  /// In en, this message translates to:
-  /// **'Step 1: Deploy or join a server'**
+  /// In zh, this message translates to:
+  /// **'第一步:部署或选择服务器'**
   String get cloudTutorialStep1Title;
 
   /// No description provided for @cloudTutorialStep1Desc.
   ///
-  /// In en, this message translates to:
-  /// **'Self-host with one Docker command (see the Docker guide in GitHub README). Or join an existing SmartBook server run by a friend / team.'**
+  /// In zh, this message translates to:
+  /// **'自己部署:Docker 一行命令拉起(见 GitHub README 的 Docker 指南)。或直接使用朋友/团队已有的智记 服务器。'**
   String get cloudTutorialStep1Desc;
 
   /// No description provided for @cloudTutorialStep2Title.
   ///
-  /// In en, this message translates to:
-  /// **'Step 2: Get an account'**
+  /// In zh, this message translates to:
+  /// **'第二步:获取账号'**
   String get cloudTutorialStep2Title;
 
   /// No description provided for @cloudTutorialStep2Desc.
   ///
-  /// In en, this message translates to:
-  /// **'SmartBook does NOT offer self-registration (to prevent abuse on public servers). If you self-host: the first Docker boot prints a random admin email + password to the logs — use that. Joining someone else\'s server: ask the admin to create an account for you in Web → Users.'**
+  /// In zh, this message translates to:
+  /// **'智记 不支持自助注册(避免公网服务被滥用)。自己部署的同学:首次启动 Docker 日志里会打印随机管理员账号密码,直接用。加入他人服务器的同学:让管理员在 Web 后台 →「用户」里帮你添加账号。'**
   String get cloudTutorialStep2Desc;
 
   /// No description provided for @cloudTutorialStep3Title.
   ///
-  /// In en, this message translates to:
-  /// **'Step 3: Login + enable sync'**
+  /// In zh, this message translates to:
+  /// **'第三步:登录并开启同步'**
   String get cloudTutorialStep3Title;
 
   /// No description provided for @cloudTutorialStep3Desc.
   ///
-  /// In en, this message translates to:
-  /// **'In the app, pick SmartBook, enter the server URL and the account you got in step 2. First login uploads your entire local ledger; every subsequent edit is pushed in real time.'**
+  /// In zh, this message translates to:
+  /// **'App 里选「智记」,填服务器地址 + 管理员给你的账号,登录。首次会全量上传你本地所有账本数据,之后每次编辑实时推送。'**
   String get cloudTutorialStep3Desc;
 
   /// No description provided for @cloudTutorialStep4Title.
   ///
-  /// In en, this message translates to:
-  /// **'Step 4: Login from other devices'**
+  /// In zh, this message translates to:
+  /// **'第四步:其他设备登录'**
   String get cloudTutorialStep4Title;
 
   /// No description provided for @cloudTutorialStep4Desc.
   ///
-  /// In en, this message translates to:
-  /// **'Phone / tablet / Web — same account, instant shared state. Edits propagate within seconds.'**
+  /// In zh, this message translates to:
+  /// **'手机、平板、Web 三端用同一账号登录,数据即刻互通。修改几秒内互相感知。'**
   String get cloudTutorialStep4Desc;
 
   /// No description provided for @cloudTutorialTipTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Tip'**
+  /// In zh, this message translates to:
+  /// **'小贴士'**
   String get cloudTutorialTipTitle;
 
   /// No description provided for @cloudTutorialTipDesc.
   ///
-  /// In en, this message translates to:
-  /// **'The Web UI lives at the server URL. Open it in a browser to manage ledgers, members, and view logs.'**
+  /// In zh, this message translates to:
+  /// **'Web 端地址 = 服务器地址,浏览器直接访问即可。登录后可以管理账本、成员、查看日志。'**
   String get cloudTutorialTipDesc;
 
   /// No description provided for @cloudTutorialFeaturesTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Features'**
+  /// In zh, this message translates to:
+  /// **'特色功能'**
   String get cloudTutorialFeaturesTitle;
 
   /// No description provided for @cloudTutorialFeature1.
   ///
-  /// In en, this message translates to:
-  /// **'📱 Real-time multi-device: phone A + phone B + Web on one account, sub-second sync'**
+  /// In zh, this message translates to:
+  /// **'📱 多设备实时协同:手机 A + 手机 B + Web 三端同账号,数据秒级同步'**
   String get cloudTutorialFeature1;
 
   /// No description provided for @cloudTutorialFeature2.
   ///
-  /// In en, this message translates to:
-  /// **'🌐 Web UI included: one Docker image ships server + Web, browser ready'**
+  /// In zh, this message translates to:
+  /// **'🌐 自带 Web 管理端:一个 Docker 镜像包含 server + web,浏览器即可使用'**
   String get cloudTutorialFeature2;
 
   /// No description provided for @cloudTutorialFeature3.
   ///
-  /// In en, this message translates to:
-  /// **'👥 Multi-user isolation: multiple users on one server, data fully separated'**
+  /// In zh, this message translates to:
+  /// **'👥 多用户独立:一个服务器可以多人注册,各自数据完全隔离'**
   String get cloudTutorialFeature3;
 
   /// No description provided for @cloudTutorialFeature4.
   ///
-  /// In en, this message translates to:
-  /// **'🤝 Shared ledgers: invite family / team into one book with seconds-level sync'**
+  /// In zh, this message translates to:
+  /// **'🤝 共享账本:邀请家人 / 团队一起记同一本,实时秒级同步'**
   String get cloudTutorialFeature4;
 
   /// No description provided for @cloudTutorialGotIt.
   ///
-  /// In en, this message translates to:
-  /// **'Got it'**
+  /// In zh, this message translates to:
+  /// **'我知道了'**
   String get cloudTutorialGotIt;
 
   /// No description provided for @cloudSyncHint.
   ///
-  /// In en, this message translates to:
-  /// **'Downloads automatically compare differences for selective preview. Not real-time — avoid editing the same ledger on multiple devices simultaneously. Sync scope covers ledger data (including associated accounts, categories, and tags), excluding attachments.'**
+  /// In zh, this message translates to:
+  /// **'下载时可自动对比差异并逐条预览。非实时同步，请避免多设备同时编辑同一账本。同步范围为账本数据（含关联的账户、分类、标签），不含附件。'**
   String get cloudSyncHint;
 
   /// No description provided for @cloudSyncNow.
   ///
-  /// In en, this message translates to:
-  /// **'Sync Now'**
+  /// In zh, this message translates to:
+  /// **'立即同步'**
   String get cloudSyncNow;
 
   /// No description provided for @cloudSyncNowHint.
   ///
-  /// In en, this message translates to:
-  /// **'Push local changes and pull remote updates'**
+  /// In zh, this message translates to:
+  /// **'推送本地变更并拉取远端更新'**
   String get cloudSyncNowHint;
 
   /// No description provided for @cloudSyncInProgress.
   ///
-  /// In en, this message translates to:
-  /// **'Syncing...'**
+  /// In zh, this message translates to:
+  /// **'正在同步...'**
   String get cloudSyncInProgress;
 
   /// No description provided for @cloudSyncComplete.
   ///
-  /// In en, this message translates to:
-  /// **'Sync complete: pushed {pushed}, pulled {pulled}'**
+  /// In zh, this message translates to:
+  /// **'同步完成：推送 {pushed} 条，拉取 {pulled} 条'**
   String cloudSyncComplete(int pushed, int pulled);
 
   /// No description provided for @cloudAutoSyncHint.
   ///
-  /// In en, this message translates to:
-  /// **'Auto-sync to cloud after data changes'**
+  /// In zh, this message translates to:
+  /// **'数据变更后自动同步到云端'**
   String get cloudAutoSyncHint;
 
   /// No description provided for @dataManagement.
   ///
-  /// In en, this message translates to:
-  /// **'Data Management'**
+  /// In zh, this message translates to:
+  /// **'数据管理'**
   String get dataManagement;
 
   /// No description provided for @dataManagementDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Import, export, categories and accounts'**
+  /// In zh, this message translates to:
+  /// **'导入导出、分类账户管理'**
   String get dataManagementDesc;
 
   /// No description provided for @dataManagementPageTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Data Management'**
+  /// In zh, this message translates to:
+  /// **'数据管理'**
   String get dataManagementPageTitle;
 
   /// No description provided for @dataManagementPageSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Manage transaction data and categories'**
+  /// In zh, this message translates to:
+  /// **'管理账单数据和分类'**
   String get dataManagementPageSubtitle;
 
   /// No description provided for @dataManagementAttachmentHint.
   ///
-  /// In en, this message translates to:
-  /// **'When restoring data, please import the attachment package first, then import ledger data (CSV or cloud sync) to ensure attachments are correctly associated.'**
+  /// In zh, this message translates to:
+  /// **'还原数据时，请先导入附件包，再导入账本数据（CSV或云同步），以确保附件正确关联。'**
   String get dataManagementAttachmentHint;
 
   /// No description provided for @smartBilling.
   ///
-  /// In en, this message translates to:
-  /// **'Smart Billing'**
+  /// In zh, this message translates to:
+  /// **'智能记账'**
   String get smartBilling;
 
   /// No description provided for @smartBillingDesc.
   ///
-  /// In en, this message translates to:
-  /// **'AI Assistant, smart recognition, auto billing'**
+  /// In zh, this message translates to:
+  /// **'AI 助手、智能识别、自动记账'**
   String get smartBillingDesc;
 
   /// No description provided for @smartBillingPageTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Smart Billing'**
+  /// In zh, this message translates to:
+  /// **'智能记账'**
   String get smartBillingPageTitle;
 
   /// No description provided for @smartBillingPageSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'AI and automation billing features'**
+  /// In zh, this message translates to:
+  /// **'AI和自动化记账功能'**
   String get smartBillingPageSubtitle;
 
   /// No description provided for @smartBillingGuideHint.
   ///
-  /// In en, this message translates to:
-  /// **'Long press the AI Assistant button at the bottom center, or use it within AI Chat'**
+  /// In zh, this message translates to:
+  /// **'长按底部中间的 AI 助手按钮呼出扇形菜单，或在 AI 助手对话页中使用'**
   String get smartBillingGuideHint;
 
   /// No description provided for @smartBillingTryNow.
   ///
-  /// In en, this message translates to:
-  /// **'Try Now'**
+  /// In zh, this message translates to:
+  /// **'立即体验'**
   String get smartBillingTryNow;
 
   /// No description provided for @smartBillingImageBilling.
   ///
-  /// In en, this message translates to:
-  /// **'Image Billing'**
+  /// In zh, this message translates to:
+  /// **'图片记账'**
   String get smartBillingImageBilling;
 
   /// No description provided for @smartBillingImageBillingDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Select payment screenshot from gallery (long press AI button or use in AI Chat)'**
+  /// In zh, this message translates to:
+  /// **'从相册选择支付截图识别（长按 AI 助手或在对话中使用）'**
   String get smartBillingImageBillingDesc;
 
   /// No description provided for @smartBillingImageBillingGuide.
   ///
-  /// In en, this message translates to:
-  /// **'Long press the \'AI Assistant\' button at the bottom center to select \'Gallery\', or tap \'+\' in the AI Chat page. The AI vision model will automatically extract amount, merchant, and time.\n\nTip: You can also long press the app icon on your home screen or share screenshots to SmartBook.'**
+  /// In zh, this message translates to:
+  /// **'可在首页底部长按「AI 助手」按钮滑动选择「相册」，或进入「AI 助手」对话页点击输入框左侧「+」选择「相册」。AI 视觉模型会自动识别截图中的金额、商家、时间等信息。\n\n提示：也可在手机桌面长按应用图标，或在相册中将截图直接分享给智记。'**
   String get smartBillingImageBillingGuide;
 
   /// No description provided for @smartBillingVisionAIRequired.
   ///
-  /// In en, this message translates to:
-  /// **'Image recognition requires an AI vision service. Set it up in \"Me → AI Settings\" first.'**
+  /// In zh, this message translates to:
+  /// **'图片识别必须配置 AI 视觉服务，请先在「我的 → AI 设置」中配置'**
   String get smartBillingVisionAIRequired;
 
   /// No description provided for @smartBillingCameraBilling.
   ///
-  /// In en, this message translates to:
-  /// **'Camera Billing'**
+  /// In zh, this message translates to:
+  /// **'拍照记账'**
   String get smartBillingCameraBilling;
 
   /// No description provided for @smartBillingCameraBillingDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Take a photo of receipt or bill (long press AI button or use in AI Chat)'**
+  /// In zh, this message translates to:
+  /// **'拍摄纸质小票或账单识别（长按 AI 助手或在对话中使用）'**
   String get smartBillingCameraBillingDesc;
 
   /// No description provided for @smartBillingCameraBillingGuide.
   ///
-  /// In en, this message translates to:
-  /// **'Long press the \'AI Assistant\' button at the bottom center to select \'Camera\', or tap \'+\' in the AI Chat page. The AI vision model will extract amount, merchant, and time.'**
+  /// In zh, this message translates to:
+  /// **'可在首页底部长按「AI 助手」按钮滑动选择「拍照」，或进入「AI 助手」对话页点击输入框左侧「+」选择「拍照」。AI 视觉模型会自动识别小票中的金额、商家、时间等信息。'**
   String get smartBillingCameraBillingGuide;
 
   /// No description provided for @smartBillingVoiceBilling.
   ///
-  /// In en, this message translates to:
-  /// **'Voice Billing'**
+  /// In zh, this message translates to:
+  /// **'语音记账'**
   String get smartBillingVoiceBilling;
 
   /// No description provided for @smartBillingVoiceBillingDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Voice input for daily expenses (long press AI button or use in AI Chat)'**
+  /// In zh, this message translates to:
+  /// **'语音口述日常收支记账（长按 AI 助手或在对话中使用）'**
   String get smartBillingVoiceBillingDesc;
 
   /// No description provided for @smartBillingVoiceBillingGuide.
   ///
-  /// In en, this message translates to:
-  /// **'Long press the \'AI Assistant\' button at the bottom center to select \'Voice\', or hold the microphone in AI Chat. AI will transcribe speech and extract billing details.'**
+  /// In zh, this message translates to:
+  /// **'可在首页底部长按「AI 助手」按钮滑动选择「语音」，或进入「AI 助手」对话页按住麦克风说话。AI 会自动转写语音并智能提取账单信息入账。'**
   String get smartBillingVoiceBillingGuide;
 
   /// No description provided for @smartBillingAIRequired.
   ///
-  /// In en, this message translates to:
-  /// **'Voice billing requires an AI speech service. Set it up in \"Me → AI Settings\" first.'**
+  /// In zh, this message translates to:
+  /// **'语音记账必须配置 AI 语音识别服务，请先在「我的 → AI 设置」中配置'**
   String get smartBillingAIRequired;
 
   /// No description provided for @smartBillingAutoTags.
   ///
-  /// In en, this message translates to:
-  /// **'Auto-associate Tags'**
+  /// In zh, this message translates to:
+  /// **'自动关联标签'**
   String get smartBillingAutoTags;
 
   /// No description provided for @smartBillingAutoTagsDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Automatically associate frequently used tags based on category'**
+  /// In zh, this message translates to:
+  /// **'智能记账时自动根据分类关联常用标签'**
   String get smartBillingAutoTagsDesc;
 
   /// No description provided for @smartBillingAutoAttachment.
   ///
-  /// In en, this message translates to:
-  /// **'Auto-add Attachment'**
+  /// In zh, this message translates to:
+  /// **'自动添加附件'**
   String get smartBillingAutoAttachment;
 
   /// No description provided for @smartBillingAutoAttachmentDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Automatically add original image as attachment for photo billing'**
+  /// In zh, this message translates to:
+  /// **'图片/拍照记账时自动将原图添加为附件'**
   String get smartBillingAutoAttachmentDesc;
 
   /// No description provided for @autoScreenshotBillingIosTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Auto Billing'**
+  /// In zh, this message translates to:
+  /// **'自动记账'**
   String get autoScreenshotBillingIosTitle;
 
   /// No description provided for @autoScreenshotBillingIosDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Auto-recognize payments via Shortcuts'**
+  /// In zh, this message translates to:
+  /// **'通过快捷指令自动识别支付信息记账'**
   String get autoScreenshotBillingIosDesc;
 
   /// No description provided for @shareBilling.
   ///
-  /// In en, this message translates to:
-  /// **'Share to Bill'**
+  /// In zh, this message translates to:
+  /// **'分享记账'**
   String get shareBilling;
 
   /// No description provided for @shareBillingDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Share a payment screenshot from Alipay/WeChat to bill it'**
+  /// In zh, this message translates to:
+  /// **'从支付宝/微信分享支付截图即可记账'**
   String get shareBillingDesc;
 
   /// No description provided for @shareBillingGuide.
   ///
-  /// In en, this message translates to:
-  /// **'When you see a payment screenshot in Alipay, WeChat, Photos, etc., tap \"Share\" and choose \"SmartBook\" to auto-recognize the amount, merchant, and time and create a transaction — no need to save the screenshot first.'**
+  /// In zh, this message translates to:
+  /// **'在支付宝、微信、相册等应用中看到支付截图时，点击「分享」并选择「智记」，即可自动识别金额、商家、时间等信息并记账，无需先保存截图。'**
   String get shareBillingGuide;
 
   /// No description provided for @shareBillingActionHint.
   ///
-  /// In en, this message translates to:
-  /// **'Recognized automatically in the background after sharing — no need to open SmartBook'**
+  /// In zh, this message translates to:
+  /// **'分享后会在后台自动识别记账，无需手动打开智记'**
   String get shareBillingActionHint;
 
   /// No description provided for @automation.
   ///
-  /// In en, this message translates to:
-  /// **'Automation'**
+  /// In zh, this message translates to:
+  /// **'自动化'**
   String get automation;
 
   /// No description provided for @automationDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Recurring transactions and reminders'**
+  /// In zh, this message translates to:
+  /// **'周期记账、记账提醒'**
   String get automationDesc;
 
   /// No description provided for @automationPageTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Automation'**
+  /// In zh, this message translates to:
+  /// **'自动化功能'**
   String get automationPageTitle;
 
   /// No description provided for @automationPageSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Recurring transactions and reminder settings'**
+  /// In zh, this message translates to:
+  /// **'周期记账和提醒设置'**
   String get automationPageSubtitle;
 
   /// No description provided for @appearanceSettings.
   ///
-  /// In en, this message translates to:
-  /// **'Personalization'**
+  /// In zh, this message translates to:
+  /// **'个性化设置'**
   String get appearanceSettings;
 
   /// No description provided for @appearanceSettingsDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Theme, font, language, app lock, etc.'**
+  /// In zh, this message translates to:
+  /// **'主题、字体、语言、应用锁等'**
   String get appearanceSettingsDesc;
 
   /// No description provided for @appearanceSettingsPageTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Personalization'**
+  /// In zh, this message translates to:
+  /// **'个性化设置'**
   String get appearanceSettingsPageTitle;
 
   /// No description provided for @appearanceSettingsPageSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Appearance, display, security and other app preferences'**
+  /// In zh, this message translates to:
+  /// **'外观、显示、安全等应用偏好'**
   String get appearanceSettingsPageSubtitle;
 
   /// No description provided for @about.
   ///
-  /// In en, this message translates to:
-  /// **'About'**
+  /// In zh, this message translates to:
+  /// **'关于'**
   String get about;
 
   /// No description provided for @aboutDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Version info, help and feedback'**
+  /// In zh, this message translates to:
+  /// **'版本信息、帮助与反馈'**
   String get aboutDesc;
-
-  /// No description provided for @mineRateApp.
-  ///
-  /// In en, this message translates to:
-  /// **'Rate the App'**
-  String get mineRateApp;
-
-  /// No description provided for @mineRateAppSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Rate us on the App Store'**
-  String get mineRateAppSubtitle;
 
   /// No description provided for @aboutPageTitle.
   ///
-  /// In en, this message translates to:
-  /// **'About'**
+  /// In zh, this message translates to:
+  /// **'关于'**
   String get aboutPageTitle;
 
   /// No description provided for @aboutPageSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'App information and help'**
+  /// In zh, this message translates to:
+  /// **'应用信息和帮助'**
   String get aboutPageSubtitle;
+
+  /// No description provided for @mineRateApp.
+  ///
+  /// In zh, this message translates to:
+  /// **'给应用评分'**
+  String get mineRateApp;
+
+  /// No description provided for @mineRateAppSubtitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'在App Store上为我们打分'**
+  String get mineRateAppSubtitle;
 
   /// No description provided for @aboutPageLoadingVersion.
   ///
-  /// In en, this message translates to:
-  /// **'Loading version...'**
+  /// In zh, this message translates to:
+  /// **'加载版本号中...'**
   String get aboutPageLoadingVersion;
 
   /// No description provided for @aboutWebsite.
   ///
-  /// In en, this message translates to:
-  /// **'Official Website'**
+  /// In zh, this message translates to:
+  /// **'官方网站'**
   String get aboutWebsite;
 
   /// No description provided for @aboutGitHubRepo.
   ///
-  /// In en, this message translates to:
-  /// **'GitHub Repository'**
+  /// In zh, this message translates to:
+  /// **'GitHub 仓库'**
   String get aboutGitHubRepo;
 
   /// No description provided for @aboutXiaohongshu.
   ///
-  /// In en, this message translates to:
-  /// **'Xiaohongshu'**
+  /// In zh, this message translates to:
+  /// **'小红书'**
   String get aboutXiaohongshu;
 
   /// No description provided for @aboutDouyin.
   ///
-  /// In en, this message translates to:
-  /// **'Douyin'**
+  /// In zh, this message translates to:
+  /// **'抖音'**
   String get aboutDouyin;
 
   /// No description provided for @aboutTelegram.
   ///
-  /// In en, this message translates to:
-  /// **'Telegram'**
+  /// In zh, this message translates to:
+  /// **'Telegram 群'**
   String get aboutTelegram;
 
   /// No description provided for @aboutSupportDevelopment.
   ///
-  /// In en, this message translates to:
-  /// **'Support Development'**
+  /// In zh, this message translates to:
+  /// **'支持开发'**
   String get aboutSupportDevelopment;
 
   /// No description provided for @aboutSupportDevelopmentSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Buy me a coffee'**
+  /// In zh, this message translates to:
+  /// **'请开发者喝杯咖啡'**
   String get aboutSupportDevelopmentSubtitle;
 
   /// No description provided for @aboutDeveloperStoryTitle.
   ///
-  /// In en, this message translates to:
-  /// **'From the Developer'**
+  /// In zh, this message translates to:
+  /// **'开发者的话'**
   String get aboutDeveloperStoryTitle;
 
   /// No description provided for @aboutDeveloperStory.
   ///
-  /// In en, this message translates to:
-  /// **'I started tracking my expenses in 2015 as an intern, and I\'ve kept the habit for over a decade. Concerned about ads, paywalls, privacy risks, and apps shutting down, I decided to build my own — first as a small tool for myself and my family.\n\nIn September 2025, SmartBook launched its first version. Honestly, I had no idea if anyone would use it. But gradually, feedback started coming in — someone said they finally found a clean budgeting app, others offered great suggestions, and some quietly left five-star reviews. Every single message reminded me this was worth continuing.\n\nSmartBook is ad-free, subscription-free, and fully open source. All your data stays on your device and is never uploaded to any third-party server. But publishing and maintaining an app isn\'t free — developer accounts, servers, and other costs are currently covered by community donations, and every system update, bug fix, and new feature is built outside of my day job.\n\nIf SmartBook has been helpful to you, a rating, a share, or a donation would help this little project go further. Thank you for your trust.'**
+  /// In zh, this message translates to:
+  /// **'从 2015 年实习起，我坚持记账至今已超过十年。因为担心记账软件的广告、付费、隐私泄露和停运跑路，我决定自己做一个——最初只是给自己和家人用的小工具。\n\n2025 年 9 月，智记发布了第一个版本。说实话，那时候心里没什么底，不知道会不会有人用。但慢慢地，开始收到用户的反馈——有人说终于找到了一款干净的记账软件，有人提了很好的建议，也有人默默给了五星好评。每一条反馈都让我觉得，这件事值得继续做下去。\n\n智记没有广告、没有会员、完全免费开源。你的每一笔数据都只存在你自己的手机里，不会被上传到任何第三方服务器。但上架和维护一款 App 并非零成本——开发者账号、服务器等开支目前靠社区捐赠勉强支撑，每一次适配新系统、修复 Bug、开发新功能，也都是工作之余一点点完成的。\n\n如果你觉得智记对你有帮助，一个好评、一次分享或一笔捐赠，都能让这个小项目走得更远。谢谢你的信任。'**
   String get aboutDeveloperStory;
 
   /// No description provided for @aboutRelatedProducts.
   ///
-  /// In en, this message translates to:
-  /// **'More Products'**
+  /// In zh, this message translates to:
+  /// **'更多产品'**
   String get aboutRelatedProducts;
 
   /// No description provided for @aboutBeeAssets.
   ///
-  /// In en, this message translates to:
-  /// **'BeeAssets'**
+  /// In zh, this message translates to:
+  /// **'蜜蜂家当 BeeAssets'**
   String get aboutBeeAssets;
 
   /// No description provided for @aboutBeeAssetsSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Visualize your full asset portfolio'**
+  /// In zh, this message translates to:
+  /// **'可视化你的全部资产配置'**
   String get aboutBeeAssetsSubtitle;
 
   /// No description provided for @aboutBeeAssetsIntro.
   ///
-  /// In en, this message translates to:
-  /// **'SmartBook focuses on daily cash flow; BeeAssets is its sibling product, focused on asset portfolio visualization: net worth trends across accounts, property / investment / crypto classification, returns, holding period, and allocation breakdown.'**
+  /// In zh, this message translates to:
+  /// **'智记侧重日常流水,蜜蜂家当是它的姐妹产品,专注资产配置可视化:跨账户净资产趋势、房产 / 投资 / 加密资产分类、收益率与持仓时长、配置占比一目了然。'**
   String get aboutBeeAssetsIntro;
 
   /// No description provided for @aboutBeeDNS.
   ///
-  /// In en, this message translates to:
-  /// **'BeeDNS'**
+  /// In zh, this message translates to:
+  /// **'蜜蜂域名 BeeDNS'**
   String get aboutBeeDNS;
 
   /// No description provided for @aboutBeeDNSSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Simple and efficient DNS management tool'**
+  /// In zh, this message translates to:
+  /// **'简洁高效的 DNS 管理工具'**
   String get aboutBeeDNSSubtitle;
 
   /// No description provided for @aboutBeeDNSIntro.
   ///
-  /// In en, this message translates to:
-  /// **'Got domains across Cloudflare and Aliyun? BeeDNS unifies them in one place: batch edit records, A/AAAA toggles, resolution migration, subdomain bulk management — no more switching between provider consoles.'**
+  /// In zh, this message translates to:
+  /// **'如果你的域名分散在 Cloudflare 和阿里云,蜜蜂域名把它们聚合在一处管理:批量改记录、A/AAAA 切换、解析迁移、子域名批量管理 — 不用在两家控制台来回切。'**
   String get aboutBeeDNSIntro;
 
   /// No description provided for @productPromoAndroidTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Request Beta Access'**
+  /// In zh, this message translates to:
+  /// **'申请加入内测'**
   String get productPromoAndroidTitle;
 
   /// No description provided for @productPromoAndroidMessage.
   ///
-  /// In en, this message translates to:
-  /// **'This app is still in closed testing on Google Play — invitation only.\n\nHow to apply: email us with your Google account address (required) and a brief use case (optional). We\'ll reply within 1-3 days and add you to the beta whitelist.'**
+  /// In zh, this message translates to:
+  /// **'这款 App 还在 Google Play 内测阶段,需要邀请才能下载。\n\n申请方式:发邮件给我们,告诉我们你的 Google 账号邮箱(必填),以及简单说明使用场景(可选)。我们会在 1-3 天内回复并加你到内测白名单。'**
   String get productPromoAndroidMessage;
 
   /// No description provided for @productPromoOpenStore.
   ///
-  /// In en, this message translates to:
-  /// **'Open in App Store'**
+  /// In zh, this message translates to:
+  /// **'前往应用商店'**
   String get productPromoOpenStore;
 
   /// No description provided for @productPromoTestFlight.
   ///
-  /// In en, this message translates to:
-  /// **'TestFlight beta'**
+  /// In zh, this message translates to:
+  /// **'TestFlight 内测'**
   String get productPromoTestFlight;
 
   /// No description provided for @productPromoLearnMore.
   ///
-  /// In en, this message translates to:
+  /// In zh, this message translates to:
   /// **'Pro'**
   String get productPromoLearnMore;
 
   /// No description provided for @productPromoEmailLabel.
   ///
-  /// In en, this message translates to:
-  /// **'Application Email (tap to copy)'**
+  /// In zh, this message translates to:
+  /// **'申请邮箱(点击复制)'**
   String get productPromoEmailLabel;
 
   /// No description provided for @productPromoCopiedToast.
   ///
-  /// In en, this message translates to:
-  /// **'Email copied to clipboard'**
+  /// In zh, this message translates to:
+  /// **'邮箱已复制到剪贴板'**
   String get productPromoCopiedToast;
 
   /// No description provided for @productPromoMailUnavailable.
   ///
-  /// In en, this message translates to:
-  /// **'No email app detected. The address has been copied — paste it into any mail app to send.'**
+  /// In zh, this message translates to:
+  /// **'未检测到邮件应用,邮箱已复制到剪贴板,请打开任意邮件应用粘贴发送'**
   String get productPromoMailUnavailable;
 
   /// No description provided for @productPromoEmailButton.
   ///
-  /// In en, this message translates to:
-  /// **'Send Email'**
+  /// In zh, this message translates to:
+  /// **'发送邮件'**
   String get productPromoEmailButton;
 
   /// No description provided for @productPromoWebsiteButton.
   ///
-  /// In en, this message translates to:
-  /// **'Visit Website'**
+  /// In zh, this message translates to:
+  /// **'前往官网'**
   String get productPromoWebsiteButton;
 
   /// No description provided for @productPromoEmailSubject.
   ///
-  /// In en, this message translates to:
-  /// **'Beta access request - {productName}'**
+  /// In zh, this message translates to:
+  /// **'申请内测 - {productName}'**
   String productPromoEmailSubject(String productName);
 
   /// No description provided for @productPromoEmailBody.
   ///
-  /// In en, this message translates to:
-  /// **'Hi,\n\nI\'d like to join the closed beta for {productName} on Google Play. My Google account email is:\n\n(please fill in your Gmail / Google account email)\n\nThanks!'**
+  /// In zh, this message translates to:
+  /// **'你好,\n\n我希望加入「{productName}」的 Google Play 内测,我的 Google 账号邮箱是:\n\n(请填写你的 Gmail / Google 账号邮箱)\n\n谢谢!'**
   String productPromoEmailBody(String productName);
 
   /// No description provided for @logCenterTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Log Center'**
+  /// In zh, this message translates to:
+  /// **'日志中心'**
   String get logCenterTitle;
 
   /// No description provided for @logCenterSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'View app runtime logs'**
+  /// In zh, this message translates to:
+  /// **'查看应用运行日志'**
   String get logCenterSubtitle;
 
   /// No description provided for @logCenterSearchHint.
   ///
-  /// In en, this message translates to:
-  /// **'Search log content or tags...'**
+  /// In zh, this message translates to:
+  /// **'搜索日志内容或标签...'**
   String get logCenterSearchHint;
 
   /// No description provided for @logCenterFilterLevel.
   ///
-  /// In en, this message translates to:
-  /// **'Log Level'**
+  /// In zh, this message translates to:
+  /// **'日志级别'**
   String get logCenterFilterLevel;
 
   /// No description provided for @logCenterFilterPlatform.
   ///
-  /// In en, this message translates to:
-  /// **'Platform'**
+  /// In zh, this message translates to:
+  /// **'平台'**
   String get logCenterFilterPlatform;
 
   /// No description provided for @logCenterTotal.
   ///
-  /// In en, this message translates to:
-  /// **'Total'**
+  /// In zh, this message translates to:
+  /// **'全部'**
   String get logCenterTotal;
 
   /// No description provided for @logCenterFiltered.
   ///
-  /// In en, this message translates to:
-  /// **'Filtered'**
+  /// In zh, this message translates to:
+  /// **'已过滤'**
   String get logCenterFiltered;
 
   /// No description provided for @logCenterEmpty.
   ///
-  /// In en, this message translates to:
-  /// **'No logs'**
+  /// In zh, this message translates to:
+  /// **'暂无日志'**
   String get logCenterEmpty;
 
   /// No description provided for @logCenterExport.
   ///
-  /// In en, this message translates to:
-  /// **'Export'**
+  /// In zh, this message translates to:
+  /// **'导出'**
   String get logCenterExport;
 
   /// No description provided for @logCenterClear.
   ///
-  /// In en, this message translates to:
-  /// **'Clear'**
+  /// In zh, this message translates to:
+  /// **'清空'**
   String get logCenterClear;
 
   /// No description provided for @logCenterExportFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Export failed'**
+  /// In zh, this message translates to:
+  /// **'导出失败'**
   String get logCenterExportFailed;
 
   /// No description provided for @logCenterClearConfirmTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Clear Logs'**
+  /// In zh, this message translates to:
+  /// **'清空日志'**
   String get logCenterClearConfirmTitle;
 
   /// No description provided for @logCenterClearConfirmMessage.
   ///
-  /// In en, this message translates to:
-  /// **'Are you sure you want to clear all logs? This action cannot be undone.'**
+  /// In zh, this message translates to:
+  /// **'确定要清空所有日志吗？此操作不可恢复。'**
   String get logCenterClearConfirmMessage;
 
   /// No description provided for @logCenterCleared.
   ///
-  /// In en, this message translates to:
-  /// **'Logs cleared'**
+  /// In zh, this message translates to:
+  /// **'日志已清空'**
   String get logCenterCleared;
 
   /// No description provided for @logCenterCopied.
   ///
-  /// In en, this message translates to:
-  /// **'Copied to clipboard'**
+  /// In zh, this message translates to:
+  /// **'已复制到剪贴板'**
   String get logCenterCopied;
 
   /// No description provided for @configImportExportTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Config Import/Export'**
+  /// In zh, this message translates to:
+  /// **'配置导入导出'**
   String get configImportExportTitle;
 
   /// No description provided for @configImportExportSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Backup and restore app configurations'**
+  /// In zh, this message translates to:
+  /// **'备份和恢复应用配置'**
   String get configImportExportSubtitle;
 
   /// No description provided for @configImportExportInfoTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Feature Description'**
+  /// In zh, this message translates to:
+  /// **'功能说明'**
   String get configImportExportInfoTitle;
 
   /// No description provided for @configImportExportInfoMessage.
   ///
-  /// In en, this message translates to:
-  /// **'This feature is used to export and import app configurations, including cloud service settings, AI settings, etc. The config file uses YAML format for easy viewing and editing.\n\n⚠️ Config files contain sensitive information (such as API keys, passwords, etc.), please keep them safe.'**
+  /// In zh, this message translates to:
+  /// **'此功能用于导出和导入应用配置，包括云服务配置、AI配置等。配置文件采用YAML格式，方便查看和编辑。\n\n⚠️ 配置文件包含敏感信息（如API密钥、密码等），请妥善保管。'**
   String get configImportExportInfoMessage;
 
   /// No description provided for @configExportTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Export Config'**
+  /// In zh, this message translates to:
+  /// **'导出配置'**
   String get configExportTitle;
 
   /// No description provided for @configExportSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Export current config to YAML file'**
+  /// In zh, this message translates to:
+  /// **'将当前配置导出为YAML文件'**
   String get configExportSubtitle;
 
   /// No description provided for @configExportShareSubject.
   ///
-  /// In en, this message translates to:
-  /// **'智记 Config File'**
+  /// In zh, this message translates to:
+  /// **'智记 配置文件'**
   String get configExportShareSubject;
 
   /// No description provided for @configExportSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'Config exported successfully'**
+  /// In zh, this message translates to:
+  /// **'配置导出成功'**
   String get configExportSuccess;
 
   /// No description provided for @configExportFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Config export failed'**
+  /// In zh, this message translates to:
+  /// **'配置导出失败'**
   String get configExportFailed;
 
   /// No description provided for @configImportTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Import Config'**
+  /// In zh, this message translates to:
+  /// **'导入配置'**
   String get configImportTitle;
 
   /// No description provided for @configImportSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Restore config from YAML file'**
+  /// In zh, this message translates to:
+  /// **'从YAML文件恢复配置'**
   String get configImportSubtitle;
 
   /// No description provided for @configImportNoFilePath.
   ///
-  /// In en, this message translates to:
-  /// **'No file selected'**
+  /// In zh, this message translates to:
+  /// **'未选择文件'**
   String get configImportNoFilePath;
 
   /// No description provided for @configImportConfirmTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Confirm Import'**
+  /// In zh, this message translates to:
+  /// **'确认导入'**
   String get configImportConfirmTitle;
 
   /// No description provided for @configImportSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'Config imported successfully'**
+  /// In zh, this message translates to:
+  /// **'配置导入成功'**
   String get configImportSuccess;
 
   /// No description provided for @configImportFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Config import failed'**
+  /// In zh, this message translates to:
+  /// **'配置导入失败'**
   String get configImportFailed;
 
   /// No description provided for @configImportRestartTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Restart Required'**
+  /// In zh, this message translates to:
+  /// **'需要重启'**
   String get configImportRestartTitle;
 
   /// No description provided for @configImportRestartMessage.
   ///
-  /// In en, this message translates to:
-  /// **'Config has been imported. Some settings will take effect after restarting the app.'**
+  /// In zh, this message translates to:
+  /// **'配置已导入，部分配置需要重启应用后生效。'**
   String get configImportRestartMessage;
 
   /// No description provided for @configImportExportIncludesTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Included Configurations'**
+  /// In zh, this message translates to:
+  /// **'包含的配置项'**
   String get configImportExportIncludesTitle;
 
   /// No description provided for @configExportSavedTo.
   ///
-  /// In en, this message translates to:
-  /// **'Saved to: {path}'**
+  /// In zh, this message translates to:
+  /// **'已保存至: {path}'**
   String configExportSavedTo(String path);
 
   /// No description provided for @configExportViewContent.
   ///
-  /// In en, this message translates to:
-  /// **'View Content'**
+  /// In zh, this message translates to:
+  /// **'查看内容'**
   String get configExportViewContent;
 
   /// No description provided for @configExportCopyContent.
   ///
-  /// In en, this message translates to:
-  /// **'Copy Content'**
+  /// In zh, this message translates to:
+  /// **'复制内容'**
   String get configExportCopyContent;
 
   /// No description provided for @configExportContentCopied.
   ///
-  /// In en, this message translates to:
-  /// **'Copied to clipboard'**
+  /// In zh, this message translates to:
+  /// **'已复制到剪贴板'**
   String get configExportContentCopied;
 
   /// No description provided for @configExportReadFileFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Failed to read file'**
+  /// In zh, this message translates to:
+  /// **'读取文件失败'**
   String get configExportReadFileFailed;
 
   /// No description provided for @configIncludeLedgers.
   ///
-  /// In en, this message translates to:
-  /// **'Ledgers'**
+  /// In zh, this message translates to:
+  /// **'账本'**
   String get configIncludeLedgers;
 
   /// No description provided for @configIncludeSupabase.
   ///
-  /// In en, this message translates to:
-  /// **'Supabase cloud service config'**
+  /// In zh, this message translates to:
+  /// **'Supabase 云服务配置'**
   String get configIncludeSupabase;
 
   /// No description provided for @configIncludeWebdav.
   ///
-  /// In en, this message translates to:
-  /// **'WebDAV cloud service config'**
+  /// In zh, this message translates to:
+  /// **'WebDAV 云服务配置'**
   String get configIncludeWebdav;
 
   /// No description provided for @configIncludeS3.
   ///
-  /// In en, this message translates to:
-  /// **'S3 cloud service config'**
+  /// In zh, this message translates to:
+  /// **'S3 云服务配置'**
   String get configIncludeS3;
 
   /// No description provided for @configIncludeAI.
   ///
-  /// In en, this message translates to:
-  /// **'AI smart recognition config'**
+  /// In zh, this message translates to:
+  /// **'AI 智能识别配置'**
   String get configIncludeAI;
 
   /// No description provided for @configIncludeAISubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Providers, capability binding, model settings, etc.'**
+  /// In zh, this message translates to:
+  /// **'服务商、能力绑定、模型设置等'**
   String get configIncludeAISubtitle;
 
   /// No description provided for @configIncludeAppSettings.
   ///
-  /// In en, this message translates to:
-  /// **'App settings (language, appearance, reminder, default account, etc.)'**
+  /// In zh, this message translates to:
+  /// **'应用设置（语言、外观、提醒、默认账户等）'**
   String get configIncludeAppSettings;
 
   /// No description provided for @configIncludeRecurringTransactions.
   ///
-  /// In en, this message translates to:
-  /// **'Recurring transactions'**
+  /// In zh, this message translates to:
+  /// **'周期账单'**
   String get configIncludeRecurringTransactions;
 
   /// No description provided for @configIncludeAccounts.
   ///
-  /// In en, this message translates to:
-  /// **'Accounts'**
+  /// In zh, this message translates to:
+  /// **'账户'**
   String get configIncludeAccounts;
 
   /// No description provided for @configIncludeCategories.
   ///
-  /// In en, this message translates to:
-  /// **'Categories'**
+  /// In zh, this message translates to:
+  /// **'分类'**
   String get configIncludeCategories;
 
   /// No description provided for @configIncludeTags.
   ///
-  /// In en, this message translates to:
-  /// **'Tags'**
+  /// In zh, this message translates to:
+  /// **'标签'**
   String get configIncludeTags;
 
   /// No description provided for @configIncludeBudgets.
   ///
-  /// In en, this message translates to:
-  /// **'Budgets'**
+  /// In zh, this message translates to:
+  /// **'预算'**
   String get configIncludeBudgets;
 
   /// No description provided for @configIncludeOtherSettings.
   ///
-  /// In en, this message translates to:
-  /// **'Other Settings'**
+  /// In zh, this message translates to:
+  /// **'其他设置'**
   String get configIncludeOtherSettings;
 
   /// No description provided for @configIncludeOtherSettingsSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Including cloud service, AI config, app settings, etc.'**
+  /// In zh, this message translates to:
+  /// **'包含云服务配置、AI配置、应用设置等'**
   String get configIncludeOtherSettingsSubtitle;
 
   /// No description provided for @configExportSelectTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Select Export Content'**
+  /// In zh, this message translates to:
+  /// **'选择导出内容'**
   String get configExportSelectTitle;
 
   /// No description provided for @configExportPreviewTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Export Preview'**
+  /// In zh, this message translates to:
+  /// **'导出预览'**
   String get configExportPreviewTitle;
 
   /// No description provided for @configExportConfirmTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Confirm Export'**
+  /// In zh, this message translates to:
+  /// **'确认导出'**
   String get configExportConfirmTitle;
 
   /// No description provided for @configImportSelectTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Select Import Content'**
+  /// In zh, this message translates to:
+  /// **'选择导入内容'**
   String get configImportSelectTitle;
 
   /// No description provided for @configImportPreviewTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Import Preview'**
+  /// In zh, this message translates to:
+  /// **'导入预览'**
   String get configImportPreviewTitle;
+
+  /// No description provided for @ledgersLocal.
+  ///
+  /// In zh, this message translates to:
+  /// **'本地账本'**
+  String get ledgersLocal;
+
+  /// No description provided for @ledgersRemote.
+  ///
+  /// In zh, this message translates to:
+  /// **'云端账本'**
+  String get ledgersRemote;
+
+  /// No description provided for @ledgersEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂无账本'**
+  String get ledgersEmpty;
+
+  /// No description provided for @ledgersRestoreAll.
+  ///
+  /// In zh, this message translates to:
+  /// **'全部恢复'**
+  String get ledgersRestoreAll;
+
+  /// No description provided for @ledgersSwitched.
+  ///
+  /// In zh, this message translates to:
+  /// **'已切换到账本\"{name}\"'**
+  String ledgersSwitched(String name);
+
+  /// No description provided for @ledgersDownloadTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'下载账本'**
+  String get ledgersDownloadTitle;
+
+  /// No description provided for @ledgersDownloadMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认下载账本\"{name}\"到本地？'**
+  String ledgersDownloadMessage(String name);
+
+  /// No description provided for @ledgersDownloading.
+  ///
+  /// In zh, this message translates to:
+  /// **'下载中...'**
+  String get ledgersDownloading;
+
+  /// No description provided for @ledgersDownloadSuccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'账本\"{name}\"下载成功'**
+  String ledgersDownloadSuccess(String name);
+
+  /// No description provided for @ledgersDownload.
+  ///
+  /// In zh, this message translates to:
+  /// **'下载'**
+  String get ledgersDownload;
+
+  /// No description provided for @ledgersDeleteRemote.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除云端账本'**
+  String get ledgersDeleteRemote;
+
+  /// No description provided for @ledgersDeleteRemoteConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除云端账本'**
+  String get ledgersDeleteRemoteConfirm;
+
+  /// No description provided for @ledgersDeleteRemoteMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认删除云端账本\"{name}\"？此操作不可恢复。'**
+  String ledgersDeleteRemoteMessage(String name);
+
+  /// No description provided for @ledgersDeleting.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除中...'**
+  String get ledgersDeleting;
+
+  /// No description provided for @ledgersDeleteRemoteSuccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'已删除云端账本'**
+  String get ledgersDeleteRemoteSuccess;
+
+  /// No description provided for @ledgersCannotDeleteLastOne.
+  ///
+  /// In zh, this message translates to:
+  /// **'无法删除最后一个账本'**
+  String get ledgersCannotDeleteLastOne;
+
+  /// No description provided for @ledgersRestoreAllTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'批量恢复'**
+  String get ledgersRestoreAllTitle;
+
+  /// No description provided for @ledgersRestoreAllMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认恢复所有云端账本？共 {count} 个。'**
+  String ledgersRestoreAllMessage(int count);
+
+  /// No description provided for @ledgersRestoring.
+  ///
+  /// In zh, this message translates to:
+  /// **'恢复中...'**
+  String get ledgersRestoring;
+
+  /// No description provided for @ledgersRestoreComplete.
+  ///
+  /// In zh, this message translates to:
+  /// **'恢复完成'**
+  String get ledgersRestoreComplete;
+
+  /// No description provided for @ledgersRestoreResult.
+  ///
+  /// In zh, this message translates to:
+  /// **'成功: {success}，失败: {failed}'**
+  String ledgersRestoreResult(int success, int failed);
 
   /// No description provided for @ledgersConflictTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Sync Conflict'**
+  /// In zh, this message translates to:
+  /// **'同步冲突'**
   String get ledgersConflictTitle;
 
   /// No description provided for @ledgersConflictMessage.
   ///
-  /// In en, this message translates to:
-  /// **'Local and cloud ledger data are inconsistent, please choose an action:'**
+  /// In zh, this message translates to:
+  /// **'本地和云端账本数据不一致，请选择操作：'**
   String get ledgersConflictMessage;
 
   /// No description provided for @ledgersConflictLocalInfo.
   ///
-  /// In en, this message translates to:
-  /// **'Local: {count} transactions'**
+  /// In zh, this message translates to:
+  /// **'本地：{count} 笔账单'**
   String ledgersConflictLocalInfo(int count);
 
   /// No description provided for @ledgersConflictRemoteInfo.
   ///
-  /// In en, this message translates to:
-  /// **'Cloud: {count} transactions'**
+  /// In zh, this message translates to:
+  /// **'云端：{count} 笔账单'**
   String ledgersConflictRemoteInfo(int count);
 
   /// No description provided for @ledgersConflictRemoteUpdated.
   ///
-  /// In en, this message translates to:
-  /// **'Cloud updated: {time}'**
+  /// In zh, this message translates to:
+  /// **'云端更新：{time}'**
   String ledgersConflictRemoteUpdated(String time);
 
   /// No description provided for @ledgersConflictLocalFingerprint.
   ///
-  /// In en, this message translates to:
-  /// **'Local fingerprint: {fp}'**
+  /// In zh, this message translates to:
+  /// **'本地指纹：{fp}'**
   String ledgersConflictLocalFingerprint(String fp);
 
   /// No description provided for @ledgersConflictRemoteFingerprint.
   ///
-  /// In en, this message translates to:
-  /// **'Cloud fingerprint: {fp}'**
+  /// In zh, this message translates to:
+  /// **'云端指纹：{fp}'**
   String ledgersConflictRemoteFingerprint(String fp);
 
   /// No description provided for @ledgersConflictUpload.
   ///
-  /// In en, this message translates to:
-  /// **'Upload to Cloud'**
+  /// In zh, this message translates to:
+  /// **'上传到云端'**
   String get ledgersConflictUpload;
 
   /// No description provided for @ledgersConflictDownload.
   ///
-  /// In en, this message translates to:
-  /// **'Download to Local'**
+  /// In zh, this message translates to:
+  /// **'下载到本地'**
   String get ledgersConflictDownload;
 
   /// No description provided for @ledgersConflictUploading.
   ///
-  /// In en, this message translates to:
-  /// **'Uploading...'**
+  /// In zh, this message translates to:
+  /// **'正在上传...'**
   String get ledgersConflictUploading;
 
   /// No description provided for @ledgersConflictDownloading.
   ///
-  /// In en, this message translates to:
-  /// **'Downloading...'**
+  /// In zh, this message translates to:
+  /// **'正在下载...'**
   String get ledgersConflictDownloading;
 
   /// No description provided for @ledgersConflictUploadSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'Upload successful'**
+  /// In zh, this message translates to:
+  /// **'上传成功'**
   String get ledgersConflictUploadSuccess;
 
   /// No description provided for @ledgersConflictDownloadSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'Download successful, merged {inserted} transactions'**
+  /// In zh, this message translates to:
+  /// **'下载成功，已合并 {inserted} 笔账单'**
   String ledgersConflictDownloadSuccess(int inserted);
 
   /// No description provided for @storageManagementTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Storage Management'**
+  /// In zh, this message translates to:
+  /// **'存储空间管理'**
   String get storageManagementTitle;
 
   /// No description provided for @storageManagementSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Clear cache to free up space'**
+  /// In zh, this message translates to:
+  /// **'清理缓存释放空间'**
   String get storageManagementSubtitle;
 
   /// No description provided for @storageAIModels.
   ///
-  /// In en, this message translates to:
-  /// **'AI Models'**
+  /// In zh, this message translates to:
+  /// **'AI模型'**
   String get storageAIModels;
 
   /// No description provided for @storageAPKFiles.
   ///
-  /// In en, this message translates to:
-  /// **'Installation Packages'**
+  /// In zh, this message translates to:
+  /// **'安装包'**
   String get storageAPKFiles;
 
   /// No description provided for @storageNoData.
   ///
-  /// In en, this message translates to:
-  /// **'No Data'**
+  /// In zh, this message translates to:
+  /// **'无数据'**
   String get storageNoData;
 
   /// No description provided for @storageFiles.
   ///
-  /// In en, this message translates to:
-  /// **'files'**
+  /// In zh, this message translates to:
+  /// **'个文件'**
   String get storageFiles;
 
   /// No description provided for @storageHint.
   ///
-  /// In en, this message translates to:
-  /// **'Tap items to clear corresponding cache files'**
+  /// In zh, this message translates to:
+  /// **'点击项目可清理对应的缓存文件'**
   String get storageHint;
 
   /// No description provided for @storageClearConfirmTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Confirm Clear'**
+  /// In zh, this message translates to:
+  /// **'确认清理'**
   String get storageClearConfirmTitle;
 
   /// No description provided for @storageClearAIModelsMessage.
   ///
-  /// In en, this message translates to:
-  /// **'Are you sure you want to clear all AI models? Size: {size}'**
+  /// In zh, this message translates to:
+  /// **'确定要清理所有AI模型吗？大小: {size}'**
   String storageClearAIModelsMessage(String size);
 
   /// No description provided for @storageClearAPKMessage.
   ///
-  /// In en, this message translates to:
-  /// **'Are you sure you want to clear all installation packages? Size: {size}'**
+  /// In zh, this message translates to:
+  /// **'确定要清理所有安装包吗？大小: {size}'**
   String storageClearAPKMessage(String size);
 
   /// No description provided for @storageClearSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'Cleared successfully'**
+  /// In zh, this message translates to:
+  /// **'清理成功'**
   String get storageClearSuccess;
 
   /// No description provided for @accountNoTransactions.
   ///
-  /// In en, this message translates to:
-  /// **'No transactions'**
+  /// In zh, this message translates to:
+  /// **'暂无交易记录'**
   String get accountNoTransactions;
 
   /// No description provided for @accountTransactionHistory.
   ///
-  /// In en, this message translates to:
-  /// **'Transaction History'**
+  /// In zh, this message translates to:
+  /// **'交易记录'**
   String get accountTransactionHistory;
 
   /// No description provided for @accountTotalBalance.
   ///
-  /// In en, this message translates to:
-  /// **'Net Assets'**
+  /// In zh, this message translates to:
+  /// **'净资产'**
   String get accountTotalBalance;
 
   /// No description provided for @accountCurrencyLocked.
   ///
-  /// In en, this message translates to:
-  /// **'This account has transactions and cannot change currency'**
+  /// In zh, this message translates to:
+  /// **'该账户已有交易记录，不允许修改币种'**
   String get accountCurrencyLocked;
 
   /// No description provided for @accountDefaultIncomeTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Default Income Account'**
+  /// In zh, this message translates to:
+  /// **'默认收入账户'**
   String get accountDefaultIncomeTitle;
 
   /// No description provided for @accountDefaultExpenseTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Default Expense Account'**
+  /// In zh, this message translates to:
+  /// **'默认支出账户'**
   String get accountDefaultExpenseTitle;
 
   /// No description provided for @accountDefaultNone.
   ///
-  /// In en, this message translates to:
-  /// **'Not Set'**
+  /// In zh, this message translates to:
+  /// **'不设置'**
   String get accountDefaultNone;
 
   /// No description provided for @commonNotice.
   ///
-  /// In en, this message translates to:
-  /// **'Notice'**
+  /// In zh, this message translates to:
+  /// **'提示'**
   String get commonNotice;
 
   /// No description provided for @transferTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Transfer'**
+  /// In zh, this message translates to:
+  /// **'转账'**
   String get transferTitle;
 
   /// No description provided for @transferIconSettings.
   ///
-  /// In en, this message translates to:
-  /// **'Transfer Icon Settings'**
+  /// In zh, this message translates to:
+  /// **'转账图标设置'**
   String get transferIconSettings;
 
   /// No description provided for @transferIconSettingsDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Customize the display icon for transfer records'**
+  /// In zh, this message translates to:
+  /// **'自定义转账记录的显示图标'**
   String get transferIconSettingsDesc;
 
   /// No description provided for @transferFromAccount.
   ///
-  /// In en, this message translates to:
-  /// **'From Account'**
+  /// In zh, this message translates to:
+  /// **'转出账户'**
   String get transferFromAccount;
 
   /// No description provided for @transferToAccount.
   ///
-  /// In en, this message translates to:
-  /// **'To Account'**
+  /// In zh, this message translates to:
+  /// **'转入账户'**
   String get transferToAccount;
 
   /// No description provided for @transferSelectAccount.
   ///
-  /// In en, this message translates to:
-  /// **'Select Account'**
+  /// In zh, this message translates to:
+  /// **'选择账户'**
   String get transferSelectAccount;
 
   /// No description provided for @transferCreateSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'Transfer created successfully'**
+  /// In zh, this message translates to:
+  /// **'转账创建成功'**
   String get transferCreateSuccess;
 
   /// No description provided for @transferUpdateSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'Transfer updated successfully'**
+  /// In zh, this message translates to:
+  /// **'转账更新成功'**
   String get transferUpdateSuccess;
 
   /// No description provided for @transferDifferentCurrencyError.
   ///
-  /// In en, this message translates to:
-  /// **'Transfer only supports accounts with the same currency'**
+  /// In zh, this message translates to:
+  /// **'转账仅支持相同币种的账户'**
   String get transferDifferentCurrencyError;
 
   /// No description provided for @transferToPrefix.
   ///
-  /// In en, this message translates to:
-  /// **'To'**
+  /// In zh, this message translates to:
+  /// **'转账至'**
   String get transferToPrefix;
 
   /// No description provided for @transferFromPrefix.
   ///
-  /// In en, this message translates to:
-  /// **'From'**
+  /// In zh, this message translates to:
+  /// **'来自'**
   String get transferFromPrefix;
 
   /// No description provided for @welcomeCategoryModeTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Choose Category Mode'**
+  /// In zh, this message translates to:
+  /// **'选择分类模式'**
   String get welcomeCategoryModeTitle;
 
   /// No description provided for @welcomeCategoryModeDescription.
   ///
-  /// In en, this message translates to:
-  /// **'Select the category structure that suits your needs'**
+  /// In zh, this message translates to:
+  /// **'选择更适合您使用习惯的分类方式'**
   String get welcomeCategoryModeDescription;
 
   /// No description provided for @welcomeCategoryModeFlatTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Flat Categories'**
+  /// In zh, this message translates to:
+  /// **'一级分类'**
   String get welcomeCategoryModeFlatTitle;
 
   /// No description provided for @welcomeCategoryModeFlatDescription.
   ///
-  /// In en, this message translates to:
-  /// **'Simple and fast'**
+  /// In zh, this message translates to:
+  /// **'简单直观，快速记账'**
   String get welcomeCategoryModeFlatDescription;
 
   /// No description provided for @welcomeCategoryModeFlatFeature1.
   ///
-  /// In en, this message translates to:
-  /// **'Flat structure, easy to use'**
+  /// In zh, this message translates to:
+  /// **'扁平化结构，操作简单'**
   String get welcomeCategoryModeFlatFeature1;
 
   /// No description provided for @welcomeCategoryModeFlatFeature2.
   ///
-  /// In en, this message translates to:
-  /// **'Perfect for simple categorization'**
+  /// In zh, this message translates to:
+  /// **'适合习惯简单分类的用户'**
   String get welcomeCategoryModeFlatFeature2;
 
   /// No description provided for @welcomeCategoryModeFlatFeature3.
   ///
-  /// In en, this message translates to:
-  /// **'Quick selection, efficient tracking'**
+  /// In zh, this message translates to:
+  /// **'快速选择，高效记账'**
   String get welcomeCategoryModeFlatFeature3;
 
   /// No description provided for @welcomeCategoryModeHierarchicalTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Hierarchical Categories'**
+  /// In zh, this message translates to:
+  /// **'二级分类'**
   String get welcomeCategoryModeHierarchicalTitle;
 
   /// No description provided for @welcomeCategoryModeHierarchicalDescription.
   ///
-  /// In en, this message translates to:
-  /// **'Detailed management'**
+  /// In zh, this message translates to:
+  /// **'精细管理，清晰明了'**
   String get welcomeCategoryModeHierarchicalDescription;
 
   /// No description provided for @welcomeCategoryModeHierarchicalFeature1.
   ///
-  /// In en, this message translates to:
-  /// **'Support parent-child category levels'**
+  /// In zh, this message translates to:
+  /// **'支持父子分类层级'**
   String get welcomeCategoryModeHierarchicalFeature1;
 
   /// No description provided for @welcomeCategoryModeHierarchicalFeature2.
   ///
-  /// In en, this message translates to:
-  /// **'More detailed transaction classification'**
+  /// In zh, this message translates to:
+  /// **'更细致的账单归类'**
   String get welcomeCategoryModeHierarchicalFeature2;
 
   /// No description provided for @welcomeCategoryModeHierarchicalFeature3.
   ///
-  /// In en, this message translates to:
-  /// **'Perfect for detailed management'**
+  /// In zh, this message translates to:
+  /// **'适合需要精细管理的用户'**
   String get welcomeCategoryModeHierarchicalFeature3;
 
   /// No description provided for @welcomeCategoryModeNoneTitle.
   ///
-  /// In en, this message translates to:
-  /// **'No Categories'**
+  /// In zh, this message translates to:
+  /// **'不创建分类'**
   String get welcomeCategoryModeNoneTitle;
 
   /// No description provided for @welcomeCategoryModeNoneDescription.
   ///
-  /// In en, this message translates to:
-  /// **'Fully customizable, add as needed'**
+  /// In zh, this message translates to:
+  /// **'完全自定义，按需添加'**
   String get welcomeCategoryModeNoneDescription;
 
   /// No description provided for @welcomeCategoryModeNoneFeature1.
   ///
-  /// In en, this message translates to:
-  /// **'No preset categories'**
+  /// In zh, this message translates to:
+  /// **'不预置任何分类'**
   String get welcomeCategoryModeNoneFeature1;
 
   /// No description provided for @welcomeCategoryModeNoneFeature2.
   ///
-  /// In en, this message translates to:
-  /// **'Create categories based on your needs'**
+  /// In zh, this message translates to:
+  /// **'完全按自己需求创建'**
   String get welcomeCategoryModeNoneFeature2;
 
   /// No description provided for @welcomeCategoryModeNoneFeature3.
   ///
-  /// In en, this message translates to:
-  /// **'Perfect for custom classification needs'**
+  /// In zh, this message translates to:
+  /// **'适合有特殊分类需求的用户'**
   String get welcomeCategoryModeNoneFeature3;
 
   /// No description provided for @welcomeExistingUserTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Existing User?'**
+  /// In zh, this message translates to:
+  /// **'老用户？'**
   String get welcomeExistingUserTitle;
 
   /// No description provided for @welcomeExistingUserButton.
   ///
-  /// In en, this message translates to:
-  /// **'Import Config'**
+  /// In zh, this message translates to:
+  /// **'导入配置'**
   String get welcomeExistingUserButton;
 
   /// No description provided for @welcomeImportingConfig.
   ///
-  /// In en, this message translates to:
-  /// **'Importing configuration...'**
+  /// In zh, this message translates to:
+  /// **'正在导入配置...'**
   String get welcomeImportingConfig;
 
   /// No description provided for @welcomeImportSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'Configuration imported successfully'**
+  /// In zh, this message translates to:
+  /// **'配置导入成功'**
   String get welcomeImportSuccess;
 
   /// No description provided for @welcomeImportFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Import failed: {error}'**
+  /// In zh, this message translates to:
+  /// **'配置导入失败: {error}'**
   String welcomeImportFailed(String error);
 
   /// No description provided for @welcomeImportNoFile.
   ///
-  /// In en, this message translates to:
-  /// **'No file selected'**
+  /// In zh, this message translates to:
+  /// **'未选择文件'**
   String get welcomeImportNoFile;
 
   /// No description provided for @welcomeImportAttachmentTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Import Attachments'**
+  /// In zh, this message translates to:
+  /// **'导入附件'**
   String get welcomeImportAttachmentTitle;
 
   /// No description provided for @welcomeImportAttachmentDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Would you like to import attachment files as well?'**
+  /// In zh, this message translates to:
+  /// **'检测到您导入了配置文件，是否需要导入附件文件？'**
   String get welcomeImportAttachmentDesc;
 
   /// No description provided for @welcomeImportAttachmentButton.
   ///
-  /// In en, this message translates to:
-  /// **'Select Attachment File'**
+  /// In zh, this message translates to:
+  /// **'选择附件文件'**
   String get welcomeImportAttachmentButton;
 
   /// No description provided for @welcomeImportAttachmentSkip.
   ///
-  /// In en, this message translates to:
-  /// **'Skip'**
+  /// In zh, this message translates to:
+  /// **'跳过'**
   String get welcomeImportAttachmentSkip;
 
   /// No description provided for @welcomeImportAttachmentSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'Attachments imported: {imported}'**
+  /// In zh, this message translates to:
+  /// **'附件导入完成：导入 {imported} 个'**
   String welcomeImportAttachmentSuccess(int imported);
 
   /// No description provided for @welcomeImportAttachmentFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Attachment import failed: {error}'**
+  /// In zh, this message translates to:
+  /// **'附件导入失败: {error}'**
   String welcomeImportAttachmentFailed(String error);
 
   /// No description provided for @welcomeImportingAttachment.
   ///
-  /// In en, this message translates to:
-  /// **'Importing attachments...'**
+  /// In zh, this message translates to:
+  /// **'正在导入附件...'**
   String get welcomeImportingAttachment;
 
   /// No description provided for @iosVersionWarningTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Requires iOS 16.0 or later'**
+  /// In zh, this message translates to:
+  /// **'需要 iOS 16.0 或更高版本'**
   String get iosVersionWarningTitle;
 
   /// No description provided for @iosVersionWarningDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Screenshot auto-billing feature uses the App Intents framework introduced in iOS 16. Your device is running an older version and does not support this feature.\n\nPlease upgrade to iOS 16 or later to use this feature.'**
+  /// In zh, this message translates to:
+  /// **'截图自动记账功能使用了 iOS 16 引入的 App Intents 框架。您的设备系统版本较低，暂不支持此功能。\n\n请升级到 iOS 16 或更高版本以使用此功能。'**
   String get iosVersionWarningDesc;
 
   /// No description provided for @aiChatTitle.
   ///
-  /// In en, this message translates to:
-  /// **'AI Assistant'**
+  /// In zh, this message translates to:
+  /// **'AI助手'**
   String get aiChatTitle;
 
   /// No description provided for @aiChatImageLabel.
   ///
-  /// In en, this message translates to:
-  /// **'Image'**
+  /// In zh, this message translates to:
+  /// **'图片'**
   String get aiChatImageLabel;
 
   /// No description provided for @aiChatRetry.
   ///
-  /// In en, this message translates to:
-  /// **'Retry recognition'**
+  /// In zh, this message translates to:
+  /// **'重新识别'**
   String get aiChatRetry;
 
   /// No description provided for @aiChatVoiceLabel.
   ///
-  /// In en, this message translates to:
-  /// **'Voice'**
+  /// In zh, this message translates to:
+  /// **'语音'**
   String get aiChatVoiceLabel;
 
   /// No description provided for @aiChatClearHistory.
   ///
-  /// In en, this message translates to:
-  /// **'Clear History'**
+  /// In zh, this message translates to:
+  /// **'清除对话历史'**
   String get aiChatClearHistory;
 
   /// No description provided for @aiChatClearHistoryDialogTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Clear Conversation History'**
+  /// In zh, this message translates to:
+  /// **'清除对话历史'**
   String get aiChatClearHistoryDialogTitle;
 
   /// No description provided for @aiChatClearHistoryDialogContent.
   ///
-  /// In en, this message translates to:
-  /// **'Are you sure you want to clear all conversation records? This action cannot be undone.'**
+  /// In zh, this message translates to:
+  /// **'确定要清除所有对话记录吗?此操作不可恢复。'**
   String get aiChatClearHistoryDialogContent;
 
   /// No description provided for @aiChatInputHint.
   ///
-  /// In en, this message translates to:
-  /// **'e.g.: Bought a coffee for \$35'**
+  /// In zh, this message translates to:
+  /// **'例如: 买了杯咖啡35块'**
   String get aiChatInputHint;
 
   /// No description provided for @aiChatThinking.
   ///
-  /// In en, this message translates to:
-  /// **'Thinking...'**
+  /// In zh, this message translates to:
+  /// **'思考中...'**
   String get aiChatThinking;
 
   /// No description provided for @aiChatHistoryCleared.
   ///
-  /// In en, this message translates to:
-  /// **'Conversation history cleared'**
+  /// In zh, this message translates to:
+  /// **'对话历史已清空'**
   String get aiChatHistoryCleared;
 
   /// No description provided for @aiChatCopy.
   ///
-  /// In en, this message translates to:
-  /// **'Copy'**
+  /// In zh, this message translates to:
+  /// **'复制'**
   String get aiChatCopy;
 
   /// No description provided for @aiChatCopied.
   ///
-  /// In en, this message translates to:
-  /// **'Copied to clipboard'**
+  /// In zh, this message translates to:
+  /// **'已复制到剪贴板'**
   String get aiChatCopied;
 
   /// No description provided for @aiChatDeleteMessageConfirm.
   ///
-  /// In en, this message translates to:
-  /// **'Are you sure you want to delete this message?'**
+  /// In zh, this message translates to:
+  /// **'确定要删除这条消息吗？'**
   String get aiChatDeleteMessageConfirm;
 
   /// No description provided for @aiChatMessageDeleted.
   ///
-  /// In en, this message translates to:
-  /// **'Message deleted'**
+  /// In zh, this message translates to:
+  /// **'消息已删除'**
   String get aiChatMessageDeleted;
 
   /// No description provided for @aiChatUndone.
   ///
-  /// In en, this message translates to:
-  /// **'Undone — recoverable in Recently Deleted for 30 days'**
+  /// In zh, this message translates to:
+  /// **'已撤销,30 天内可在「最近删除」恢复'**
   String get aiChatUndone;
 
   /// No description provided for @aiChatUndoFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Undo failed'**
+  /// In zh, this message translates to:
+  /// **'撤销失败'**
   String get aiChatUndoFailed;
 
   /// No description provided for @aiChatTransactionNotFound.
   ///
-  /// In en, this message translates to:
-  /// **'Transaction not found'**
+  /// In zh, this message translates to:
+  /// **'交易记录不存在'**
   String get aiChatTransactionNotFound;
 
   /// No description provided for @aiChatOpenEditorFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Failed to open editor'**
+  /// In zh, this message translates to:
+  /// **'打开编辑页面失败'**
   String get aiChatOpenEditorFailed;
 
   /// No description provided for @aiChatSendFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Failed to send'**
+  /// In zh, this message translates to:
+  /// **'发送失败'**
   String get aiChatSendFailed;
-
-  /// No description provided for @billCardSuccess.
-  ///
-  /// In en, this message translates to:
-  /// **'Booking Successful'**
-  String get billCardSuccess;
-
-  /// No description provided for @billCardUndone.
-  ///
-  /// In en, this message translates to:
-  /// **'Undone'**
-  String get billCardUndone;
-
-  /// No description provided for @billCardAmount.
-  ///
-  /// In en, this message translates to:
-  /// **'💰 Amount'**
-  String get billCardAmount;
-
-  /// No description provided for @billCardCategory.
-  ///
-  /// In en, this message translates to:
-  /// **'🏷️ Category'**
-  String get billCardCategory;
-
-  /// No description provided for @billCardTime.
-  ///
-  /// In en, this message translates to:
-  /// **'📅 Time'**
-  String get billCardTime;
-
-  /// No description provided for @billCardNote.
-  ///
-  /// In en, this message translates to:
-  /// **'📝 Note'**
-  String get billCardNote;
-
-  /// No description provided for @billCardAccount.
-  ///
-  /// In en, this message translates to:
-  /// **'💳 Account'**
-  String get billCardAccount;
-
-  /// No description provided for @billCardUndo.
-  ///
-  /// In en, this message translates to:
-  /// **'Undo'**
-  String get billCardUndo;
-
-  /// No description provided for @billCardEdit.
-  ///
-  /// In en, this message translates to:
-  /// **'Edit'**
-  String get billCardEdit;
-
-  /// No description provided for @donationTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Donate'**
-  String get donationTitle;
-
-  /// No description provided for @donationSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Buy me a coffee'**
-  String get donationSubtitle;
-
-  /// No description provided for @donationEntrySubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Support continued development'**
-  String get donationEntrySubtitle;
-
-  /// No description provided for @donationDescription.
-  ///
-  /// In en, this message translates to:
-  /// **'Description'**
-  String get donationDescription;
-
-  /// No description provided for @donationDescriptionDetail.
-  ///
-  /// In en, this message translates to:
-  /// **'Thank you for using SmartBook! If this app helps you, feel free to buy the developer a coffee as encouragement. Your support is my motivation to keep improving.'**
-  String get donationDescriptionDetail;
-
-  /// No description provided for @donationNoFeatures.
-  ///
-  /// In en, this message translates to:
-  /// **'Note: Donations will not unlock any features. All features remain completely free.'**
-  String get donationNoFeatures;
-
-  /// No description provided for @donationNoProducts.
-  ///
-  /// In en, this message translates to:
-  /// **'No products available'**
-  String get donationNoProducts;
-
-  /// No description provided for @donationThankYouTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Thank You!'**
-  String get donationThankYouTitle;
-
-  /// No description provided for @donationThankYouMessage.
-  ///
-  /// In en, this message translates to:
-  /// **'Thank you for purchasing {productName}! Your support means a lot to me. I will continue to improve SmartBook to make it even better!'**
-  String donationThankYouMessage(String productName);
 
   /// No description provided for @aiQuickCommandFinancialHealthTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Financial Health Analysis'**
+  /// In zh, this message translates to:
+  /// **'财务健康分析'**
   String get aiQuickCommandFinancialHealthTitle;
 
   /// No description provided for @aiQuickCommandFinancialHealthDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Analyze income-expense balance and savings rate'**
+  /// In zh, this message translates to:
+  /// **'分析收支平衡和储蓄率'**
   String get aiQuickCommandFinancialHealthDesc;
 
   /// No description provided for @aiQuickCommandFinancialHealthPrompt.
   ///
-  /// In en, this message translates to:
-  /// **'Please analyze my financial health based on the following data:\n\n[monthlyStats]\n\n[recentTrends]\n\nPlease provide professional analysis and suggestions from the perspectives of income-expense balance, savings rate, and spending trends. Please respond in English.'**
+  /// In zh, this message translates to:
+  /// **'请根据以下数据分析我的财务健康状况：\n\n[monthlyStats]\n\n[recentTrends]\n\n请从收支平衡、储蓄率、消费趋势等角度给出专业分析和建议。请用简体中文回复。'**
   String get aiQuickCommandFinancialHealthPrompt;
 
   /// No description provided for @aiQuickCommandMonthlyExpenseTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Monthly Expense Summary'**
+  /// In zh, this message translates to:
+  /// **'本月支出总结'**
   String get aiQuickCommandMonthlyExpenseTitle;
 
   /// No description provided for @aiQuickCommandMonthlyExpenseDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Monthly expense analysis and recommendations'**
+  /// In zh, this message translates to:
+  /// **'月度支出分析和建议'**
   String get aiQuickCommandMonthlyExpenseDesc;
 
   /// No description provided for @aiQuickCommandMonthlyExpensePrompt.
   ///
-  /// In en, this message translates to:
-  /// **'Please summarize my monthly expenses based on the following data:\n\n[monthlyStats]\n\n[categoryStats]\n\nPlease analyze which categories account for the highest proportion and provide optimization suggestions. Please respond in English.'**
+  /// In zh, this message translates to:
+  /// **'请总结我本月的支出情况：\n\n[monthlyStats]\n\n[categoryStats]\n\n请分析主要支出类别，并给出节约开支的建议。请用简体中文回复。'**
   String get aiQuickCommandMonthlyExpensePrompt;
 
   /// No description provided for @aiQuickCommandCategoryAnalysisTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Category Analysis'**
+  /// In zh, this message translates to:
+  /// **'分类占比分析'**
   String get aiQuickCommandCategoryAnalysisTitle;
 
   /// No description provided for @aiQuickCommandCategoryAnalysisDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Analyze spending distribution by category'**
+  /// In zh, this message translates to:
+  /// **'各分类支出占比和趋势'**
   String get aiQuickCommandCategoryAnalysisDesc;
 
   /// No description provided for @aiQuickCommandCategoryAnalysisPrompt.
   ///
-  /// In en, this message translates to:
-  /// **'Please analyze my spending by category based on the following data:\n\n[categoryStats]\n\nPlease point out whether there are unreasonable spending ratios and provide optimization suggestions. Please respond in English.'**
+  /// In zh, this message translates to:
+  /// **'请分析我的各分类支出占比：\n\n[categoryStats]\n\n请指出哪些分类支出过高，并给出优化建议。请用简体中文回复。'**
   String get aiQuickCommandCategoryAnalysisPrompt;
 
   /// No description provided for @aiQuickCommandBudgetPlanningTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Budget Planning'**
+  /// In zh, this message translates to:
+  /// **'预算规划建议'**
   String get aiQuickCommandBudgetPlanningTitle;
 
   /// No description provided for @aiQuickCommandBudgetPlanningDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Smart budget recommendations'**
+  /// In zh, this message translates to:
+  /// **'基于历史数据的预算建议'**
   String get aiQuickCommandBudgetPlanningDesc;
 
   /// No description provided for @aiQuickCommandBudgetPlanningPrompt.
   ///
-  /// In en, this message translates to:
-  /// **'Please help me plan a reasonable budget based on the following data:\n\n[monthlyStats]\n\n[recentTrends]\n\nPlease provide specific budget amounts and execution suggestions for each category. Please respond in English.'**
+  /// In zh, this message translates to:
+  /// **'请基于以下数据帮我制定下月预算：\n\n[monthlyStats]\n\n[recentTrends]\n\n请给出各分类的预算建议和注意事项。请用简体中文回复。'**
   String get aiQuickCommandBudgetPlanningPrompt;
 
   /// No description provided for @aiQuickCommandAbnormalExpenseTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Abnormal Expense Alert'**
+  /// In zh, this message translates to:
+  /// **'异常支出提醒'**
   String get aiQuickCommandAbnormalExpenseTitle;
 
   /// No description provided for @aiQuickCommandAbnormalExpenseDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Identify unusual spending'**
+  /// In zh, this message translates to:
+  /// **'识别大额或异常支出'**
   String get aiQuickCommandAbnormalExpenseDesc;
 
   /// No description provided for @aiQuickCommandAbnormalExpensePrompt.
   ///
-  /// In en, this message translates to:
-  /// **'Please check if there are any abnormal expenses based on the following data:\n\n[recentTransactions]\n\n[monthlyStats]\n\nPlease identify significantly higher expenses than usual and provide analysis. Please respond in English.'**
+  /// In zh, this message translates to:
+  /// **'请检查我最近是否有异常支出：\n\n[recentTransactions]\n\n[monthlyStats]\n\n请指出可能的异常消费，并分析原因。请用简体中文回复。'**
   String get aiQuickCommandAbnormalExpensePrompt;
 
   /// No description provided for @aiQuickCommandSavingTipsTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Saving Tips'**
+  /// In zh, this message translates to:
+  /// **'省钱小贴士'**
   String get aiQuickCommandSavingTipsTitle;
 
   /// No description provided for @aiQuickCommandSavingTipsDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Personalized money-saving suggestions'**
+  /// In zh, this message translates to:
+  /// **'根据消费习惯给建议'**
   String get aiQuickCommandSavingTipsDesc;
 
   /// No description provided for @aiQuickCommandSavingTipsPrompt.
   ///
-  /// In en, this message translates to:
-  /// **'Please provide practical money-saving suggestions based on the following data:\n\n[categoryStats]\n\n[recentTrends]\n\nPlease give 3-5 specific and actionable suggestions. Please respond in English.'**
+  /// In zh, this message translates to:
+  /// **'请根据我的消费习惯给出省钱建议：\n\n[categoryStats]\n\n[recentTrends]\n\n请提供3-5条实用的省钱技巧。请用简体中文回复。'**
   String get aiQuickCommandSavingTipsPrompt;
+
+  /// No description provided for @billCardSuccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'记账成功'**
+  String get billCardSuccess;
+
+  /// No description provided for @billCardUndone.
+  ///
+  /// In zh, this message translates to:
+  /// **'已撤销'**
+  String get billCardUndone;
+
+  /// No description provided for @billCardAmount.
+  ///
+  /// In zh, this message translates to:
+  /// **'💰 金额'**
+  String get billCardAmount;
+
+  /// No description provided for @billCardCategory.
+  ///
+  /// In zh, this message translates to:
+  /// **'🏷️ 分类'**
+  String get billCardCategory;
+
+  /// No description provided for @billCardTime.
+  ///
+  /// In zh, this message translates to:
+  /// **'📅 时间'**
+  String get billCardTime;
+
+  /// No description provided for @billCardNote.
+  ///
+  /// In zh, this message translates to:
+  /// **'📝 备注'**
+  String get billCardNote;
+
+  /// No description provided for @billCardAccount.
+  ///
+  /// In zh, this message translates to:
+  /// **'💳 账户'**
+  String get billCardAccount;
+
+  /// No description provided for @billCardUndo.
+  ///
+  /// In zh, this message translates to:
+  /// **'撤销'**
+  String get billCardUndo;
+
+  /// No description provided for @billCardEdit.
+  ///
+  /// In zh, this message translates to:
+  /// **'修改'**
+  String get billCardEdit;
 
   /// No description provided for @billCardUnknownLedger.
   ///
-  /// In en, this message translates to:
-  /// **'Unknown Ledger'**
+  /// In zh, this message translates to:
+  /// **'未知账本'**
   String get billCardUnknownLedger;
+
+  /// No description provided for @donationTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'捐赠'**
+  String get donationTitle;
+
+  /// No description provided for @donationSubtitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'请我喝杯咖啡'**
+  String get donationSubtitle;
+
+  /// No description provided for @donationEntrySubtitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'支持应用持续开发'**
+  String get donationEntrySubtitle;
+
+  /// No description provided for @donationDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'说明'**
+  String get donationDescription;
+
+  /// No description provided for @donationDescriptionDetail.
+  ///
+  /// In zh, this message translates to:
+  /// **'感谢您使用智记！如果这个应用对您有帮助，欢迎请开发者喝杯咖啡作为鼓励。您的支持是我持续改进的动力。'**
+  String get donationDescriptionDetail;
+
+  /// No description provided for @donationNoFeatures.
+  ///
+  /// In zh, this message translates to:
+  /// **'注: 打赏不会解锁任何功能，所有功能继续完全免费。'**
+  String get donationNoFeatures;
+
+  /// No description provided for @donationNoProducts.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂无可用商品'**
+  String get donationNoProducts;
+
+  /// No description provided for @donationThankYouTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'感谢支持！'**
+  String get donationThankYouTitle;
+
+  /// No description provided for @donationThankYouMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'感谢您购买 {productName}！您的支持对我意义重大，我会继续努力改进智记，让它变得更好用！'**
+  String donationThankYouMessage(String productName);
 
   /// No description provided for @aiPromptEditTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Prompt Editor'**
+  /// In zh, this message translates to:
+  /// **'提示词编辑'**
   String get aiPromptEditTitle;
 
   /// No description provided for @aiPromptEditSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Customize AI bill recognition prompt'**
+  /// In zh, this message translates to:
+  /// **'自定义AI账单识别提示词'**
   String get aiPromptEditSubtitle;
 
   /// No description provided for @aiPromptAdvancedSettings.
   ///
-  /// In en, this message translates to:
-  /// **'Advanced Settings'**
+  /// In zh, this message translates to:
+  /// **'高级设置'**
   String get aiPromptAdvancedSettings;
 
   /// No description provided for @aiAdvancedSettingsDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Model selection, strategy, local model, prompt'**
+  /// In zh, this message translates to:
+  /// **'模型选择、执行策略、本地模型、提示词'**
   String get aiAdvancedSettingsDesc;
 
   /// No description provided for @aiPromptEditEntry.
   ///
-  /// In en, this message translates to:
-  /// **'Prompt Editor'**
+  /// In zh, this message translates to:
+  /// **'提示词编辑'**
   String get aiPromptEditEntry;
 
   /// No description provided for @aiPromptEditEntryDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Customize AI bill recognition prompt, shareable with others'**
+  /// In zh, this message translates to:
+  /// **'自定义AI账单识别提示词，可分享给其他用户'**
   String get aiPromptEditEntryDesc;
 
   /// No description provided for @aiPromptVariables.
   ///
-  /// In en, this message translates to:
-  /// **'Variables'**
+  /// In zh, this message translates to:
+  /// **'变量说明'**
   String get aiPromptVariables;
 
   /// No description provided for @aiPromptVariablesHint.
   ///
-  /// In en, this message translates to:
-  /// **'Tap to view available variables'**
+  /// In zh, this message translates to:
+  /// **'点击展开查看可用变量'**
   String get aiPromptVariablesHint;
 
   /// No description provided for @aiPromptContent.
   ///
-  /// In en, this message translates to:
-  /// **'Prompt Content'**
+  /// In zh, this message translates to:
+  /// **'提示词内容'**
   String get aiPromptContent;
 
   /// No description provided for @aiPromptUnsaved.
   ///
-  /// In en, this message translates to:
-  /// **'Unsaved'**
+  /// In zh, this message translates to:
+  /// **'未保存'**
   String get aiPromptUnsaved;
 
   /// No description provided for @aiPromptInputHint.
   ///
-  /// In en, this message translates to:
-  /// **'Enter prompt...'**
+  /// In zh, this message translates to:
+  /// **'输入提示词...'**
   String get aiPromptInputHint;
 
   /// No description provided for @aiPromptPreview.
   ///
-  /// In en, this message translates to:
-  /// **'Preview'**
+  /// In zh, this message translates to:
+  /// **'预览'**
   String get aiPromptPreview;
 
   /// No description provided for @aiPromptSave.
   ///
-  /// In en, this message translates to:
-  /// **'Save'**
+  /// In zh, this message translates to:
+  /// **'保存'**
   String get aiPromptSave;
 
   /// No description provided for @aiPromptSaved.
   ///
-  /// In en, this message translates to:
-  /// **'Prompt saved'**
+  /// In zh, this message translates to:
+  /// **'提示词已保存'**
   String get aiPromptSaved;
 
   /// No description provided for @aiPromptResetDefault.
   ///
-  /// In en, this message translates to:
-  /// **'Reset to Default'**
+  /// In zh, this message translates to:
+  /// **'恢复默认'**
   String get aiPromptResetDefault;
 
   /// No description provided for @aiPromptResetConfirmTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Reset to Default'**
+  /// In zh, this message translates to:
+  /// **'恢复默认'**
   String get aiPromptResetConfirmTitle;
 
   /// No description provided for @aiPromptResetConfirmMessage.
   ///
-  /// In en, this message translates to:
-  /// **'Are you sure you want to reset to default prompt? Your custom content will be lost.'**
+  /// In zh, this message translates to:
+  /// **'确定要恢复默认提示词吗？您的自定义内容将会丢失。'**
   String get aiPromptResetConfirmMessage;
 
   /// No description provided for @aiPromptPasted.
   ///
-  /// In en, this message translates to:
-  /// **'Pasted'**
+  /// In zh, this message translates to:
+  /// **'已粘贴'**
   String get aiPromptPasted;
 
   /// No description provided for @aiPromptPreviewTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Prompt Preview'**
+  /// In zh, this message translates to:
+  /// **'提示词预览'**
   String get aiPromptPreviewTitle;
 
   /// No description provided for @aiPromptPreviewNote.
   ///
-  /// In en, this message translates to:
-  /// **'Preview uses sample data for variables. Real data will be used at runtime.'**
+  /// In zh, this message translates to:
+  /// **'以上预览使用示例数据替换变量，实际运行时会使用真实数据'**
   String get aiPromptPreviewNote;
 
   /// No description provided for @aiPromptVarInputSource.
   ///
-  /// In en, this message translates to:
-  /// **'Input source description, e.g. \"From the following payment bill text\"'**
+  /// In zh, this message translates to:
+  /// **'输入来源描述，如\"从以下支付账单文本中\"'**
   String get aiPromptVarInputSource;
 
   /// No description provided for @aiPromptVarCurrentTime.
   ///
-  /// In en, this message translates to:
-  /// **'Current date and time, e.g. \"2025-01-15 14:30\"'**
+  /// In zh, this message translates to:
+  /// **'当前日期和时间，如\"2025-01-15 14:30\"'**
   String get aiPromptVarCurrentTime;
 
   /// No description provided for @aiPromptVarCurrentDate.
   ///
-  /// In en, this message translates to:
-  /// **'Current date, e.g. \"2025-01-15\"'**
+  /// In zh, this message translates to:
+  /// **'当前日期，如\"2025-01-15\"'**
   String get aiPromptVarCurrentDate;
 
   /// No description provided for @aiPromptVarOcrText.
   ///
-  /// In en, this message translates to:
-  /// **'User input text content'**
+  /// In zh, this message translates to:
+  /// **'用户输入的文本内容'**
   String get aiPromptVarOcrText;
 
   /// No description provided for @aiPromptVarCategories.
   ///
-  /// In en, this message translates to:
-  /// **'Expense and income category list'**
+  /// In zh, this message translates to:
+  /// **'支出和收入分类列表'**
   String get aiPromptVarCategories;
 
   /// No description provided for @aiPromptVarAccounts.
   ///
-  /// In en, this message translates to:
-  /// **'User\'s account list (may be empty)'**
+  /// In zh, this message translates to:
+  /// **'用户的账户列表（可能为空）'**
   String get aiPromptVarAccounts;
 
   /// No description provided for @aiModelTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Text Reasoning Model'**
+  /// In zh, this message translates to:
+  /// **'文本推理模型'**
   String get aiModelTitle;
 
   /// No description provided for @aiVisionModelTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Vision Model'**
+  /// In zh, this message translates to:
+  /// **'视觉模型'**
   String get aiVisionModelTitle;
 
   /// No description provided for @aiVisionConcurrency.
   ///
-  /// In en, this message translates to:
-  /// **'Concurrency'**
+  /// In zh, this message translates to:
+  /// **'并发数'**
   String get aiVisionConcurrency;
 
   /// No description provided for @aiVisionConcurrencyHelper.
   ///
-  /// In en, this message translates to:
-  /// **'Max simultaneous text and image recognition tasks (1-32)'**
+  /// In zh, this message translates to:
+  /// **'文字识别与图片识别同时进行的最大任务数(1-32)'**
   String get aiVisionConcurrencyHelper;
 
   /// No description provided for @aiModelFast.
   ///
-  /// In en, this message translates to:
-  /// **'Faster'**
+  /// In zh, this message translates to:
+  /// **'快速'**
   String get aiModelFast;
 
   /// No description provided for @aiModelAccurate.
   ///
-  /// In en, this message translates to:
-  /// **'Accurate'**
+  /// In zh, this message translates to:
+  /// **'准确'**
   String get aiModelAccurate;
 
   /// No description provided for @aiModelSwitched.
   ///
-  /// In en, this message translates to:
-  /// **'Switched to {modelName}'**
+  /// In zh, this message translates to:
+  /// **'已切换到 {modelName}'**
   String aiModelSwitched(String modelName);
 
   /// No description provided for @aiCustomBaseUrlHelper.
   ///
-  /// In en, this message translates to:
-  /// **'Standard chat completion API URL, e.g. https://api.example.com/v1'**
+  /// In zh, this message translates to:
+  /// **'标准聊天补全API地址，例如 https://api.example.com/v1'**
   String get aiCustomBaseUrlHelper;
 
   /// No description provided for @aiTextModelTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Text Model'**
+  /// In zh, this message translates to:
+  /// **'文本模型'**
   String get aiTextModelTitle;
 
   /// No description provided for @aiAudioModelTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Audio Model'**
+  /// In zh, this message translates to:
+  /// **'语音模型'**
   String get aiAudioModelTitle;
 
   /// No description provided for @tagManageTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Tags'**
+  /// In zh, this message translates to:
+  /// **'标签管理'**
   String get tagManageTitle;
 
   /// No description provided for @tagManageSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Manage transaction tags'**
+  /// In zh, this message translates to:
+  /// **'管理交易标签'**
   String get tagManageSubtitle;
 
   /// No description provided for @tagManageEmpty.
   ///
-  /// In en, this message translates to:
-  /// **'No tags yet'**
+  /// In zh, this message translates to:
+  /// **'暂无标签'**
   String get tagManageEmpty;
 
   /// No description provided for @tagManageEmptyHint.
   ///
-  /// In en, this message translates to:
-  /// **'Tap + to add a tag'**
+  /// In zh, this message translates to:
+  /// **'点击右上角添加标签'**
   String get tagManageEmptyHint;
 
   /// No description provided for @tagManageGenerateDefault.
   ///
-  /// In en, this message translates to:
-  /// **'Generate Default Tags'**
+  /// In zh, this message translates to:
+  /// **'生成默认标签'**
   String get tagManageGenerateDefault;
 
   /// No description provided for @tagManageGenerateDefaultConfirm.
   ///
-  /// In en, this message translates to:
-  /// **'Generate default tags? Existing tags with the same name will not be overwritten.'**
+  /// In zh, this message translates to:
+  /// **'确定要生成默认标签吗？已有同名标签不会被覆盖。'**
   String get tagManageGenerateDefaultConfirm;
 
   /// No description provided for @tagManageGenerateDefaultSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'Default tags generated'**
+  /// In zh, this message translates to:
+  /// **'默认标签已生成'**
   String get tagManageGenerateDefaultSuccess;
 
   /// No description provided for @tagEditTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Edit Tag'**
+  /// In zh, this message translates to:
+  /// **'编辑标签'**
   String get tagEditTitle;
 
   /// No description provided for @tagAddTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Add Tag'**
+  /// In zh, this message translates to:
+  /// **'新增标签'**
   String get tagAddTitle;
 
   /// No description provided for @tagNameLabel.
   ///
-  /// In en, this message translates to:
-  /// **'Tag Name'**
+  /// In zh, this message translates to:
+  /// **'标签名称'**
   String get tagNameLabel;
 
   /// No description provided for @tagNameHint.
   ///
-  /// In en, this message translates to:
-  /// **'Enter tag name'**
+  /// In zh, this message translates to:
+  /// **'请输入标签名称'**
   String get tagNameHint;
 
   /// No description provided for @tagNameRequired.
   ///
-  /// In en, this message translates to:
-  /// **'Tag name is required'**
+  /// In zh, this message translates to:
+  /// **'标签名称不能为空'**
   String get tagNameRequired;
 
   /// No description provided for @tagNameDuplicate.
   ///
-  /// In en, this message translates to:
-  /// **'Tag name already exists'**
+  /// In zh, this message translates to:
+  /// **'标签名称已存在'**
   String get tagNameDuplicate;
 
   /// No description provided for @tagColorLabel.
   ///
-  /// In en, this message translates to:
-  /// **'Tag Color'**
+  /// In zh, this message translates to:
+  /// **'标签颜色'**
   String get tagColorLabel;
 
   /// No description provided for @tagCreateSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'Tag created'**
+  /// In zh, this message translates to:
+  /// **'标签创建成功'**
   String get tagCreateSuccess;
 
   /// No description provided for @tagUpdateSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'Tag updated'**
+  /// In zh, this message translates to:
+  /// **'标签更新成功'**
   String get tagUpdateSuccess;
 
   /// No description provided for @tagDeleteConfirmTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Delete Tag'**
+  /// In zh, this message translates to:
+  /// **'删除标签'**
   String get tagDeleteConfirmTitle;
 
   /// No description provided for @tagDeleteConfirmMessage.
   ///
-  /// In en, this message translates to:
-  /// **'Delete tag \"{name}\"? This will not affect associated transactions.'**
+  /// In zh, this message translates to:
+  /// **'确定要删除标签「{name}」吗？此操作不会影响已关联的交易记录。'**
   String tagDeleteConfirmMessage(String name);
 
   /// No description provided for @tagDeleteSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'Tag deleted'**
+  /// In zh, this message translates to:
+  /// **'标签已删除'**
   String get tagDeleteSuccess;
 
   /// No description provided for @tagSelectTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Select Tags'**
+  /// In zh, this message translates to:
+  /// **'选择标签'**
   String get tagSelectTitle;
 
   /// No description provided for @tagSelectHint.
   ///
-  /// In en, this message translates to:
-  /// **'Multiple selection'**
+  /// In zh, this message translates to:
+  /// **'可多选'**
   String get tagSelectHint;
 
   /// No description provided for @tagSelectCreateNew.
   ///
-  /// In en, this message translates to:
-  /// **'Create New Tag'**
+  /// In zh, this message translates to:
+  /// **'新建标签'**
   String get tagSelectCreateNew;
 
   /// No description provided for @tagSelectOwnerManaged.
   ///
-  /// In en, this message translates to:
-  /// **'Shared ledger tags are managed by the owner'**
+  /// In zh, this message translates to:
+  /// **'共享账本标签由所有者管理'**
   String get tagSelectOwnerManaged;
 
   /// No description provided for @tagSelectRecentlyUsed.
   ///
-  /// In en, this message translates to:
-  /// **'Recently Used'**
+  /// In zh, this message translates to:
+  /// **'最近使用'**
   String get tagSelectRecentlyUsed;
 
   /// No description provided for @tagSelectAllTags.
   ///
-  /// In en, this message translates to:
-  /// **'All Tags'**
+  /// In zh, this message translates to:
+  /// **'全部标签'**
   String get tagSelectAllTags;
 
   /// No description provided for @tagTransactionCount.
   ///
-  /// In en, this message translates to:
-  /// **'{count} transactions'**
+  /// In zh, this message translates to:
+  /// **'{count}笔'**
   String tagTransactionCount(int count);
 
   /// No description provided for @tagDetailTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Tag Details'**
+  /// In zh, this message translates to:
+  /// **'标签详情'**
   String get tagDetailTitle;
 
   /// No description provided for @tagDetailTotalCount.
   ///
-  /// In en, this message translates to:
-  /// **'Transactions'**
+  /// In zh, this message translates to:
+  /// **'交易笔数'**
   String get tagDetailTotalCount;
 
   /// No description provided for @tagDetailTotalExpense.
   ///
-  /// In en, this message translates to:
-  /// **'Total Expense'**
+  /// In zh, this message translates to:
+  /// **'总支出'**
   String get tagDetailTotalExpense;
 
   /// No description provided for @tagDetailTotalIncome.
   ///
-  /// In en, this message translates to:
-  /// **'Total Income'**
+  /// In zh, this message translates to:
+  /// **'总收入'**
   String get tagDetailTotalIncome;
 
   /// No description provided for @tagDetailTransactionList.
   ///
-  /// In en, this message translates to:
-  /// **'Related Transactions'**
+  /// In zh, this message translates to:
+  /// **'关联交易'**
   String get tagDetailTransactionList;
 
   /// No description provided for @tagDetailNoTransactions.
   ///
-  /// In en, this message translates to:
-  /// **'No related transactions'**
+  /// In zh, this message translates to:
+  /// **'暂无关联交易'**
   String get tagDetailNoTransactions;
 
   /// No description provided for @tagDetailNoTransactionsHint.
   ///
-  /// In en, this message translates to:
-  /// **'Transactions with this tag will appear here'**
+  /// In zh, this message translates to:
+  /// **'使用此标签的交易将在此显示'**
   String get tagDetailNoTransactionsHint;
 
   /// No description provided for @tagNotFound.
   ///
-  /// In en, this message translates to:
-  /// **'Tag not found'**
+  /// In zh, this message translates to:
+  /// **'标签不存在'**
   String get tagNotFound;
 
   /// No description provided for @tagDefaultMeituan.
   ///
-  /// In en, this message translates to:
-  /// **'Meituan'**
+  /// In zh, this message translates to:
+  /// **'美团'**
   String get tagDefaultMeituan;
 
   /// No description provided for @tagDefaultEleme.
   ///
-  /// In en, this message translates to:
-  /// **'Eleme'**
+  /// In zh, this message translates to:
+  /// **'饿了么'**
   String get tagDefaultEleme;
 
   /// No description provided for @tagDefaultTaobao.
   ///
-  /// In en, this message translates to:
-  /// **'Taobao'**
+  /// In zh, this message translates to:
+  /// **'淘宝'**
   String get tagDefaultTaobao;
 
   /// No description provided for @tagDefaultJD.
   ///
-  /// In en, this message translates to:
-  /// **'JD.com'**
+  /// In zh, this message translates to:
+  /// **'京东'**
   String get tagDefaultJD;
 
   /// No description provided for @tagDefaultPDD.
   ///
-  /// In en, this message translates to:
-  /// **'Pinduoduo'**
+  /// In zh, this message translates to:
+  /// **'拼多多'**
   String get tagDefaultPDD;
 
   /// No description provided for @tagDefaultStarbucks.
   ///
-  /// In en, this message translates to:
-  /// **'Starbucks'**
+  /// In zh, this message translates to:
+  /// **'星巴克'**
   String get tagDefaultStarbucks;
 
   /// No description provided for @tagDefaultLuckin.
   ///
-  /// In en, this message translates to:
-  /// **'Luckin Coffee'**
+  /// In zh, this message translates to:
+  /// **'瑞幸咖啡'**
   String get tagDefaultLuckin;
 
   /// No description provided for @tagDefaultMcDonalds.
   ///
-  /// In en, this message translates to:
-  /// **'McDonald\'s'**
+  /// In zh, this message translates to:
+  /// **'麦当劳'**
   String get tagDefaultMcDonalds;
 
   /// No description provided for @tagDefaultKFC.
   ///
-  /// In en, this message translates to:
-  /// **'KFC'**
+  /// In zh, this message translates to:
+  /// **'肯德基'**
   String get tagDefaultKFC;
 
   /// No description provided for @tagDefaultHema.
   ///
-  /// In en, this message translates to:
-  /// **'Hema'**
+  /// In zh, this message translates to:
+  /// **'盒马'**
   String get tagDefaultHema;
 
   /// No description provided for @tagDefaultSams.
   ///
-  /// In en, this message translates to:
-  /// **'Sam\'s Club'**
+  /// In zh, this message translates to:
+  /// **'山姆'**
   String get tagDefaultSams;
 
   /// No description provided for @tagDefaultCostco.
   ///
-  /// In en, this message translates to:
+  /// In zh, this message translates to:
   /// **'Costco'**
   String get tagDefaultCostco;
 
   /// No description provided for @tagDefaultBusinessTrip.
   ///
-  /// In en, this message translates to:
-  /// **'Business Trip'**
+  /// In zh, this message translates to:
+  /// **'出差'**
   String get tagDefaultBusinessTrip;
 
   /// No description provided for @tagDefaultTravel.
   ///
-  /// In en, this message translates to:
-  /// **'Travel'**
+  /// In zh, this message translates to:
+  /// **'旅行'**
   String get tagDefaultTravel;
 
   /// No description provided for @tagDefaultDining.
   ///
-  /// In en, this message translates to:
-  /// **'Dining Out'**
+  /// In zh, this message translates to:
+  /// **'聚餐'**
   String get tagDefaultDining;
 
   /// No description provided for @tagDefaultOnlineShopping.
   ///
-  /// In en, this message translates to:
-  /// **'Online Shopping'**
+  /// In zh, this message translates to:
+  /// **'网购'**
   String get tagDefaultOnlineShopping;
 
   /// No description provided for @tagDefaultDaily.
   ///
-  /// In en, this message translates to:
-  /// **'Daily'**
+  /// In zh, this message translates to:
+  /// **'日常'**
   String get tagDefaultDaily;
 
   /// No description provided for @tagDefaultReimbursement.
   ///
-  /// In en, this message translates to:
-  /// **'Reimbursable'**
+  /// In zh, this message translates to:
+  /// **'报销'**
   String get tagDefaultReimbursement;
 
   /// No description provided for @tagDefaultRefundable.
   ///
-  /// In en, this message translates to:
-  /// **'Refundable'**
+  /// In zh, this message translates to:
+  /// **'可退款'**
   String get tagDefaultRefundable;
 
   /// No description provided for @tagDefaultRefunded.
   ///
-  /// In en, this message translates to:
-  /// **'Refunded'**
+  /// In zh, this message translates to:
+  /// **'已退款'**
   String get tagDefaultRefunded;
 
   /// No description provided for @tagDefaultVoiceBilling.
   ///
-  /// In en, this message translates to:
-  /// **'Voice'**
+  /// In zh, this message translates to:
+  /// **'语音记账'**
   String get tagDefaultVoiceBilling;
 
   /// No description provided for @tagDefaultImageBilling.
   ///
-  /// In en, this message translates to:
-  /// **'Image'**
+  /// In zh, this message translates to:
+  /// **'图片记账'**
   String get tagDefaultImageBilling;
 
   /// No description provided for @tagDefaultCameraBilling.
   ///
-  /// In en, this message translates to:
-  /// **'Camera'**
+  /// In zh, this message translates to:
+  /// **'拍照记账'**
   String get tagDefaultCameraBilling;
 
   /// No description provided for @tagDefaultAiBilling.
   ///
-  /// In en, this message translates to:
-  /// **'AI'**
+  /// In zh, this message translates to:
+  /// **'AI记账'**
   String get tagDefaultAiBilling;
 
   /// No description provided for @tagDefaultSmsBilling.
   ///
-  /// In en, this message translates to:
-  /// **'SMS'**
+  /// In zh, this message translates to:
+  /// **'短信'**
   String get tagDefaultSmsBilling;
 
   /// No description provided for @tagDefaultNotificationBilling.
   ///
-  /// In en, this message translates to:
-  /// **'Notification'**
+  /// In zh, this message translates to:
+  /// **'通知'**
   String get tagDefaultNotificationBilling;
 
   /// No description provided for @tagDefaultScreenBilling.
   ///
-  /// In en, this message translates to:
-  /// **'Screen'**
+  /// In zh, this message translates to:
+  /// **'屏幕'**
   String get tagDefaultScreenBilling;
 
   /// No description provided for @tagShare.
   ///
-  /// In en, this message translates to:
-  /// **'Share Tags'**
+  /// In zh, this message translates to:
+  /// **'分享标签'**
   String get tagShare;
 
   /// No description provided for @tagImport.
   ///
-  /// In en, this message translates to:
-  /// **'Import Tags'**
+  /// In zh, this message translates to:
+  /// **'导入标签'**
   String get tagImport;
 
   /// No description provided for @tagClearUnused.
   ///
-  /// In en, this message translates to:
-  /// **'Clear Unused'**
+  /// In zh, this message translates to:
+  /// **'清理未使用'**
   String get tagClearUnused;
 
   /// No description provided for @tagShareSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'Saved to {path}'**
+  /// In zh, this message translates to:
+  /// **'已保存到 {path}'**
   String tagShareSuccess(String path);
 
   /// No description provided for @tagShareSubject.
   ///
-  /// In en, this message translates to:
-  /// **'SmartBook Tags Configuration'**
+  /// In zh, this message translates to:
+  /// **'智记 标签配置'**
   String get tagShareSubject;
 
   /// No description provided for @tagShareFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Share failed'**
+  /// In zh, this message translates to:
+  /// **'分享失败'**
   String get tagShareFailed;
 
   /// No description provided for @tagImportInvalidFile.
   ///
-  /// In en, this message translates to:
-  /// **'Please select a YAML file'**
+  /// In zh, this message translates to:
+  /// **'请选择 YAML 配置文件'**
   String get tagImportInvalidFile;
 
   /// No description provided for @tagImportNoTags.
   ///
-  /// In en, this message translates to:
-  /// **'No tags found in file'**
+  /// In zh, this message translates to:
+  /// **'文件中没有标签数据'**
   String get tagImportNoTags;
 
   /// No description provided for @tagImportModeTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Select Import Mode'**
+  /// In zh, this message translates to:
+  /// **'选择导入模式'**
   String get tagImportModeTitle;
 
   /// No description provided for @tagImportModeMerge.
   ///
-  /// In en, this message translates to:
-  /// **'Merge'**
+  /// In zh, this message translates to:
+  /// **'合并'**
   String get tagImportModeMerge;
 
   /// No description provided for @tagImportModeMergeDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Keep existing tags, add new ones'**
+  /// In zh, this message translates to:
+  /// **'保留现有标签，新增不存在的'**
   String get tagImportModeMergeDesc;
 
   /// No description provided for @tagImportModeOverwrite.
   ///
-  /// In en, this message translates to:
-  /// **'Overwrite'**
+  /// In zh, this message translates to:
+  /// **'覆盖'**
   String get tagImportModeOverwrite;
 
   /// No description provided for @tagImportModeOverwriteDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Clear unused tags before import'**
+  /// In zh, this message translates to:
+  /// **'清空未使用标签后导入'**
   String get tagImportModeOverwriteDesc;
 
   /// No description provided for @tagImportSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'Import successful'**
+  /// In zh, this message translates to:
+  /// **'导入成功'**
   String get tagImportSuccess;
 
   /// No description provided for @tagImportFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Import failed'**
+  /// In zh, this message translates to:
+  /// **'导入失败'**
   String get tagImportFailed;
 
   /// No description provided for @tagClearUnusedEmpty.
   ///
-  /// In en, this message translates to:
-  /// **'No unused tags'**
+  /// In zh, this message translates to:
+  /// **'没有未使用的标签'**
   String get tagClearUnusedEmpty;
 
   /// No description provided for @tagClearUnusedTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Clear Unused Tags'**
+  /// In zh, this message translates to:
+  /// **'清理未使用标签'**
   String get tagClearUnusedTitle;
 
   /// No description provided for @tagClearUnusedMessage.
   ///
-  /// In en, this message translates to:
-  /// **'Delete {count} unused tags?'**
+  /// In zh, this message translates to:
+  /// **'确定要删除 {count} 个未使用的标签吗？'**
   String tagClearUnusedMessage(int count);
 
   /// No description provided for @tagClearUnusedSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'Deleted {count} tags'**
+  /// In zh, this message translates to:
+  /// **'已删除 {count} 个标签'**
   String tagClearUnusedSuccess(int count);
 
   /// No description provided for @tagClearUnusedFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Clear failed'**
+  /// In zh, this message translates to:
+  /// **'清理失败'**
   String get tagClearUnusedFailed;
 
   /// No description provided for @homeSwitchLedger.
   ///
-  /// In en, this message translates to:
-  /// **'Select Ledger'**
+  /// In zh, this message translates to:
+  /// **'选择账本'**
   String get homeSwitchLedger;
 
   /// No description provided for @homeManageLedgers.
   ///
-  /// In en, this message translates to:
-  /// **'Manage Ledgers'**
+  /// In zh, this message translates to:
+  /// **'管理账本'**
   String get homeManageLedgers;
 
   /// No description provided for @budgetTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Budget'**
+  /// In zh, this message translates to:
+  /// **'预算管理'**
   String get budgetTitle;
 
   /// No description provided for @budgetShowOnHome.
   ///
-  /// In en, this message translates to:
-  /// **'Show budget on home'**
+  /// In zh, this message translates to:
+  /// **'在首页显示预算'**
   String get budgetShowOnHome;
 
   /// No description provided for @budgetEmptyHint.
   ///
-  /// In en, this message translates to:
-  /// **'No budget set yet'**
+  /// In zh, this message translates to:
+  /// **'还没有设置预算'**
   String get budgetEmptyHint;
 
   /// No description provided for @budgetAddTotal.
   ///
-  /// In en, this message translates to:
-  /// **'Add Total Budget'**
+  /// In zh, this message translates to:
+  /// **'添加总预算'**
   String get budgetAddTotal;
 
   /// No description provided for @budgetMonthlyBudget.
   ///
-  /// In en, this message translates to:
-  /// **'Monthly Budget'**
+  /// In zh, this message translates to:
+  /// **'本月预算'**
   String get budgetMonthlyBudget;
 
   /// No description provided for @budgetUsed.
   ///
-  /// In en, this message translates to:
-  /// **'Used'**
+  /// In zh, this message translates to:
+  /// **'已用'**
   String get budgetUsed;
 
   /// No description provided for @budgetRemaining.
   ///
-  /// In en, this message translates to:
-  /// **'Remaining'**
+  /// In zh, this message translates to:
+  /// **'剩余'**
   String get budgetRemaining;
 
   /// No description provided for @budgetDaysRemaining.
   ///
-  /// In en, this message translates to:
-  /// **'{days} days remaining'**
+  /// In zh, this message translates to:
+  /// **'剩余 {days} 天'**
   String budgetDaysRemaining(int days);
 
   /// No description provided for @budgetDailyAvailable.
   ///
-  /// In en, this message translates to:
-  /// **'Daily available {amount}'**
+  /// In zh, this message translates to:
+  /// **'日均可用 {amount}'**
   String budgetDailyAvailable(String amount);
 
   /// No description provided for @budgetCategoryBudgets.
   ///
-  /// In en, this message translates to:
-  /// **'Category Budgets'**
+  /// In zh, this message translates to:
+  /// **'分类预算'**
   String get budgetCategoryBudgets;
 
   /// No description provided for @budgetEditTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Edit Budget'**
+  /// In zh, this message translates to:
+  /// **'编辑预算'**
   String get budgetEditTitle;
 
   /// No description provided for @budgetAddTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Add Budget'**
+  /// In zh, this message translates to:
+  /// **'添加预算'**
   String get budgetAddTitle;
 
   /// No description provided for @budgetTypeTotalLabel.
   ///
-  /// In en, this message translates to:
-  /// **'Total Budget'**
+  /// In zh, this message translates to:
+  /// **'总预算'**
   String get budgetTypeTotalLabel;
 
   /// No description provided for @budgetTypeCategoryLabel.
   ///
-  /// In en, this message translates to:
-  /// **'Category Budget'**
+  /// In zh, this message translates to:
+  /// **'分类预算'**
   String get budgetTypeCategoryLabel;
 
   /// No description provided for @budgetAmountLabel.
   ///
-  /// In en, this message translates to:
-  /// **'Budget Amount'**
+  /// In zh, this message translates to:
+  /// **'预算金额'**
   String get budgetAmountLabel;
 
   /// No description provided for @budgetAmountHint.
   ///
-  /// In en, this message translates to:
-  /// **'Enter budget amount'**
+  /// In zh, this message translates to:
+  /// **'请输入预算金额'**
   String get budgetAmountHint;
 
   /// No description provided for @budgetCategoryLabel.
   ///
-  /// In en, this message translates to:
-  /// **'Select Category'**
+  /// In zh, this message translates to:
+  /// **'选择分类'**
   String get budgetCategoryLabel;
 
   /// No description provided for @budgetCategoryHint.
   ///
-  /// In en, this message translates to:
-  /// **'Select budget category'**
+  /// In zh, this message translates to:
+  /// **'请选择预算分类'**
   String get budgetCategoryHint;
 
   /// No description provided for @budgetStartDayLabel.
   ///
-  /// In en, this message translates to:
-  /// **'Start Day'**
+  /// In zh, this message translates to:
+  /// **'起始日'**
   String get budgetStartDayLabel;
 
   /// No description provided for @budgetPeriodLabel.
   ///
-  /// In en, this message translates to:
-  /// **'Period'**
+  /// In zh, this message translates to:
+  /// **'周期'**
   String get budgetPeriodLabel;
 
   /// No description provided for @budgetSaveSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'Budget saved'**
+  /// In zh, this message translates to:
+  /// **'预算保存成功'**
   String get budgetSaveSuccess;
 
   /// No description provided for @budgetDeleteConfirm.
   ///
-  /// In en, this message translates to:
-  /// **'Delete this budget?'**
+  /// In zh, this message translates to:
+  /// **'确定删除此预算？'**
   String get budgetDeleteConfirm;
 
   /// No description provided for @budgetDeleteSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'Budget deleted'**
+  /// In zh, this message translates to:
+  /// **'预算已删除'**
   String get budgetDeleteSuccess;
 
   /// No description provided for @attachmentAdd.
   ///
-  /// In en, this message translates to:
-  /// **'Add Image'**
+  /// In zh, this message translates to:
+  /// **'添加图片'**
   String get attachmentAdd;
 
   /// No description provided for @attachmentTakePhoto.
   ///
-  /// In en, this message translates to:
-  /// **'Take Photo'**
+  /// In zh, this message translates to:
+  /// **'拍照'**
   String get attachmentTakePhoto;
 
   /// No description provided for @attachmentChooseFromGallery.
   ///
-  /// In en, this message translates to:
-  /// **'Choose from Gallery'**
+  /// In zh, this message translates to:
+  /// **'从相册选择'**
   String get attachmentChooseFromGallery;
 
   /// No description provided for @attachmentMaxReached.
   ///
-  /// In en, this message translates to:
-  /// **'Maximum attachments reached'**
+  /// In zh, this message translates to:
+  /// **'已达到最大附件数量'**
   String get attachmentMaxReached;
 
   /// No description provided for @attachmentDeleteConfirm.
   ///
-  /// In en, this message translates to:
-  /// **'Delete this attachment?'**
+  /// In zh, this message translates to:
+  /// **'确定删除此附件？'**
   String get attachmentDeleteConfirm;
 
   /// No description provided for @attachmentCount.
   ///
-  /// In en, this message translates to:
-  /// **'{count} images'**
+  /// In zh, this message translates to:
+  /// **'{count}张图片'**
   String attachmentCount(int count);
 
   /// No description provided for @commonDeleted.
   ///
-  /// In en, this message translates to:
-  /// **'Deleted'**
+  /// In zh, this message translates to:
+  /// **'已删除'**
   String get commonDeleted;
 
   /// No description provided for @attachmentExportTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Export Attachments'**
+  /// In zh, this message translates to:
+  /// **'导出附件'**
   String get attachmentExportTitle;
 
   /// No description provided for @attachmentExportSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Export all attachments as a compressed file'**
+  /// In zh, this message translates to:
+  /// **'将所有附件打包导出为压缩文件'**
   String get attachmentExportSubtitle;
 
   /// No description provided for @attachmentImportTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Import Attachments'**
+  /// In zh, this message translates to:
+  /// **'导入附件'**
   String get attachmentImportTitle;
 
   /// No description provided for @attachmentImportSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Import attachments from a compressed file'**
+  /// In zh, this message translates to:
+  /// **'从压缩文件导入附件'**
   String get attachmentImportSubtitle;
 
   /// No description provided for @attachmentExportEmpty.
   ///
-  /// In en, this message translates to:
-  /// **'No attachments to export'**
+  /// In zh, this message translates to:
+  /// **'没有附件需要导出'**
   String get attachmentExportEmpty;
 
   /// No description provided for @attachmentExportProgress.
   ///
-  /// In en, this message translates to:
-  /// **'Exporting attachments ({current}/{total})'**
+  /// In zh, this message translates to:
+  /// **'正在导出附件 ({current}/{total})'**
   String attachmentExportProgress(int current, int total);
 
   /// No description provided for @attachmentExportProgressDetail.
   ///
-  /// In en, this message translates to:
-  /// **'Exporting {attachmentCount} attachment(s) + {iconCount} icon(s) ({current}/{total})'**
+  /// In zh, this message translates to:
+  /// **'正在导出 {attachmentCount} 个附件 + {iconCount} 个图标 ({current}/{total})'**
   String attachmentExportProgressDetail(int attachmentCount, int iconCount, int current, int total);
 
   /// No description provided for @attachmentExportSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'Attachments exported successfully'**
+  /// In zh, this message translates to:
+  /// **'附件导出成功'**
   String get attachmentExportSuccess;
 
   /// No description provided for @attachmentExportSavedTo.
   ///
-  /// In en, this message translates to:
-  /// **'Saved to: {path}'**
+  /// In zh, this message translates to:
+  /// **'已保存到: {path}'**
   String attachmentExportSavedTo(String path);
 
   /// No description provided for @attachmentImportConflictStrategy.
   ///
-  /// In en, this message translates to:
-  /// **'Conflict Strategy'**
+  /// In zh, this message translates to:
+  /// **'冲突处理策略'**
   String get attachmentImportConflictStrategy;
 
   /// No description provided for @attachmentImportConflictSkip.
   ///
-  /// In en, this message translates to:
-  /// **'Skip existing attachments'**
+  /// In zh, this message translates to:
+  /// **'跳过已存在的附件'**
   String get attachmentImportConflictSkip;
 
   /// No description provided for @attachmentImportConflictOverwrite.
   ///
-  /// In en, this message translates to:
-  /// **'Overwrite existing attachments'**
+  /// In zh, this message translates to:
+  /// **'覆盖已存在的附件'**
   String get attachmentImportConflictOverwrite;
 
   /// No description provided for @attachmentImportProgress.
   ///
-  /// In en, this message translates to:
-  /// **'Importing attachments ({current}/{total})'**
+  /// In zh, this message translates to:
+  /// **'正在导入附件 ({current}/{total})'**
   String attachmentImportProgress(int current, int total);
 
   /// No description provided for @attachmentImportResult.
   ///
-  /// In en, this message translates to:
-  /// **'Imported {imported}, Skipped {skipped}, Overwritten {overwritten}, Failed {failed}'**
+  /// In zh, this message translates to:
+  /// **'导入 {imported} 张，跳过 {skipped} 张，覆盖 {overwritten} 张，失败 {failed} 张'**
   String attachmentImportResult(int imported, int skipped, int overwritten, int failed);
 
   /// No description provided for @attachmentImportFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Failed to import attachments'**
+  /// In zh, this message translates to:
+  /// **'附件导入失败'**
   String get attachmentImportFailed;
 
   /// No description provided for @attachmentArchiveInfo.
   ///
-  /// In en, this message translates to:
-  /// **'{count} attachments, exported on {date}'**
+  /// In zh, this message translates to:
+  /// **'{count} 个附件，导出于 {date}'**
   String attachmentArchiveInfo(int count, String date);
 
   /// No description provided for @attachmentStartImport.
   ///
-  /// In en, this message translates to:
-  /// **'Start Import'**
+  /// In zh, this message translates to:
+  /// **'开始导入'**
   String get attachmentStartImport;
 
   /// No description provided for @attachmentPreview.
   ///
-  /// In en, this message translates to:
-  /// **'Preview Attachments'**
+  /// In zh, this message translates to:
+  /// **'预览附件'**
   String get attachmentPreview;
 
   /// No description provided for @attachmentPreviewSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'{count} images in total'**
+  /// In zh, this message translates to:
+  /// **'共 {count} 张图片'**
   String attachmentPreviewSubtitle(int count);
 
   /// No description provided for @attachmentPreviewEmpty.
   ///
-  /// In en, this message translates to:
-  /// **'No attachments'**
+  /// In zh, this message translates to:
+  /// **'暂无附件'**
   String get attachmentPreviewEmpty;
 
   /// No description provided for @attachmentExportPreviewTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Export Preview'**
+  /// In zh, this message translates to:
+  /// **'导出预览'**
   String get attachmentExportPreviewTitle;
 
   /// No description provided for @attachmentImportPreviewTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Import Preview'**
+  /// In zh, this message translates to:
+  /// **'导入预览'**
   String get attachmentImportPreviewTitle;
 
   /// No description provided for @shortcutsGuide.
   ///
-  /// In en, this message translates to:
-  /// **'Shortcuts'**
+  /// In zh, this message translates to:
+  /// **'快捷指令'**
   String get shortcutsGuide;
 
   /// No description provided for @shortcutsGuideDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Quick access to voice, camera billing, etc.'**
+  /// In zh, this message translates to:
+  /// **'快速打开语音、拍照等记账方式'**
   String get shortcutsGuideDesc;
 
   /// No description provided for @shortcutsIntroTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Quick Billing'**
+  /// In zh, this message translates to:
+  /// **'快速记账'**
   String get shortcutsIntroTitle;
 
   /// No description provided for @shortcutsIntroDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Use shortcuts to directly open voice billing, camera billing, and other features from your home screen without opening the app first.'**
+  /// In zh, this message translates to:
+  /// **'使用快捷指令，可以在桌面直接打开语音记账、拍照记账等功能，无需先打开 App。'**
   String get shortcutsIntroDesc;
 
   /// No description provided for @availableShortcuts.
   ///
-  /// In en, this message translates to:
-  /// **'Available Shortcuts'**
+  /// In zh, this message translates to:
+  /// **'可用快捷指令'**
   String get availableShortcuts;
 
   /// No description provided for @shortcutVoice.
   ///
-  /// In en, this message translates to:
-  /// **'Voice Billing'**
+  /// In zh, this message translates to:
+  /// **'语音记账'**
   String get shortcutVoice;
 
   /// No description provided for @shortcutVoiceDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Quickly record bills by voice'**
+  /// In zh, this message translates to:
+  /// **'通过语音快速记录账单'**
   String get shortcutVoiceDesc;
 
   /// No description provided for @shortcutImage.
   ///
-  /// In en, this message translates to:
-  /// **'Image Billing'**
+  /// In zh, this message translates to:
+  /// **'图片记账'**
   String get shortcutImage;
 
   /// No description provided for @shortcutImageDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Recognize bills from gallery images'**
+  /// In zh, this message translates to:
+  /// **'从相册选择图片识别账单'**
   String get shortcutImageDesc;
 
   /// No description provided for @shortcutCamera.
   ///
-  /// In en, this message translates to:
-  /// **'Camera Billing'**
+  /// In zh, this message translates to:
+  /// **'拍照记账'**
   String get shortcutCamera;
 
   /// No description provided for @shortcutCameraDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Take photos to recognize bills'**
+  /// In zh, this message translates to:
+  /// **'拍照识别账单'**
   String get shortcutCameraDesc;
 
   /// No description provided for @shortcutNewExpense.
   ///
-  /// In en, this message translates to:
-  /// **'Quick Expense'**
+  /// In zh, this message translates to:
+  /// **'快捷记支出'**
   String get shortcutNewExpense;
 
   /// No description provided for @shortcutNewExpenseDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Open expense entry page directly'**
+  /// In zh, this message translates to:
+  /// **'直接打开支出记账页面'**
   String get shortcutNewExpenseDesc;
 
   /// No description provided for @shortcutNewIncome.
   ///
-  /// In en, this message translates to:
-  /// **'Quick Income'**
+  /// In zh, this message translates to:
+  /// **'快捷记收入'**
   String get shortcutNewIncome;
 
   /// No description provided for @shortcutNewIncomeDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Open income entry page directly'**
+  /// In zh, this message translates to:
+  /// **'直接打开收入记账页面'**
   String get shortcutNewIncomeDesc;
 
   /// No description provided for @shortcutNewTransfer.
   ///
-  /// In en, this message translates to:
-  /// **'Quick Transfer'**
+  /// In zh, this message translates to:
+  /// **'快捷记转账'**
   String get shortcutNewTransfer;
 
   /// No description provided for @shortcutNewTransferDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Open transfer entry page directly'**
+  /// In zh, this message translates to:
+  /// **'直接打开转账记账页面'**
   String get shortcutNewTransferDesc;
 
   /// No description provided for @shortcutUrlCopied.
   ///
-  /// In en, this message translates to:
-  /// **'URL copied to clipboard'**
+  /// In zh, this message translates to:
+  /// **'链接已复制到剪贴板'**
   String get shortcutUrlCopied;
 
   /// No description provided for @howToAddShortcut.
   ///
-  /// In en, this message translates to:
-  /// **'How to Add Shortcuts'**
+  /// In zh, this message translates to:
+  /// **'如何添加快捷指令'**
   String get howToAddShortcut;
 
   /// No description provided for @iosShortcutStep1.
   ///
-  /// In en, this message translates to:
-  /// **'Open the Shortcuts app'**
+  /// In zh, this message translates to:
+  /// **'打开「快捷指令」App'**
   String get iosShortcutStep1;
 
   /// No description provided for @iosShortcutStep2.
   ///
-  /// In en, this message translates to:
-  /// **'Tap + in the upper right to create a new shortcut'**
+  /// In zh, this message translates to:
+  /// **'点击右上角「+」新建快捷指令'**
   String get iosShortcutStep2;
 
   /// No description provided for @iosShortcutStep3.
   ///
-  /// In en, this message translates to:
-  /// **'Add \'Open URL\' action'**
+  /// In zh, this message translates to:
+  /// **'添加「打开 URL」操作'**
   String get iosShortcutStep3;
 
   /// No description provided for @iosShortcutStep4.
   ///
-  /// In en, this message translates to:
-  /// **'Paste the copied URL (e.g., smartbook://voice)'**
+  /// In zh, this message translates to:
+  /// **'粘贴上方复制的链接（如 smartbook://voice）'**
   String get iosShortcutStep4;
 
   /// No description provided for @iosShortcutStep5.
   ///
-  /// In en, this message translates to:
-  /// **'Save and add to home screen'**
+  /// In zh, this message translates to:
+  /// **'保存后，可添加到桌面使用'**
   String get iosShortcutStep5;
 
   /// No description provided for @androidShortcutStep1.
   ///
-  /// In en, this message translates to:
-  /// **'Download a shortcut creator app (e.g., Shortcut Maker)'**
+  /// In zh, this message translates to:
+  /// **'下载支持创建快捷方式的应用（如 Shortcut Maker）'**
   String get androidShortcutStep1;
 
   /// No description provided for @androidShortcutStep2.
   ///
-  /// In en, this message translates to:
-  /// **'Select \'URL Shortcut\''**
+  /// In zh, this message translates to:
+  /// **'选择「URL 快捷方式」'**
   String get androidShortcutStep2;
 
   /// No description provided for @androidShortcutStep3.
   ///
-  /// In en, this message translates to:
-  /// **'Paste the copied URL (e.g., smartbook://voice)'**
+  /// In zh, this message translates to:
+  /// **'粘贴上方复制的链接（如 smartbook://voice）'**
   String get androidShortcutStep3;
 
   /// No description provided for @androidShortcutStep4.
   ///
-  /// In en, this message translates to:
-  /// **'Set icon and name, then add to home screen'**
+  /// In zh, this message translates to:
+  /// **'设置图标和名称后添加到桌面'**
   String get androidShortcutStep4;
 
   /// No description provided for @shortcutsTip.
   ///
-  /// In en, this message translates to:
-  /// **'Tips'**
+  /// In zh, this message translates to:
+  /// **'小贴士'**
   String get shortcutsTip;
 
   /// No description provided for @shortcutsTipDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Shortcuts require AI features. Make sure AI is enabled and API Key is configured.'**
+  /// In zh, this message translates to:
+  /// **'快捷指令需要配合 AI 功能使用。请确保已开启智能识别并配置好 API Key。'**
   String get shortcutsTipDesc;
 
   /// No description provided for @shortcutOpenShortcutsApp.
   ///
-  /// In en, this message translates to:
-  /// **'Open Shortcuts App'**
+  /// In zh, this message translates to:
+  /// **'打开快捷指令 App'**
   String get shortcutOpenShortcutsApp;
 
   /// No description provided for @shortcutAutoAdd.
   ///
-  /// In en, this message translates to:
-  /// **'Auto Billing API'**
+  /// In zh, this message translates to:
+  /// **'自动记账接口'**
   String get shortcutAutoAdd;
 
   /// No description provided for @shortcutAutoAddDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Automatically create bills via URL parameters. Works great with Shortcuts and automation tools.'**
+  /// In zh, this message translates to:
+  /// **'通过 URL 参数自动创建账单，适合与快捷指令、自动化工具配合使用。'**
   String get shortcutAutoAddDesc;
 
   /// No description provided for @shortcutAutoAddExample.
   ///
-  /// In en, this message translates to:
-  /// **'Example URL:'**
+  /// In zh, this message translates to:
+  /// **'示例链接：'**
   String get shortcutAutoAddExample;
 
   /// No description provided for @shortcutAutoAddParams.
   ///
-  /// In en, this message translates to:
-  /// **'Supported parameters:'**
+  /// In zh, this message translates to:
+  /// **'支持的参数：'**
   String get shortcutAutoAddParams;
 
   /// No description provided for @shortcutParamAmount.
   ///
-  /// In en, this message translates to:
-  /// **'Amount (required)'**
+  /// In zh, this message translates to:
+  /// **'金额（必填）'**
   String get shortcutParamAmount;
 
   /// No description provided for @shortcutParamType.
   ///
-  /// In en, this message translates to:
-  /// **'Type: expense / income / transfer'**
+  /// In zh, this message translates to:
+  /// **'类型：expense（支出）/ income（收入）/ transfer（转账）'**
   String get shortcutParamType;
 
   /// No description provided for @shortcutParamCategory.
   ///
-  /// In en, this message translates to:
-  /// **'Category name (must match existing category)'**
+  /// In zh, this message translates to:
+  /// **'分类名称（需与App中已有分类匹配）'**
   String get shortcutParamCategory;
 
   /// No description provided for @shortcutParamNote.
   ///
-  /// In en, this message translates to:
-  /// **'Note'**
+  /// In zh, this message translates to:
+  /// **'备注'**
   String get shortcutParamNote;
 
   /// No description provided for @shortcutParamAccount.
   ///
-  /// In en, this message translates to:
-  /// **'Account name (must match existing account)'**
+  /// In zh, this message translates to:
+  /// **'账户名称（需与App中已有账户匹配）'**
   String get shortcutParamAccount;
 
   /// No description provided for @shortcutParamTags.
   ///
-  /// In en, this message translates to:
-  /// **'Tags (comma separated)'**
+  /// In zh, this message translates to:
+  /// **'标签（多个用逗号分隔）'**
   String get shortcutParamTags;
 
   /// No description provided for @shortcutParamDate.
   ///
-  /// In en, this message translates to:
-  /// **'Date (ISO format, e.g., 2024-01-15)'**
+  /// In zh, this message translates to:
+  /// **'日期（ISO格式，如 2024-01-15）'**
   String get shortcutParamDate;
 
   /// No description provided for @quickActionImage.
   ///
-  /// In en, this message translates to:
-  /// **'Photo Billing'**
+  /// In zh, this message translates to:
+  /// **'图片记账'**
   String get quickActionImage;
 
   /// No description provided for @quickActionCamera.
   ///
-  /// In en, this message translates to:
-  /// **'Camera Billing'**
+  /// In zh, this message translates to:
+  /// **'拍照记账'**
   String get quickActionCamera;
 
   /// No description provided for @quickActionVoice.
   ///
-  /// In en, this message translates to:
-  /// **'Voice Billing'**
+  /// In zh, this message translates to:
+  /// **'语音记账'**
   String get quickActionVoice;
 
   /// No description provided for @quickActionAiChat.
   ///
-  /// In en, this message translates to:
-  /// **'AI Assistant'**
+  /// In zh, this message translates to:
+  /// **'AI 小助手'**
   String get quickActionAiChat;
 
   /// No description provided for @calendarTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Calendar'**
+  /// In zh, this message translates to:
+  /// **'日历'**
   String get calendarTitle;
 
   /// No description provided for @calendarToday.
   ///
-  /// In en, this message translates to:
-  /// **'Today'**
+  /// In zh, this message translates to:
+  /// **'今天'**
   String get calendarToday;
 
   /// No description provided for @calendarNoTransactions.
   ///
-  /// In en, this message translates to:
-  /// **'No transactions'**
+  /// In zh, this message translates to:
+  /// **'当天无交易'**
   String get calendarNoTransactions;
 
   /// No description provided for @calendarAddTransaction.
   ///
-  /// In en, this message translates to:
-  /// **'Add entry on this day'**
+  /// In zh, this message translates to:
+  /// **'在该日记账'**
   String get calendarAddTransaction;
 
   /// No description provided for @calendarAddTransactionTooltip.
   ///
-  /// In en, this message translates to:
-  /// **'Add a record on the selected day'**
+  /// In zh, this message translates to:
+  /// **'添加该日记账'**
   String get calendarAddTransactionTooltip;
 
   /// No description provided for @commonUncategorized.
   ///
-  /// In en, this message translates to:
-  /// **'Uncategorized'**
+  /// In zh, this message translates to:
+  /// **'未分类'**
   String get commonUncategorized;
 
   /// No description provided for @commonSaved.
   ///
-  /// In en, this message translates to:
-  /// **'Saved'**
+  /// In zh, this message translates to:
+  /// **'已保存'**
   String get commonSaved;
 
   /// No description provided for @aiProviderManageTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Provider Management'**
+  /// In zh, this message translates to:
+  /// **'服务商管理'**
   String get aiProviderManageTitle;
 
   /// No description provided for @aiProviderManageSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Manage AI service providers'**
+  /// In zh, this message translates to:
+  /// **'管理AI服务商配置'**
   String get aiProviderManageSubtitle;
 
   /// No description provided for @aiProviderAdd.
   ///
-  /// In en, this message translates to:
-  /// **'Add Provider'**
+  /// In zh, this message translates to:
+  /// **'添加服务商'**
   String get aiProviderAdd;
 
   /// No description provided for @aiProviderBuiltIn.
   ///
-  /// In en, this message translates to:
-  /// **'Built-in'**
+  /// In zh, this message translates to:
+  /// **'内置'**
   String get aiProviderBuiltIn;
 
   /// No description provided for @aiProviderEmpty.
   ///
-  /// In en, this message translates to:
-  /// **'No providers configured'**
+  /// In zh, this message translates to:
+  /// **'暂无服务商配置'**
   String get aiProviderEmpty;
 
   /// No description provided for @aiProviderNoApiKey.
   ///
-  /// In en, this message translates to:
-  /// **'API Key not configured'**
+  /// In zh, this message translates to:
+  /// **'未配置 API Key'**
   String get aiProviderNoApiKey;
 
   /// No description provided for @aiProviderApiKeyKeepHint.
   ///
-  /// In en, this message translates to:
-  /// **'Leave blank to keep the current key'**
+  /// In zh, this message translates to:
+  /// **'留空保持现有 Key 不变'**
   String get aiProviderApiKeyKeepHint;
 
   /// No description provided for @automationDraftsDiscarded.
   ///
-  /// In en, this message translates to:
-  /// **'Draft discarded'**
+  /// In zh, this message translates to:
+  /// **'草稿已丢弃'**
   String get automationDraftsDiscarded;
 
   /// No description provided for @automationDraftsImageGone.
   ///
-  /// In en, this message translates to:
-  /// **'The original image was cleared by the system; retry unavailable'**
+  /// In zh, this message translates to:
+  /// **'原图已被系统清理，无法重试'**
   String get automationDraftsImageGone;
 
   /// No description provided for @automationDraftsRetryQueued.
   ///
-  /// In en, this message translates to:
-  /// **'Re-submitted for recognition'**
+  /// In zh, this message translates to:
+  /// **'已重新提交识别'**
   String get automationDraftsRetryQueued;
 
   /// No description provided for @automationDraftsDiscard.
   ///
-  /// In en, this message translates to:
-  /// **'Discard draft'**
+  /// In zh, this message translates to:
+  /// **'丢弃草稿'**
   String get automationDraftsDiscard;
 
   /// No description provided for @automationDraftsRetry.
   ///
-  /// In en, this message translates to:
-  /// **'Retry recognition'**
+  /// In zh, this message translates to:
+  /// **'重试识别'**
   String get automationDraftsRetry;
 
   /// No description provided for @automationDraftsEmpty.
   ///
-  /// In en, this message translates to:
-  /// **'No offline recognition drafts'**
+  /// In zh, this message translates to:
+  /// **'暂无离线识别草稿'**
   String get automationDraftsEmpty;
 
   /// No description provided for @automationDraftsTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Drafts'**
+  /// In zh, this message translates to:
+  /// **'草稿'**
   String get automationDraftsTitle;
 
   /// No description provided for @aiProviderTapToEdit.
   ///
-  /// In en, this message translates to:
-  /// **'Tap to edit'**
+  /// In zh, this message translates to:
+  /// **'点击编辑'**
   String get aiProviderTapToEdit;
 
   /// No description provided for @aiProviderDeleteTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Delete Provider'**
+  /// In zh, this message translates to:
+  /// **'删除服务商'**
   String get aiProviderDeleteTitle;
 
   /// No description provided for @aiProviderDeleteConfirm.
   ///
-  /// In en, this message translates to:
-  /// **'Delete provider \"{name}\"? Capabilities using this provider will switch to default.'**
+  /// In zh, this message translates to:
+  /// **'确定删除服务商「{name}」吗？使用该服务商的能力将自动切换到默认服务商。'**
   String aiProviderDeleteConfirm(String name);
 
   /// No description provided for @aiProviderDeleted.
   ///
-  /// In en, this message translates to:
-  /// **'Provider deleted'**
+  /// In zh, this message translates to:
+  /// **'服务商已删除'**
   String get aiProviderDeleted;
 
   /// No description provided for @aiProviderEditTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Edit Provider'**
+  /// In zh, this message translates to:
+  /// **'编辑服务商'**
   String get aiProviderEditTitle;
 
   /// No description provided for @aiProviderAddTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Add Provider'**
+  /// In zh, this message translates to:
+  /// **'添加服务商'**
   String get aiProviderAddTitle;
 
   /// No description provided for @aiProviderBasicInfo.
   ///
-  /// In en, this message translates to:
-  /// **'Basic Info'**
+  /// In zh, this message translates to:
+  /// **'基本信息'**
   String get aiProviderBasicInfo;
 
   /// No description provided for @aiProviderName.
   ///
-  /// In en, this message translates to:
-  /// **'Provider Name'**
+  /// In zh, this message translates to:
+  /// **'服务商名称'**
   String get aiProviderName;
 
   /// No description provided for @aiProviderProtocol.
   ///
-  /// In en, this message translates to:
-  /// **'API Protocol'**
+  /// In zh, this message translates to:
+  /// **'接口协议'**
   String get aiProviderProtocol;
 
   /// No description provided for @aiProviderProtocolHint.
   ///
-  /// In en, this message translates to:
-  /// **'Anthropic protocol has no speech-to-text support'**
+  /// In zh, this message translates to:
+  /// **'Anthropic 协议不支持语音转文字'**
   String get aiProviderProtocolHint;
 
   /// No description provided for @aiProviderNameHint.
   ///
-  /// In en, this message translates to:
-  /// **'e.g., SiliconFlow, DeepSeek'**
+  /// In zh, this message translates to:
+  /// **'如：硅基流动、DeepSeek'**
   String get aiProviderNameHint;
 
   /// No description provided for @aiProviderNameRequired.
   ///
-  /// In en, this message translates to:
-  /// **'Please enter provider name'**
+  /// In zh, this message translates to:
+  /// **'请输入服务商名称'**
   String get aiProviderNameRequired;
 
   /// No description provided for @aiProviderBaseUrlRequired.
   ///
-  /// In en, this message translates to:
-  /// **'Please enter Base URL'**
+  /// In zh, this message translates to:
+  /// **'请输入 Base URL'**
   String get aiProviderBaseUrlRequired;
 
   /// No description provided for @aiProviderModels.
   ///
-  /// In en, this message translates to:
-  /// **'Model Configuration'**
+  /// In zh, this message translates to:
+  /// **'模型配置'**
   String get aiProviderModels;
 
   /// No description provided for @aiProviderModelsHint.
   ///
-  /// In en, this message translates to:
-  /// **'Empty capabilities cannot use this provider'**
+  /// In zh, this message translates to:
+  /// **'留空的能力将无法使用该服务商'**
   String get aiProviderModelsHint;
 
   /// No description provided for @aiCapabilityText.
   ///
-  /// In en, this message translates to:
-  /// **'Text'**
+  /// In zh, this message translates to:
+  /// **'文本'**
   String get aiCapabilityText;
 
   /// No description provided for @aiCapabilityVision.
   ///
-  /// In en, this message translates to:
-  /// **'Vision'**
+  /// In zh, this message translates to:
+  /// **'视觉'**
   String get aiCapabilityVision;
 
   /// No description provided for @aiCapabilitySpeech.
   ///
-  /// In en, this message translates to:
-  /// **'Speech'**
+  /// In zh, this message translates to:
+  /// **'语音'**
   String get aiCapabilitySpeech;
 
   /// No description provided for @aiCapabilitySelectTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Capability Binding'**
+  /// In zh, this message translates to:
+  /// **'能力绑定'**
   String get aiCapabilitySelectTitle;
 
   /// No description provided for @aiCapabilitySelectSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Select provider for each AI capability'**
+  /// In zh, this message translates to:
+  /// **'为每个AI能力选择服务商'**
   String get aiCapabilitySelectSubtitle;
 
   /// No description provided for @aiCapabilityTextChat.
   ///
-  /// In en, this message translates to:
-  /// **'Text Chat'**
+  /// In zh, this message translates to:
+  /// **'文本对话'**
   String get aiCapabilityTextChat;
 
   /// No description provided for @aiCapabilityTextChatDesc.
   ///
-  /// In en, this message translates to:
-  /// **'For AI chat and text bill extraction'**
+  /// In zh, this message translates to:
+  /// **'用于AI对话和文本账单提取'**
   String get aiCapabilityTextChatDesc;
 
   /// No description provided for @aiCapabilityImageUnderstand.
   ///
-  /// In en, this message translates to:
-  /// **'Image Understanding'**
+  /// In zh, this message translates to:
+  /// **'图片理解'**
   String get aiCapabilityImageUnderstand;
 
   /// No description provided for @aiCapabilityImageUnderstandDesc.
   ///
-  /// In en, this message translates to:
-  /// **'For image bill recognition'**
+  /// In zh, this message translates to:
+  /// **'用于图片账单识别'**
   String get aiCapabilityImageUnderstandDesc;
 
   /// No description provided for @aiCapabilitySpeechToText.
   ///
-  /// In en, this message translates to:
-  /// **'Speech to Text'**
+  /// In zh, this message translates to:
+  /// **'语音转文字'**
   String get aiCapabilitySpeechToText;
 
   /// No description provided for @aiCapabilitySpeechToTextDesc.
   ///
-  /// In en, this message translates to:
-  /// **'For voice billing'**
+  /// In zh, this message translates to:
+  /// **'用于语音记账'**
   String get aiCapabilitySpeechToTextDesc;
 
   /// No description provided for @aiProviderTestRun.
   ///
-  /// In en, this message translates to:
-  /// **'Tap to test'**
+  /// In zh, this message translates to:
+  /// **'点击测试'**
   String get aiProviderTestRun;
 
   /// No description provided for @aiProviderTestRunning.
   ///
-  /// In en, this message translates to:
-  /// **'Testing...'**
+  /// In zh, this message translates to:
+  /// **'测试中...'**
   String get aiProviderTestRunning;
 
   /// No description provided for @aiProviderTestSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'Test passed'**
+  /// In zh, this message translates to:
+  /// **'测试通过'**
   String get aiProviderTestSuccess;
 
   /// No description provided for @aiProviderTestFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Test failed'**
+  /// In zh, this message translates to:
+  /// **'测试失败'**
   String get aiProviderTestFailed;
 
   /// No description provided for @aiProviderTestAll.
   ///
-  /// In en, this message translates to:
-  /// **'Test All'**
+  /// In zh, this message translates to:
+  /// **'一键测试全部'**
   String get aiProviderTestAll;
 
   /// No description provided for @aiProviderTestAllRetry.
   ///
-  /// In en, this message translates to:
-  /// **'Retry Test'**
+  /// In zh, this message translates to:
+  /// **'重新测试'**
   String get aiProviderTestAllRetry;
 
   /// No description provided for @aiModelInputHelper.
   ///
-  /// In en, this message translates to:
-  /// **'Leave empty to use default model'**
+  /// In zh, this message translates to:
+  /// **'留空则使用默认模型'**
   String get aiModelInputHelper;
 
   /// No description provided for @syncPreviewTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Sync Preview'**
+  /// In zh, this message translates to:
+  /// **'同步预览'**
   String get syncPreviewTitle;
 
   /// No description provided for @syncPreviewSelectAll.
   ///
-  /// In en, this message translates to:
-  /// **'Select All'**
+  /// In zh, this message translates to:
+  /// **'全选'**
   String get syncPreviewSelectAll;
 
   /// No description provided for @syncPreviewDeselectAll.
   ///
-  /// In en, this message translates to:
-  /// **'Deselect All'**
+  /// In zh, this message translates to:
+  /// **'取消全选'**
   String get syncPreviewDeselectAll;
 
   /// No description provided for @syncPreviewAdded.
   ///
-  /// In en, this message translates to:
-  /// **'Added'**
+  /// In zh, this message translates to:
+  /// **'新增'**
   String get syncPreviewAdded;
 
   /// No description provided for @syncPreviewModified.
   ///
-  /// In en, this message translates to:
-  /// **'Modified'**
+  /// In zh, this message translates to:
+  /// **'修改'**
   String get syncPreviewModified;
 
   /// No description provided for @syncPreviewDeleted.
   ///
-  /// In en, this message translates to:
-  /// **'Deleted'**
+  /// In zh, this message translates to:
+  /// **'删除'**
   String get syncPreviewDeleted;
 
   /// No description provided for @syncPreviewAddedCount.
   ///
-  /// In en, this message translates to:
-  /// **'{count} added'**
+  /// In zh, this message translates to:
+  /// **'新增 {count} 条'**
   String syncPreviewAddedCount(int count);
 
   /// No description provided for @syncPreviewModifiedCount.
   ///
-  /// In en, this message translates to:
-  /// **'{count} modified'**
+  /// In zh, this message translates to:
+  /// **'修改 {count} 条'**
   String syncPreviewModifiedCount(int count);
 
   /// No description provided for @syncPreviewDeletedCount.
   ///
-  /// In en, this message translates to:
-  /// **'{count} deleted'**
+  /// In zh, this message translates to:
+  /// **'删除 {count} 条'**
   String syncPreviewDeletedCount(int count);
 
   /// No description provided for @syncPreviewApply.
   ///
-  /// In en, this message translates to:
-  /// **'Apply {count} items'**
+  /// In zh, this message translates to:
+  /// **'应用 {count} 项'**
   String syncPreviewApply(int count);
 
   /// No description provided for @syncPreviewEmpty.
   ///
-  /// In en, this message translates to:
-  /// **'Cloud data matches local, no sync needed'**
+  /// In zh, this message translates to:
+  /// **'云端数据与本地一致，无需同步'**
   String get syncPreviewEmpty;
 
   /// No description provided for @syncPreviewOldFormat.
   ///
-  /// In en, this message translates to:
-  /// **'Old cloud format, full replace required'**
+  /// In zh, this message translates to:
+  /// **'云端数据格式较旧，将执行全量替换'**
   String get syncPreviewOldFormat;
 
   /// No description provided for @syncPreviewOldFormatMessage.
   ///
-  /// In en, this message translates to:
-  /// **'Cloud data does not contain sync IDs. Local data will be cleared and re-imported from cloud.'**
+  /// In zh, this message translates to:
+  /// **'云端数据不包含同步标识，无法逐条对比。将清空当前账本数据并从云端重新导入。'**
   String get syncPreviewOldFormatMessage;
 
   /// No description provided for @syncPreviewApplied.
   ///
-  /// In en, this message translates to:
-  /// **'Applied {count} changes'**
+  /// In zh, this message translates to:
+  /// **'已应用 {count} 项变更'**
   String syncPreviewApplied(int count);
 
   /// No description provided for @cloudSyncGuideTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Cloud Sync Guide'**
+  /// In zh, this message translates to:
+  /// **'云同步使用指南'**
   String get cloudSyncGuideTitle;
 
   /// No description provided for @cloudSyncGuideGotIt.
   ///
-  /// In en, this message translates to:
-  /// **'Got it'**
+  /// In zh, this message translates to:
+  /// **'我知道了'**
   String get cloudSyncGuideGotIt;
 
   /// No description provided for @cloudSyncGuideHowItWorks.
   ///
-  /// In en, this message translates to:
-  /// **'How it works'**
+  /// In zh, this message translates to:
+  /// **'工作原理'**
   String get cloudSyncGuideHowItWorks;
 
   /// No description provided for @cloudSyncGuideHowItem1.
   ///
-  /// In en, this message translates to:
-  /// **'Upload: packages all current ledger data and uploads to cloud, replacing old cloud data'**
+  /// In zh, this message translates to:
+  /// **'上传：将当前账本的全部数据打包上传到云端，覆盖云端旧数据'**
   String get cloudSyncGuideHowItem1;
 
   /// No description provided for @cloudSyncGuideHowItem2.
   ///
-  /// In en, this message translates to:
-  /// **'Download: fetches cloud data and compares with local records one by one — you choose which changes to apply'**
+  /// In zh, this message translates to:
+  /// **'下载：从云端拉取数据，与本地逐条对比差异，你可以选择要同步哪些变更'**
   String get cloudSyncGuideHowItem2;
 
   /// No description provided for @cloudSyncGuideHowItem3.
   ///
-  /// In en, this message translates to:
-  /// **'The cloud always stores only the last uploaded snapshot, no version history'**
+  /// In zh, this message translates to:
+  /// **'云端始终只保存最后一次上传的完整快照，不保留历史版本'**
   String get cloudSyncGuideHowItem3;
 
   /// No description provided for @cloudSyncGuideCorrect.
   ///
-  /// In en, this message translates to:
-  /// **'Correct usage'**
+  /// In zh, this message translates to:
+  /// **'正确的使用方式'**
   String get cloudSyncGuideCorrect;
 
   /// No description provided for @cloudSyncGuideCorrectItem1.
   ///
-  /// In en, this message translates to:
-  /// **'Edit on one device at a time, upload when done'**
+  /// In zh, this message translates to:
+  /// **'同一时间只在一台设备上记账，完成后上传'**
   String get cloudSyncGuideCorrectItem1;
 
   /// No description provided for @cloudSyncGuideCorrectItem2.
   ///
-  /// In en, this message translates to:
-  /// **'Download on the new device before starting to edit'**
+  /// In zh, this message translates to:
+  /// **'切换设备前，先在新设备上下载同步'**
   String get cloudSyncGuideCorrectItem2;
 
   /// No description provided for @cloudSyncGuideCorrectItem3.
   ///
-  /// In en, this message translates to:
-  /// **'Review the preview carefully before applying changes'**
+  /// In zh, this message translates to:
+  /// **'下载时仔细查看预览，确认每条变更再应用'**
   String get cloudSyncGuideCorrectItem3;
 
   /// No description provided for @cloudSyncGuideCorrectItem4.
   ///
-  /// In en, this message translates to:
-  /// **'Follow the pattern: edit → upload → switch device → download → edit'**
+  /// In zh, this message translates to:
+  /// **'养成「编辑→上传→切换设备→下载→编辑」的习惯'**
   String get cloudSyncGuideCorrectItem4;
 
   /// No description provided for @cloudSyncGuideWrong.
   ///
-  /// In en, this message translates to:
-  /// **'What to avoid'**
+  /// In zh, this message translates to:
+  /// **'应避免的用法'**
   String get cloudSyncGuideWrong;
 
   /// No description provided for @cloudSyncGuideWrongItem1.
   ///
-  /// In en, this message translates to:
-  /// **'Editing the same ledger on two devices simultaneously — the later upload overwrites the earlier one'**
+  /// In zh, this message translates to:
+  /// **'两台设备同时编辑同一个账本，后上传的会覆盖先上传的改动'**
   String get cloudSyncGuideWrongItem1;
 
   /// No description provided for @cloudSyncGuideWrongItem2.
   ///
-  /// In en, this message translates to:
-  /// **'Downloading immediately after upload — cloud services may have seconds to minutes of sync delay, wait a moment'**
+  /// In zh, this message translates to:
+  /// **'上传后立刻在另一台设备下载，文件服务可能有几秒到几分钟的同步延迟，等一会再试'**
   String get cloudSyncGuideWrongItem2;
 
   /// No description provided for @cloudSyncGuideWrongItem3.
   ///
-  /// In en, this message translates to:
-  /// **'Going long periods without syncing then downloading many changes at once — easy to miss important differences'**
+  /// In zh, this message translates to:
+  /// **'长时间不同步后一次性下载大量变更，容易遗漏需要处理的差异'**
   String get cloudSyncGuideWrongItem3;
 
   /// No description provided for @cloudSyncGuideLimitations.
   ///
-  /// In en, this message translates to:
-  /// **'Known limitations'**
+  /// In zh, this message translates to:
+  /// **'已知限制'**
   String get cloudSyncGuideLimitations;
 
   /// No description provided for @cloudSyncGuideLimitItem1.
   ///
-  /// In en, this message translates to:
-  /// **'Not real-time: requires manually tapping upload and download'**
+  /// In zh, this message translates to:
+  /// **'非实时同步：需要手动点击上传和下载'**
   String get cloudSyncGuideLimitItem1;
 
   /// No description provided for @cloudSyncGuideLimitItem2.
   ///
-  /// In en, this message translates to:
-  /// **'No conflict merging: does not auto-merge edits from both sides — last upload wins'**
+  /// In zh, this message translates to:
+  /// **'无冲突合并：不会自动合并两端的修改，以最后上传的为准'**
   String get cloudSyncGuideLimitItem2;
 
   /// No description provided for @cloudSyncGuideLimitItem3.
   ///
-  /// In en, this message translates to:
-  /// **'Cloud service delay: uploaded files may take seconds to minutes before other devices can read them, depending on your cloud provider'**
+  /// In zh, this message translates to:
+  /// **'文件服务延迟：上传后云端文件可能需要几秒到几分钟才能被其他设备读取，取决于你使用的云服务'**
   String get cloudSyncGuideLimitItem3;
 
   /// No description provided for @cloudSyncGuideLimitItem4.
   ///
-  /// In en, this message translates to:
-  /// **'Excludes attachments: transaction image attachments are not synced — export separately via Data Management'**
+  /// In zh, this message translates to:
+  /// **'不含附件：交易的图片附件不参与同步，需通过数据管理单独导出'**
   String get cloudSyncGuideLimitItem4;
 
   /// No description provided for @mineMultiDeviceSyncTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Multi-device Sync'**
+  /// In zh, this message translates to:
+  /// **'多设备同步'**
   String get mineMultiDeviceSyncTitle;
 
   /// No description provided for @mineMultiDeviceSyncSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Auto-check cloud changes when entering page'**
+  /// In zh, this message translates to:
+  /// **'进入页面时自动检查云端变更'**
   String get mineMultiDeviceSyncSubtitle;
 
   /// No description provided for @appLockTitle.
   ///
-  /// In en, this message translates to:
-  /// **'App Lock'**
+  /// In zh, this message translates to:
+  /// **'应用锁'**
   String get appLockTitle;
 
   /// No description provided for @appLockDesc.
   ///
-  /// In en, this message translates to:
-  /// **'PIN & biometric to protect privacy'**
+  /// In zh, this message translates to:
+  /// **'PIN码与生物识别保护隐私'**
   String get appLockDesc;
 
   /// No description provided for @appLockEnable.
   ///
-  /// In en, this message translates to:
-  /// **'Enable App Lock'**
+  /// In zh, this message translates to:
+  /// **'启用应用锁'**
   String get appLockEnable;
 
   /// No description provided for @appLockEnableDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Require authentication on launch and resume'**
+  /// In zh, this message translates to:
+  /// **'启动和切回应用时需要验证身份'**
   String get appLockEnableDesc;
 
   /// No description provided for @appLockSetPin.
   ///
-  /// In en, this message translates to:
-  /// **'Set PIN'**
+  /// In zh, this message translates to:
+  /// **'设置密码'**
   String get appLockSetPin;
 
   /// No description provided for @appLockChangePin.
   ///
-  /// In en, this message translates to:
-  /// **'Change PIN'**
+  /// In zh, this message translates to:
+  /// **'修改密码'**
   String get appLockChangePin;
 
   /// No description provided for @appLockVerifyPin.
   ///
-  /// In en, this message translates to:
-  /// **'Verify PIN'**
+  /// In zh, this message translates to:
+  /// **'验证密码'**
   String get appLockVerifyPin;
 
   /// No description provided for @appLockVerifyCurrentPin.
   ///
-  /// In en, this message translates to:
-  /// **'Enter current PIN'**
+  /// In zh, this message translates to:
+  /// **'请输入当前密码'**
   String get appLockVerifyCurrentPin;
 
   /// No description provided for @appLockSetNewPin.
   ///
-  /// In en, this message translates to:
-  /// **'Set new PIN'**
+  /// In zh, this message translates to:
+  /// **'请设置新密码'**
   String get appLockSetNewPin;
 
   /// No description provided for @appLockConfirmPin.
   ///
-  /// In en, this message translates to:
-  /// **'Confirm PIN'**
+  /// In zh, this message translates to:
+  /// **'请再次输入密码'**
   String get appLockConfirmPin;
 
   /// No description provided for @appLockEnterPin.
   ///
-  /// In en, this message translates to:
-  /// **'Enter PIN'**
+  /// In zh, this message translates to:
+  /// **'请输入密码'**
   String get appLockEnterPin;
 
   /// No description provided for @appLockPinSetSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'PIN set successfully'**
+  /// In zh, this message translates to:
+  /// **'密码设置成功'**
   String get appLockPinSetSuccess;
 
   /// No description provided for @appLockDisabled.
   ///
-  /// In en, this message translates to:
-  /// **'App Lock disabled'**
+  /// In zh, this message translates to:
+  /// **'应用锁已关闭'**
   String get appLockDisabled;
 
   /// No description provided for @appLockBiometric.
   ///
-  /// In en, this message translates to:
-  /// **'Biometric Unlock'**
+  /// In zh, this message translates to:
+  /// **'生物识别解锁'**
   String get appLockBiometric;
 
   /// No description provided for @appLockBiometricDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Use Face ID or fingerprint to unlock'**
+  /// In zh, this message translates to:
+  /// **'使用Face ID或指纹快速解锁'**
   String get appLockBiometricDesc;
 
   /// No description provided for @appLockBiometricReason.
   ///
-  /// In en, this message translates to:
-  /// **'Verify identity to unlock Bee Accounting'**
+  /// In zh, this message translates to:
+  /// **'请验证身份以解锁智记'**
   String get appLockBiometricReason;
 
   /// No description provided for @appLockTimeout.
   ///
-  /// In en, this message translates to:
-  /// **'Auto-lock Timeout'**
+  /// In zh, this message translates to:
+  /// **'自动锁定时间'**
   String get appLockTimeout;
 
   /// No description provided for @appLockTimeoutImmediate.
   ///
-  /// In en, this message translates to:
-  /// **'Immediately'**
+  /// In zh, this message translates to:
+  /// **'立即'**
   String get appLockTimeoutImmediate;
 
   /// No description provided for @appLockTimeout1Min.
   ///
-  /// In en, this message translates to:
-  /// **'After 1 minute'**
+  /// In zh, this message translates to:
+  /// **'1分钟后'**
   String get appLockTimeout1Min;
 
   /// No description provided for @appLockTimeout5Min.
   ///
-  /// In en, this message translates to:
-  /// **'After 5 minutes'**
+  /// In zh, this message translates to:
+  /// **'5分钟后'**
   String get appLockTimeout5Min;
 
   /// No description provided for @appLockTimeout15Min.
   ///
-  /// In en, this message translates to:
-  /// **'After 15 minutes'**
+  /// In zh, this message translates to:
+  /// **'15分钟后'**
   String get appLockTimeout15Min;
 
   /// No description provided for @creditCardSettings.
   ///
-  /// In en, this message translates to:
-  /// **'Credit Card Settings'**
+  /// In zh, this message translates to:
+  /// **'信用卡设置'**
   String get creditCardSettings;
 
   /// No description provided for @accountTabValuation.
   ///
-  /// In en, this message translates to:
-  /// **'Valuation'**
+  /// In zh, this message translates to:
+  /// **'估值账户'**
   String get accountTabValuation;
 
   /// No description provided for @creditCardDaysRequired.
   ///
-  /// In en, this message translates to:
-  /// **'Please select billing & due dates'**
+  /// In zh, this message translates to:
+  /// **'请选择账单日和还款日'**
   String get creditCardDaysRequired;
 
   /// No description provided for @creditLimit.
   ///
-  /// In en, this message translates to:
-  /// **'Credit Limit'**
+  /// In zh, this message translates to:
+  /// **'信用额度'**
   String get creditLimit;
 
   /// No description provided for @creditLimitHint.
   ///
-  /// In en, this message translates to:
-  /// **'Enter credit limit'**
+  /// In zh, this message translates to:
+  /// **'请输入信用额度'**
   String get creditLimitHint;
 
   /// No description provided for @billingDay.
   ///
-  /// In en, this message translates to:
-  /// **'Billing Day'**
+  /// In zh, this message translates to:
+  /// **'账单日'**
   String get billingDay;
 
   /// No description provided for @paymentDueDay.
   ///
-  /// In en, this message translates to:
-  /// **'Payment Due Day'**
+  /// In zh, this message translates to:
+  /// **'还款日'**
   String get paymentDueDay;
 
   /// No description provided for @creditUsed.
   ///
-  /// In en, this message translates to:
-  /// **'Used'**
+  /// In zh, this message translates to:
+  /// **'已用额度'**
   String get creditUsed;
 
   /// No description provided for @creditAvailable.
   ///
-  /// In en, this message translates to:
-  /// **'Available'**
+  /// In zh, this message translates to:
+  /// **'可用额度'**
   String get creditAvailable;
 
   /// No description provided for @creditCardOwed.
   ///
-  /// In en, this message translates to:
-  /// **'Owed'**
+  /// In zh, this message translates to:
+  /// **'待还款'**
   String get creditCardOwed;
 
   /// No description provided for @dayOfMonth.
   ///
-  /// In en, this message translates to:
-  /// **'{day}th of each month'**
+  /// In zh, this message translates to:
+  /// **'每月{day}日'**
   String dayOfMonth(int day);
 
   /// No description provided for @creditCardReminderTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Payment Reminder'**
+  /// In zh, this message translates to:
+  /// **'还款提醒'**
   String get creditCardReminderTitle;
 
   /// No description provided for @creditCardReminderDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Remind before payment due date'**
+  /// In zh, this message translates to:
+  /// **'在还款日前提醒还款'**
   String get creditCardReminderDesc;
 
   /// No description provided for @creditCardReminderDaysBefore.
   ///
-  /// In en, this message translates to:
-  /// **'{days} days before'**
+  /// In zh, this message translates to:
+  /// **'提前{days}天提醒'**
   String creditCardReminderDaysBefore(int days);
 
   /// No description provided for @creditCardInitialBalanceHint.
   ///
-  /// In en, this message translates to:
-  /// **'Current debt (negative number)'**
+  /// In zh, this message translates to:
+  /// **'当前欠款（填负数）'**
   String get creditCardInitialBalanceHint;
 
   /// No description provided for @selectDay.
   ///
-  /// In en, this message translates to:
-  /// **'Select Day'**
+  /// In zh, this message translates to:
+  /// **'选择日期'**
   String get selectDay;
 
   /// No description provided for @accountBankName.
   ///
-  /// In en, this message translates to:
-  /// **'Bank'**
+  /// In zh, this message translates to:
+  /// **'开户行'**
   String get accountBankName;
 
   /// No description provided for @accountBankNameHint.
   ///
-  /// In en, this message translates to:
-  /// **'e.g. ICBC'**
+  /// In zh, this message translates to:
+  /// **'例如：工商银行'**
   String get accountBankNameHint;
 
   /// No description provided for @accountCardLastFour.
   ///
-  /// In en, this message translates to:
-  /// **'Last 4 Digits'**
+  /// In zh, this message translates to:
+  /// **'卡号后四位'**
   String get accountCardLastFour;
 
   /// No description provided for @accountCardLastFourHint.
   ///
-  /// In en, this message translates to:
-  /// **'e.g. 1234'**
+  /// In zh, this message translates to:
+  /// **'例如：1234'**
   String get accountCardLastFourHint;
 
   /// No description provided for @accountNote.
   ///
-  /// In en, this message translates to:
-  /// **'Note'**
+  /// In zh, this message translates to:
+  /// **'备注'**
   String get accountNote;
 
   /// No description provided for @accountNoteHint.
   ///
-  /// In en, this message translates to:
-  /// **'Add a note'**
+  /// In zh, this message translates to:
+  /// **'添加备注信息'**
   String get accountNoteHint;
 
   /// No description provided for @accountMetaInfo.
   ///
-  /// In en, this message translates to:
-  /// **'Account Info'**
+  /// In zh, this message translates to:
+  /// **'账户信息'**
   String get accountMetaInfo;
 
   /// No description provided for @accountBalanceTrend.
   ///
-  /// In en, this message translates to:
-  /// **'Balance Trend'**
+  /// In zh, this message translates to:
+  /// **'余额趋势'**
   String get accountBalanceTrend;
 
   /// No description provided for @accountCategoryBreakdown.
   ///
-  /// In en, this message translates to:
-  /// **'Category Breakdown'**
+  /// In zh, this message translates to:
+  /// **'分类统计'**
   String get accountCategoryBreakdown;
 
   /// No description provided for @accountCategoryExpense.
   ///
-  /// In en, this message translates to:
-  /// **'Expense'**
+  /// In zh, this message translates to:
+  /// **'支出'**
   String get accountCategoryExpense;
 
   /// No description provided for @accountCategoryIncome.
   ///
-  /// In en, this message translates to:
-  /// **'Income'**
+  /// In zh, this message translates to:
+  /// **'收入'**
   String get accountCategoryIncome;
 
   /// No description provided for @accountNoMoreData.
   ///
-  /// In en, this message translates to:
-  /// **'No more data'**
+  /// In zh, this message translates to:
+  /// **'没有更多数据了'**
   String get accountNoMoreData;
 
   /// No description provided for @totalAssets.
   ///
-  /// In en, this message translates to:
-  /// **'Total Assets'**
+  /// In zh, this message translates to:
+  /// **'总资产'**
   String get totalAssets;
 
   /// No description provided for @totalLiabilities.
   ///
-  /// In en, this message translates to:
-  /// **'Total Liabilities'**
+  /// In zh, this message translates to:
+  /// **'总负债'**
   String get totalLiabilities;
 
   /// No description provided for @assetAccounts.
   ///
-  /// In en, this message translates to:
-  /// **'Asset Accounts'**
+  /// In zh, this message translates to:
+  /// **'资产账户'**
   String get assetAccounts;
 
   /// No description provided for @liabilityAccounts.
   ///
-  /// In en, this message translates to:
-  /// **'Liability Accounts'**
+  /// In zh, this message translates to:
+  /// **'负债账户'**
   String get liabilityAccounts;
 
   /// No description provided for @assetComposition.
   ///
-  /// In en, this message translates to:
-  /// **'Asset Composition'**
+  /// In zh, this message translates to:
+  /// **'资产构成'**
   String get assetComposition;
 
   /// No description provided for @accountTypeInvestment.
   ///
-  /// In en, this message translates to:
-  /// **'Investment'**
+  /// In zh, this message translates to:
+  /// **'投资理财'**
   String get accountTypeInvestment;
 
   /// No description provided for @accountTypeLoan.
   ///
-  /// In en, this message translates to:
-  /// **'Loan'**
+  /// In zh, this message translates to:
+  /// **'贷款'**
   String get accountTypeLoan;
 
   /// No description provided for @accountTypeReceivable.
   ///
-  /// In en, this message translates to:
-  /// **'Receivable'**
+  /// In zh, this message translates to:
+  /// **'应收款'**
   String get accountTypeReceivable;
 
   /// No description provided for @accountTypeRealEstate.
   ///
-  /// In en, this message translates to:
-  /// **'Real Estate'**
+  /// In zh, this message translates to:
+  /// **'不动产'**
   String get accountTypeRealEstate;
 
   /// No description provided for @accountTypeVehicle.
   ///
-  /// In en, this message translates to:
-  /// **'Vehicle'**
+  /// In zh, this message translates to:
+  /// **'车辆'**
   String get accountTypeVehicle;
 
   /// No description provided for @accountTypeInsurance.
   ///
-  /// In en, this message translates to:
-  /// **'Insurance'**
+  /// In zh, this message translates to:
+  /// **'保险'**
   String get accountTypeInsurance;
 
   /// No description provided for @accountTypeSocialFund.
   ///
-  /// In en, this message translates to:
-  /// **'Social Fund'**
+  /// In zh, this message translates to:
+  /// **'公积金/社保'**
   String get accountTypeSocialFund;
 
   /// No description provided for @valuationCurrentValue.
   ///
-  /// In en, this message translates to:
-  /// **'Current Valuation'**
+  /// In zh, this message translates to:
+  /// **'当前估值'**
   String get valuationCurrentValue;
 
   /// No description provided for @valuationCurrentDebt.
   ///
-  /// In en, this message translates to:
-  /// **'Current Debt'**
+  /// In zh, this message translates to:
+  /// **'当前欠款'**
   String get valuationCurrentDebt;
 
   /// No description provided for @valuationUpdateValue.
   ///
-  /// In en, this message translates to:
-  /// **'Update Valuation'**
+  /// In zh, this message translates to:
+  /// **'更新估值'**
   String get valuationUpdateValue;
 
   /// No description provided for @valuationUpdateDebt.
   ///
-  /// In en, this message translates to:
-  /// **'Update Debt'**
+  /// In zh, this message translates to:
+  /// **'更新欠款'**
   String get valuationUpdateDebt;
 
   /// No description provided for @valuationLastUpdated.
   ///
-  /// In en, this message translates to:
-  /// **'Last updated: {date}'**
+  /// In zh, this message translates to:
+  /// **'上次更新: {date}'**
   String valuationLastUpdated(String date);
 
   /// No description provided for @valuationAccountHint.
   ///
-  /// In en, this message translates to:
-  /// **'Enter current valuation'**
+  /// In zh, this message translates to:
+  /// **'请输入当前估值'**
   String get valuationAccountHint;
 
   /// No description provided for @valuationDebtHint.
   ///
-  /// In en, this message translates to:
-  /// **'Enter current debt amount'**
+  /// In zh, this message translates to:
+  /// **'请输入当前欠款金额'**
   String get valuationDebtHint;
 
   /// No description provided for @accountGroupTradable.
   ///
-  /// In en, this message translates to:
-  /// **'Daily Accounts'**
+  /// In zh, this message translates to:
+  /// **'日常账户'**
   String get accountGroupTradable;
 
   /// No description provided for @accountGroupValuation.
   ///
-  /// In en, this message translates to:
-  /// **'Assets/Liabilities'**
+  /// In zh, this message translates to:
+  /// **'资产/负债'**
   String get accountGroupValuation;
 
   /// No description provided for @adjustmentTransaction.
   ///
-  /// In en, this message translates to:
-  /// **'Valuation Adjustment'**
+  /// In zh, this message translates to:
+  /// **'估值调整'**
   String get adjustmentTransaction;
 
   /// No description provided for @creditCardBillingInfo.
   ///
-  /// In en, this message translates to:
-  /// **'Bills on {billingDay}th · Due on {paymentDueDay}th'**
+  /// In zh, this message translates to:
+  /// **'每月{billingDay}日出账 · {paymentDueDay}日还款'**
   String creditCardBillingInfo(int billingDay, int paymentDueDay);
 
   /// No description provided for @creditCardDaysUntilPayment.
   ///
-  /// In en, this message translates to:
-  /// **'{days} days until payment due'**
+  /// In zh, this message translates to:
+  /// **'距还款日还有{days}天'**
   String creditCardDaysUntilPayment(int days);
 
   /// No description provided for @creditCardPaymentDueToday.
   ///
-  /// In en, this message translates to:
-  /// **'Payment due today'**
+  /// In zh, this message translates to:
+  /// **'今天是还款日'**
   String get creditCardPaymentDueToday;
 
   /// No description provided for @creditCardQuickRepay.
   ///
-  /// In en, this message translates to:
-  /// **'Record Repayment'**
+  /// In zh, this message translates to:
+  /// **'记一笔还款'**
   String get creditCardQuickRepay;
 
   /// No description provided for @budgetManagement.
   ///
-  /// In en, this message translates to:
-  /// **'Budget'**
+  /// In zh, this message translates to:
+  /// **'预算管理'**
   String get budgetManagement;
 
   /// No description provided for @budgetManagementDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Set monthly budget and control spending'**
+  /// In zh, this message translates to:
+  /// **'设置月度预算，控制支出'**
   String get budgetManagementDesc;
 
   /// No description provided for @budgetSetupHint.
   ///
-  /// In en, this message translates to:
-  /// **'Set a budget to control monthly spending'**
+  /// In zh, this message translates to:
+  /// **'设置预算，轻松掌控每月开支'**
   String get budgetSetupHint;
 
   /// No description provided for @budgetSetupAction.
   ///
-  /// In en, this message translates to:
-  /// **'Set up'**
+  /// In zh, this message translates to:
+  /// **'去设置'**
   String get budgetSetupAction;
 
   /// No description provided for @cloudCollabDevicesPageTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Device Sessions'**
+  /// In zh, this message translates to:
+  /// **'设备会话'**
   String get cloudCollabDevicesPageTitle;
 
   /// No description provided for @cloudCollabDevicesPageSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Manage active devices'**
+  /// In zh, this message translates to:
+  /// **'管理当前账号活跃设备'**
   String get cloudCollabDevicesPageSubtitle;
 
   /// No description provided for @cloudCollabDevicesViewAllSessions.
   ///
-  /// In en, this message translates to:
-  /// **'Show all sessions'**
+  /// In zh, this message translates to:
+  /// **'显示全部会话'**
   String get cloudCollabDevicesViewAllSessions;
 
   /// No description provided for @cloudCollabDevicesViewModeHint.
   ///
-  /// In en, this message translates to:
-  /// **'Default view shows deduped devices active in the last 30 days.'**
+  /// In zh, this message translates to:
+  /// **'默认展示近 30 天去重设备，可切换查看全部会话。'**
   String get cloudCollabDevicesViewModeHint;
 
   /// No description provided for @cloudCollabNoDevices.
   ///
-  /// In en, this message translates to:
-  /// **'No active devices'**
+  /// In zh, this message translates to:
+  /// **'当前没有活跃设备'**
   String get cloudCollabNoDevices;
 
   /// No description provided for @cloudCollabUnknownDeviceName.
   ///
-  /// In en, this message translates to:
-  /// **'Unknown Device'**
+  /// In zh, this message translates to:
+  /// **'未知设备'**
   String get cloudCollabUnknownDeviceName;
 
   /// No description provided for @cloudCollabDeviceCurrentTag.
   ///
-  /// In en, this message translates to:
-  /// **'Current Device'**
+  /// In zh, this message translates to:
+  /// **'当前设备'**
   String get cloudCollabDeviceCurrentTag;
 
   /// No description provided for @cloudCollabCurrentDeviceCannotRevoke.
   ///
-  /// In en, this message translates to:
-  /// **'Current device cannot be revoked.'**
+  /// In zh, this message translates to:
+  /// **'当前设备不能远程下线。'**
   String get cloudCollabCurrentDeviceCannotRevoke;
 
   /// No description provided for @cloudCollabDeviceAppVersion.
   ///
-  /// In en, this message translates to:
-  /// **'App: {version}'**
+  /// In zh, this message translates to:
+  /// **'应用：{version}'**
   String cloudCollabDeviceAppVersion(String version);
 
   /// No description provided for @cloudCollabDeviceOsVersion.
   ///
-  /// In en, this message translates to:
-  /// **'OS: {version}'**
+  /// In zh, this message translates to:
+  /// **'系统：{version}'**
   String cloudCollabDeviceOsVersion(String version);
 
   /// No description provided for @cloudCollabDeviceModel.
   ///
-  /// In en, this message translates to:
-  /// **'Model: {model}'**
+  /// In zh, this message translates to:
+  /// **'型号：{model}'**
   String cloudCollabDeviceModel(String model);
 
   /// No description provided for @cloudCollabDeviceLastIp.
   ///
-  /// In en, this message translates to:
-  /// **'IP: {ip}'**
+  /// In zh, this message translates to:
+  /// **'IP：{ip}'**
   String cloudCollabDeviceLastIp(String ip);
 
   /// No description provided for @cloudCollabDeviceSessionCount.
   ///
-  /// In en, this message translates to:
-  /// **'Sessions: {count}'**
+  /// In zh, this message translates to:
+  /// **'会话数：{count}'**
   String cloudCollabDeviceSessionCount(String count);
 
   /// No description provided for @cloudCollabDeviceLastSeen.
   ///
-  /// In en, this message translates to:
-  /// **'Last seen: {time}'**
+  /// In zh, this message translates to:
+  /// **'最近活跃：{time}'**
   String cloudCollabDeviceLastSeen(String time);
 
   /// No description provided for @cloudCollabDeviceCreatedAt.
   ///
-  /// In en, this message translates to:
-  /// **'Created: {time}'**
+  /// In zh, this message translates to:
+  /// **'创建时间：{time}'**
   String cloudCollabDeviceCreatedAt(String time);
 
   /// No description provided for @cloudCollabDeviceRevokeTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Revoke Device'**
+  /// In zh, this message translates to:
+  /// **'远程下线设备'**
   String get cloudCollabDeviceRevokeTitle;
 
   /// No description provided for @cloudCollabDeviceRevokeMessage.
   ///
-  /// In en, this message translates to:
-  /// **'Revoke device {name} ({id})?'**
+  /// In zh, this message translates to:
+  /// **'确认下线设备 {name}（{id}）吗？'**
   String cloudCollabDeviceRevokeMessage(String name, String id);
 
   /// No description provided for @cloudCollabDeviceRevokeMultipleMessage.
   ///
-  /// In en, this message translates to:
-  /// **'Revoke {count} sessions for device {name}?'**
+  /// In zh, this message translates to:
+  /// **'确认下线设备 {name} 的 {count} 个会话吗？'**
   String cloudCollabDeviceRevokeMultipleMessage(String name, String count);
 
   /// No description provided for @cloudCollabDeviceRevoked.
   ///
-  /// In en, this message translates to:
-  /// **'Device revoked'**
+  /// In zh, this message translates to:
+  /// **'设备已下线'**
   String get cloudCollabDeviceRevoked;
 
   /// No description provided for @cloudCollabUnavailableMessage.
   ///
-  /// In en, this message translates to:
-  /// **'Cloud sync is unavailable.'**
+  /// In zh, this message translates to:
+  /// **'云同步功能暂不可用。'**
   String get cloudCollabUnavailableMessage;
 
   /// No description provided for @cloudCollabScopeDeniedHint.
   ///
-  /// In en, this message translates to:
-  /// **'Server has not enabled ALLOW_APP_RW_SCOPES, so device sessions are unavailable.'**
+  /// In zh, this message translates to:
+  /// **'服务端尚未开启 ALLOW_APP_RW_SCOPES，当前设备会话不可用。'**
   String get cloudCollabScopeDeniedHint;
 
   /// No description provided for @cloudCollabScopeDeniedAction.
   ///
-  /// In en, this message translates to:
-  /// **'Set ALLOW_APP_RW_SCOPES=true in server .env, restart the service, then sign in again.'**
+  /// In zh, this message translates to:
+  /// **'请在服务端 .env 或部署环境中设置 ALLOW_APP_RW_SCOPES=true，重启服务后重新登录 App。'**
   String get cloudCollabScopeDeniedAction;
 
   /// No description provided for @syncHealthTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Sync status'**
+  /// In zh, this message translates to:
+  /// **'同步状态'**
   String get syncHealthTitle;
 
   /// No description provided for @cloudSyncHelpTitle.
   ///
-  /// In en, this message translates to:
-  /// **'How sync works · Why it sometimes stalls'**
+  /// In zh, this message translates to:
+  /// **'同步说明 · 为什么有时同步不动？'**
   String get cloudSyncHelpTitle;
 
   /// No description provided for @cloudSyncHelpModesTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Three sync modes'**
+  /// In zh, this message translates to:
+  /// **'三种同步方式'**
   String get cloudSyncHelpModesTitle;
 
   /// No description provided for @cloudSyncHelpModesBody.
   ///
-  /// In en, this message translates to:
-  /// **'• Incremental (automatic, everyday): after you add or edit an entry, only that change is uploaded/downloaded automatically — fast, no manual action. This is what runs all the time.\n• Full upload: the first time you enable cloud sync, or when the cloud has no data for this ledger yet, all local data is pushed to the cloud at once.\n• Full download: on a new device, after a reinstall, or when local is empty, all data is pulled down from the cloud.'**
+  /// In zh, this message translates to:
+  /// **'• 增量同步（日常自动）：记一笔 / 改一笔后，只把这条变化自动上传下载，快、无需手动操作 —— 平时一直在跑的就是它。\n• 全量上传：首次开启云同步、或云端还没有这个账本的数据时，把本地全部数据一次性推上云。\n• 全量下载：换新设备、重装、或本地为空时，从云端把全部数据拉下来。'**
   String get cloudSyncHelpModesBody;
 
   /// No description provided for @cloudSyncHelpWhenFullTitle.
   ///
-  /// In en, this message translates to:
-  /// **'When does a full sync happen?'**
+  /// In zh, this message translates to:
+  /// **'什么时候才会走全量？'**
   String get cloudSyncHelpWhenFullTitle;
 
   /// No description provided for @cloudSyncHelpWhenFullBody.
   ///
-  /// In en, this message translates to:
-  /// **'A full sync only triggers automatically when one side is empty (first enabling cloud sync / new device / reinstall / after clearing local or cloud data). As long as both sides have data, sync stays incremental and never restarts on its own. To force a full re-sync, you must first clear the data on the corresponding side.'**
+  /// In zh, this message translates to:
+  /// **'全量只在某一端数据为空时才会自动触发（首次开启云同步 / 换新设备 / 重装 / 清空了本地或云端数据）。只要两端都有数据，之后一直走增量，不会无故重来。想强制重新全量同步，得先清空对应端的数据。'**
   String get cloudSyncHelpWhenFullBody;
 
   /// No description provided for @cloudSyncHelpStuckTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Why sync sometimes stalls'**
+  /// In zh, this message translates to:
+  /// **'为什么有时同步不动 / 卡住'**
   String get cloudSyncHelpStuckTitle;
 
   /// No description provided for @cloudSyncHelpStuckBody.
   ///
-  /// In en, this message translates to:
-  /// **'• Full upload/download does NOT support resume: if the network drops or the app is killed in the background, it starts over from scratch instead of continuing. For large data, use a stable network (Wi-Fi recommended) and let it finish without switching away.\n• Incremental sync is resume-safe and unaffected in everyday use.'**
+  /// In zh, this message translates to:
+  /// **'• 全量上传 / 下载不支持断点续传：中途断网、或 App 被切到后台被系统杀掉，会从头重来，不会接着传。数据多时请用稳定网络（建议 Wi-Fi）耐心等它跑完，别中途切走。\n• 增量同步是断点安全的，日常同步不受影响。'**
   String get cloudSyncHelpStuckBody;
 
   /// No description provided for @cloudSyncHelpTroubleshootTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Troubleshooting'**
+  /// In zh, this message translates to:
+  /// **'排查办法'**
   String get cloudSyncHelpTroubleshootTitle;
 
   /// No description provided for @cloudSyncHelpTroubleshootBody.
   ///
-  /// In en, this message translates to:
-  /// **'• First, pull down on this page to run a Deep Check and compare local vs cloud.\n• Still stuck? Open the Log Center to view sync logs (including failure reasons) for reporting.'**
+  /// In zh, this message translates to:
+  /// **'• 先在本页下拉做一次「深度检测」，对比本地与云端差异。\n• 仍有问题，去「日志中心」查看同步日志（含失败原因），方便反馈。'**
   String get cloudSyncHelpTroubleshootBody;
 
   /// No description provided for @cloudSyncHelpOpenLogCenter.
   ///
-  /// In en, this message translates to:
-  /// **'Open Log Center'**
+  /// In zh, this message translates to:
+  /// **'打开日志中心'**
   String get cloudSyncHelpOpenLogCenter;
 
   /// No description provided for @syncHealthCheckFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Check failed: {msg}'**
+  /// In zh, this message translates to:
+  /// **'检测失败：{msg}'**
   String syncHealthCheckFailed(String msg);
 
   /// No description provided for @syncHealthHasDiff.
   ///
-  /// In en, this message translates to:
-  /// **'Diff detected; auto-synced'**
+  /// In zh, this message translates to:
+  /// **'检测到差异，已自动同步'**
   String get syncHealthHasDiff;
 
   /// No description provided for @syncHealthInSync.
   ///
-  /// In en, this message translates to:
-  /// **'Local matches cloud'**
+  /// In zh, this message translates to:
+  /// **'本地与云端一致'**
   String get syncHealthInSync;
 
   /// No description provided for @syncHealthGroupCurrentLedger.
   ///
-  /// In en, this message translates to:
-  /// **'Current ledger'**
+  /// In zh, this message translates to:
+  /// **'当前账本'**
   String get syncHealthGroupCurrentLedger;
 
   /// No description provided for @syncHealthGroupAll.
   ///
-  /// In en, this message translates to:
-  /// **'All ledgers'**
+  /// In zh, this message translates to:
+  /// **'全部账本'**
   String get syncHealthGroupAll;
 
   /// No description provided for @syncHealthRowTx.
   ///
-  /// In en, this message translates to:
-  /// **'Transactions'**
+  /// In zh, this message translates to:
+  /// **'交易'**
   String get syncHealthRowTx;
 
   /// No description provided for @syncHealthRowAttachment.
   ///
-  /// In en, this message translates to:
-  /// **'Attachments'**
+  /// In zh, this message translates to:
+  /// **'附件'**
   String get syncHealthRowAttachment;
 
   /// No description provided for @syncHealthRowCategoryIcon.
   ///
-  /// In en, this message translates to:
-  /// **'Category icons'**
+  /// In zh, this message translates to:
+  /// **'分类图标'**
   String get syncHealthRowCategoryIcon;
 
   /// No description provided for @syncHealthRowBudget.
   ///
-  /// In en, this message translates to:
-  /// **'Budgets'**
+  /// In zh, this message translates to:
+  /// **'预算'**
   String get syncHealthRowBudget;
 
   /// No description provided for @syncHealthRowAccount.
   ///
-  /// In en, this message translates to:
-  /// **'Accounts'**
+  /// In zh, this message translates to:
+  /// **'账户'**
   String get syncHealthRowAccount;
 
   /// No description provided for @syncHealthRowCategory.
   ///
-  /// In en, this message translates to:
-  /// **'Categories'**
+  /// In zh, this message translates to:
+  /// **'分类'**
   String get syncHealthRowCategory;
 
   /// No description provided for @syncHealthRowTag.
   ///
-  /// In en, this message translates to:
-  /// **'Tags'**
+  /// In zh, this message translates to:
+  /// **'标签'**
   String get syncHealthRowTag;
 
   /// No description provided for @syncHealthRowUnpushed.
   ///
-  /// In en, this message translates to:
-  /// **'Pending pushes'**
+  /// In zh, this message translates to:
+  /// **'未推送变更'**
   String get syncHealthRowUnpushed;
 
   /// No description provided for @syncHealthValue.
   ///
-  /// In en, this message translates to:
-  /// **'Local {local} · Cloud {remote}'**
+  /// In zh, this message translates to:
+  /// **'本地 {local} · 云端 {remote}'**
   String syncHealthValue(int local, int remote);
 
   /// No description provided for @syncHealthValueRemoteMissing.
   ///
-  /// In en, this message translates to:
-  /// **'Local {local} · Cloud —'**
+  /// In zh, this message translates to:
+  /// **'本地 {local} · 云端 —'**
   String syncHealthValueRemoteMissing(int local);
 
   /// No description provided for @syncForceRestoreTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Restore from server'**
+  /// In zh, this message translates to:
+  /// **'以服务端为准'**
   String get syncForceRestoreTitle;
 
   /// No description provided for @syncForceRestoreConfirmTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Restore from server?'**
+  /// In zh, this message translates to:
+  /// **'以服务端为准恢复？'**
   String get syncForceRestoreConfirmTitle;
 
   /// No description provided for @syncForceRestoreConfirmBody.
   ///
-  /// In en, this message translates to:
-  /// **'This will clear local transactions and budgets for the current ledger, and overwrite accounts, categories and tags with the server\'s data (local entries missing on the server are deleted, affecting data shared across ledgers). This cannot be undone.'**
+  /// In zh, this message translates to:
+  /// **'将清空当前账本的本地交易与预算，并用服务端数据覆盖账户、分类与标签（本地多出的条目会被删除，且影响所有账本共用的数据）。此操作不可撤销。'**
   String get syncForceRestoreConfirmBody;
 
   /// No description provided for @syncForceRestoreSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'Restored from server: {tx} transactions, {budget} budgets, {accounts} accounts, {categories} categories, {tags} tags'**
+  /// In zh, this message translates to:
+  /// **'已按服务端恢复：交易 {tx} 笔、预算 {budget} 笔、账户 {accounts} 个、分类 {categories} 个、标签 {tags} 个'**
   String syncForceRestoreSuccess(int tx, int budget, int accounts, int categories, int tags);
 
   /// No description provided for @syncForceRestoreFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Restore failed'**
+  /// In zh, this message translates to:
+  /// **'恢复失败'**
   String get syncForceRestoreFailed;
 
   /// No description provided for @sharedRoleOwner.
   ///
-  /// In en, this message translates to:
-  /// **'Owner'**
+  /// In zh, this message translates to:
+  /// **'所有者'**
   String get sharedRoleOwner;
 
   /// No description provided for @sharedRoleEditor.
   ///
-  /// In en, this message translates to:
-  /// **'Editor'**
+  /// In zh, this message translates to:
+  /// **'编辑者'**
   String get sharedRoleEditor;
 
   /// No description provided for @sharedRoleViewer.
   ///
-  /// In en, this message translates to:
-  /// **'Viewer'**
+  /// In zh, this message translates to:
+  /// **'查看者'**
   String get sharedRoleViewer;
 
   /// No description provided for @commonCopied.
   ///
-  /// In en, this message translates to:
-  /// **'Copied'**
+  /// In zh, this message translates to:
+  /// **'已复制'**
   String get commonCopied;
 
   /// No description provided for @commonRemove.
   ///
-  /// In en, this message translates to:
-  /// **'Remove'**
+  /// In zh, this message translates to:
+  /// **'移除'**
   String get commonRemove;
 
   /// No description provided for @sharedJoinPageTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Join shared ledger'**
+  /// In zh, this message translates to:
+  /// **'加入共享账本'**
   String get sharedJoinPageTitle;
 
   /// No description provided for @sharedJoinPageSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Enter an invite code or tap a shared link'**
+  /// In zh, this message translates to:
+  /// **'输入邀请码或点击对方分享的链接'**
   String get sharedJoinPageSubtitle;
 
   /// No description provided for @sharedJoinEnterCode.
   ///
-  /// In en, this message translates to:
-  /// **'Enter invite code'**
+  /// In zh, this message translates to:
+  /// **'输入邀请码'**
   String get sharedJoinEnterCode;
 
   /// No description provided for @sharedJoinEnterCodeHint.
   ///
-  /// In en, this message translates to:
-  /// **'6 uppercase letters / digits. You can also tap a share link to skip this step.'**
+  /// In zh, this message translates to:
+  /// **'邀请码 6 位,全大写字母数字。也可直接点击邀请方分享的短链跳过此步。'**
   String get sharedJoinEnterCodeHint;
 
   /// No description provided for @sharedJoinPreviewButton.
   ///
-  /// In en, this message translates to:
-  /// **'Verify code'**
+  /// In zh, this message translates to:
+  /// **'验证邀请码'**
   String get sharedJoinPreviewButton;
 
   /// No description provided for @sharedJoinAcceptButton.
   ///
-  /// In en, this message translates to:
-  /// **'Join'**
+  /// In zh, this message translates to:
+  /// **'加入账本'**
   String get sharedJoinAcceptButton;
 
   /// No description provided for @sharedJoinInvitedBy.
   ///
-  /// In en, this message translates to:
-  /// **'{name} invited you to join'**
+  /// In zh, this message translates to:
+  /// **'{name} 邀请你加入'**
   String sharedJoinInvitedBy(String name);
 
   /// No description provided for @sharedJoinRoleLine.
   ///
-  /// In en, this message translates to:
-  /// **'Role: {role}'**
+  /// In zh, this message translates to:
+  /// **'角色:{role}'**
   String sharedJoinRoleLine(String role);
 
   /// No description provided for @sharedJoinExpiresInMinutes.
   ///
-  /// In en, this message translates to:
-  /// **'Expires in {n} min'**
+  /// In zh, this message translates to:
+  /// **'有效期还剩 {n} 分钟'**
   String sharedJoinExpiresInMinutes(int n);
 
   /// No description provided for @sharedJoinExpiresInHours.
   ///
-  /// In en, this message translates to:
-  /// **'Expires in {n}h'**
+  /// In zh, this message translates to:
+  /// **'有效期还剩 {n} 小时'**
   String sharedJoinExpiresInHours(int n);
 
   /// No description provided for @sharedJoinExpiresInDays.
   ///
-  /// In en, this message translates to:
-  /// **'Expires in {n}d'**
+  /// In zh, this message translates to:
+  /// **'有效期还剩 {n} 天'**
   String sharedJoinExpiresInDays(int n);
 
   /// No description provided for @sharedJoinSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'Joined \"{name}\"'**
+  /// In zh, this message translates to:
+  /// **'已加入「{name}」'**
   String sharedJoinSuccess(String name);
 
   /// No description provided for @sharedJoinCodeFormatError.
   ///
-  /// In en, this message translates to:
-  /// **'Invite code must be 6 letters/digits.'**
+  /// In zh, this message translates to:
+  /// **'邀请码格式不对,请输入 6 位字母数字'**
   String get sharedJoinCodeFormatError;
 
   /// No description provided for @sharedJoinInvalidOrExpired.
   ///
-  /// In en, this message translates to:
-  /// **'Invite code is invalid or expired. Ask the inviter for a new one.'**
+  /// In zh, this message translates to:
+  /// **'邀请码无效或已过期,请向邀请人索取新码'**
   String get sharedJoinInvalidOrExpired;
 
   /// No description provided for @sharedJoinAlreadyMember.
   ///
-  /// In en, this message translates to:
-  /// **'You are already a member of this ledger.'**
+  /// In zh, this message translates to:
+  /// **'你已经是该账本成员'**
   String get sharedJoinAlreadyMember;
 
   /// No description provided for @sharedJoinMemberLimit.
   ///
-  /// In en, this message translates to:
-  /// **'This ledger has reached its member limit. Ask the owner.'**
+  /// In zh, this message translates to:
+  /// **'该账本成员已满,请联系账本所有者'**
   String get sharedJoinMemberLimit;
 
   /// No description provided for @sharedInvitePageTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Invite new member'**
+  /// In zh, this message translates to:
+  /// **'邀请新成员'**
   String get sharedInvitePageTitle;
 
   /// No description provided for @sharedInviteFormRole.
   ///
-  /// In en, this message translates to:
-  /// **'Role'**
+  /// In zh, this message translates to:
+  /// **'角色'**
   String get sharedInviteFormRole;
 
   /// No description provided for @sharedInviteFormExpiry.
   ///
-  /// In en, this message translates to:
-  /// **'Valid for'**
+  /// In zh, this message translates to:
+  /// **'有效期'**
   String get sharedInviteFormExpiry;
 
   /// No description provided for @sharedInviteExpiryHours.
   ///
-  /// In en, this message translates to:
-  /// **'{n} h'**
+  /// In zh, this message translates to:
+  /// **'{n} 小时'**
   String sharedInviteExpiryHours(int n);
 
   /// No description provided for @sharedInviteExpiryDays.
   ///
-  /// In en, this message translates to:
-  /// **'{n} day'**
+  /// In zh, this message translates to:
+  /// **'{n} 天'**
   String sharedInviteExpiryDays(int n);
 
   /// No description provided for @sharedInviteGenerate.
   ///
-  /// In en, this message translates to:
-  /// **'Generate invite code'**
+  /// In zh, this message translates to:
+  /// **'生成邀请码'**
   String get sharedInviteGenerate;
 
   /// No description provided for @sharedInviteGenerateAnother.
   ///
-  /// In en, this message translates to:
-  /// **'Generate another code'**
+  /// In zh, this message translates to:
+  /// **'生成另一个邀请码'**
   String get sharedInviteGenerateAnother;
 
   /// No description provided for @sharedInviteCopyCode.
   ///
-  /// In en, this message translates to:
-  /// **'Copy code'**
+  /// In zh, this message translates to:
+  /// **'复制邀请码'**
   String get sharedInviteCopyCode;
 
   /// No description provided for @sharedInviteCopyLink.
   ///
-  /// In en, this message translates to:
-  /// **'Copy link'**
+  /// In zh, this message translates to:
+  /// **'复制链接'**
   String get sharedInviteCopyLink;
 
   /// No description provided for @sharedInviteShareLink.
   ///
-  /// In en, this message translates to:
-  /// **'Share link'**
+  /// In zh, this message translates to:
+  /// **'分享给好友'**
   String get sharedInviteShareLink;
 
   /// No description provided for @sharedInviteExpiresAt.
   ///
-  /// In en, this message translates to:
-  /// **'Expires at {dt}'**
+  /// In zh, this message translates to:
+  /// **'邀请将在 {dt} 失效'**
   String sharedInviteExpiresAt(String dt);
 
   /// No description provided for @sharedInviteWarning.
   ///
-  /// In en, this message translates to:
-  /// **'⚠️ Don\'t post invite codes to public groups / social. Anyone with the code can join. Revoke and regenerate from Members if leaked.'**
+  /// In zh, this message translates to:
+  /// **'⚠️ 不要把邀请码发到公开群 / 朋友圈。拿到码的任何人都可加入账本;泄露后请到成员管理页撤销并重新生成。'**
   String get sharedInviteWarning;
 
   /// No description provided for @sharedInviteInstruction.
   ///
-  /// In en, this message translates to:
-  /// **'Send the code or short link to the other person. After they install SmartBook, they can tap the link or enter the code from \"Me → Join shared ledger\".'**
+  /// In zh, this message translates to:
+  /// **'把邀请码或短链发给对方。对方装上智记 后,点击链接或在「我的 → 加入共享账本」输入码即可加入。'**
   String get sharedInviteInstruction;
 
   /// No description provided for @sharedInviteShareText.
   ///
-  /// In en, this message translates to:
-  /// **'I\'m inviting you to SmartBook shared ledger \"{ledger}\".\n\nCode: {code}\nLink: {url}\n\nTap the link, or open SmartBook → Me → Join shared ledger and enter this code.'**
+  /// In zh, this message translates to:
+  /// **'邀请你加入智记 共享账本「{ledger}」\n\n邀请码:{code}\n链接:{url}\n\n点击链接或在智记 → 我的 → 加入共享账本输入此码即可。'**
   String sharedInviteShareText(String ledger, String code, String url);
 
   /// No description provided for @sharedMembersPageTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Members'**
+  /// In zh, this message translates to:
+  /// **'成员管理'**
   String get sharedMembersPageTitle;
 
   /// No description provided for @sharedMembersYou.
   ///
-  /// In en, this message translates to:
-  /// **'you'**
+  /// In zh, this message translates to:
+  /// **'你'**
   String get sharedMembersYou;
 
   /// No description provided for @sharedMembersInviteCta.
   ///
-  /// In en, this message translates to:
-  /// **'Invite new member'**
+  /// In zh, this message translates to:
+  /// **'邀请新成员'**
   String get sharedMembersInviteCta;
 
   /// No description provided for @sharedMembersLeaveCta.
   ///
-  /// In en, this message translates to:
-  /// **'Leave ledger'**
+  /// In zh, this message translates to:
+  /// **'退出账本'**
   String get sharedMembersLeaveCta;
 
   /// No description provided for @sharedMembersLeaveTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Leave ledger'**
+  /// In zh, this message translates to:
+  /// **'退出账本'**
   String get sharedMembersLeaveTitle;
 
   /// No description provided for @sharedMembersLeaveConfirm.
   ///
-  /// In en, this message translates to:
-  /// **'After leaving \"{name}\" you won\'t be able to access its transactions. Continue?'**
+  /// In zh, this message translates to:
+  /// **'退出「{name}」后将无法再访问其中的交易。确定继续吗?'**
   String sharedMembersLeaveConfirm(String name);
 
   /// No description provided for @sharedMembersLeaveDone.
   ///
-  /// In en, this message translates to:
-  /// **'Left the ledger'**
+  /// In zh, this message translates to:
+  /// **'已退出账本'**
   String get sharedMembersLeaveDone;
 
   /// No description provided for @sharedMembersRemoveTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Remove member'**
+  /// In zh, this message translates to:
+  /// **'移除成员'**
   String get sharedMembersRemoveTitle;
 
   /// No description provided for @sharedMembersRemoveCta.
   ///
-  /// In en, this message translates to:
-  /// **'Remove this member'**
+  /// In zh, this message translates to:
+  /// **'移除该成员'**
   String get sharedMembersRemoveCta;
 
   /// No description provided for @sharedMembersRemoveConfirm.
   ///
-  /// In en, this message translates to:
-  /// **'Remove {name}? They will immediately lose access to this ledger.'**
+  /// In zh, this message translates to:
+  /// **'确定移除 {name}?ta 将立即失去对该账本的访问。'**
   String sharedMembersRemoveConfirm(String name);
 
   /// No description provided for @sharedMembersRemoved.
   ///
-  /// In en, this message translates to:
-  /// **'Member removed'**
+  /// In zh, this message translates to:
+  /// **'已移除成员'**
   String get sharedMembersRemoved;
 
   /// No description provided for @sharedMembersTransferTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Transfer ownership'**
+  /// In zh, this message translates to:
+  /// **'转让所有权'**
   String get sharedMembersTransferTitle;
 
   /// No description provided for @sharedMembersTransferTo.
   ///
-  /// In en, this message translates to:
-  /// **'Transfer to this member'**
+  /// In zh, this message translates to:
+  /// **'转让给该成员'**
   String get sharedMembersTransferTo;
 
   /// No description provided for @sharedMembersTransferConfirm.
   ///
-  /// In en, this message translates to:
-  /// **'Transfer ownership to {name}? You will become an editor and can no longer invite, rename, or delete the ledger.'**
+  /// In zh, this message translates to:
+  /// **'把账本所有权转给 {name}?你将变为编辑者,无法再邀请人 / 改账本名 / 删账本。'**
   String sharedMembersTransferConfirm(String name);
 
   /// No description provided for @sharedMembersTransferConfirmCta.
   ///
-  /// In en, this message translates to:
-  /// **'Transfer'**
+  /// In zh, this message translates to:
+  /// **'确认转让'**
   String get sharedMembersTransferConfirmCta;
 
   /// No description provided for @sharedMembersTransferDone.
   ///
-  /// In en, this message translates to:
-  /// **'Ownership transferred'**
+  /// In zh, this message translates to:
+  /// **'已转让所有权'**
   String get sharedMembersTransferDone;
 
   /// No description provided for @sharedTxRecordedBy.
   ///
-  /// In en, this message translates to:
-  /// **'recorded by {name}'**
+  /// In zh, this message translates to:
+  /// **'{name} 记的'**
   String sharedTxRecordedBy(String name);
 
   /// No description provided for @sharedTxCreatedBy.
   ///
-  /// In en, this message translates to:
-  /// **'Created by {name}'**
+  /// In zh, this message translates to:
+  /// **'{name} 创建'**
   String sharedTxCreatedBy(String name);
 
   /// No description provided for @sharedTxEditedBy.
   ///
-  /// In en, this message translates to:
-  /// **'Last edited by {name}'**
+  /// In zh, this message translates to:
+  /// **'{name} 最后编辑'**
   String sharedTxEditedBy(String name);
 
   /// No description provided for @sharedTxCreatedAndEditedBy.
   ///
-  /// In en, this message translates to:
-  /// **'Created and edited by {name}'**
+  /// In zh, this message translates to:
+  /// **'{name} 创建并编辑'**
   String sharedTxCreatedAndEditedBy(String name);
 
   /// No description provided for @sharedRequiresCloudSync.
   ///
-  /// In en, this message translates to:
-  /// **'Please enable cloud sync first'**
+  /// In zh, this message translates to:
+  /// **'请先启用云同步'**
   String get sharedRequiresCloudSync;
 
   /// No description provided for @sharedMembersStatsTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Member balances'**
+  /// In zh, this message translates to:
+  /// **'成员收支'**
   String get sharedMembersStatsTitle;
 
   /// No description provided for @sharedMembersStatsEmpty.
   ///
-  /// In en, this message translates to:
-  /// **'No transactions yet'**
+  /// In zh, this message translates to:
+  /// **'本期暂无记账'**
   String get sharedMembersStatsEmpty;
 
   /// No description provided for @sharedMembersStatsLoading.
   ///
-  /// In en, this message translates to:
-  /// **'Loading…'**
+  /// In zh, this message translates to:
+  /// **'加载中…'**
   String get sharedMembersStatsLoading;
 
   /// No description provided for @sharedMembersStatsIncome.
   ///
-  /// In en, this message translates to:
-  /// **'Income'**
+  /// In zh, this message translates to:
+  /// **'总收入'**
   String get sharedMembersStatsIncome;
 
   /// No description provided for @sharedMembersStatsExpense.
   ///
-  /// In en, this message translates to:
-  /// **'Expense'**
+  /// In zh, this message translates to:
+  /// **'总支出'**
   String get sharedMembersStatsExpense;
 
   /// No description provided for @sharedMembersStatsTxCount.
   ///
-  /// In en, this message translates to:
-  /// **'{count} tx'**
+  /// In zh, this message translates to:
+  /// **'{count}笔'**
   String sharedMembersStatsTxCount(int count);
 
   /// No description provided for @maintenanceOrphanCleanupTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Data Cleanup'**
+  /// In zh, this message translates to:
+  /// **'数据清理'**
   String get maintenanceOrphanCleanupTitle;
 
   /// No description provided for @maintenanceOrphanCleanupSubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Detect and clean local orphan data'**
+  /// In zh, this message translates to:
+  /// **'检查并清理本地孤儿数据'**
   String get maintenanceOrphanCleanupSubtitle;
 
   /// No description provided for @maintenanceOrphanRescan.
   ///
-  /// In en, this message translates to:
-  /// **'Rescan'**
+  /// In zh, this message translates to:
+  /// **'重新扫描'**
   String get maintenanceOrphanRescan;
 
   /// No description provided for @maintenanceOrphanEmpty.
   ///
-  /// In en, this message translates to:
-  /// **'Local data is clean, no orphan data found'**
+  /// In zh, this message translates to:
+  /// **'本地数据干净,未发现孤儿数据'**
   String get maintenanceOrphanEmpty;
 
   /// No description provided for @maintenanceOrphanGroupDb.
   ///
-  /// In en, this message translates to:
-  /// **'Database orphans'**
+  /// In zh, this message translates to:
+  /// **'数据库孤儿'**
   String get maintenanceOrphanGroupDb;
 
   /// No description provided for @maintenanceOrphanGroupFile.
   ///
-  /// In en, this message translates to:
-  /// **'File orphans'**
+  /// In zh, this message translates to:
+  /// **'磁盘文件孤儿'**
   String get maintenanceOrphanGroupFile;
 
   /// No description provided for @maintenanceOrphanGroupSync.
   ///
-  /// In en, this message translates to:
-  /// **'Sync state orphans'**
+  /// In zh, this message translates to:
+  /// **'同步状态孤儿'**
   String get maintenanceOrphanGroupSync;
 
   /// No description provided for @maintenanceOrphanSummary.
   ///
-  /// In en, this message translates to:
-  /// **'Found {count} issue(s)'**
+  /// In zh, this message translates to:
+  /// **'发现 {count} 项异常'**
   String maintenanceOrphanSummary(int count);
 
   /// No description provided for @maintenanceOrphanSummarySize.
   ///
-  /// In en, this message translates to:
-  /// **'Reclaimable space ~ {size}'**
+  /// In zh, this message translates to:
+  /// **'可释放空间约 {size}'**
   String maintenanceOrphanSummarySize(String size);
 
   /// No description provided for @maintenanceOrphanSelectAll.
   ///
-  /// In en, this message translates to:
-  /// **'Select all'**
+  /// In zh, this message translates to:
+  /// **'全选'**
   String get maintenanceOrphanSelectAll;
 
   /// No description provided for @maintenanceOrphanDeselectAll.
   ///
-  /// In en, this message translates to:
-  /// **'Deselect all'**
+  /// In zh, this message translates to:
+  /// **'取消全选'**
   String get maintenanceOrphanDeselectAll;
 
   /// No description provided for @maintenanceOrphanDeleteOne.
   ///
-  /// In en, this message translates to:
-  /// **'Delete this'**
+  /// In zh, this message translates to:
+  /// **'删除此项'**
   String get maintenanceOrphanDeleteOne;
 
   /// No description provided for @maintenanceOrphanSelectedHint.
   ///
-  /// In en, this message translates to:
-  /// **'{count} selected'**
+  /// In zh, this message translates to:
+  /// **'已选 {count} 项'**
   String maintenanceOrphanSelectedHint(int count);
 
   /// No description provided for @maintenanceOrphanCleanSelected.
   ///
-  /// In en, this message translates to:
-  /// **'Clean selected'**
+  /// In zh, this message translates to:
+  /// **'清理已选'**
   String get maintenanceOrphanCleanSelected;
 
   /// No description provided for @maintenanceOrphanConfirmTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Confirm cleanup'**
+  /// In zh, this message translates to:
+  /// **'确认清理'**
   String get maintenanceOrphanConfirmTitle;
 
   /// No description provided for @maintenanceOrphanConfirmDeleteOne.
   ///
-  /// In en, this message translates to:
-  /// **'Delete \"{title}\"? This cannot be undone.'**
+  /// In zh, this message translates to:
+  /// **'确定清理「{title}」吗？操作不可撤销。'**
   String maintenanceOrphanConfirmDeleteOne(String title);
 
   /// No description provided for @maintenanceOrphanConfirmDeleteBatch.
   ///
-  /// In en, this message translates to:
-  /// **'Delete the {count} selected item(s)? This cannot be undone.'**
+  /// In zh, this message translates to:
+  /// **'确定清理选中的 {count} 项吗？操作不可撤销。'**
   String maintenanceOrphanConfirmDeleteBatch(int count);
 
   /// No description provided for @maintenanceOrphanCleanSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'Cleaned {count} item(s)'**
+  /// In zh, this message translates to:
+  /// **'已清理 {count} 项'**
   String maintenanceOrphanCleanSuccess(int count);
 
   /// No description provided for @maintenanceOrphanCleanPartial.
   ///
-  /// In en, this message translates to:
-  /// **'Cleaned {ok} item(s), {fail} failed'**
+  /// In zh, this message translates to:
+  /// **'成功 {ok} 项,失败 {fail} 项'**
   String maintenanceOrphanCleanPartial(int ok, int fail);
 
   /// No description provided for @syncProgressTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Syncing'**
+  /// In zh, this message translates to:
+  /// **'正在同步'**
   String get syncProgressTitle;
 
   /// No description provided for @syncProgressCount.
   ///
-  /// In en, this message translates to:
-  /// **'{applied} / {total}'**
+  /// In zh, this message translates to:
+  /// **'{applied} / {total} 条'**
   String syncProgressCount(int applied, int total);
 
   /// No description provided for @exchangeRatePageTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Exchange Rates'**
+  /// In zh, this message translates to:
+  /// **'汇率管理'**
   String get exchangeRatePageTitle;
 
   /// No description provided for @exchangeRateEntrySubtitle.
   ///
-  /// In en, this message translates to:
-  /// **'Auto-fetched rates with manual override'**
+  /// In zh, this message translates to:
+  /// **'自动获取汇率，支持手动修正'**
   String get exchangeRateEntrySubtitle;
 
   /// No description provided for @baseCurrencyLabel.
   ///
-  /// In en, this message translates to:
-  /// **'Primary Currency'**
+  /// In zh, this message translates to:
+  /// **'主币种'**
   String get baseCurrencyLabel;
 
   /// No description provided for @rateSourceAuto.
   ///
-  /// In en, this message translates to:
-  /// **'Auto'**
+  /// In zh, this message translates to:
+  /// **'自动'**
   String get rateSourceAuto;
 
   /// No description provided for @rateSourceManual.
   ///
-  /// In en, this message translates to:
-  /// **'Manual'**
+  /// In zh, this message translates to:
+  /// **'手动'**
   String get rateSourceManual;
 
   /// No description provided for @rateUpdatedAt.
   ///
-  /// In en, this message translates to:
-  /// **'Updated {date}'**
-  String rateUpdatedAt(String date);
+  /// In zh, this message translates to:
+  /// **'{date} 更新'**
+  String rateUpdatedAt(Object date);
 
   /// No description provided for @rateNotFetched.
   ///
-  /// In en, this message translates to:
-  /// **'Not fetched'**
+  /// In zh, this message translates to:
+  /// **'未获取'**
   String get rateNotFetched;
 
   /// No description provided for @rateTapToSet.
   ///
-  /// In en, this message translates to:
-  /// **'Tap to set manually'**
+  /// In zh, this message translates to:
+  /// **'点击手动设置'**
   String get rateTapToSet;
 
   /// No description provided for @rateEditTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Edit Rate'**
+  /// In zh, this message translates to:
+  /// **'编辑汇率'**
   String get rateEditTitle;
 
   /// No description provided for @rateInverseHint.
   ///
-  /// In en, this message translates to:
-  /// **'Inverse: 1 {base} ≈ {rate} {quote}'**
-  String rateInverseHint(String base, String rate, String quote);
+  /// In zh, this message translates to:
+  /// **'反向参考:1 {base} ≈ {rate} {quote}'**
+  String rateInverseHint(Object base, Object quote, Object rate);
 
   /// No description provided for @rateResetToAuto.
   ///
-  /// In en, this message translates to:
-  /// **'Reset to auto'**
+  /// In zh, this message translates to:
+  /// **'恢复自动'**
   String get rateResetToAuto;
 
   /// No description provided for @rateRefreshSuccess.
   ///
-  /// In en, this message translates to:
-  /// **'Rates updated'**
+  /// In zh, this message translates to:
+  /// **'汇率已更新'**
   String get rateRefreshSuccess;
 
   /// No description provided for @rateRefreshFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Fetch failed, you can set rates manually'**
+  /// In zh, this message translates to:
+  /// **'获取失败,可手动设置汇率'**
   String get rateRefreshFailed;
 
   /// No description provided for @ratesEmptyHint.
   ///
-  /// In en, this message translates to:
-  /// **'Rates appear here once your accounts use different currencies'**
+  /// In zh, this message translates to:
+  /// **'给账户设置不同币种后,这里会出现可管理的汇率'**
   String get ratesEmptyHint;
 
   /// No description provided for @rateDisclaimer.
   ///
-  /// In en, this message translates to:
-  /// **'Source: open exchange-rate data, updated daily. Conversion is for reference only and may differ from bank rates.'**
+  /// In zh, this message translates to:
+  /// **'数据来源:开源汇率数据,每日更新;折算仅供参考,可能与银行实际牌价有差异。'**
   String get rateDisclaimer;
 
   /// No description provided for @convertedNetWorth.
   ///
-  /// In en, this message translates to:
-  /// **'Net worth (in {currency})'**
-  String convertedNetWorth(String currency);
+  /// In zh, this message translates to:
+  /// **'净资产(折{currency})'**
+  String convertedNetWorth(Object currency);
 
   /// No description provided for @convertedFootnote.
   ///
-  /// In en, this message translates to:
-  /// **'Converted at {date} rates, tap to manage'**
-  String convertedFootnote(String date);
+  /// In zh, this message translates to:
+  /// **'按 {date} 汇率折算,点击管理汇率'**
+  String convertedFootnote(Object date);
 
   /// No description provided for @convertedPartialWarning.
   ///
-  /// In en, this message translates to:
-  /// **'{currencies} not converted, tap to set rates'**
-  String convertedPartialWarning(String currencies);
+  /// In zh, this message translates to:
+  /// **'{currencies} 未折算,点击设置汇率'**
+  String convertedPartialWarning(Object currencies);
 
   /// No description provided for @unconvertedBadge.
   ///
-  /// In en, this message translates to:
-  /// **'Not converted'**
+  /// In zh, this message translates to:
+  /// **'未折算'**
   String get unconvertedBadge;
 
   /// No description provided for @commonDetail.
   ///
-  /// In en, this message translates to:
-  /// **'Detail'**
+  /// In zh, this message translates to:
+  /// **'详情'**
   String get commonDetail;
 
   /// No description provided for @conversionDetailTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Conversion Details'**
+  /// In zh, this message translates to:
+  /// **'折算详情'**
   String get conversionDetailTitle;
 
   /// No description provided for @assetConversionToggle.
   ///
-  /// In en, this message translates to:
-  /// **'Convert to primary currency'**
+  /// In zh, this message translates to:
+  /// **'按主币种折算'**
   String get assetConversionToggle;
 
   /// No description provided for @rateManualApplied.
   ///
-  /// In en, this message translates to:
-  /// **'Applied {count} manual rates'**
-  String rateManualApplied(int count);
+  /// In zh, this message translates to:
+  /// **'已应用 {count} 条手动汇率'**
+  String rateManualApplied(Object count);
 
   /// No description provided for @netWorthTrendTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Net Worth Trend'**
+  /// In zh, this message translates to:
+  /// **'净值趋势'**
   String get netWorthTrendTitle;
 
   /// No description provided for @netWorthTrend3M.
   ///
-  /// In en, this message translates to:
-  /// **'3M'**
+  /// In zh, this message translates to:
+  /// **'3个月'**
   String get netWorthTrend3M;
 
   /// No description provided for @netWorthTrend6M.
   ///
-  /// In en, this message translates to:
-  /// **'6M'**
+  /// In zh, this message translates to:
+  /// **'6个月'**
   String get netWorthTrend6M;
 
   /// No description provided for @netWorthTrend12M.
   ///
-  /// In en, this message translates to:
-  /// **'12M'**
+  /// In zh, this message translates to:
+  /// **'12个月'**
   String get netWorthTrend12M;
 
   /// No description provided for @netWorthTrendAll.
   ///
-  /// In en, this message translates to:
-  /// **'All'**
+  /// In zh, this message translates to:
+  /// **'全部'**
   String get netWorthTrendAll;
 
   /// No description provided for @netWorthTrendLineNet.
   ///
-  /// In en, this message translates to:
-  /// **'Net Worth'**
+  /// In zh, this message translates to:
+  /// **'净资产'**
   String get netWorthTrendLineNet;
 
   /// No description provided for @netWorthTrendLineAssets.
   ///
-  /// In en, this message translates to:
-  /// **'Total Assets'**
+  /// In zh, this message translates to:
+  /// **'总资产'**
   String get netWorthTrendLineAssets;
 
   /// No description provided for @netWorthTrendLineLiabilities.
   ///
-  /// In en, this message translates to:
-  /// **'Total Liabilities'**
+  /// In zh, this message translates to:
+  /// **'总负债'**
   String get netWorthTrendLineLiabilities;
 
   /// No description provided for @netWorthTrendMultiCurrencyNote.
   ///
-  /// In en, this message translates to:
-  /// **'Historical net worth is the raw sum of each currency, not converted'**
+  /// In zh, this message translates to:
+  /// **'历史净值为各币种原值相加,未折算'**
   String get netWorthTrendMultiCurrencyNote;
 
   /// No description provided for @txFlagExcludeFromStats.
   ///
-  /// In en, this message translates to:
-  /// **'Exclude from income/expense'**
+  /// In zh, this message translates to:
+  /// **'不计入收支'**
   String get txFlagExcludeFromStats;
 
   /// No description provided for @txFlagExcludeFromBudget.
   ///
-  /// In en, this message translates to:
-  /// **'Exclude from budget'**
+  /// In zh, this message translates to:
+  /// **'不计入预算'**
   String get txFlagExcludeFromBudget;
 
   /// No description provided for @txFlagMoreOptions.
   ///
-  /// In en, this message translates to:
-  /// **'More options'**
+  /// In zh, this message translates to:
+  /// **'更多选项'**
   String get txFlagMoreOptions;
 
   /// No description provided for @txFlagDialogTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Transaction flags'**
+  /// In zh, this message translates to:
+  /// **'账单标记'**
   String get txFlagDialogTitle;
 
   /// No description provided for @txFlagExcludeFromStatsHint.
   ///
-  /// In en, this message translates to:
-  /// **'Excluded from stats, still counts toward balance'**
+  /// In zh, this message translates to:
+  /// **'不计入收支统计,但仍计入账户余额'**
   String get txFlagExcludeFromStatsHint;
 
   /// No description provided for @txFlagExcludeFromBudgetHint.
   ///
-  /// In en, this message translates to:
-  /// **'Doesn\'t count against your budget'**
+  /// In zh, this message translates to:
+  /// **'不占用预算额度'**
   String get txFlagExcludeFromBudgetHint;
 
   /// No description provided for @txFlagExcludedTag.
   ///
-  /// In en, this message translates to:
-  /// **'Excluded'**
+  /// In zh, this message translates to:
+  /// **'不计收支'**
   String get txFlagExcludedTag;
 
   /// No description provided for @txFlagBudgetExcludedTag.
   ///
-  /// In en, this message translates to:
-  /// **'No budget'**
+  /// In zh, this message translates to:
+  /// **'不计预算'**
   String get txFlagBudgetExcludedTag;
 
   /// No description provided for @txCurrencyLabel.
   ///
-  /// In en, this message translates to:
-  /// **'Currency'**
+  /// In zh, this message translates to:
+  /// **'币种'**
   String get txCurrencyLabel;
 
   /// No description provided for @txRateLabel.
   ///
-  /// In en, this message translates to:
-  /// **'Rate'**
+  /// In zh, this message translates to:
+  /// **'汇率'**
   String get txRateLabel;
 
   /// No description provided for @txConvertedPreview.
   ///
-  /// In en, this message translates to:
+  /// In zh, this message translates to:
   /// **'≈ {amount} {currency}'**
   String txConvertedPreview(Object amount, Object currency);
 
   /// No description provided for @txRateMissingHint.
   ///
-  /// In en, this message translates to:
-  /// **'Please enter the rate for this entry before saving'**
+  /// In zh, this message translates to:
+  /// **'请手动填写本笔汇率后保存'**
   String get txRateMissingHint;
 
   /// No description provided for @txCrossCurrencyTransferBlocked.
   ///
-  /// In en, this message translates to:
-  /// **'Cross-currency transfers are not supported yet. Record two entries or use same-currency accounts.'**
+  /// In zh, this message translates to:
+  /// **'暂不支持跨币种转账,请分别记两笔或使用同币种账户'**
   String get txCrossCurrencyTransferBlocked;
 
   /// No description provided for @ledgerBaseCurrencyLabel.
   ///
-  /// In en, this message translates to:
-  /// **'Primary currency'**
+  /// In zh, this message translates to:
+  /// **'主币种'**
   String get ledgerBaseCurrencyLabel;
 
   /// No description provided for @statsConvertedFootnote.
   ///
-  /// In en, this message translates to:
-  /// **'Includes foreign currency, converted to {currency} at entry-time rates'**
+  /// In zh, this message translates to:
+  /// **'含外币,已按各笔记账时汇率折算为 {currency}'**
   String statsConvertedFootnote(Object currency);
 
   /// No description provided for @ledgerCurrencyChangeRecalcHint.
   ///
-  /// In en, this message translates to:
-  /// **'Changing the base currency will reconvert all history at current rates'**
+  /// In zh, this message translates to:
+  /// **'修改本位币将按当前汇率重算全部历史交易的折算值'**
   String get ledgerCurrencyChangeRecalcHint;
 
   /// No description provided for @recalcForeignTxBanner.
   ///
-  /// In en, this message translates to:
-  /// **'Unconverted foreign-currency transactions detected in this ledger'**
+  /// In zh, this message translates to:
+  /// **'检测到该账本有未折算的外币交易'**
   String get recalcForeignTxBanner;
 
   /// No description provided for @recalcForeignTxAction.
   ///
-  /// In en, this message translates to:
-  /// **'Reconvert at current rates'**
+  /// In zh, this message translates to:
+  /// **'按当前汇率重算折算'**
   String get recalcForeignTxAction;
 
   /// No description provided for @recalcForeignTxDone.
   ///
-  /// In en, this message translates to:
-  /// **'Reconverted {count} foreign-currency transactions'**
+  /// In zh, this message translates to:
+  /// **'已重算 {count} 笔外币交易的折算值'**
   String recalcForeignTxDone(Object count);
 
   /// No description provided for @txCurrencyPickerTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Select currency'**
+  /// In zh, this message translates to:
+  /// **'选择币种'**
   String get txCurrencyPickerTitle;
 
   /// No description provided for @recalcSyncCountHint.
   ///
-  /// In en, this message translates to:
-  /// **'{count} transactions will be reconverted and synced'**
+  /// In zh, this message translates to:
+  /// **'将重算并同步 {count} 笔交易'**
   String recalcSyncCountHint(Object count);
 
   /// No description provided for @exportCsvHeaderCurrency.
   ///
-  /// In en, this message translates to:
-  /// **'Currency'**
+  /// In zh, this message translates to:
+  /// **'币种'**
   String get exportCsvHeaderCurrency;
 
   /// No description provided for @importFieldCurrency.
   ///
-  /// In en, this message translates to:
-  /// **'Currency'**
+  /// In zh, this message translates to:
+  /// **'币种'**
   String get importFieldCurrency;
 
   /// No description provided for @currencyMOP.
   ///
-  /// In en, this message translates to:
-  /// **'Macau Pataca'**
+  /// In zh, this message translates to:
+  /// **'澳门元'**
   String get currencyMOP;
 
   /// No description provided for @currencyMNT.
   ///
-  /// In en, this message translates to:
-  /// **'Mongolian Tughrik'**
+  /// In zh, this message translates to:
+  /// **'蒙古图格里克'**
   String get currencyMNT;
 
   /// No description provided for @currencyKPW.
   ///
-  /// In en, this message translates to:
-  /// **'North Korean Won'**
+  /// In zh, this message translates to:
+  /// **'朝鲜元'**
   String get currencyKPW;
 
   /// No description provided for @currencyKHR.
   ///
-  /// In en, this message translates to:
-  /// **'Cambodian Riel'**
+  /// In zh, this message translates to:
+  /// **'柬埔寨瑞尔'**
   String get currencyKHR;
 
   /// No description provided for @currencyLAK.
   ///
-  /// In en, this message translates to:
-  /// **'Lao Kip'**
+  /// In zh, this message translates to:
+  /// **'老挝基普'**
   String get currencyLAK;
 
   /// No description provided for @currencyBND.
   ///
-  /// In en, this message translates to:
-  /// **'Bruneian Dollar'**
+  /// In zh, this message translates to:
+  /// **'文莱元'**
   String get currencyBND;
 
   /// No description provided for @currencyNPR.
   ///
-  /// In en, this message translates to:
-  /// **'Nepalese Rupee'**
+  /// In zh, this message translates to:
+  /// **'尼泊尔卢比'**
   String get currencyNPR;
 
   /// No description provided for @currencyBTN.
   ///
-  /// In en, this message translates to:
-  /// **'Bhutanese Ngultrum'**
+  /// In zh, this message translates to:
+  /// **'不丹努尔特鲁姆'**
   String get currencyBTN;
 
   /// No description provided for @currencyMVR.
   ///
-  /// In en, this message translates to:
-  /// **'Maldivian Rufiyaa'**
+  /// In zh, this message translates to:
+  /// **'马尔代夫拉菲亚'**
   String get currencyMVR;
 
   /// No description provided for @currencyAFN.
   ///
-  /// In en, this message translates to:
-  /// **'Afghan Afghani'**
+  /// In zh, this message translates to:
+  /// **'阿富汗尼'**
   String get currencyAFN;
 
   /// No description provided for @currencyUZS.
   ///
-  /// In en, this message translates to:
-  /// **'Uzbekistani Som'**
+  /// In zh, this message translates to:
+  /// **'乌兹别克斯坦索姆'**
   String get currencyUZS;
 
   /// No description provided for @currencyTJS.
   ///
-  /// In en, this message translates to:
-  /// **'Tajikistani Somoni'**
+  /// In zh, this message translates to:
+  /// **'塔吉克斯坦索莫尼'**
   String get currencyTJS;
 
   /// No description provided for @currencyTMT.
   ///
-  /// In en, this message translates to:
-  /// **'Turkmenistani Manat'**
+  /// In zh, this message translates to:
+  /// **'土库曼斯坦马纳特'**
   String get currencyTMT;
 
   /// No description provided for @currencyKGS.
   ///
-  /// In en, this message translates to:
-  /// **'Kyrgyzstani Som'**
+  /// In zh, this message translates to:
+  /// **'吉尔吉斯斯坦索姆'**
   String get currencyKGS;
 
   /// No description provided for @currencyQAR.
   ///
-  /// In en, this message translates to:
-  /// **'Qatari Riyal'**
+  /// In zh, this message translates to:
+  /// **'卡塔尔里亚尔'**
   String get currencyQAR;
 
   /// No description provided for @currencyKWD.
   ///
-  /// In en, this message translates to:
-  /// **'Kuwaiti Dinar'**
+  /// In zh, this message translates to:
+  /// **'科威特第纳尔'**
   String get currencyKWD;
 
   /// No description provided for @currencyBHD.
   ///
-  /// In en, this message translates to:
-  /// **'Bahraini Dinar'**
+  /// In zh, this message translates to:
+  /// **'巴林第纳尔'**
   String get currencyBHD;
 
   /// No description provided for @currencyOMR.
   ///
-  /// In en, this message translates to:
-  /// **'Omani Rial'**
+  /// In zh, this message translates to:
+  /// **'阿曼里亚尔'**
   String get currencyOMR;
 
   /// No description provided for @currencyJOD.
   ///
-  /// In en, this message translates to:
-  /// **'Jordanian Dinar'**
+  /// In zh, this message translates to:
+  /// **'约旦第纳尔'**
   String get currencyJOD;
 
   /// No description provided for @currencyLBP.
   ///
-  /// In en, this message translates to:
-  /// **'Lebanese Pound'**
+  /// In zh, this message translates to:
+  /// **'黎巴嫩镑'**
   String get currencyLBP;
 
   /// No description provided for @currencyIQD.
   ///
-  /// In en, this message translates to:
-  /// **'Iraqi Dinar'**
+  /// In zh, this message translates to:
+  /// **'伊拉克第纳尔'**
   String get currencyIQD;
 
   /// No description provided for @currencyIRR.
   ///
-  /// In en, this message translates to:
-  /// **'Iranian Rial'**
+  /// In zh, this message translates to:
+  /// **'伊朗里亚尔'**
   String get currencyIRR;
 
   /// No description provided for @currencyYER.
   ///
-  /// In en, this message translates to:
-  /// **'Yemeni Rial'**
+  /// In zh, this message translates to:
+  /// **'也门里亚尔'**
   String get currencyYER;
 
   /// No description provided for @currencySYP.
   ///
-  /// In en, this message translates to:
-  /// **'Syrian Pound'**
+  /// In zh, this message translates to:
+  /// **'叙利亚镑'**
   String get currencySYP;
 
   /// No description provided for @currencyGEL.
   ///
-  /// In en, this message translates to:
-  /// **'Georgian Lari'**
+  /// In zh, this message translates to:
+  /// **'格鲁吉亚拉里'**
   String get currencyGEL;
 
   /// No description provided for @currencyAMD.
   ///
-  /// In en, this message translates to:
-  /// **'Armenian Dram'**
+  /// In zh, this message translates to:
+  /// **'亚美尼亚德拉姆'**
   String get currencyAMD;
 
   /// No description provided for @currencyAZN.
   ///
-  /// In en, this message translates to:
-  /// **'Azerbaijan Manat'**
+  /// In zh, this message translates to:
+  /// **'阿塞拜疆马纳特'**
   String get currencyAZN;
 
   /// No description provided for @currencyRON.
   ///
-  /// In en, this message translates to:
-  /// **'Romanian Leu'**
+  /// In zh, this message translates to:
+  /// **'罗马尼亚列伊'**
   String get currencyRON;
 
   /// No description provided for @currencyBGN.
   ///
-  /// In en, this message translates to:
-  /// **'Bulgarian Lev'**
+  /// In zh, this message translates to:
+  /// **'保加利亚列弗'**
   String get currencyBGN;
 
   /// No description provided for @currencyRSD.
   ///
-  /// In en, this message translates to:
-  /// **'Serbian Dinar'**
+  /// In zh, this message translates to:
+  /// **'塞尔维亚第纳尔'**
   String get currencyRSD;
 
   /// No description provided for @currencyISK.
   ///
-  /// In en, this message translates to:
-  /// **'Icelandic Krona'**
+  /// In zh, this message translates to:
+  /// **'冰岛克朗'**
   String get currencyISK;
 
   /// No description provided for @currencyMDL.
   ///
-  /// In en, this message translates to:
-  /// **'Moldovan Leu'**
+  /// In zh, this message translates to:
+  /// **'摩尔多瓦列伊'**
   String get currencyMDL;
 
   /// No description provided for @currencyALL.
   ///
-  /// In en, this message translates to:
-  /// **'Albanian Lek'**
+  /// In zh, this message translates to:
+  /// **'阿尔巴尼亚列克'**
   String get currencyALL;
 
   /// No description provided for @currencyMKD.
   ///
-  /// In en, this message translates to:
-  /// **'Macedonian Denar'**
+  /// In zh, this message translates to:
+  /// **'北马其顿第纳尔'**
   String get currencyMKD;
 
   /// No description provided for @currencyBAM.
   ///
-  /// In en, this message translates to:
-  /// **'Bosnian Convertible Mark'**
+  /// In zh, this message translates to:
+  /// **'波黑可兑换马克'**
   String get currencyBAM;
 
   /// No description provided for @currencyGIP.
   ///
-  /// In en, this message translates to:
-  /// **'Gibraltar Pound'**
+  /// In zh, this message translates to:
+  /// **'直布罗陀镑'**
   String get currencyGIP;
 
   /// No description provided for @currencyGTQ.
   ///
-  /// In en, this message translates to:
-  /// **'Guatemalan Quetzal'**
+  /// In zh, this message translates to:
+  /// **'危地马拉格查尔'**
   String get currencyGTQ;
 
   /// No description provided for @currencyHNL.
   ///
-  /// In en, this message translates to:
-  /// **'Honduran Lempira'**
+  /// In zh, this message translates to:
+  /// **'洪都拉斯伦皮拉'**
   String get currencyHNL;
 
   /// No description provided for @currencyNIO.
   ///
-  /// In en, this message translates to:
-  /// **'Nicaraguan Cordoba'**
+  /// In zh, this message translates to:
+  /// **'尼加拉瓜科多巴'**
   String get currencyNIO;
 
   /// No description provided for @currencyCRC.
   ///
-  /// In en, this message translates to:
-  /// **'Costa Rican Colon'**
+  /// In zh, this message translates to:
+  /// **'哥斯达黎加科朗'**
   String get currencyCRC;
 
   /// No description provided for @currencyPAB.
   ///
-  /// In en, this message translates to:
-  /// **'Panamanian Balboa'**
+  /// In zh, this message translates to:
+  /// **'巴拿马巴波亚'**
   String get currencyPAB;
 
   /// No description provided for @currencyDOP.
   ///
-  /// In en, this message translates to:
-  /// **'Dominican Peso'**
+  /// In zh, this message translates to:
+  /// **'多米尼加比索'**
   String get currencyDOP;
 
   /// No description provided for @currencyCUP.
   ///
-  /// In en, this message translates to:
-  /// **'Cuban Peso'**
+  /// In zh, this message translates to:
+  /// **'古巴比索'**
   String get currencyCUP;
 
   /// No description provided for @currencyJMD.
   ///
-  /// In en, this message translates to:
-  /// **'Jamaican Dollar'**
+  /// In zh, this message translates to:
+  /// **'牙买加元'**
   String get currencyJMD;
 
   /// No description provided for @currencyTTD.
   ///
-  /// In en, this message translates to:
-  /// **'Trinidadian Dollar'**
+  /// In zh, this message translates to:
+  /// **'特立尼达和多巴哥元'**
   String get currencyTTD;
 
   /// No description provided for @currencyBSD.
   ///
-  /// In en, this message translates to:
-  /// **'Bahamian Dollar'**
+  /// In zh, this message translates to:
+  /// **'巴哈马元'**
   String get currencyBSD;
 
   /// No description provided for @currencyBBD.
   ///
-  /// In en, this message translates to:
-  /// **'Barbadian or Bajan Dollar'**
+  /// In zh, this message translates to:
+  /// **'巴巴多斯元'**
   String get currencyBBD;
 
   /// No description provided for @currencyBZD.
   ///
-  /// In en, this message translates to:
-  /// **'Belizean Dollar'**
+  /// In zh, this message translates to:
+  /// **'伯利兹元'**
   String get currencyBZD;
 
   /// No description provided for @currencyHTG.
   ///
-  /// In en, this message translates to:
-  /// **'Haitian Gourde'**
+  /// In zh, this message translates to:
+  /// **'海地古德'**
   String get currencyHTG;
 
   /// No description provided for @currencyXCD.
   ///
-  /// In en, this message translates to:
-  /// **'East Caribbean Dollar'**
+  /// In zh, this message translates to:
+  /// **'东加勒比元'**
   String get currencyXCD;
 
   /// No description provided for @currencyKYD.
   ///
-  /// In en, this message translates to:
-  /// **'Caymanian Dollar'**
+  /// In zh, this message translates to:
+  /// **'开曼群岛元'**
   String get currencyKYD;
 
   /// No description provided for @currencyAWG.
   ///
-  /// In en, this message translates to:
-  /// **'Aruban or Dutch Guilder'**
+  /// In zh, this message translates to:
+  /// **'阿鲁巴弗罗林'**
   String get currencyAWG;
 
   /// No description provided for @currencyANG.
   ///
-  /// In en, this message translates to:
-  /// **'Dutch Guilder'**
+  /// In zh, this message translates to:
+  /// **'荷属安的列斯盾'**
   String get currencyANG;
 
   /// No description provided for @currencyBMD.
   ///
-  /// In en, this message translates to:
-  /// **'Bermudian Dollar'**
+  /// In zh, this message translates to:
+  /// **'百慕大元'**
   String get currencyBMD;
 
   /// No description provided for @currencyUYU.
   ///
-  /// In en, this message translates to:
-  /// **'Uruguayan Peso'**
+  /// In zh, this message translates to:
+  /// **'乌拉圭比索'**
   String get currencyUYU;
 
   /// No description provided for @currencyPYG.
   ///
-  /// In en, this message translates to:
-  /// **'Paraguayan Guarani'**
+  /// In zh, this message translates to:
+  /// **'巴拉圭瓜拉尼'**
   String get currencyPYG;
 
   /// No description provided for @currencyBOB.
   ///
-  /// In en, this message translates to:
-  /// **'Bolivian Bolíviano'**
+  /// In zh, this message translates to:
+  /// **'玻利维亚诺'**
   String get currencyBOB;
 
   /// No description provided for @currencyVES.
   ///
-  /// In en, this message translates to:
-  /// **'Venezuelan Bolívar'**
+  /// In zh, this message translates to:
+  /// **'委内瑞拉玻利瓦尔'**
   String get currencyVES;
 
   /// No description provided for @currencyGYD.
   ///
-  /// In en, this message translates to:
-  /// **'Guyanese Dollar'**
+  /// In zh, this message translates to:
+  /// **'圭亚那元'**
   String get currencyGYD;
 
   /// No description provided for @currencySRD.
   ///
-  /// In en, this message translates to:
-  /// **'Surinamese Dollar'**
+  /// In zh, this message translates to:
+  /// **'苏里南元'**
   String get currencySRD;
 
   /// No description provided for @currencyFJD.
   ///
-  /// In en, this message translates to:
-  /// **'Fijian Dollar'**
+  /// In zh, this message translates to:
+  /// **'斐济元'**
   String get currencyFJD;
 
   /// No description provided for @currencyPGK.
   ///
-  /// In en, this message translates to:
-  /// **'Papua New Guinean Kina'**
+  /// In zh, this message translates to:
+  /// **'巴布亚新几内亚基那'**
   String get currencyPGK;
 
   /// No description provided for @currencySBD.
   ///
-  /// In en, this message translates to:
-  /// **'Solomon Islander Dollar'**
+  /// In zh, this message translates to:
+  /// **'所罗门群岛元'**
   String get currencySBD;
 
   /// No description provided for @currencyTOP.
   ///
-  /// In en, this message translates to:
-  /// **'Tongan Pa\'anga'**
+  /// In zh, this message translates to:
+  /// **'汤加潘加'**
   String get currencyTOP;
 
   /// No description provided for @currencyVUV.
   ///
-  /// In en, this message translates to:
-  /// **'Ni-Vanuatu Vatu'**
+  /// In zh, this message translates to:
+  /// **'瓦努阿图瓦图'**
   String get currencyVUV;
 
   /// No description provided for @currencyWST.
   ///
-  /// In en, this message translates to:
-  /// **'Samoan Tala'**
+  /// In zh, this message translates to:
+  /// **'萨摩亚塔拉'**
   String get currencyWST;
 
   /// No description provided for @currencyXPF.
   ///
-  /// In en, this message translates to:
-  /// **'CFP Franc'**
+  /// In zh, this message translates to:
+  /// **'太平洋法郎'**
   String get currencyXPF;
 
   /// No description provided for @currencyKES.
   ///
-  /// In en, this message translates to:
-  /// **'Kenyan Shilling'**
+  /// In zh, this message translates to:
+  /// **'肯尼亚先令'**
   String get currencyKES;
 
   /// No description provided for @currencyGHS.
   ///
-  /// In en, this message translates to:
-  /// **'Ghanaian Cedi'**
+  /// In zh, this message translates to:
+  /// **'加纳塞地'**
   String get currencyGHS;
 
   /// No description provided for @currencyMAD.
   ///
-  /// In en, this message translates to:
-  /// **'Moroccan Dirham'**
+  /// In zh, this message translates to:
+  /// **'摩洛哥迪拉姆'**
   String get currencyMAD;
 
   /// No description provided for @currencyDZD.
   ///
-  /// In en, this message translates to:
-  /// **'Algerian Dinar'**
+  /// In zh, this message translates to:
+  /// **'阿尔及利亚第纳尔'**
   String get currencyDZD;
 
   /// No description provided for @currencyTND.
   ///
-  /// In en, this message translates to:
-  /// **'Tunisian Dinar'**
+  /// In zh, this message translates to:
+  /// **'突尼斯第纳尔'**
   String get currencyTND;
 
   /// No description provided for @currencyLYD.
   ///
-  /// In en, this message translates to:
-  /// **'Libyan Dinar'**
+  /// In zh, this message translates to:
+  /// **'利比亚第纳尔'**
   String get currencyLYD;
 
   /// No description provided for @currencyETB.
   ///
-  /// In en, this message translates to:
-  /// **'Ethiopian Birr'**
+  /// In zh, this message translates to:
+  /// **'埃塞俄比亚比尔'**
   String get currencyETB;
 
   /// No description provided for @currencyUGX.
   ///
-  /// In en, this message translates to:
-  /// **'Ugandan Shilling'**
+  /// In zh, this message translates to:
+  /// **'乌干达先令'**
   String get currencyUGX;
 
   /// No description provided for @currencyTZS.
   ///
-  /// In en, this message translates to:
-  /// **'Tanzanian Shilling'**
+  /// In zh, this message translates to:
+  /// **'坦桑尼亚先令'**
   String get currencyTZS;
 
   /// No description provided for @currencyRWF.
   ///
-  /// In en, this message translates to:
-  /// **'Rwandan Franc'**
+  /// In zh, this message translates to:
+  /// **'卢旺达法郎'**
   String get currencyRWF;
 
   /// No description provided for @currencyXAF.
   ///
-  /// In en, this message translates to:
-  /// **'Central African CFA Franc'**
+  /// In zh, this message translates to:
+  /// **'中非法郎'**
   String get currencyXAF;
 
   /// No description provided for @currencyXOF.
   ///
-  /// In en, this message translates to:
-  /// **'West African CFA Franc'**
+  /// In zh, this message translates to:
+  /// **'西非法郎'**
   String get currencyXOF;
 
   /// No description provided for @currencyMUR.
   ///
-  /// In en, this message translates to:
-  /// **'Mauritian Rupee'**
+  /// In zh, this message translates to:
+  /// **'毛里求斯卢比'**
   String get currencyMUR;
 
   /// No description provided for @currencyBWP.
   ///
-  /// In en, this message translates to:
-  /// **'Botswana Pula'**
+  /// In zh, this message translates to:
+  /// **'博茨瓦纳普拉'**
   String get currencyBWP;
 
   /// No description provided for @currencyNAD.
   ///
-  /// In en, this message translates to:
-  /// **'Namibian Dollar'**
+  /// In zh, this message translates to:
+  /// **'纳米比亚元'**
   String get currencyNAD;
 
   /// No description provided for @currencyZMW.
   ///
-  /// In en, this message translates to:
-  /// **'Zambian Kwacha'**
+  /// In zh, this message translates to:
+  /// **'赞比亚克瓦查'**
   String get currencyZMW;
 
   /// No description provided for @currencyMWK.
   ///
-  /// In en, this message translates to:
-  /// **'Malawian Kwacha'**
+  /// In zh, this message translates to:
+  /// **'马拉维克瓦查'**
   String get currencyMWK;
 
   /// No description provided for @currencyMZN.
   ///
-  /// In en, this message translates to:
-  /// **'Mozambican Metical'**
+  /// In zh, this message translates to:
+  /// **'莫桑比克梅蒂卡尔'**
   String get currencyMZN;
 
   /// No description provided for @currencyAOA.
   ///
-  /// In en, this message translates to:
-  /// **'Angolan Kwanza'**
+  /// In zh, this message translates to:
+  /// **'安哥拉宽扎'**
   String get currencyAOA;
 
   /// No description provided for @currencyCDF.
   ///
-  /// In en, this message translates to:
-  /// **'Congolese Franc'**
+  /// In zh, this message translates to:
+  /// **'刚果法郎'**
   String get currencyCDF;
 
   /// No description provided for @currencyGMD.
   ///
-  /// In en, this message translates to:
-  /// **'Gambian Dalasi'**
+  /// In zh, this message translates to:
+  /// **'冈比亚达拉西'**
   String get currencyGMD;
 
   /// No description provided for @currencyGNF.
   ///
-  /// In en, this message translates to:
-  /// **'Guinean Franc'**
+  /// In zh, this message translates to:
+  /// **'几内亚法郎'**
   String get currencyGNF;
 
   /// No description provided for @currencyLRD.
   ///
-  /// In en, this message translates to:
-  /// **'Liberian Dollar'**
+  /// In zh, this message translates to:
+  /// **'利比里亚元'**
   String get currencyLRD;
 
   /// No description provided for @currencySLE.
   ///
-  /// In en, this message translates to:
-  /// **'Sierra Leonean Leone'**
+  /// In zh, this message translates to:
+  /// **'塞拉利昂利昂'**
   String get currencySLE;
 
   /// No description provided for @currencySDG.
   ///
-  /// In en, this message translates to:
-  /// **'Sudanese Pound'**
+  /// In zh, this message translates to:
+  /// **'苏丹镑'**
   String get currencySDG;
 
   /// No description provided for @currencySSP.
   ///
-  /// In en, this message translates to:
-  /// **'South Sudanese Pound'**
+  /// In zh, this message translates to:
+  /// **'南苏丹镑'**
   String get currencySSP;
 
   /// No description provided for @currencySOS.
   ///
-  /// In en, this message translates to:
-  /// **'Somali Shilling'**
+  /// In zh, this message translates to:
+  /// **'索马里先令'**
   String get currencySOS;
 
   /// No description provided for @currencyDJF.
   ///
-  /// In en, this message translates to:
-  /// **'Djiboutian Franc'**
+  /// In zh, this message translates to:
+  /// **'吉布提法郎'**
   String get currencyDJF;
 
   /// No description provided for @currencyERN.
   ///
-  /// In en, this message translates to:
-  /// **'Eritrean Nakfa'**
+  /// In zh, this message translates to:
+  /// **'厄立特里亚纳克法'**
   String get currencyERN;
 
   /// No description provided for @currencyBIF.
   ///
-  /// In en, this message translates to:
-  /// **'Burundian Franc'**
+  /// In zh, this message translates to:
+  /// **'布隆迪法郎'**
   String get currencyBIF;
 
   /// No description provided for @currencyCVE.
   ///
-  /// In en, this message translates to:
-  /// **'Cape Verdean Escudo'**
+  /// In zh, this message translates to:
+  /// **'佛得角埃斯库多'**
   String get currencyCVE;
 
   /// No description provided for @currencySTN.
   ///
-  /// In en, this message translates to:
-  /// **'Sao Tomean Dobra'**
+  /// In zh, this message translates to:
+  /// **'圣多美多布拉'**
   String get currencySTN;
 
   /// No description provided for @currencySCR.
   ///
-  /// In en, this message translates to:
-  /// **'Seychellois Rupee'**
+  /// In zh, this message translates to:
+  /// **'塞舌尔卢比'**
   String get currencySCR;
 
   /// No description provided for @currencyKMF.
   ///
-  /// In en, this message translates to:
-  /// **'Comorian Franc'**
+  /// In zh, this message translates to:
+  /// **'科摩罗法郎'**
   String get currencyKMF;
 
   /// No description provided for @currencyLSL.
   ///
-  /// In en, this message translates to:
-  /// **'Basotho Loti'**
+  /// In zh, this message translates to:
+  /// **'莱索托洛蒂'**
   String get currencyLSL;
 
   /// No description provided for @currencySZL.
   ///
-  /// In en, this message translates to:
-  /// **'Swazi Lilangeni'**
+  /// In zh, this message translates to:
+  /// **'斯威士兰里兰吉尼'**
   String get currencySZL;
 
   /// No description provided for @currencyMGA.
   ///
-  /// In en, this message translates to:
-  /// **'Malagasy Ariary'**
+  /// In zh, this message translates to:
+  /// **'马达加斯加阿里亚里'**
   String get currencyMGA;
 
   /// No description provided for @currencyMRU.
   ///
-  /// In en, this message translates to:
-  /// **'Mauritanian Ouguiya'**
+  /// In zh, this message translates to:
+  /// **'毛里塔尼亚乌吉亚'**
   String get currencyMRU;
 
   /// No description provided for @trashTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Recently Deleted'**
+  /// In zh, this message translates to:
+  /// **'最近删除'**
   String get trashTitle;
 
   /// No description provided for @trashEntryDesc.
   ///
-  /// In en, this message translates to:
-  /// **'Deleted transactions kept for 30 days'**
+  /// In zh, this message translates to:
+  /// **'删除的交易保留 30 天,可恢复'**
   String get trashEntryDesc;
 
   /// No description provided for @trashEmpty.
   ///
-  /// In en, this message translates to:
-  /// **'Trash is empty'**
+  /// In zh, this message translates to:
+  /// **'回收站是空的'**
   String get trashEmpty;
 
   /// No description provided for @trashRetentionHint.
   ///
-  /// In en, this message translates to:
-  /// **'Items are removed automatically after 30 days'**
+  /// In zh, this message translates to:
+  /// **'删除的交易保留 30 天后自动清理'**
   String get trashRetentionHint;
 
   /// No description provided for @trashRestored.
   ///
-  /// In en, this message translates to:
-  /// **'Restored'**
+  /// In zh, this message translates to:
+  /// **'已恢复'**
   String get trashRestored;
 
   /// No description provided for @trashRestoreFailed.
   ///
-  /// In en, this message translates to:
-  /// **'Restore failed'**
+  /// In zh, this message translates to:
+  /// **'恢复失败'**
   String get trashRestoreFailed;
 
   /// No description provided for @trashRestore.
   ///
-  /// In en, this message translates to:
-  /// **'Restore'**
+  /// In zh, this message translates to:
+  /// **'恢复'**
   String get trashRestore;
 
   /// No description provided for @trashPurgeTitle.
   ///
-  /// In en, this message translates to:
-  /// **'Delete forever'**
+  /// In zh, this message translates to:
+  /// **'彻底删除'**
   String get trashPurgeTitle;
 
   /// No description provided for @trashPurgeAsk.
   ///
-  /// In en, this message translates to:
-  /// **'Permanently delete {sign}{amount}? This cannot be undone.'**
+  /// In zh, this message translates to:
+  /// **'将永久删除 {sign}{amount},且无法恢复。确定继续吗?'**
   String trashPurgeAsk(Object amount, Object sign);
 
   /// No description provided for @trashPurgeConfirm.
   ///
-  /// In en, this message translates to:
-  /// **'Delete forever'**
+  /// In zh, this message translates to:
+  /// **'彻底删除'**
   String get trashPurgeConfirm;
 
   /// No description provided for @trashDeletedAt.
   ///
-  /// In en, this message translates to:
-  /// **'Deleted'**
+  /// In zh, this message translates to:
+  /// **'删除于'**
   String get trashDeletedAt;
 
   /// No description provided for @trashDaysLeft.
   ///
-  /// In en, this message translates to:
-  /// **'{count} days left'**
+  /// In zh, this message translates to:
+  /// **'剩余 {count} 天'**
   String trashDaysLeft(Object count);
 
   /// No description provided for @trashTypeIncome.
   ///
-  /// In en, this message translates to:
-  /// **'Income'**
+  /// In zh, this message translates to:
+  /// **'收入'**
   String get trashTypeIncome;
 
   /// No description provided for @trashTypeExpense.
   ///
-  /// In en, this message translates to:
-  /// **'Expense'**
+  /// In zh, this message translates to:
+  /// **'支出'**
   String get trashTypeExpense;
 
   /// No description provided for @trashTypeTransfer.
   ///
-  /// In en, this message translates to:
-  /// **'Transfer'**
+  /// In zh, this message translates to:
+  /// **'转账'**
   String get trashTypeTransfer;
 
   /// No description provided for @pendingCandidateReasonSettlementUnknown.
   ///
-  /// In en, this message translates to:
-  /// **'Settlement status unclear — verify it was paid'**
+  /// In zh, this message translates to:
+  /// **'结算状态不明确,请核对是否已支付'**
   String get pendingCandidateReasonSettlementUnknown;
 
   /// No description provided for @pendingCandidateReasonTransferAccountMissing.
   ///
-  /// In en, this message translates to:
-  /// **'Transfer/repayment is missing an account'**
+  /// In zh, this message translates to:
+  /// **'转账/还款缺少账户,请补充'**
   String get pendingCandidateReasonTransferAccountMissing;
 
   /// No description provided for @pendingCandidateReasonAlreadyProcessed.
   ///
-  /// In en, this message translates to:
-  /// **'This bill was already processed'**
+  /// In zh, this message translates to:
+  /// **'同一账单已处理过'**
   String get pendingCandidateReasonAlreadyProcessed;
 }
 
@@ -15468,7 +15457,7 @@ class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> 
   }
 
   @override
-  bool isSupported(Locale locale) => <String>['en', 'ko', 'zh'].contains(locale.languageCode);
+  bool isSupported(Locale locale) => <String>['zh'].contains(locale.languageCode);
 
   @override
   bool shouldReload(_AppLocalizationsDelegate old) => false;
@@ -15476,20 +15465,9 @@ class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> 
 
 AppLocalizations lookupAppLocalizations(Locale locale) {
 
-  // Lookup logic when language+country codes are specified.
-  switch (locale.languageCode) {
-    case 'zh': {
-  switch (locale.countryCode) {
-    case 'TW': return AppLocalizationsZhTw();
-   }
-  break;
-   }
-  }
 
   // Lookup logic when only language code is specified.
   switch (locale.languageCode) {
-    case 'en': return AppLocalizationsEn();
-    case 'ko': return AppLocalizationsKo();
     case 'zh': return AppLocalizationsZh();
   }
 

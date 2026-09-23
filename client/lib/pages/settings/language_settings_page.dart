@@ -41,55 +41,13 @@ class LanguageSettingsPage extends ConsumerWidget {
                 ),
                 const SizedBox(height: 8),
 
-                // 简体中文
+                // 简体中文(2026-09-18 国际化收敛:仅保留中文,其余语种已删除)
                 _LanguageOption(
                   title: l10n.languageChinese,
                   locale: const Locale('zh'),
                   currentLanguage: currentLanguage,
                   onTap: () {
                     ref.read(languageProvider.notifier).setLanguage(const Locale('zh'));
-                    Future.delayed(const Duration(milliseconds: 100), () {
-                      updateAppWidget(ref, context);
-                    });
-                  },
-                ),
-                const SizedBox(height: 8),
-
-                // 繁體中文
-                _LanguageOption(
-                  title: '繁體中文',
-                  locale: const Locale('zh', 'TW'),
-                  currentLanguage: currentLanguage,
-                  onTap: () {
-                    ref.read(languageProvider.notifier).setLanguage(const Locale('zh', 'TW'));
-                    Future.delayed(const Duration(milliseconds: 100), () {
-                      updateAppWidget(ref, context);
-                    });
-                  },
-                ),
-                const SizedBox(height: 8),
-
-                // English
-                _LanguageOption(
-                  title: l10n.languageEnglish,
-                  locale: const Locale('en'),
-                  currentLanguage: currentLanguage,
-                  onTap: () {
-                    ref.read(languageProvider.notifier).setLanguage(const Locale('en'));
-                    Future.delayed(const Duration(milliseconds: 100), () {
-                      updateAppWidget(ref, context);
-                    });
-                  },
-                ),
-                const SizedBox(height: 8),
-
-                // 한국어
-                _LanguageOption(
-                  title: '한국어',
-                  locale: const Locale('ko'),
-                  currentLanguage: currentLanguage,
-                  onTap: () {
-                    ref.read(languageProvider.notifier).setLanguage(const Locale('ko'));
                     Future.delayed(const Duration(milliseconds: 100), () {
                       updateAppWidget(ref, context);
                     });

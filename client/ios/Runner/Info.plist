@@ -6,16 +6,12 @@
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
 	<string>$(APP_DISPLAY_NAME)</string>
-	<!-- 桌面图标 / 任务台显示的 app 名按系统语言本地化:简中显示「智记」、
-	     繁中「智記」、英文 / 其它语言 fallback 到「SmartBook」。
-	     真实文案在 Runner/{en,zh-Hans,zh-Hant}.lproj/InfoPlist.strings。
-	     解决 App Store 审核 2.3.8 — 英文环境下 marketplace 名 (SmartBook -
-	     Simple Ledger) 跟设备显示名 (智记) 不一致的问题。 -->
+	<!-- 2026-09-18 国际化收敛为仅中文:桌面图标 / 任务台显示的 app 名只保留
+	     简中(「智记」,见 Runner/zh-Hans.lproj),繁中/英文及其它语言 fallback
+	     到 CFBundleDisplayName(APP_DISPLAY_NAME 构建变量)。 -->
 	<key>CFBundleLocalizations</key>
 	<array>
-		<string>en</string>
 		<string>zh-Hans</string>
-		<string>zh-Hant</string>
 	</array>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>

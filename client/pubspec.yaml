@@ -116,11 +116,9 @@ flutter:
   uses-material-design: true
   generate: true
   assets:
-    - assets/logo2.png
     - assets/icon/smartbook_icon.svg
     - assets/icons/
     - assets/icons/social/
-    - assets/images/
     - assets/header_skins/
   # 字体已移动到可选依赖，使用系统字体以减少应用体积
   # fonts:

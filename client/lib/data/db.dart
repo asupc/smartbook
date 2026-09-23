@@ -1660,9 +1660,10 @@ class BeeDatabase extends _$BeeDatabase {
     logger.info('db', '跳过分类创建: $skipCategories');
     logger.info('db', '创建默认账本: $createDefaultLedger');
 
-    // 如果没有提供l10n，使用Lookup创建默认的英文版本
-    final effectiveL10n = l10n ?? lookupAppLocalizations(const Locale('en'));
-    logger.info('db', '使用的语言环境: ${l10n != null ? "提供的l10n" : "默认英文"}');
+    // 如果没有提供l10n，使用Lookup创建默认的中文版本(2026-09-18 国际化
+    // 收敛后生成类仅支持 zh,传入其它 locale 会在 lookup 断言处崩溃)
+    final effectiveL10n = l10n ?? lookupAppLocalizations(const Locale('zh'));
+    logger.info('db', '使用的语言环境: ${l10n != null ? "提供的l10n" : "默认中文"}');
 
     await SeedService.seedDatabase(
       this,

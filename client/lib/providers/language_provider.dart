@@ -22,6 +22,14 @@ class LanguageNotifier extends StateNotifier<Locale?> {
       final languageCode = prefs.getString(_languageKey);
       final countryCode = prefs.getString('${_languageKey}_country');
       if (languageCode != null) {
+        // 2026-09-18 国际化收敛为仅中文:历史版本选过 en/ko/zh_TW 的用户,
+        // 持久化 locale 已不受支持 —— 清掉并回退「跟随系统」(解析到 zh),
+        // 避免把不受支持的 locale 塞给 MaterialApp。
+        if (languageCode != 'zh') {
+          await prefs.remove(_languageKey);
+          await prefs.remove('${_languageKey}_country');
+          return;
+        }
         state = Locale(languageCode, countryCode);
       }
     } catch (e) {
@@ -60,16 +68,10 @@ class LanguageNotifier extends StateNotifier<Locale?> {
       return l10n.languageSystemDefault;
     }
 
+    // 2026-09-18 国际化收敛:仅保留简体中文
     switch (locale.languageCode) {
       case 'zh':
-        if (locale.countryCode == 'TW') {
-          return '繁體中文';
-        }
         return l10n.languageChinese;
-      case 'en':
-        return l10n.languageEnglish;
-      case 'ko':
-        return '한국어';
       default:
         return locale.languageCode;
     }

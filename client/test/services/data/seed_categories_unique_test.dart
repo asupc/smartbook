@@ -1,10 +1,12 @@
 // seed 默认分类契约测试:① 无 (name,kind) 重复 ② 无 fallback(段数错位会
-// 让名字 fallback 成 snake_case key)。锁死三语言(简/繁/英)seed 二级分类质量。
+// 让名字 fallback 成 snake_case key)。锁死中文 seed 二级分类质量。
 //
 // 历史坑(均已修,见 #118):
 //  1. 英文词内连字符(Part-time / Year-end / Ride-hailing)被 split('-') 拆碎 → 改空格。
-//  2. 三语言部分分类缺「父分类名」致段数错位、fallback 成 key → 补父名,对齐
+//  2. 多语言部分分类缺「父分类名」致段数错位、fallback 成 key → 补父名,对齐
 //     「子类数 + 1」段。
+//
+// 2026-09-18 国际化收敛为仅中文,多语言遍历退化为单 locale。
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -22,8 +24,6 @@ void main() {
 
   const locales = [
     Locale('zh'),
-    Locale('zh', 'TW'),
-    Locale('en'),
   ];
   // seed 解析失败会 `return key`(snake_case),正常分类名不会是全小写下划线串。
   final fallbackPattern = RegExp(r'^[a-z][a-z_]*$');
