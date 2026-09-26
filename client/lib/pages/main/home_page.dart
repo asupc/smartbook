@@ -249,15 +249,45 @@ class _HomePageState extends ConsumerState<HomePage> {
     setState(() {
       _isJumping = true;
     });
+    _visibleHeaders.clear();
 
     try {
-      // 使用TransactionList组件的跳转方法
-      final transactionListState = _transactionListKey.currentState;
-      if (transactionListState != null && mounted) {
-        transactionListState.jumpToMonth(
-          targetMonth,
-          startDay: ref.read(currentMonthStartDayProvider),
-        );
+      final sd = ref.read(currentMonthStartDayProvider);
+      if (ref.read(homeWindowPaginationEnabledProvider)) {
+        final currentLabel = labelForDate(DateTime.now(), sd);
+        final isCurrentMonth = targetMonth.year == currentLabel.year &&
+            targetMonth.month == currentLabel.month;
+        if (isCurrentMonth) {
+          await ref
+              .read(homeTransactionWindowProvider.notifier)
+              .returnToLatest();
+        } else {
+          await ref
+              .read(homeTransactionWindowProvider.notifier)
+              .jumpToMonth(targetMonth);
+        }
+        await WidgetsBinding.instance.endOfFrame;
+        if (mounted) {
+          final transactionListState = _transactionListKey.currentState;
+          if (transactionListState != null) {
+            final jumped = transactionListState.jumpToMonth(
+              targetMonth,
+              startDay: sd,
+            );
+            if (!jumped) {
+              transactionListState.jumpToTop();
+            }
+          }
+        }
+      } else {
+        // 使用TransactionList组件的跳转方法
+        final transactionListState = _transactionListKey.currentState;
+        if (transactionListState != null && mounted) {
+          transactionListState.jumpToMonth(
+            targetMonth,
+            startDay: sd,
+          );
+        }
       }
     } finally {
       if (mounted) {
@@ -326,7 +356,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     final cachedFullData = ref.watch(cachedTransactionsProvider);
     // 首次进入窗口需初始化（账本切换由 provider 内部 ref.listen 处理）。
     final win = ref.watch(homeTransactionWindowProvider);
-    if (!win.loadingInitial && win.items.isEmpty) {
+    if (win.generation == 0 && !win.loadingInitial) {
       // 确保初始加载已触发（首次 build 时 provider 尚未初始化）。
       Future.microtask(() {
         ref.read(homeTransactionWindowProvider.notifier).initializeLatest();
@@ -364,8 +394,15 @@ class _HomePageState extends ConsumerState<HomePage> {
       onLoadNewer: () =>
           ref.read(homeTransactionWindowProvider.notifier).loadNewer(),
       unseenNewCount: win.isLatestMode ? null : win.unseenNewCount,
-      onReturnToLatest: () =>
-          ref.read(homeTransactionWindowProvider.notifier).returnToLatest(),
+      onReturnToLatest: () async {
+        final sd = ref.read(currentMonthStartDayProvider);
+        ref.read(selectedMonthProvider.notifier).state =
+            labelForDate(DateTime.now(), sd);
+        await ref
+            .read(homeTransactionWindowProvider.notifier)
+            .returnToLatest();
+        _transactionListKey.currentState?.jumpToTop();
+      },
       emptyWidget: AppEmpty(
         text: AppLocalizations.of(context).homeNoRecords,
         subtext: AppLocalizations.of(context).homeNoRecordsSubtext,

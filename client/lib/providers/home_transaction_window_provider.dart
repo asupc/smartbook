@@ -65,7 +65,9 @@ class HomeTransactionWindowState {
     int? generation,
     List<TransactionWithRefs>? items,
     TransactionPageCursor? oldestCursor,
+    bool clearOldestCursor = false,
     TransactionPageCursor? newestCursor,
+    bool clearNewestCursor = false,
     bool? isLatestMode,
     bool? loadingInitial,
     bool? loadingNewer,
@@ -74,14 +76,15 @@ class HomeTransactionWindowState {
     bool? hasOlder,
     int? unseenNewCount,
     DateTime? anchorMonth,
+    bool clearAnchorMonth = false,
     Object? error,
   }) {
     return HomeTransactionWindowState(
       ledgerId: ledgerId ?? this.ledgerId,
       generation: generation ?? this.generation,
       items: items ?? this.items,
-      oldestCursor: oldestCursor ?? this.oldestCursor,
-      newestCursor: newestCursor ?? this.newestCursor,
+      oldestCursor: clearOldestCursor ? null : (oldestCursor ?? this.oldestCursor),
+      newestCursor: clearNewestCursor ? null : (newestCursor ?? this.newestCursor),
       isLatestMode: isLatestMode ?? this.isLatestMode,
       loadingInitial: loadingInitial ?? this.loadingInitial,
       loadingNewer: loadingNewer ?? this.loadingNewer,
@@ -89,7 +92,7 @@ class HomeTransactionWindowState {
       hasNewer: hasNewer ?? this.hasNewer,
       hasOlder: hasOlder ?? this.hasOlder,
       unseenNewCount: unseenNewCount ?? this.unseenNewCount,
-      anchorMonth: anchorMonth ?? this.anchorMonth,
+      anchorMonth: clearAnchorMonth ? null : (anchorMonth ?? this.anchorMonth),
       error: error ?? this.error,
     );
   }
@@ -244,11 +247,11 @@ class HomeTransactionWindowController
       _setState(state.copyWith(
         items: items,
         oldestCursor: page.lastCursor,
-        newestCursor: null, // latest 模式上界不限
+        clearNewestCursor: true, // latest 模式上界不限
         hasOlder: page.hasOlder,
         hasNewer: page.hasNewer,
         loadingInitial: false,
-        anchorMonth: null,
+        clearAnchorMonth: true,
       ));
       await _rebindWatch(
         newestInclusive: null,
@@ -333,12 +336,13 @@ class HomeTransactionWindowController
           ledgerId: ledgerId, start: range.start, end: range.end);
       if (_stale(gen)) return;
       if (!has) {
-        // 空月份:保留锚定但 items 为空,UI 显示空态。
+        // 空月份:取消旧 watch,保留锚定但 items 为空,UI 显示空态。
+        await _windowSub?.cancel();
         _setState(state.copyWith(
           loadingInitial: false,
           items: const [],
-          oldestCursor: null,
-          newestCursor: null,
+          clearOldestCursor: true,
+          clearNewestCursor: true,
           hasOlder: false,
           hasNewer: false,
         ));

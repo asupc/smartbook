@@ -927,6 +927,7 @@ class _AnalyticsPageState extends ConsumerState<AnalyticsPage> {
                       // 展示顺序(2026-09 调整):商户Top → 账户分布 → 折线图 → 分类排行
                       if (_type == 'expense') ...[
                         _MerchantTopCard(
+                          key: ValueKey('merchant_${ledgerId}_${start.millisecondsSinceEpoch}_${end.millisecondsSinceEpoch}'),
                           repo: repo,
                           ledgerId: ledgerId,
                           start: start,
@@ -934,6 +935,7 @@ class _AnalyticsPageState extends ConsumerState<AnalyticsPage> {
                         ),
                         const SizedBox(height: 12),
                         _AccountBreakdownCard(
+                          key: ValueKey('account_${ledgerId}_${start.millisecondsSinceEpoch}_${end.millisecondsSinceEpoch}'),
                           repo: repo,
                           ledgerId: ledgerId,
                           start: start,
@@ -1482,6 +1484,7 @@ class _AccountBreakdownCard extends ConsumerStatefulWidget {
   final DateTime end;
 
   const _AccountBreakdownCard({
+    super.key,
     required this.repo,
     required this.ledgerId,
     required this.start,
@@ -1496,10 +1499,27 @@ class _AccountBreakdownCard extends ConsumerStatefulWidget {
 class _AccountBreakdownCardState
     extends ConsumerState<_AccountBreakdownCard> {
   late Future<List<({int? accountId, double total})>> _future;
+  int _lastStatsVersion = 0;
 
   @override
   void initState() {
     super.initState();
+    _lastStatsVersion = ref.read(statsRefreshProvider);
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant _AccountBreakdownCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.start != oldWidget.start ||
+        widget.end != oldWidget.end ||
+        widget.ledgerId != oldWidget.ledgerId ||
+        widget.repo != oldWidget.repo) {
+      _load();
+    }
+  }
+
+  void _load() {
     _future = widget.repo.totalsByAccount(
       ledgerId: widget.ledgerId,
       type: 'expense',
@@ -1510,6 +1530,11 @@ class _AccountBreakdownCardState
 
   @override
   Widget build(BuildContext context) {
+    final statsVersion = ref.watch(statsRefreshProvider);
+    if (statsVersion != _lastStatsVersion) {
+      _lastStatsVersion = statsVersion;
+      _load();
+    }
     final l10n = AppLocalizations.of(context);
     final accounts = ref.watch(allAccountsStreamProvider).valueOrNull ?? const [];
     final accountName = {
@@ -1582,6 +1607,7 @@ class _MerchantTopCard extends ConsumerStatefulWidget {
   final DateTime end;
 
   const _MerchantTopCard({
+    super.key,
     required this.repo,
     required this.ledgerId,
     required this.start,
@@ -1594,10 +1620,27 @@ class _MerchantTopCard extends ConsumerStatefulWidget {
 
 class _MerchantTopCardState extends ConsumerState<_MerchantTopCard> {
   late Future<List<({String note, double total})>> _future;
+  int _lastStatsVersion = 0;
 
   @override
   void initState() {
     super.initState();
+    _lastStatsVersion = ref.read(statsRefreshProvider);
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant _MerchantTopCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.start != oldWidget.start ||
+        widget.end != oldWidget.end ||
+        widget.ledgerId != oldWidget.ledgerId ||
+        widget.repo != oldWidget.repo) {
+      _load();
+    }
+  }
+
+  void _load() {
     _future = widget.repo.totalsByNote(
       ledgerId: widget.ledgerId,
       start: widget.start,
@@ -1608,6 +1651,11 @@ class _MerchantTopCardState extends ConsumerState<_MerchantTopCard> {
 
   @override
   Widget build(BuildContext context) {
+    final statsVersion = ref.watch(statsRefreshProvider);
+    if (statsVersion != _lastStatsVersion) {
+      _lastStatsVersion = statsVersion;
+      _load();
+    }
     final l10n = AppLocalizations.of(context);
     return FutureBuilder<List<({String note, double total})>>(
       future: _future,
