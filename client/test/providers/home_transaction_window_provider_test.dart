@@ -111,4 +111,44 @@ void main() {
     expect(st.items.length, lessThanOrEqualTo(81 + 81)); // 两页上限
     expect(st.items.map((r) => r.t.id).toSet().length, st.items.length);
   });
+
+  test('jumpToMonth:有数据月份锚定并加载历史记录,returnToLatest切回最新模式', () async {
+    // 种 2026-05 的历史数据与 2026-08 的最新数据
+    await seed(1, 10, at: DateTime(2026, 5, 20));
+    await seed(1, 15, at: DateTime(2026, 8, 10));
+
+    await controller().initializeLatest();
+    var st = container.read(homeTransactionWindowProvider);
+    expect(st.isLatestMode, isTrue);
+    expect(st.items.first.t.happenedAt.month, 8);
+
+    // 跳转到 5 月
+    await controller().jumpToMonth(DateTime(2026, 5, 1));
+    st = container.read(homeTransactionWindowProvider);
+    expect(st.isLatestMode, isFalse);
+    expect(st.anchorMonth, DateTime(2026, 5, 1));
+    expect(st.items.isNotEmpty, isTrue);
+    expect(st.items.first.t.happenedAt.month, 5);
+
+    // 回到最新模式
+    await controller().returnToLatest();
+    st = container.read(homeTransactionWindowProvider);
+    expect(st.isLatestMode, isTrue);
+    expect(st.anchorMonth, isNull);
+    expect(st.items.first.t.happenedAt.month, 8);
+  });
+
+  test('jumpToMonth:空月份 items 清空且 UI 呈现空态', () async {
+    await seed(1, 10, at: DateTime(2026, 8, 10));
+    await controller().initializeLatest();
+
+    // 跳转到一个无数据的历史月份 (2025-01)
+    await controller().jumpToMonth(DateTime(2025, 1, 1));
+    final st = container.read(homeTransactionWindowProvider);
+    expect(st.isLatestMode, isFalse);
+    expect(st.anchorMonth, DateTime(2025, 1, 1));
+    expect(st.items.isEmpty, isTrue);
+    expect(st.hasOlder, isFalse);
+    expect(st.hasNewer, isFalse);
+  });
 }

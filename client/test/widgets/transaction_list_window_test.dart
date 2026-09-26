@@ -117,4 +117,26 @@ void main() {
     await tester.pump();
     expect(find.textContaining('新记录'), findsNothing);
   });
+
+  testWidgets('jumpToMonth: 存在目标月份时返回 true, 不存在时返回 false', (tester) async {
+    final key = GlobalKey<TransactionListState>();
+    await tester.pumpWidget(app(SizedBox(
+      height: 600,
+      child: TransactionList(
+        key: key,
+        transactions: List.generate(5, (i) => row(i)), // 2026-07-15
+        hideAmounts: false,
+        emptyWidget: const SizedBox.shrink(),
+      ),
+    )));
+    await tester.pump();
+
+    // 查找 2026 年 7 月 (包含 2026-07-15)
+    final found = key.currentState!.jumpToMonth(DateTime(2026, 7, 1));
+    expect(found, isTrue);
+
+    // 查找 2026 年 6 月 (无数据)
+    final notFound = key.currentState!.jumpToMonth(DateTime(2026, 6, 1));
+    expect(notFound, isFalse);
+  });
 }
