@@ -30,30 +30,35 @@ class _FakeEngine implements AiExtractionEngine {
     String text,
     AiExtractionContext ctx, {
     String billGuard = '',
-  }) async => AiExtractionOutcome(
-      status: bills.isEmpty ? ExtractionStatus.noBill : ExtractionStatus.success,
-      bills: bills,
-    );
+  }) async =>
+      AiExtractionOutcome(
+        status:
+            bills.isEmpty ? ExtractionStatus.noBill : ExtractionStatus.success,
+        bills: bills,
+      );
 
   @override
   Future<List<BillInfo>> extractFromImage(
     File image,
     AiExtractionContext ctx, {
     String billGuard = '',
-  }) async => bills;
+  }) async =>
+      bills;
 
   @override
   Future<List<ImageExtractOutcome>> extractFromImages(
     List<File> images,
     AiExtractionContext context, {
     String billGuard = '',
-  }) async => [for (final _ in images) ImageExtractOutcome(bills: bills)];
+  }) async =>
+      [for (final _ in images) ImageExtractOutcome(bills: bills)];
 
   @override
   Future<AudioExtractionResult> extractFromAudio(
     File audio,
     AiExtractionContext ctx,
-  ) async => const AudioExtractionResult();
+  ) async =>
+      const AudioExtractionResult();
 
   @override
   Future<String?> speechToText(File audio) async => null;
@@ -122,8 +127,7 @@ void main() {
     );
   }
 
-  test('sourceKeysForTransaction:booked/duplicate 父行与子项全部反查',
-      () async {
+  test('sourceKeysForTransaction:booked/duplicate 父行与子项全部反查', () async {
     final time = DateTime(2026, 9, 10, 12, 3, 11);
     final txId = await repo.addTransaction(
       ledgerId: ledgerId,
@@ -216,6 +220,7 @@ void main() {
       sourceValue: 'sms',
       bill: BillInfo(
         amount: -88,
+        externalId: 'pay-order-88',
         time: time,
         type: BillType.expense,
         account: '招商银行',
@@ -244,6 +249,7 @@ void main() {
       sourceValue: 'notification',
       bill: BillInfo(
         amount: -88,
+        externalId: 'pay-order-88',
         time: time.add(const Duration(seconds: 20)),
         type: BillType.expense,
         merchant: '抖音商城',
@@ -276,6 +282,7 @@ void main() {
       sourceValue: 'screen',
       bill: BillInfo(
         amount: -88,
+        externalId: 'pay-order-88',
         time: time.add(const Duration(seconds: 40)),
         type: BillType.expense,
         merchant: '抖音超级旗舰店',

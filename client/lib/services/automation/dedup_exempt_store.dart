@@ -82,8 +82,7 @@ class DedupExemptStore {
     final clean = keyword.trim().toLowerCase();
     if (clean.isEmpty) return;
     final rules = await list();
-    if (rules.any((r) =>
-        r.keyword == clean && r.amountWithinSegment(amount))) {
+    if (rules.any((r) => r.keyword == clean && r.amountWithinSegment(amount))) {
       return;
     }
     rules.add(DedupExemptRule(
@@ -105,8 +104,8 @@ class DedupExemptStore {
 
   /// (新账单, 已有交易) 是否被豁免。
   ///
-  /// [billNoteNormalized]/[txNoteNormalized] 均为 normalizeAutoBookText 后
-  /// 的小写文本;任一规则同时命中「关键字 + 金额段」即豁免。
+  /// 两侧备注都必须命中同一关键字及金额段；只有一侧命中时不能
+  /// 放过另一笔真实消费的重复上报。
   static bool isExempt(
     List<DedupExemptRule> rules, {
     required double? billAmount,
@@ -117,10 +116,11 @@ class DedupExemptStore {
     if (rules.isEmpty) return false;
     final amount = billAmount;
     if (amount == null || amount.abs() <= 0) return false;
+    if (billNoteNormalized == null || txNoteNormalized == null) return false;
     for (final rule in rules) {
       if (!rule.amountWithinSegment(txAmount)) continue;
       if (!rule.amountWithinSegment(amount)) continue;
-      if (rule.keywordHits(billNoteNormalized) ||
+      if (rule.keywordHits(billNoteNormalized) &&
           rule.keywordHits(txNoteNormalized)) {
         return true;
       }

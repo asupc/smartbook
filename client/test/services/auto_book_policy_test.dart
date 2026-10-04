@@ -109,6 +109,35 @@ void main() {
     expect(result.reason, 'transfer_account_missing');
   });
 
+  test('退款即使明确到账,缺少置信字段仍需确认', () {
+    final result = policy.evaluate(
+      bill: bill(
+        amount: 30,
+        type: BillType.income,
+        eventKind: BillEventKind.refund,
+        confidenceProvided: false,
+      ),
+      source: 'sms',
+      evidenceText: '退款成功30元',
+    );
+    expect(result.action, AutoBookPolicyAction.pending);
+    expect(result.reason, 'confidence_missing');
+  });
+
+  test('已结算退款且字段完整允许入账', () {
+    final result = policy.evaluate(
+      bill: bill(
+        amount: 30,
+        type: BillType.income,
+        eventKind: BillEventKind.refund,
+      ),
+      source: 'sms',
+      evidenceText: '退款成功30元',
+    );
+    expect(result.action, AutoBookPolicyAction.allow);
+    expect(result.reason, 'settled_financial_event');
+  });
+
   test('主动路径不被自动硬闸门拦截', () {
     final result = policy.evaluate(
       bill: bill(eventKind: BillEventKind.statement),

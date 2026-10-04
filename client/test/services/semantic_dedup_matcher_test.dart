@@ -72,8 +72,7 @@ void main() {
     expect(match.reason, contains('merchant_missing'));
   });
 
-  test('金额不一样绝不是重复:差0.1元、差0.01元都排除(同商户同分钟也不判)',
-      () async {
+  test('金额不一样绝不是重复:差0.1元、差0.01元都排除(同商户同分钟也不判)', () async {
     final time = DateTime(2026, 9, 4, 12, 0);
     await repo.addTransaction(
       ledgerId: ledgerId,
@@ -286,8 +285,7 @@ void main() {
       expect(match.reason, isNot(contains('time_second_exact')));
     });
 
-    test('账单侧标注 exact 但秒为零:交易侧秒位不可信(可能补零)不静默合并',
-        () async {
+    test('账单侧标注 exact 但秒为零:交易侧秒位不可信(可能补零)不静默合并', () async {
       final time = DateTime(2026, 9, 4, 12, 30, 0);
       await repo.addTransaction(
         ledgerId: ledgerId,
@@ -343,7 +341,7 @@ void main() {
   });
 
   group('跨渠道强判重', () {
-    test('硬闸门已过+来源不同:商户对不上也直接强判重', () async {
+    test('来源不同但商户冲突:只标疑似重复,不强制合并', () async {
       // 银行短信先落库(备注=收款方,商户信息差)
       final time = DateTime(2026, 9, 10, 12, 3, 11);
       final txId = await repo.addTransaction(
@@ -372,9 +370,64 @@ void main() {
 
       expect(match, isNotNull);
       expect(match!.transactionId, txId);
-      expect(match.isStrong, isTrue);
-      expect(match.isCrossChannel, isTrue);
-      expect(match.reason, contains('cross_channel_strong'));
+      expect(match.isStrong, isFalse);
+      expect(match.isPossible, isTrue);
+      expect(match.isCrossChannel, isFalse);
+    });
+
+    test('商户相同且明确结算/时间可信:不同渠道可升级强判重', () async {
+      final time = DateTime(2026, 9, 10, 12, 3, 11);
+      await repo.addTransaction(
+        ledgerId: ledgerId,
+        type: 'expense',
+        amount: 38,
+        happenedAt: time,
+        note: '星巴克',
+      );
+      final match = await const SemanticDedupMatcher().findBest(
+        repository: repo,
+        ledgerId: ledgerId,
+        bill: BillInfo(
+          amount: -38,
+          time: time.add(const Duration(seconds: 20)),
+          type: BillType.expense,
+          merchant: '星巴克',
+          timePrecision: BillTimePrecision.minute,
+          settlementStatus: BillSettlementStatus.settled,
+        ),
+        sourceKey: 'notification',
+        transactionSourceKeys: (_) async => {'sms'},
+      );
+      expect(match?.isStrong, isTrue);
+      expect(match?.isCrossChannel, isTrue);
+    });
+
+    test('商户相同但时间为推测:不能仅靠不同渠道强合并', () async {
+      final time = DateTime(2026, 9, 10, 12, 3, 11);
+      await repo.addTransaction(
+        ledgerId: ledgerId,
+        type: 'expense',
+        amount: 38,
+        happenedAt: time,
+        note: '星巴克',
+      );
+      final match = await const SemanticDedupMatcher().findBest(
+        repository: repo,
+        ledgerId: ledgerId,
+        bill: BillInfo(
+          amount: -38,
+          time: time.add(const Duration(seconds: 20)),
+          type: BillType.expense,
+          merchant: '星巴克',
+          timePrecision: BillTimePrecision.inferred,
+          timeInferred: true,
+          settlementStatus: BillSettlementStatus.settled,
+        ),
+        sourceKey: 'notification',
+        transactionSourceKeys: (_) async => {'sms'},
+      );
+      expect(match?.isStrong, isFalse);
+      expect(match?.isPossible, isTrue);
     });
 
     test('来源相同(同渠道重放)不触发跨渠道强判重', () async {

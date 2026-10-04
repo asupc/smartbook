@@ -15,6 +15,7 @@ import '../data/tag_seed_service.dart';
 import '../system/logger_service.dart';
 import '../automation/auto_book_event.dart';
 import '../automation/auto_book_event_store.dart';
+import '../automation/dedup_exempt_store.dart';
 
 import '../automation/auto_book_policy.dart';
 import '../automation/auto_book_trace.dart';
@@ -277,17 +278,27 @@ class AiBookkeeper {
         candidate.eventKey!.isNotEmpty) {
       try {
         final event = await _eventStore.findByEventKey(candidate.eventKey!);
-        if (event?.state == AutoBookState.booked.value &&
-            event?.transactionId != null) {
-          final bookedTxId = event!.transactionId!;
+        final items = event == null
+            ? <schema.AutoBookEventItem>[]
+            : await _eventStore.itemsForEvent(event.id);
+        final item = _candidateEventItem(candidate, items);
+        final bookedTxId = item?.state == AutoBookState.booked.value
+            ? item?.transactionId
+            : items.isEmpty && event?.state == AutoBookState.booked.value
+                ? event?.transactionId
+                : null;
+        if (bookedTxId != null) {
           final stillExists =
               await _repo.getTransactionById(bookedTxId) != null;
           if (stillExists) {
             await PendingCandidateStore().remove(candidate.id);
             return bookedTxId;
           }
-          logger.warning(_tag, '候选事件指向的交易已不存在(可能被同步删除),'
-              '按待确认处理重新入账', 'tx=$bookedTxId');
+          logger.warning(
+              _tag,
+              '候选事件指向的交易已不存在(可能被同步删除),'
+                  '按待确认处理重新入账',
+              'tx=$bookedTxId');
         }
       } catch (e, st) {
         logger.warning(_tag, '读取候选事件幂等结果失败,继续语义检查', '$e');
@@ -312,6 +323,7 @@ class AiBookkeeper {
           await _markCandidateEvent(
             candidate,
             state: AutoBookState.duplicate,
+            transactionId: strongMatch.transactionId,
             reason:
                 'approve_reconciled:${strongMatch.score.toStringAsFixed(3)}',
           );
@@ -432,6 +444,26 @@ class AiBookkeeper {
     return [primary, TagSeedService.billingTypeAi];
   }
 
+  schema.AutoBookEventItem? _candidateEventItem(
+    PendingCandidate candidate,
+    List<schema.AutoBookEventItem> items,
+  ) {
+    for (final item in items) {
+      if (candidate.eventItemIndex != null &&
+          item.itemIndex == candidate.eventItemIndex) {
+        return item;
+      }
+      if (candidate.eventItemIndex != null || item.billJson == null) continue;
+      try {
+        final payload = jsonDecode(item.billJson!);
+        if (payload is Map && payload['candidate_id'] == candidate.id) {
+          return item;
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
+
   Future<void> _markCandidateEvent(
     PendingCandidate candidate, {
     required AutoBookState state,
@@ -443,14 +475,29 @@ class AiBookkeeper {
     try {
       final event = await _eventStore.findByEventKey(key);
       if (event == null) return;
-      await _eventStore.mark(
-        AutoBookEventUpdate(
+      final items = await _eventStore.itemsForEvent(event.id);
+      final item = _candidateEventItem(candidate, items);
+      if (item != null) {
+        await _eventStore.resolvePendingItem(
+          eventId: event.id,
+          itemIndex: item.itemIndex,
           state: state,
           transactionId: transactionId,
           reason: reason,
-        ),
-        eventId: event.id,
-      );
+        );
+      } else if (items.isEmpty) {
+        // 没有子项的旧事件仍使用原事件级更新口径。
+        await _eventStore.mark(
+          AutoBookEventUpdate(
+            state: state,
+            transactionId: transactionId,
+            reason: reason,
+          ),
+          eventId: event.id,
+        );
+      } else {
+        logger.warning(_tag, '找不到候选对应的事件子项，保留父事件待确认', key);
+      }
     } catch (e, st) {
       logger.warning(_tag, '更新候选关联事件失败(不影响用户操作)', '$e');
       logger.debug(_tag, '更新候选关联事件堆栈', st);
@@ -707,9 +754,17 @@ class AiBookkeeper {
         }
       }
 
+      // 与语义匹配器使用同一份用户裁决；读取失败仍按原规则保守判重。
+      List<DedupExemptRule> exemptRules = const [];
+      if (autoBookFlow != null) {
+        try {
+          exemptRules = await DedupExemptStore().list();
+        } catch (_) {}
+      }
       final basicDuplicate = AutoBookRule.looksLikeDuplicate(
         bill,
         [...recentComparison, ...pendingComparison],
+        exemptRules: exemptRules,
       );
       final semanticDuplicate = semanticMatch?.isPossible ?? false;
       final duplicate = basicDuplicate || semanticDuplicate;
@@ -799,7 +854,7 @@ class AiBookkeeper {
               duplicate);
       if (requiresConfirmation) {
         final String? reason;
-        if (autoBookFlow!.requireConfirmationForAll &&
+        if (autoBookFlow.requireConfirmationForAll &&
             !policy.isPending &&
             !AutoBookRule.isLowConfidence(bill) &&
             !duplicate) {
@@ -819,6 +874,7 @@ class AiBookkeeper {
           capturedAt: DateTime.now(),
           reason: reason,
           eventKey: autoBookFlow.eventKey,
+          eventItemIndex: i,
           semanticKey: SemanticDedupMatcher.semanticKey(bill),
           matchedTransactionId: semanticMatch?.transactionId,
           matchScore: semanticMatch?.score,
@@ -961,11 +1017,11 @@ class AiBookkeeper {
 
   String? _candidateReasonForPolicy(AutoBookPolicyDecision decision) {
     return switch (decision.reason) {
-      'confidence_missing' => 'lowConfidence',
-      'time_inferred' => 'lowConfidence',
+      'confidence_missing' => 'confidenceMissing',
+      'time_inferred' => 'timeInferred',
       'settlement_unknown' => 'settlementUnknown',
       'transfer_account_missing' => 'transferAccountMissing',
-      'time_precision_weak' => 'lowConfidence',
+      'time_precision_weak' => 'timePrecisionWeak',
       'event_kind_unknown' => 'settlementUnknown',
       _ => null,
     };
@@ -1116,8 +1172,7 @@ class AiBookkeeper {
 
       // 备注:只补空。已有备注(哪怕很短)是用户或先到渠道的既定信息。
       if ((note == null || note.trim().isEmpty)) {
-        final candidateNote =
-            (bill.merchant ?? bill.note)?.trim() ?? '';
+        final candidateNote = (bill.merchant ?? bill.note)?.trim() ?? '';
         if (candidateNote.isNotEmpty) {
           note = candidateNote;
           enriched.add('note');

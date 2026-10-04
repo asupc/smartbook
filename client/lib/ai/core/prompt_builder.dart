@@ -84,19 +84,18 @@ $_currencyFieldSpec
 14. external_id: 原文中的订单号/交易号/流水号；没有时填 null，不要编造
 15. merchant: 规范化商户名；没有时填 null
 16. card_last4: 原文明确出现的卡号后四位；没有时填 null
-17. time_precision: exact、minute、date、inferred 或 unknown
+17. time_precision: exact、minute、date、inferred 或 unknown；按原文提供的时间精度填写，不能因补出 ISO 时间就填 exact
+18. 自动抓取的交易请明确填写 event_kind、settlement_status、time_precision 和 confidence；缺少证据时填 unknown/inferred，不要编造交易号或成交时间
 
 示例：
-单笔"昨天中午吃饭50" → [{"amount":-50,"time":"2025-11-24T12:00:00","category":"餐饮","type":"expense"}]
-单笔"早上在星巴克买咖啡30" → [{"amount":-30,"time":"{{CURRENT_DATE}}T09:00:00","note":"星巴克","merchant":"星巴克","category":"咖啡","type":"expense","event_kind":"purchase","settlement_status":"settled","time_precision":"inferred","confidence":0.8}]
-单笔"商品:2025春季新款黑色半身裙 金额:￥299" → [{"amount":-299,"note":"黑色半身裙","category":"服装","type":"expense"}]
-转账"从建行转800到零钱包" → [{"amount":800,"category":"转账","type":"transfer","from_account":"建行","to_account":"零钱包","tag":"自己","event_kind":"transfer","settlement_status":"settled","time_precision":"inferred","confidence":0.8}]
-还款"信用卡还款5000元" → [{"amount":-5000,"category":"还款","type":"transfer","from_account":"建设银行","to_account":"信用卡"},{"amount":-2000,"note":"房贷还款","category":"还款","type":"transfer"}]
-外币"花了45美元" → [{"amount":-45,"currency":"USD","type":"expense"}]
-外币"在东京吃拉面1200日元" → [{"amount":-1200,"currency":"JPY","note":"拉面","category":"餐饮","type":"expense"}]
-外币"星巴克 \$6.5" → [{"amount":-6.5,"currency":"USD","note":"星巴克","category":"咖啡","type":"expense"}]
-外币"房租 1200 欧" → [{"amount":-1200,"currency":"EUR","note":"房租","category":"居家","type":"expense"}]
-多笔"早上地铁5元，中午吃饭40元，晚上买水果35元" → [{"amount":-5,"time":"{{CURRENT_DATE}}T09:00:00","note":"地铁","category":"交通","type":"expense"},{"amount":-40,"time":"{{CURRENT_DATE}}T12:00:00","category":"餐饮","type":"expense"},{"amount":-35,"time":"{{CURRENT_DATE}}T19:00:00","note":"水果","category":"购物","type":"expense"}]
+支付通知"2025-11-25 14:30 支付成功30元 商户星巴克" → [{"amount":-30,"time":"2025-11-25T14:30:00","merchant":"星巴克","type":"expense","event_kind":"purchase","settlement_status":"settled","time_precision":"minute","confidence":0.96}]
+单笔"今天中午吃饭50" → [{"amount":-50,"time":"{{CURRENT_DATE}}T12:00:00","category":"餐饮","type":"expense","event_kind":"purchase","settlement_status":"unknown","time_precision":"inferred","confidence":0.8}]
+商品页"商品:黑色半身裙 金额:￥299" → []（只有商品价格,没有成交证据）
+转账"从建行成功转账800到零钱包" → [{"amount":800,"time":"{{CURRENT_TIME}}","category":"转账","type":"transfer","from_account":"建行","to_account":"零钱包","event_kind":"transfer","settlement_status":"settled","time_precision":"inferred","confidence":0.8}]
+外币"已支付45美元" → [{"amount":-45,"time":"{{CURRENT_TIME}}","currency":"USD","type":"expense","event_kind":"purchase","settlement_status":"settled","time_precision":"inferred","confidence":0.8}]
+外币"在东京吃拉面1200日元" → [{"amount":-1200,"time":"{{CURRENT_TIME}}","currency":"JPY","note":"拉面","type":"expense","event_kind":"purchase","settlement_status":"unknown","time_precision":"inferred","confidence":0.7}]
+外币"已支付房租1200欧元" → [{"amount":-1200,"time":"{{CURRENT_TIME}}","currency":"EUR","note":"房租","type":"expense","event_kind":"purchase","settlement_status":"settled","time_precision":"inferred","confidence":0.8}]
+多笔"早上地铁5元，中午吃饭40元" → [{"amount":-5,"time":"{{CURRENT_DATE}}T09:00:00","category":"交通","type":"expense","event_kind":"purchase","settlement_status":"unknown","time_precision":"inferred","confidence":0.75},{"amount":-40,"time":"{{CURRENT_DATE}}T12:00:00","category":"餐饮","type":"expense","event_kind":"purchase","settlement_status":"unknown","time_precision":"inferred","confidence":0.75}]
 
 注意：只返回 JSON 数组（即使只有一笔也用数组包裹），尽量推断时间不要返回 null，note 必须 ≤15 字（长标题要精简）。外币的 currency 一律填 ISO 代码（USD，不是 \$ 或"美元"）''';
 

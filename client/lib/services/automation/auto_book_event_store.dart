@@ -338,8 +338,7 @@ class AutoBookEventStore {
   ) async {
     final grouped = <int, List<schema.AutoBookEventItem>>{};
     for (var i = 0; i < eventIds.length; i += 400) {
-      final end =
-          (i + 400 > eventIds.length) ? eventIds.length : i + 400;
+      final end = (i + 400 > eventIds.length) ? eventIds.length : i + 400;
       final chunk = eventIds.sublist(i, end);
       if (chunk.isEmpty) continue;
       final rows = await (db.select(db.autoBookEventItems)
@@ -601,6 +600,67 @@ class AutoBookEventStore {
     });
   }
 
+  /// 确认一笔候选只结束该子项；同一事件仍有其它待确认时父事件保持 pending。
+  /// 子项与父事件在一个事务内更新，避免候选页漏掉未处理的其它笔。
+  Future<void> resolvePendingItem({
+    required int eventId,
+    required int itemIndex,
+    required AutoBookState state,
+    int? transactionId,
+    String? reason,
+  }) async {
+    if (state != AutoBookState.booked &&
+        state != AutoBookState.duplicate &&
+        state != AutoBookState.ignored) {
+      throw ArgumentError.value(state, 'state', '候选只能结束为已记、重复或忽略');
+    }
+    await db.transaction(() async {
+      final changed = await (db.update(db.autoBookEventItems)
+            ..where((t) =>
+                t.eventId.equals(eventId) &
+                t.itemIndex.equals(itemIndex) &
+                t.state.equals(AutoBookState.pending.value)))
+          .write(schema.AutoBookEventItemsCompanion(
+        state: d.Value(state.value),
+        transactionId: transactionId == null
+            ? const d.Value.absent()
+            : d.Value(transactionId),
+        reason: reason == null ? const d.Value.absent() : d.Value(reason),
+      ));
+      if (changed == 0) return;
+      final items = await itemsForEvent(eventId);
+      final remaining =
+          items.any((item) => item.state == AutoBookState.pending.value);
+      final booked =
+          items.where((item) => item.state == AutoBookState.booked.value);
+      final duplicate =
+          items.where((item) => item.state == AutoBookState.duplicate.value);
+      final parentState = remaining
+          ? AutoBookState.pending
+          : booked.isNotEmpty
+              ? AutoBookState.booked
+              : duplicate.isNotEmpty
+                  ? AutoBookState.duplicate
+                  : AutoBookState.ignored;
+      final parentTransactionId = booked.isNotEmpty
+          ? booked.first.transactionId
+          : state == AutoBookState.booked
+              ? transactionId
+              : null;
+      await mark(
+        AutoBookEventUpdate(
+          state: parentState,
+          transactionId: parentTransactionId,
+          duplicateOfTransactionId: parentState == AutoBookState.duplicate
+              ? duplicate.first.transactionId
+              : null,
+          reason: remaining ? 'pending_confirmation' : reason,
+        ),
+        eventId: eventId,
+      );
+    });
+  }
+
   /// 查询已保存的原始证据。默认只返回带正文/元数据的行。
   /// 原始字段不会被 ChangeTracker 记录，也不会进入 sync_changes。
   Future<List<schema.AutoBookEvent>> listRawEvidence({
@@ -711,7 +771,9 @@ class AutoBookEventStore {
     if (event == null) return;
     final now = DateTime.now();
     if (event.rawEvidenceUploadState == RawEvidenceUploadState.cleared ||
-        event.rawEvidenceUploadState == RawEvidenceUploadState.expired) return;
+        event.rawEvidenceUploadState == RawEvidenceUploadState.expired) {
+      return;
+    }
     final clearAfterUpload = !event.rawEvidenceLocalEnabled ||
         (event.rawEvidenceLocalExpiresAt != null &&
             !event.rawEvidenceLocalExpiresAt!.isAfter(now));
@@ -738,7 +800,9 @@ class AutoBookEventStore {
     final event = await findById(eventId);
     if (event == null ||
         event.rawEvidenceUploadState == RawEvidenceUploadState.cleared ||
-        event.rawEvidenceUploadState == RawEvidenceUploadState.expired) return;
+        event.rawEvidenceUploadState == RawEvidenceUploadState.expired) {
+      return;
+    }
     // Never persist HTTP exceptions: validation responses can echo the body.
     final clean = state == RawEvidenceUploadState.rejected
         ? 'upload_rejected'
@@ -911,15 +975,13 @@ class AutoBookEventStore {
   /// **有意置空**的(见下方占位改造注释),回填会让语义倒退。
   Future<int> backfillMissingExpiresAt() async {
     final rows = await (db.select(db.autoBookEvents)
-          ..where((t) =>
-              t.expiresAt.isNull() &
-              t.state.isNotIn(const ['expired'])))
+          ..where(
+              (t) => t.expiresAt.isNull() & t.state.isNotIn(const ['expired'])))
         .get();
     for (final row in rows) {
       await (db.update(db.autoBookEvents)..where((t) => t.id.equals(row.id)))
           .write(schema.AutoBookEventsCompanion(
-        expiresAt:
-            d.Value(row.capturedAt.add(AutoBookInput.evidenceRetention)),
+        expiresAt: d.Value(row.capturedAt.add(AutoBookInput.evidenceRetention)),
       ));
     }
     return rows.length;

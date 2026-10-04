@@ -4608,7 +4608,16 @@ class AppLocalizationsZh extends AppLocalizations {
   String get pendingCandidateReasonLarge => '大额消费';
 
   @override
-  String get pendingCandidateReasonLowConfidence => '低置信度,请核对';
+  String get pendingCandidateReasonLowConfidence => '识别把握较低,请核对';
+
+  @override
+  String get pendingCandidateReasonConfidenceMissing => '识别结果缺少置信度,请核对';
+
+  @override
+  String get pendingCandidateReasonTimeInferred => '交易时间是推测的,请核对';
+
+  @override
+  String get pendingCandidateReasonTimePrecisionWeak => '交易时间不够精确,请核对';
 
   @override
   String get pendingCandidateReasonAnomaly => '异常消费:高于近期基线';

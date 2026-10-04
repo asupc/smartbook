@@ -86,6 +86,43 @@ void main() {
     expect(result.single.eventItemIndex, 0);
   });
 
+  test('旧候选无 itemIndex:事件第 1 个子项不会被显示两次', () async {
+    final fresh = DateTime.now();
+    final event = await eventStore.ensure(AutoBookInput(
+      eventKey: 'sms:v3:multi-item',
+      source: AutoBookSource.sms,
+      capturedAt: fresh,
+    ));
+    await eventStore.mark(
+      const AutoBookEventUpdate(state: AutoBookState.pending),
+      eventId: event.id,
+    );
+    final bill = BillInfo(
+      amount: -42,
+      time: fresh,
+      type: BillType.expense,
+      ledgerId: 1,
+    );
+    final id = PendingCandidate.candidateId(bill);
+    await eventStore.upsertItem(
+      eventId: event.id,
+      itemIndex: 1,
+      amount: -42,
+      state: AutoBookState.pending.value,
+      bill: {...bill.toJson(), 'candidate_id': id},
+    );
+    final store = PendingCandidateStore();
+    await store.add(PendingCandidate(
+      id: id,
+      bill: bill,
+      capturedAt: fresh,
+      eventKey: event.eventKey,
+    ));
+    final result = await store.loadForReview(eventStore);
+    expect(result, hasLength(1));
+    expect(result.single.eventItemIndex, 1);
+  });
+
   test('C8:pending 事件超过 30 天 TTL 转 expired,不再进 loadForReview', () async {
     final stale = await eventStore.ensure(
       AutoBookInput(

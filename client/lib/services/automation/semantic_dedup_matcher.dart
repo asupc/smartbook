@@ -34,13 +34,9 @@ class SemanticDedupMatch {
 /// 其余情况商户/备注与币种只决定分数高低(能否达到强判自动合并),不放宽
 /// 硬闸门。弱匹配只返回 possible,调用方必须把它放入待确认,不能静默丢弃。
 ///
-/// 跨渠道强判重:硬闸门已过的前提下,若当前捕获的事件来源与已有交易的
-/// 全部事件来源**都不同**,直接强判重。同一笔支付的 4 路上报(账单页/
-/// 电商通知/银行通知/短信)商户名天然对不上(银行报收款方、电商报商户、
-/// 账单报全称),商户一致性对跨渠道对是结构性失真的判据;而「两笔真实消费
-/// 同分钟同金额到分、恰好被两个不同渠道捕获」的概率远低于重复上报。
-/// 误合并兜底:决策日志 reason=cross_channel_strong 可回溯,撤销合并/
-/// 豁免表照常生效。
+/// 跨渠道仅在有可靠商户佐证、交易时间精度足够且事件已结算时
+/// 才升级强判重。金额和分钟相同但商户冲突/缺失仍是疑似重复，
+/// 不能为了减少确认而直接吞掉真实的第二笔消费。
 class SemanticDedupMatcher {
   static const strongThreshold = 0.92;
 
@@ -165,7 +161,13 @@ class SemanticDedupMatcher {
       if (sourceKey != null && transactionSourceKeys != null) {
         try {
           final existing = await transactionSourceKeys(tx.id);
-          if (existing.isNotEmpty && !existing.contains(sourceKey)) {
+          if (existing.isNotEmpty &&
+              !existing.contains(sourceKey) &&
+              bill.settlementStatus == BillSettlementStatus.settled &&
+              !bill.timeInferred &&
+              (bill.timePrecision == BillTimePrecision.exact ||
+                  bill.timePrecision == BillTimePrecision.minute) &&
+              candidate.reason.contains('merchant_exact')) {
             best = SemanticDedupMatch(
               transactionId: tx.id,
               score: 1.0,
@@ -187,7 +189,8 @@ class SemanticDedupMatcher {
   /// 同类型 + 金额完全一致 + 时间截断到秒一致 + 双方秒值可信 + 币种一致。
   /// 供自动入口在候选维度去重——同一笔消费的重复上报不再往待确认清单
   /// 堆第二条候选。
-  static bool hasSecondExactDuplicate(BillInfo bill, Iterable<BillInfo> others) {
+  static bool hasSecondExactDuplicate(
+      BillInfo bill, Iterable<BillInfo> others) {
     final amount = bill.amount;
     final time = bill.time;
     if (amount == null || amount.abs() <= 0 || time == null) return false;

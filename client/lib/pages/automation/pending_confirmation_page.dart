@@ -11,7 +11,6 @@ import '../../data/repositories/local/local_repository.dart';
 import '../../l10n/app_localizations.dart';
 import '../../providers.dart';
 import '../../providers/ai_chat_providers.dart';
-import '../../providers/automation_providers.dart';
 import '../../services/billing/pending_candidate.dart';
 import '../../services/automation/semantic_dedup_matcher.dart';
 import '../../services/billing/category_learning_store.dart';
@@ -234,7 +233,10 @@ class _PendingConfirmationPageState
       final sourceMatches = _sourceFilter == 'all' ||
           candidate.source.toLowerCase().contains(_sourceFilter);
       final reasonMatches = _reasonFilter == 'all' ||
-          (candidate.reason ?? '').toLowerCase() == _reasonFilter;
+          (candidate.reason ?? '').toLowerCase() == _reasonFilter ||
+          (_reasonFilter == 'lowConfidence' &&
+              const {'confidenceMissing', 'timeInferred', 'timePrecisionWeak'}
+                  .contains(candidate.reason));
       final ledgerMatches = _ledgerFilter == 'all' ||
           candidate.bill.ledgerId?.toString() == _ledgerFilter;
       final date = candidate.bill.time ?? candidate.capturedAt;
@@ -381,25 +383,6 @@ class _PendingConfirmationPageState
     }
   }
 
-  String _draftSourceLabel(String source) {
-    switch (source) {
-      case 'sms':
-        return _copy('短信', 'SMS');
-      case 'notification':
-        return _copy('通知', 'Notification');
-      case 'screenText':
-        return _copy('屏幕文本', 'Screen text');
-      case 'screenshot':
-        return _copy('截图', 'Screenshot');
-      case 'sharedImage':
-        return _copy('分享图片', 'Shared image');
-      case 'deepLinkText':
-        return _copy('链接文本', 'Link text');
-      default:
-        return source;
-    }
-  }
-
   String _copy(String zh, String en) {
     final code = Localizations.localeOf(context).languageCode;
     return code == 'zh' ? zh : en;
@@ -488,7 +471,7 @@ class _PendingConfirmationPageState
                   const DropdownMenuItem(
                       value: 'duplicate', child: Text('疑似重复')),
                   const DropdownMenuItem(
-                      value: 'lowConfidence', child: Text('低置信度')),
+                      value: 'lowConfidence', child: Text('置信度或时间不足')),
                   const DropdownMenuItem(
                       value: 'settlementUnknown', child: Text('结算状态不明')),
                   const DropdownMenuItem(
@@ -547,6 +530,12 @@ class _PendingConfirmationPageState
         return l10n.pendingCandidateReasonAnomaly;
       case 'lowConfidence':
         return l10n.pendingCandidateReasonLowConfidence;
+      case 'confidenceMissing':
+        return l10n.pendingCandidateReasonConfidenceMissing;
+      case 'timeInferred':
+        return l10n.pendingCandidateReasonTimeInferred;
+      case 'timePrecisionWeak':
+        return l10n.pendingCandidateReasonTimePrecisionWeak;
       case 'autoBookDisabled':
         return l10n.pendingCandidateReasonAutoBookDisabled;
       case 'settlementUnknown':
@@ -588,6 +577,16 @@ class _PendingConfirmationPageState
     );
   }
 
+  /// 仅在「仍记一笔」确实入账成功后记住用户的判重裁决。
+  Future<void> _rememberSeparatePayment(PendingCandidate candidate) async {
+    final keyword = SemanticDedupMatcher.exemptKeyword(candidate.bill);
+    final amount = candidate.bill.amount?.abs();
+    if (keyword == null || amount == null) return;
+    try {
+      await DedupExemptStore().add(keyword: keyword, amount: amount);
+    } catch (_) {}
+  }
+
   Future<void> _approve(PendingCandidate c) async {
     final l10n = AppLocalizations.of(context);
     var forceCreate = false;
@@ -595,16 +594,6 @@ class _PendingConfirmationPageState
       final choice = await _duplicateChoice(c);
       if (choice == null) return;
       forceCreate = choice;
-    }
-    // P1-1:用户裁定「这不是重复」→ 落豁免规则,同类误判不复发
-    if (forceCreate) {
-      final keyword = SemanticDedupMatcher.exemptKeyword(c.bill);
-      final amount = c.bill.amount?.abs();
-      if (keyword != null && amount != null) {
-        try {
-          await DedupExemptStore().add(keyword: keyword, amount: amount);
-        } catch (_) {}
-      }
     }
     final bookkeeper = ref.read(aiBookkeeperProvider);
     final txId = await bookkeeper.approvePending(
@@ -614,6 +603,8 @@ class _PendingConfirmationPageState
     );
     if (!mounted) return;
     if (txId != null) {
+      if (forceCreate) await _rememberSeparatePayment(c);
+      if (!mounted) return;
       showToast(context, l10n.pendingConfirmationApproved);
     } else {
       showToast(context, l10n.pendingConfirmationApproveFailed,
@@ -725,22 +716,15 @@ class _PendingConfirmationPageState
       final isDuplicate =
           c.matchedTransactionId != null || c.reason == 'duplicate';
       try {
-        // 与单条 _approve 一致:「仍记一笔」时落豁免规则,同类误判不复发。
-        if (isDuplicate && forceCreateForDuplicates) {
-          final keyword = SemanticDedupMatcher.exemptKeyword(c.bill);
-          final amount = c.bill.amount?.abs();
-          if (keyword != null && amount != null) {
-            try {
-              await DedupExemptStore().add(keyword: keyword, amount: amount);
-            } catch (_) {}
-          }
-        }
         final txId = await bookkeeper.approvePending(
           c,
           l10n: l10n,
           forceCreate: isDuplicate ? forceCreateForDuplicates : false,
         );
         if (txId != null) {
+          if (isDuplicate && forceCreateForDuplicates) {
+            await _rememberSeparatePayment(c);
+          }
           ok++;
         } else {
           failed++;
@@ -910,14 +894,6 @@ class _PendingConfirmationPageState
         account: accountName,
       ),
     );
-    // 用户显式编辑后保存 = 明确「这笔记一笔」:跳过合并并落豁免规则(P1-1)
-    final keyword = SemanticDedupMatcher.exemptKeyword(editedCandidate.bill);
-    final amount = editedCandidate.bill.amount?.abs();
-    if (keyword != null && amount != null) {
-      try {
-        await DedupExemptStore().add(keyword: keyword, amount: amount);
-      } catch (_) {}
-    }
     // 批次5(分类学习):用户改了分类且与 AI 原判不同 → 落「商户关键词→分类」
     // 映射,下次同商户自动优先用裁定结果。
     final finalCategory = picked?.name;
@@ -943,6 +919,8 @@ class _PendingConfirmationPageState
         );
     if (mounted) {
       if (txId != null) {
+        await _rememberSeparatePayment(editedCandidate);
+        if (!mounted) return;
         showToast(context, l10n.pendingConfirmationApproved);
       } else {
         showToast(

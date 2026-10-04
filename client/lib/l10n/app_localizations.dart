@@ -8838,8 +8838,26 @@ abstract class AppLocalizations {
   /// No description provided for @pendingCandidateReasonLowConfidence.
   ///
   /// In zh, this message translates to:
-  /// **'低置信度,请核对'**
+  /// **'识别把握较低,请核对'**
   String get pendingCandidateReasonLowConfidence;
+
+  /// No description provided for @pendingCandidateReasonConfidenceMissing.
+  ///
+  /// In zh, this message translates to:
+  /// **'识别结果缺少置信度,请核对'**
+  String get pendingCandidateReasonConfidenceMissing;
+
+  /// No description provided for @pendingCandidateReasonTimeInferred.
+  ///
+  /// In zh, this message translates to:
+  /// **'交易时间是推测的,请核对'**
+  String get pendingCandidateReasonTimeInferred;
+
+  /// No description provided for @pendingCandidateReasonTimePrecisionWeak.
+  ///
+  /// In zh, this message translates to:
+  /// **'交易时间不够精确,请核对'**
+  String get pendingCandidateReasonTimePrecisionWeak;
 
   /// No description provided for @pendingCandidateReasonAnomaly.
   ///

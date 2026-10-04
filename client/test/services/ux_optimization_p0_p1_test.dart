@@ -230,6 +230,89 @@ void main() {
       );
     });
 
+    test('豁免同时作用于基础判重,但双方商户都匹配才生效', () async {
+      final time = DateTime(2026, 9, 4, 10, 30);
+      final existing = _settledBill(time: time);
+      final next = _settledBill(time: time.add(const Duration(seconds: 20)));
+      final rules = [
+        DedupExemptRule(
+          keyword: '星巴克',
+          amount: 38,
+          createdAt: DateTime.now(),
+        )
+      ];
+      expect(AutoBookRule.looksLikeDuplicate(next, [existing]), isTrue);
+      expect(
+        AutoBookRule.looksLikeDuplicate(
+          next,
+          [existing],
+          exemptRules: rules,
+        ),
+        isFalse,
+      );
+      expect(
+        AutoBookRule.looksLikeDuplicate(
+          next,
+          [existing.copyWith(note: '麦当劳', merchant: '麦当劳')],
+          exemptRules: rules,
+        ),
+        isTrue,
+      );
+      expect(
+        DedupExemptStore.isExempt(
+          rules,
+          billAmount: 38,
+          billNoteNormalized: '星巴克',
+          txAmount: 38,
+          txNoteNormalized: null,
+        ),
+        isFalse,
+      );
+    });
+
+    test('用户仍记一笔后,语义与基础判重均不再将同类消费送入待确认', () async {
+      final time = DateTime.now().subtract(const Duration(minutes: 5));
+      await repo.addTransaction(
+        ledgerId: ledgerId,
+        type: 'expense',
+        amount: 38,
+        happenedAt: time,
+        note: '星巴克',
+        currencyCode: 'CNY',
+      );
+      await DedupExemptStore().add(keyword: '星巴克', amount: 38);
+      final eventStore = AutoBookEventStore(db);
+      const eventKey = 'sms:v3:exempt-both-matchers';
+      await eventStore.ensure(AutoBookInput(
+        eventKey: eventKey,
+        source: AutoBookSource.sms,
+        ledgerId: ledgerId,
+        capturedAt: DateTime.now(),
+      ));
+      final bookkeeper = AiBookkeeper(
+        repository: repo,
+        engine: _FixedEngine([
+          _settledBill(time: time.add(const Duration(seconds: 20))),
+        ]),
+        persister: BillCreationService(repo),
+        eventStore: eventStore,
+      );
+      final result = await bookkeeper.fromText(
+        text: '星巴克 支付成功 38',
+        ledgerId: ledgerId,
+        billingTypes: const ['sms'],
+        autoBookFlow: AutoBookFlow(
+          store: PendingCandidateStore(),
+          eventKey: eventKey,
+          eventStore: eventStore,
+        ),
+        source: 'sms',
+        evidenceText: '星巴克 支付成功 38',
+      );
+      expect(result.savedCount, 1);
+      expect(result.awaitingCount, 0);
+    });
+
     test('匹配器跳过豁免对:命中豁免 → findBest 返回 null;清空后恢复强匹配', () async {
       final time = DateTime(2026, 9, 4, 10, 30);
       final txId = await repo.addTransaction(

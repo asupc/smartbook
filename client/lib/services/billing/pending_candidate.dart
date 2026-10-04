@@ -4,6 +4,8 @@ import 'package:crypto/crypto.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../ai/core/bill_info.dart';
 import '../automation/auto_book_event_store.dart';
+import '../automation/dedup_exempt_store.dart';
+import '../automation/semantic_dedup_matcher.dart';
 
 /// 待确认候选(自动记账 M2)。
 ///
@@ -140,7 +142,11 @@ class AutoBookRule {
   /// 疑似重复硬闸门:同账本、同类型、金额完全相等(无容差)且时间差 <= 1 分钟。
   /// 与 [SemanticDedupMatcher] 的硬闸门口径一致(其可能重复的宽匹配仍由
   /// 语义判重负责)。全为纯函数,便于单测。
-  static bool looksLikeDuplicate(BillInfo bill, Iterable<BillInfo> others) {
+  static bool looksLikeDuplicate(
+    BillInfo bill,
+    Iterable<BillInfo> others, {
+    List<DedupExemptRule> exemptRules = const [],
+  }) {
     final amount = bill.amount;
     if (amount == null || amount.abs() <= 0) return false;
     for (final other in others) {
@@ -152,6 +158,15 @@ class AutoBookRule {
         continue;
       }
       if (otherAmount.abs() != amount.abs()) continue;
+      if (DedupExemptStore.isExempt(
+        exemptRules,
+        billAmount: amount,
+        billNoteNormalized: SemanticDedupMatcher.exemptKeyword(bill),
+        txAmount: otherAmount,
+        txNoteNormalized: SemanticDedupMatcher.exemptKeyword(other),
+      )) {
+        continue;
+      }
       final diff = (bill.time == null || other.time == null)
           ? Duration.zero
           : bill.time!.difference(other.time!).abs();
@@ -367,9 +382,17 @@ class PendingCandidateStore {
     }
 
     for (final candidate in legacy) {
-      final key = candidate.eventKey == null
+      // Older candidates have no itemIndex. Match the event projection by
+      // candidate ID instead of treating every missing index as item 0.
+      if (candidate.eventKey != null &&
+          candidate.eventItemIndex == null &&
+          merged.values.any((item) =>
+              item.eventKey == candidate.eventKey && item.id == candidate.id)) {
+        continue;
+      }
+      final key = candidate.eventKey == null || candidate.eventItemIndex == null
           ? 'legacy:${candidate.id}'
-          : 'event:${candidate.eventKey}:${candidate.eventItemIndex ?? 0}';
+          : 'event:${candidate.eventKey}:${candidate.eventItemIndex}';
       merged.putIfAbsent(key, () => candidate);
     }
 

@@ -343,8 +343,10 @@ class BillInfo {
         json['cardLast4'],
         json['card_last_four'],
       ]),
-      confidenceProvided:
-          json.containsKey('confidence') && json['confidence'] != null,
+      confidenceProvided: (json['confidence_provided'] ??
+              json['confidenceProvided']) is bool
+          ? (json['confidence_provided'] ?? json['confidenceProvided']) as bool
+          : json.containsKey('confidence') && json['confidence'] != null,
       timeInferred: json['time_inferred'] == true ||
           json['timeInferred'] == true ||
           json['time_precision']?.toString().toLowerCase() == 'inferred',

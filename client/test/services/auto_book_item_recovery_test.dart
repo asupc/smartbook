@@ -76,6 +76,126 @@ void main() {
 
   tearDown(() async => db.close());
 
+  test('多笔候选逐项确认:剩余子项仍待确认且重复点击返回各自交易', () async {
+    final now = DateTime.now();
+    final bills = [
+      for (var i = 0; i < 2; i++)
+        BillInfo(
+          amount: -(18 + i).toDouble(),
+          time: now.add(Duration(minutes: i * 5)),
+          note: '商户$i',
+          category: '餐饮',
+          type: BillType.expense,
+          eventKind: BillEventKind.purchase,
+          settlementStatus: BillSettlementStatus.settled,
+          confidence: 0.7,
+          confidenceProvided: true,
+          timePrecision: BillTimePrecision.minute,
+        ),
+    ];
+    final eventStore = AutoBookEventStore(db);
+    const eventKey = 'sms:v3:two-pending-items';
+    final event = await eventStore.ensure(AutoBookInput(
+      eventKey: eventKey,
+      source: AutoBookSource.sms,
+      ledgerId: ledgerId,
+      capturedAt: now,
+    ));
+    final bookkeeper = AiBookkeeper(
+      repository: repo,
+      engine: _FixedEngine(bills),
+      persister: BillCreationService(repo),
+      eventStore: eventStore,
+    );
+    final result = await bookkeeper.fromText(
+      text: '两笔已付款',
+      ledgerId: ledgerId,
+      billingTypes: const ['sms'],
+      autoBookFlow: AutoBookFlow(
+        store: PendingCandidateStore(),
+        eventKey: eventKey,
+        eventStore: eventStore,
+      ),
+      source: 'sms',
+      evidenceText: '支付成功',
+    );
+    expect(result.awaitingCount, 2);
+    await eventStore.mark(
+      const AutoBookEventUpdate(state: AutoBookState.pending),
+      eventId: event.id,
+    );
+    final store = PendingCandidateStore();
+    final candidates = await store.loadForReview(eventStore);
+    expect(candidates, hasLength(2));
+    expect(candidates.map((c) => c.eventItemIndex).toSet(), {0, 1});
+
+    final firstId = await bookkeeper.approvePending(candidates[0]);
+    expect(firstId, isNotNull);
+    expect((await eventStore.findById(event.id))!.state, 'pending');
+    expect(await store.loadForReview(eventStore), hasLength(1));
+
+    final secondId = await bookkeeper.approvePending(candidates[1]);
+    expect(secondId, isNotNull);
+    expect(secondId, isNot(firstId));
+    expect((await eventStore.findById(event.id))!.state, 'booked');
+    expect(await store.loadForReview(eventStore), isEmpty);
+    expect(await bookkeeper.approvePending(candidates[0]), firstId);
+    expect(await (db.select(db.transactions)).get(), hasLength(2));
+  });
+
+  test('缺少置信字段与推断时间分别标注准确原因', () async {
+    final time = DateTime.now();
+    final bills = [
+      BillInfo(
+        amount: -23,
+        time: time,
+        type: BillType.expense,
+        eventKind: BillEventKind.purchase,
+        settlementStatus: BillSettlementStatus.settled,
+        timePrecision: BillTimePrecision.minute,
+        confidenceProvided: false,
+      ),
+      BillInfo(
+        amount: -24,
+        time: time.add(const Duration(minutes: 5)),
+        type: BillType.expense,
+        eventKind: BillEventKind.purchase,
+        settlementStatus: BillSettlementStatus.settled,
+        timePrecision: BillTimePrecision.inferred,
+        timeInferred: true,
+      ),
+    ];
+    final eventStore = AutoBookEventStore(db);
+    const eventKey = 'sms:v3:reason-precision';
+    final event = await eventStore.ensure(AutoBookInput(
+      eventKey: eventKey,
+      source: AutoBookSource.sms,
+      ledgerId: ledgerId,
+      capturedAt: time,
+    ));
+    final bookkeeper = AiBookkeeper(
+      repository: repo,
+      engine: _FixedEngine(bills),
+      persister: BillCreationService(repo),
+      eventStore: eventStore,
+    );
+    await bookkeeper.fromText(
+      text: '付款成功',
+      ledgerId: ledgerId,
+      billingTypes: const ['sms'],
+      autoBookFlow: AutoBookFlow(
+        store: PendingCandidateStore(),
+        eventKey: eventKey,
+        eventStore: eventStore,
+      ),
+      source: 'sms',
+      evidenceText: '支付成功',
+    );
+    final items = await eventStore.itemsForEvent(event.id);
+    expect(items.map((item) => item.reason),
+        ['confidenceMissing', 'timeInferred']);
+  });
+
   test('影子模式只记录识别摘要,不创建交易或候选', () async {
     final bill = BillInfo(
       amount: -18,

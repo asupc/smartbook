@@ -211,6 +211,14 @@ void main() {
     });
   });
 
+  test('confidenceProvided 序列化后保留缺失状态', () {
+    final parsed = BillInfo.fromJson({'amount': -30});
+    expect(parsed.confidence, 1.0);
+    expect(parsed.confidenceProvided, isFalse);
+    final restored = BillInfo.fromJson(parsed.toJson());
+    expect(restored.confidenceProvided, isFalse);
+  });
+
   group('BillInfo.currency(智能记账多币种 A4)', () {
     test('ISO 码大小写归一', () {
       expect(

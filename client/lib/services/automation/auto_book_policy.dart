@@ -174,28 +174,20 @@ class AutoBookPolicy {
       }
     }
 
-    if (inferredKind == BillEventKind.refund ||
-        inferredKind == BillEventKind.fee ||
-        inferredKind == BillEventKind.income) {
-      // 这些可以是实际结算事件，但仍要求明确结算状态；文本里的退款/到账
-      // 作为旧模型兼容的强证据。
-      if (inferredStatus == BillSettlementStatus.settled ||
-          _settledPattern.hasMatch(text) ||
-          _refundPattern.hasMatch(text)) {
-        return AutoBookPolicyDecision(
-          action: AutoBookPolicyAction.allow,
-          reason: 'settled_financial_event',
-          eventKind: inferredKind,
-          settlementStatus: inferredStatus,
-        );
-      }
-    }
+    // 退款/费用/收入的结算证据可以兼容旧模型的缺省 status，
+    // 但不能提前放行：仍须通过下面的置信度和时间可信度检查。
+    final settledFinancialEvent = (inferredKind == BillEventKind.refund ||
+            inferredKind == BillEventKind.fee ||
+            inferredKind == BillEventKind.income) &&
+        (inferredStatus == BillSettlementStatus.settled ||
+            _settledPattern.hasMatch(text) ||
+            _refundPattern.hasMatch(text));
 
     // 自动路径缺少显式结算状态时默认进入候选；但有明确的成功文本时，
     // 兼容旧模型的结构化输出，允许继续走重复检测。
     if (inferredStatus == null ||
         inferredStatus == BillSettlementStatus.unknown) {
-      if (!_settledPattern.hasMatch(text)) {
+      if (!settledFinancialEvent && !_settledPattern.hasMatch(text)) {
         return AutoBookPolicyDecision(
           action: AutoBookPolicyAction.pending,
           reason: 'settlement_unknown',
@@ -230,7 +222,9 @@ class AutoBookPolicy {
 
     return AutoBookPolicyDecision(
       action: AutoBookPolicyAction.allow,
-      reason: 'settled_transaction',
+      reason: settledFinancialEvent
+          ? 'settled_financial_event'
+          : 'settled_transaction',
       eventKind: inferredKind,
       settlementStatus: inferredStatus,
     );
@@ -241,8 +235,7 @@ class AutoBookPolicy {
   static bool _isSummaryText(String text) {
     if (text.isEmpty) return false;
     if (_summaryStrongPattern.hasMatch(text)) return true;
-    return _summaryWeakPattern.hasMatch(text) &&
-        !_actionPattern.hasMatch(text);
+    return _summaryWeakPattern.hasMatch(text) && !_actionPattern.hasMatch(text);
   }
 
   BillEventKind? _inferKind(BillInfo bill, String text) {
