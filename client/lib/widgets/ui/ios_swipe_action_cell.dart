@@ -6,29 +6,23 @@ import '../../l10n/app_localizations.dart';
 ///
 /// 特性：
 /// 1. 左滑露出红底「删除」按钮并吸附停靠（80px）；
-/// 2. 强力全滑（>160px 或 >40% 宽度）直接触发删除；
-/// 3. 吸附与全滑阈值触发触觉振动反馈（HapticFeedback）；
-/// 4. 任意其它项滑动或点击内容区时，自动弹性闭合当前展开项；
-/// 5. 展开状态下点击主内容区仅闭合操作栏，不穿透触发进入详情；
-/// 6. 支持 [confirmDelete] 二次确认回调。
+/// 2. 点击删除按钮立即删除；
+/// 3. 任意其它项滑动或点击内容区时，自动弹性闭合当前展开项；
+/// 4. 展开状态下点击主内容区仅闭合操作栏，不穿透触发进入详情。
 class IosSwipeActionCell extends StatefulWidget {
   final Widget child;
-  final VoidCallback? onDelete;
-  final Future<bool> Function()? confirmDelete;
+  final Future<void> Function()? onDelete;
   final bool enabled;
   final BorderRadius? borderRadius;
   final double actionWidth;
-  final bool allowFullSwipe;
 
   const IosSwipeActionCell({
     super.key,
     required this.child,
     this.onDelete,
-    this.confirmDelete,
     this.enabled = true,
     this.borderRadius,
     this.actionWidth = 80.0,
-    this.allowFullSwipe = true,
   });
 
   /// 全局关闭当前打开的侧滑项（可由外部滚动监听调用）
@@ -47,7 +41,6 @@ class _IosSwipeActionCellState extends State<IosSwipeActionCell>
 
   late AnimationController _controller;
   double _dragOffset = 0.0;
-  bool _hasHapticFeedbackFired = false;
   bool _isDeleting = false;
 
   bool get isOpen => _dragOffset < -10.0;
@@ -55,7 +48,7 @@ class _IosSwipeActionCellState extends State<IosSwipeActionCell>
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
+    _controller = AnimationController.unbounded(
       vsync: this,
       duration: const Duration(milliseconds: 240),
     )..addListener(() {
@@ -77,6 +70,7 @@ class _IosSwipeActionCellState extends State<IosSwipeActionCell>
   /// 平滑闭合到 0
   void close() {
     if (_dragOffset == 0.0) return;
+    _controller.value = _dragOffset;
     _controller.animateTo(
       0.0,
       duration: const Duration(milliseconds: 220),
@@ -93,6 +87,7 @@ class _IosSwipeActionCellState extends State<IosSwipeActionCell>
       _openCell?.close();
     }
     _openCell = this;
+    _controller.value = _dragOffset;
     _controller.animateTo(
       -widget.actionWidth,
       duration: const Duration(milliseconds: 220),
@@ -106,62 +101,21 @@ class _IosSwipeActionCellState extends State<IosSwipeActionCell>
     if (_openCell != null && _openCell != this) {
       _openCell?.close();
     }
-    _hasHapticFeedbackFired = false;
+    _controller.stop();
   }
 
   void _onHorizontalDragUpdate(DragUpdateDetails details) {
     if (!widget.enabled || widget.onDelete == null) return;
 
-    final newOffset = _dragOffset + details.primaryDelta!;
-    // 只能向左滑（offset <= 0）
-    if (newOffset > 0) {
-      setState(() => _dragOffset = 0.0);
-      return;
-    }
-
-    final fullSwipeThreshold = _getFullSwipeThreshold();
-    if (widget.allowFullSwipe && newOffset <= -fullSwipeThreshold) {
-      if (!_hasHapticFeedbackFired) {
-        HapticFeedback.mediumImpact();
-        _hasHapticFeedbackFired = true;
-      }
-    } else {
-      _hasHapticFeedbackFired = false;
-    }
-
+    final newOffset =
+        (_dragOffset + details.primaryDelta!).clamp(-widget.actionWidth, 0.0);
     setState(() {
       _dragOffset = newOffset;
     });
   }
 
-  double _getFullSwipeThreshold() {
-    final width = MediaQuery.of(context).size.width;
-    return (width * 0.42).clamp(160.0, 220.0);
-  }
-
   void _onHorizontalDragEnd(DragEndDetails details) {
     if (!widget.enabled || widget.onDelete == null) return;
-
-    final velocity = details.primaryVelocity ?? 0.0;
-    final fullSwipeThreshold = _getFullSwipeThreshold();
-
-    // 强力全滑触发
-    if (widget.allowFullSwipe && _dragOffset <= -fullSwipeThreshold) {
-      _triggerFullSwipeDelete();
-      return;
-    }
-
-    // 快速向左划
-    if (velocity < -400) {
-      open();
-      return;
-    }
-
-    // 快速向右划
-    if (velocity > 400) {
-      close();
-      return;
-    }
 
     // 拖动超过吸附阈值（一半的 actionWidth）
     if (_dragOffset <= -widget.actionWidth / 2) {
@@ -171,43 +125,14 @@ class _IosSwipeActionCellState extends State<IosSwipeActionCell>
     }
   }
 
-  Future<void> _triggerFullSwipeDelete() async {
-    final width = MediaQuery.of(context).size.width;
-    _isDeleting = true;
-
-    // 平滑滑出屏幕
-    await _controller.animateTo(
-      -width,
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeOutCubic,
-    );
-
-    if (widget.confirmDelete != null) {
-      final confirmed = await widget.confirmDelete!();
-      if (!confirmed) {
-        _isDeleting = false;
-        close();
-        return;
-      }
-    }
-
-    if (mounted) {
-      widget.onDelete?.call();
-    }
-  }
-
   Future<void> _handleActionTap() async {
+    if (_isDeleting) return;
+    setState(() => _isDeleting = true);
     HapticFeedback.mediumImpact();
-    if (widget.confirmDelete != null) {
-      final confirmed = await widget.confirmDelete!();
-      if (!confirmed) {
-        close();
-        return;
-      }
-    }
-
-    if (mounted) {
-      widget.onDelete?.call();
+    try {
+      await widget.onDelete?.call();
+    } finally {
+      if (mounted) setState(() => _isDeleting = false);
     }
   }
 

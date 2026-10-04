@@ -29,7 +29,7 @@ class TransactionListItem extends ConsumerWidget {
   final VoidCallback? onCategoryTap; // 点击分类图标/名称的回调
   final String? categoryName; // 分类名称，用于显示
   final String? ledgerName; // 账本名称（仅"全部账本"模式下显示标签）
-  final VoidCallback? onDelete; // 删除回调
+  final Future<void> Function()? onDelete; // 删除回调
   final String? accountName; // 账户名称，用于显示
   final DateTime? happenedAt; // 交易时间，用于显示时分
 
@@ -434,14 +434,6 @@ class TransactionListItem extends ConsumerWidget {
     if (onDelete != null) {
       return IosSwipeActionCell(
         key: ValueKey('transaction_$title${amount.toString()}'),
-        confirmDelete: () async {
-          return await AppDialog.confirm<bool>(
-            context,
-            title: '确认删除',
-            message: '确定要删除这笔交易吗？此操作无法撤销。',
-            isDestructive: true,
-          ) ?? false;
-        },
         onDelete: onDelete,
         child: child,
       );

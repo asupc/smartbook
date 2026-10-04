@@ -551,16 +551,6 @@ class TransactionListState extends ConsumerState<TransactionList> {
 
               return IosSwipeActionCell(
                 key: Key('tx-${it.t.id}-$index'), // 添加索引避免key冲突
-                confirmDelete: () async {
-                  return await AppDialog.confirm<bool>(
-                        context,
-                        title: AppLocalizations.of(context).deleteConfirmTitle,
-                        message:
-                            AppLocalizations.of(context).deleteConfirmMessage,
-                        isDestructive: true,
-                      ) ??
-                      false;
-                },
                 onDelete: () async {
                   final repo = ref.read(repositoryProvider);
                   await repo.deleteTransaction(it.t.id);
