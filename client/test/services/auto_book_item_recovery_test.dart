@@ -143,7 +143,7 @@ void main() {
     expect(await (db.select(db.transactions)).get(), hasLength(2));
   });
 
-  test('缺少置信字段与推断时间分别标注准确原因', () async {
+  test('缺少置信字段进待确认,推断时间直接丢弃(2026-10-09 规则)', () async {
     final time = DateTime.now();
     final bills = [
       BillInfo(
@@ -192,8 +192,10 @@ void main() {
       evidenceText: '支付成功',
     );
     final items = await eventStore.itemsForEvent(event.id);
+    // 推测时间不再进待确认,由语义硬闸门直接忽略(reason 保留原始下划线口径)
+    expect(items.map((item) => item.state), ['pending', 'ignored']);
     expect(items.map((item) => item.reason),
-        ['confidenceMissing', 'timeInferred']);
+        ['confidenceMissing', 'time_inferred']);
   });
 
   test('影子模式只记录识别摘要,不创建交易或候选', () async {

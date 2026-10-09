@@ -23,7 +23,12 @@ class JsonResponseParser {
   const JsonResponseParser();
 
   /// 解析 AI 响应文本为 `List<BillInfo>`。返回空 list 表示无有效账单。
-  List<BillInfo> parse(String response) {
+  ///
+  /// [captureTime] 事件捕获时刻(通知 postTime)。AI 未从正文识别出交易
+  /// 时间、或给出了推测时间时,改用它(分钟精度、不标记推测)—— 通知到达
+  /// ≈ 交易时刻。null = 走旧兜底(now() + 推测标记),时间缺失的账单由
+  /// 策略层决定丢弃与否。
+  List<BillInfo> parse(String response, {DateTime? captureTime}) {
     final responseHash =
         sha256.convert(utf8.encode(response)).toString().substring(0, 12);
     logger.debug(
@@ -45,7 +50,7 @@ class JsonResponseParser {
             try {
               final raw = BillInfo.fromJson(item);
               _warnIfCurrencyDropped(item, raw);
-              final sanitized = _sanitize(raw);
+              final sanitized = _sanitize(raw, captureTime);
               if (sanitized == null) {
                 logger.warning(_tag, '数组第 ${i + 1} 项金额无效,跳过');
                 continue;
@@ -78,7 +83,7 @@ class JsonResponseParser {
           jsonDecode(_cleanupJson(objectBlock)) as Map<String, dynamic>;
       final raw = BillInfo.fromJson(json);
       _warnIfCurrencyDropped(json, raw);
-      final sanitized = _sanitize(raw);
+      final sanitized = _sanitize(raw, captureTime);
       if (sanitized == null) {
         logger.warning(_tag, '单对象金额无效');
         return const [];
@@ -108,10 +113,26 @@ class JsonResponseParser {
   /// 单笔统一校验 + 兜底。
   ///
   /// 返回 null = 该笔应丢弃(amount 缺失或为 0);
-  /// 返回非 null = 已修正(time 缺失填当前时间),可直接入库。
-  BillInfo? _sanitize(BillInfo bill) {
+  /// 返回非 null = 已修正,可直接入库。
+  ///
+  /// 时间规则(2026-10-09 用户裁决):
+  /// - 通知路径([captureTime] 非空):正文无时间、或时间为模型推测 →
+  ///   一律改用通知时间(分钟精度、非推测),不让猜测时间入账;
+  /// - 其它路径:维持旧兜底(缺失填 now() + 推测标记),时间不可信的账单
+  ///   交给策略层丢弃/分流。
+  BillInfo? _sanitize(BillInfo bill, DateTime? captureTime) {
     final amt = bill.amount;
     if (amt == null || amt.abs() <= 0) return null;
+    if (captureTime != null) {
+      if (bill.time == null || bill.timeInferred) {
+        return bill.copyWith(
+          time: captureTime,
+          timeInferred: false,
+          timePrecision: BillTimePrecision.minute,
+        );
+      }
+      return bill;
+    }
     if (bill.time == null) {
       return bill.copyWith(
         time: DateTime.now(),

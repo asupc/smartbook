@@ -210,7 +210,7 @@ class DefaultAiExtractionEngine implements AiExtractionEngine {
           matchedIdentifier: response.matchedIdentifier,
         );
       }
-      final bills = _parser.parse(response.content);
+      final bills = _parser.parse(response.content, captureTime: context.captureTime);
       return AiExtractionOutcome(
         status:
             bills.isEmpty ? ExtractionStatus.noBill : ExtractionStatus.success,

@@ -39,6 +39,13 @@ class AiExtractionContext {
   /// fallback(无账本场景)为 null。
   final int? ledgerId;
 
+  /// 事件捕获时刻(通知 postTime)。通知路径 AI 未从正文识别出交易时间、
+  /// 或给出了推测时间时,兜底改用它(分钟精度、不标记推测)—— 即时推送的
+  /// 到达时间与交易时刻相差秒级,比解析时刻 `DateTime.now()` 更准(补处理
+  /// 场景下 now() 可能晚到几分钟)。手动/截图/详情页路径没有可信捕获时刻,
+  /// 保持 null(时间缺失的账单由策略层丢弃,不猜测)。
+  final DateTime? captureTime;
+
   const AiExtractionContext({
     this.expenseCategories = const [],
     this.incomeCategories = const [],
@@ -47,6 +54,7 @@ class AiExtractionContext {
     this.availableCurrencies = const [],
     this.customPromptTemplate,
     this.ledgerId,
+    this.captureTime,
   });
 
   /// 无账本场景的 fallback。prompt 走 hardcoded 默认分类,至少能识别金额。
@@ -60,6 +68,7 @@ class AiExtractionContext {
   static Future<AiExtractionContext> forLedger({
     required BaseRepository repository,
     required int ledgerId,
+    DateTime? captureTime,
   }) async {
     final expenseCats = await repository.getUsableCategories('expense');
     final incomeCats = await repository.getUsableCategories('income');
@@ -102,6 +111,7 @@ class AiExtractionContext {
       availableCurrencies: currencies.toList()..sort(),
       customPromptTemplate: customTemplate,
       ledgerId: ledgerId,
+      captureTime: captureTime,
     );
   }
 }

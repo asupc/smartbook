@@ -148,4 +148,52 @@ void main() {
     expect(result.action, AutoBookPolicyAction.allow);
     expect(result.reason, 'user_initiated');
   });
+
+  group('时间规则(2026-10-09 用户裁决)', () {
+    test('自动入口时间为模型推测 → 直接丢弃,不进待确认', () {
+      final result = policy.evaluate(
+        bill: bill(
+          eventKind: BillEventKind.purchase,
+          status: BillSettlementStatus.settled,
+          timeInferred: true,
+        ),
+        source: 'screen',
+        evidenceText: '支付成功 8.10元 地铁乘车',
+      );
+      expect(result.action, AutoBookPolicyAction.ignore);
+      expect(result.reason, 'time_inferred');
+    });
+
+    test('自动入口无时间 → 直接丢弃', () {
+      final noTime = BillInfo(
+        amount: -30,
+        type: BillType.expense,
+        eventKind: BillEventKind.purchase,
+        settlementStatus: BillSettlementStatus.settled,
+        confidenceProvided: true,
+        timePrecision: BillTimePrecision.minute,
+      );
+      final result = policy.evaluate(
+        bill: noTime,
+        source: 'sms',
+        evidenceText: '支付成功30元',
+      );
+      expect(result.action, AutoBookPolicyAction.ignore);
+      expect(result.reason, 'time_missing');
+    });
+
+    test('主动路径推测时间不受影响(仍 allow)', () {
+      final result = policy.evaluate(
+        bill: bill(
+          eventKind: BillEventKind.purchase,
+          status: BillSettlementStatus.settled,
+          timeInferred: true,
+        ),
+        source: 'chat',
+        evidenceText: '今天中午吃饭50',
+        automatic: false,
+      );
+      expect(result.action, AutoBookPolicyAction.allow);
+    });
+  });
 }

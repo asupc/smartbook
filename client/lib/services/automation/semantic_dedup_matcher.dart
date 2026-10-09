@@ -335,6 +335,46 @@ class SemanticDedupMatcher {
   static String? exemptKeyword(BillInfo bill) =>
       _normalize(bill.merchant) ?? _normalize(bill.note);
 
+  /// 簇升级(P1)的文案亲缘:两条记录的商户/备注规范化后相等、词元交集
+  /// 或 CJK bigram 交集任一命中,即视为「在讲同一笔交易」。
+  ///
+  /// 中文备注没有分隔符,[_tokenOverlap] 的空白分词对它失效
+  /// (「地铁免密扣款」「地铁乘车」各是单个 token),补 bigram 交集:
+  /// 前者 {地铁,铁免,免密,密扣,扣款} 与后者 {地铁,铁乘,乘车} 共享
+  /// 「地铁」→ 亲缘成立;不相关的同额消费(「美团外卖」vs「地铁乘车」)
+  /// 没有任何 bigram 交集 → 不成立,维持人工确认。
+  static bool clusterTextAffinity(BillInfo a, BillInfo b) => _affinity(
+        _normalize(a.merchant) ?? _normalize(a.note),
+        _normalize(b.merchant) ?? _normalize(b.note),
+      );
+
+  /// [clusterTextAffinity] 的「账单 vs 已入账交易」版本 —— 交易侧只有落库
+  /// 的 note,没有 BillInfo。
+  static bool clusterTextAffinityWithNote(BillInfo bill, String? txNote) =>
+      _affinity(
+        _normalize(bill.merchant) ?? _normalize(bill.note),
+        _normalize(txNote),
+      );
+
+  static bool _affinity(String? a, String? b) {
+    if (a == null || b == null) return false;
+    if (a == b) return true;
+    if (_tokenOverlap(a, b)) return true;
+    return _bigramOverlap(a, b);
+  }
+
+  /// CJK bigram 交集 —— 短中文备注的最低限度文本重叠信号。
+  static bool _bigramOverlap(String a, String b) {
+    if (a.length < 2 || b.length < 2) return false;
+    final left = <String>{
+      for (var i = 0; i < a.length - 1; i++) a.substring(i, i + 2),
+    };
+    for (var i = 0; i < b.length - 1; i++) {
+      if (left.contains(b.substring(i, i + 2))) return true;
+    }
+    return false;
+  }
+
   static bool _tokenOverlap(String a, String b) {
     final left =
         a.split(RegExp(r'[\s\-_]+')).where((e) => e.isNotEmpty).toSet();

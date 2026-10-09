@@ -147,32 +147,42 @@ class AutoBookRule {
     Iterable<BillInfo> others, {
     List<DedupExemptRule> exemptRules = const [],
   }) {
-    final amount = bill.amount;
-    if (amount == null || amount.abs() <= 0) return false;
     for (final other in others) {
-      final otherAmount = other.amount;
-      if (otherAmount == null ||
-          otherAmount.abs() <= 0 ||
-          other.type != bill.type ||
-          other.ledgerId != bill.ledgerId) {
-        continue;
-      }
-      if (otherAmount.abs() != amount.abs()) continue;
-      if (DedupExemptStore.isExempt(
-        exemptRules,
-        billAmount: amount,
-        billNoteNormalized: SemanticDedupMatcher.exemptKeyword(bill),
-        txAmount: otherAmount,
-        txNoteNormalized: SemanticDedupMatcher.exemptKeyword(other),
-      )) {
-        continue;
-      }
-      final diff = (bill.time == null || other.time == null)
-          ? Duration.zero
-          : bill.time!.difference(other.time!).abs();
-      if (diff <= duplicateWindow) return true;
+      if (hardGateMatches(bill, other, exemptRules: exemptRules)) return true;
     }
     return false;
+  }
+
+  /// [looksLikeDuplicate] 的单对明细:bill 与 other 是否命中硬闸门。
+  /// 供簇升级按对收集命中的待确认候选(需要候选对象本身,不只是布尔)。
+  static bool hardGateMatches(
+    BillInfo bill,
+    BillInfo other, {
+    List<DedupExemptRule> exemptRules = const [],
+  }) {
+    final amount = bill.amount;
+    final otherAmount = other.amount;
+    if (amount == null || amount.abs() <= 0) return false;
+    if (otherAmount == null ||
+        otherAmount.abs() <= 0 ||
+        other.type != bill.type ||
+        other.ledgerId != bill.ledgerId) {
+      return false;
+    }
+    if (otherAmount.abs() != amount.abs()) return false;
+    if (DedupExemptStore.isExempt(
+      exemptRules,
+      billAmount: amount,
+      billNoteNormalized: SemanticDedupMatcher.exemptKeyword(bill),
+      txAmount: otherAmount,
+      txNoteNormalized: SemanticDedupMatcher.exemptKeyword(other),
+    )) {
+      return false;
+    }
+    final diff = (bill.time == null || other.time == null)
+        ? Duration.zero
+        : bill.time!.difference(other.time!).abs();
+    return diff <= duplicateWindow;
   }
 
   /// 是否需要进待确认(流程分流总入口)。

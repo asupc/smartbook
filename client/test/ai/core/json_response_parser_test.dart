@@ -202,4 +202,44 @@ void main() {
       expect(bills.first.category, '餐饮');
     });
   });
+
+  group('captureTime(通知时间兜底,2026-10-09)', () {
+    const parser = JsonResponseParser();
+    final capture = DateTime(2026, 10, 9, 8, 32, 5);
+
+    test('时间缺失 → 用通知时间,分钟精度、非推测', () {
+      const raw = '[{"amount":-8.1,"note":"地铁免密扣款","type":"expense"}]';
+      final bills = parser.parse(raw, captureTime: capture);
+      expect(bills, hasLength(1));
+      expect(bills.first.time, capture);
+      expect(bills.first.timeInferred, isFalse);
+      expect(bills.first.timePrecision, BillTimePrecision.minute);
+    });
+
+    test('模型推测时间 → 被通知时间覆盖,猜测不作数', () {
+      const raw = '[{"amount":-8.1,"time":"2026-10-09T12:00:00",'
+          '"time_inferred":true,"type":"expense"}]';
+      final bills = parser.parse(raw, captureTime: capture);
+      expect(bills.first.time, capture);
+      expect(bills.first.timeInferred, isFalse);
+      expect(bills.first.timePrecision, BillTimePrecision.minute);
+    });
+
+    test('正文有可信时间 → 保留模型识别的时间', () {
+      const raw = '[{"amount":-30,"time":"2026-10-09T08:30:00",'
+          '"time_precision":"minute","type":"expense"}]';
+      final bills = parser.parse(raw, captureTime: capture);
+      expect(bills.first.time, DateTime(2026, 10, 9, 8, 30));
+      expect(bills.first.timeInferred, isFalse);
+    });
+
+    test('无 captureTime(手动/短信/详情页路径)→ 旧行为:now + 推测标记', () {
+      // 时间缺失的账单在这些路径由策略层丢弃;解析层语义不变
+      const raw = '[{"amount":-30,"type":"expense"}]';
+      final bills = parser.parse(raw);
+      expect(bills.first.time, isNotNull);
+      expect(bills.first.timeInferred, isTrue);
+      expect(bills.first.timePrecision, BillTimePrecision.inferred);
+    });
+  });
 }

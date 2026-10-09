@@ -1420,6 +1420,8 @@ class AutoBillingService {
             source: 'notification',
             sourceChannel: channel,
             evidenceText: rawText,
+            captureTime:
+                postTime > 0 ? DateTime.fromMillisecondsSinceEpoch(postTime) : null,
           );
 
       if (result.success) {

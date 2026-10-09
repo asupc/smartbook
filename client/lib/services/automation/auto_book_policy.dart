@@ -149,6 +149,20 @@ class AutoBookPolicy {
       );
     }
 
+    // 2026-10-09 用户裁决:自动入口**未识别到交易时间**(time 为空)或时间
+    // 为模型推测(timeInferred)的账单直接丢弃 —— 不允许大模型猜测交易
+    // 时间,也不进待确认列表。通知路径的时间已在解析层被通知时间替换
+    // (postTime,分钟精度),能走到这里的都是短信/无障碍/截图等正文里
+    // 没有时间证据的来源。主动路径(automatic=false)不受此闸门约束。
+    if (bill.time == null || bill.timeInferred) {
+      return AutoBookPolicyDecision(
+        action: AutoBookPolicyAction.ignore,
+        reason: bill.time == null ? 'time_missing' : 'time_inferred',
+        eventKind: inferredKind,
+        settlementStatus: inferredStatus,
+      );
+    }
+
     if (inferredKind == null || inferredKind == BillEventKind.unknown) {
       return AutoBookPolicyDecision(
         action: AutoBookPolicyAction.pending,
@@ -197,11 +211,10 @@ class AutoBookPolicy {
       }
     }
 
-    if (!bill.confidenceProvided || bill.timeInferred) {
+    if (!bill.confidenceProvided) {
       return AutoBookPolicyDecision(
         action: AutoBookPolicyAction.pending,
-        reason:
-            !bill.confidenceProvided ? 'confidence_missing' : 'time_inferred',
+        reason: 'confidence_missing',
         eventKind: inferredKind,
         settlementStatus: inferredStatus,
       );

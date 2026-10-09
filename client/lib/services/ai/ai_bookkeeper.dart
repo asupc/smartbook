@@ -83,10 +83,16 @@ class AiBookkeeper {
 
     /// 原始文本证据，仅用于自动路径的语义硬闸门；不会写入交易。
     String? evidenceText,
+
+    /// 事件捕获时刻(通知 postTime)。AI 未识别出交易时间或给出推测时间
+    /// 时,由解析层改用它(分钟精度、非推测)—— 见 [JsonResponseParser.parse]。
+    /// 仅通知路径传入;其它自动路径时间缺失的账单会被策略层直接丢弃。
+    DateTime? captureTime,
   }) async {
     final context = await AiExtractionContext.forLedger(
       repository: _repo,
       ledgerId: ledgerId,
+      captureTime: captureTime,
     );
     final outcome = await _engine.extractFromText(
       text,
@@ -575,11 +581,12 @@ class AiBookkeeper {
     // 用可变副本维护本批已经处理的账单，防止模型一次返回重复对象时
     // 第一笔入账后第二笔仍拿旧 pool 判定为“无重复”。
     List<BillInfo> recentBills = const [];
+    var pendingCandidates = const <PendingCandidate>[];
     List<BillInfo> pendingBills = const [];
     if (autoBookFlow != null) {
       recentBills = (await _loadBaseline(ledgerId)) ?? const [];
-      pendingBills =
-          (await autoBookFlow.store.load()).map((c) => c.bill).toList();
+      pendingCandidates = await autoBookFlow.store.load();
+      pendingBills = pendingCandidates.map((c) => c.bill).toList();
     }
     final recentComparison = List<BillInfo>.from(recentBills);
     final pendingComparison = List<BillInfo>.from(pendingBills);
@@ -761,13 +768,26 @@ class AiBookkeeper {
           exemptRules = await DedupExemptStore().list();
         } catch (_) {}
       }
-      final basicDuplicate = AutoBookRule.looksLikeDuplicate(
+      // 命中明细分两侧:已入账交易(基线)与待确认候选。簇升级需要按对
+      // 收集命中的候选对象(吸收用),布尔口径与旧 looksLikeDuplicate 等价。
+      final bookedDuplicate = AutoBookRule.looksLikeDuplicate(
         bill,
-        [...recentComparison, ...pendingComparison],
+        recentComparison,
         exemptRules: exemptRules,
       );
+      final matchedPendingCandidates = [
+        for (final c in pendingCandidates)
+          if (AutoBookRule.hardGateMatches(
+            bill,
+            c.bill,
+            exemptRules: exemptRules,
+          ))
+            c,
+      ];
+      final basicDuplicate =
+          bookedDuplicate || matchedPendingCandidates.isNotEmpty;
       final semanticDuplicate = semanticMatch?.isPossible ?? false;
-      final duplicate = basicDuplicate || semanticDuplicate;
+      var duplicate = basicDuplicate || semanticDuplicate;
 
       // 影子模式只观察识别、语义策略和判重结果，不创建交易，也不写入候选。
       // 事件子项仍保留脱敏后的结构化摘要，便于发布前统计和回溯。
@@ -782,6 +802,38 @@ class AiBookkeeper {
         );
         logger.info(_tag, '影子模式跳过写入', _billDiagnostic(bill));
         continue;
+      }
+
+      // 簇升级·对已入账交易:金额+时间硬闸门已过,商户词只到 possible
+      // (备注缺失/写法不同,如「地铁免密扣款」vs「地铁免密支付」),但
+      // bill 自身证据齐全(过闸、非低置信)且与该交易文案有簇亲缘 →
+      // 判定为同一笔支付的多通道重复上报,升级按强判合并(富化),不再
+      // 进待确认。文案对不上(可能是真实的第二笔同额消费)维持原判。
+      if (autoBookFlow != null &&
+          semanticMatch != null &&
+          semanticMatch.isPossible &&
+          !semanticMatch.isStrong &&
+          policy.isAllowed &&
+          !AutoBookRule.isLowConfidence(bill) &&
+          !autoBookFlow.requireConfirmationForAll) {
+        try {
+          final matchedTx =
+              await _repo.getTransactionById(semanticMatch.transactionId);
+          if (matchedTx != null &&
+              SemanticDedupMatcher.clusterTextAffinityWithNote(
+                  bill, matchedTx.note)) {
+            semanticMatch = SemanticDedupMatch(
+              transactionId: matchedTx.id,
+              score: SemanticDedupMatcher.strongThreshold,
+              reason: '${semanticMatch.reason},cluster_affinity',
+            );
+            logger.info(_tag, '簇亲缘命中,弱匹配升级为强判合并',
+                'tx=${matchedTx.id} ${_billDiagnostic(bill)}');
+          }
+        } catch (e) {
+          // 交易反查失败维持原判(possible → 待确认),不影响主流程
+          logger.warning(_tag, '簇升级交易反查失败,维持弱匹配', '$e');
+        }
       }
 
       // 强匹配直接关联已有交易，不再创建第二笔；弱匹配必须进入候选。
@@ -843,6 +895,27 @@ class AiBookkeeper {
           );
           continue;
         }
+      }
+
+      // 簇升级·对待确认候选(P1):bill 自身证据齐全(过闸、非低置信),
+      // 唯一拦它的是与「待确认候选」的疑似重复 —— 命中的都是未入账、证据
+      // 较弱的那一侧。与所有命中候选都有文案亲缘 → 同一笔支付的多通道
+      // 重复上报(如地铁扣款被两个 App 通知 + 详情页各报一次):以 bill
+      // 为准入账一笔,命中候选在入账成功后转为「已合并」。文案对不上
+      // (可能是真实的第二笔同额消费)、或撞的是已入账交易/语义弱匹配、
+      // 或总闸关闭时,维持人工确认。
+      final clusterUpgradable = autoBookFlow != null &&
+          matchedPendingCandidates.isNotEmpty &&
+          !bookedDuplicate &&
+          !semanticDuplicate &&
+          policy.isAllowed &&
+          !AutoBookRule.isLowConfidence(bill) &&
+          !autoBookFlow.requireConfirmationForAll &&
+          matchedPendingCandidates.every((c) =>
+              SemanticDedupMatcher.clusterTextAffinity(bill, c.bill));
+      if (clusterUpgradable) {
+        // 清掉重复标记落入正常入账路径;吸收动作在 createFromBill 成功后执行
+        duplicate = false;
       }
 
       // M2 候选制:低置信 / 语义待确认 / 疑似重复 → 待确认队列,不入账。
@@ -931,6 +1004,7 @@ class AiBookkeeper {
           bill: bill,
           state: AutoBookState.booked.value,
           transactionId: txId,
+          reason: clusterUpgradable ? 'cluster_upgraded' : null,
         );
 
         // 1. **优先**触发 onSaved 回调(主要用于保存图片附件)。
@@ -960,6 +1034,27 @@ class AiBookkeeper {
         saved.add(enriched);
         txIds.add(txId);
         recentComparison.add(bill);
+        if (clusterUpgradable) {
+          // 簇升级吸收:入账已成功,把被覆盖的待确认候选置为已合并。
+          // 同时从本批快照里摘除,避免同批后续账单再次命中已吸收的候选
+          // (会把它们关联到错误的交易上)。
+          for (final candidate in matchedPendingCandidates) {
+            await _absorbPendingCandidate(
+              flow: autoBookFlow,
+              eventStore: eventStore,
+              candidate: candidate,
+              transactionId: txId,
+            );
+          }
+          pendingCandidates = pendingCandidates
+              .where((c) => !matchedPendingCandidates.contains(c))
+              .toList();
+          pendingComparison.removeWhere((b) =>
+              matchedPendingCandidates.any((c) => identical(c.bill, b)));
+          logger.info(_tag,
+              '簇升级入账,吸收 ${matchedPendingCandidates.length} 条待确认候选',
+              'tx=$txId ${_billDiagnostic(bill)}');
+        }
       } catch (e, st) {
         failed++;
         await recordEventItem(
@@ -1136,6 +1231,40 @@ class AiBookkeeper {
       logger.error(_tag, '回填实际名称失败,使用 AI 原始名称', e, st);
       return bill;
     }
+  }
+
+  /// P1 簇升级吸收:把已被升级入账覆盖的待确认候选置为已合并 ——
+  /// 走确认页同一条路径([AutoBookEventStore.resolvePendingItem]:子项
+  /// 转 duplicate 并关联新交易,父事件状态同事务重算),legacy
+  /// SharedPreferences 队列同步移除。吸收失败只记日志,不影响已入账交易。
+  Future<void> _absorbPendingCandidate({
+    required AutoBookFlow flow,
+    required AutoBookEventStore? eventStore,
+    required PendingCandidate candidate,
+    required int transactionId,
+  }) async {
+    if (eventStore != null &&
+        candidate.eventKey != null &&
+        candidate.eventItemIndex != null) {
+      try {
+        final event = await eventStore.findByEventKey(candidate.eventKey!);
+        if (event != null) {
+          await eventStore.resolvePendingItem(
+            eventId: event.id,
+            itemIndex: candidate.eventItemIndex!,
+            state: AutoBookState.duplicate,
+            transactionId: transactionId,
+            reason: 'cluster_merged',
+          );
+        }
+      } catch (e, st) {
+        logger.warning(_tag, '簇升级吸收候选失败(事件表)', '$e');
+        logger.debug(_tag, '簇升级吸收堆栈', st);
+      }
+    }
+    try {
+      await flow.store.remove(candidate.id);
+    } catch (_) {}
   }
 
   /// A2:强判重合并时把后到捕获的增量信息补进已有交易(**只补缺,不覆盖**)。
