@@ -128,7 +128,9 @@ void main() {
         id: PendingCandidate.candidateId(bill),
         bill: bill,
         source: 'sms',
-        capturedAt: DateTime(2026, 9, 2),
+        // capturedAt 用相对时间:固定老日期会撞 C8 的 30 天 TTL 读过滤,
+        // 第二次 add 读不到已存候选,幂等断言随时间腐烂。
+        capturedAt: DateTime.now().subtract(const Duration(days: 1)),
         reason: 'duplicate',
       );
       expect(await store.add(candidate), isTrue);

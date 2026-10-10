@@ -367,4 +367,78 @@ void main() {
           reason: '返回的 id 必须对应实际存在的交易');
     });
   });
+
+  group('AiBookkeeper.approvePending(用户选合并 → 并入 matchedTransactionId)', () {
+    late AutoBookEventStore eventStore;
+
+    setUp(() {
+      eventStore = AutoBookEventStore(db);
+    });
+
+    // 弱匹配特征:同金额同分钟但备注对不上(possible 0.65,非 strong)
+    // —— 候选因这种弱匹配进待确认,修复前重跑判重拿不到 strong 会新建。
+    BillInfo targetBill() => BillInfo(
+          amount: -30,
+          time: DateTime(2026, 10, 9, 12, 0),
+          category: '餐饮',
+          type: BillType.expense,
+          note: '晨光便利店',
+          ledgerId: ledgerId,
+        );
+    BillInfo candidateBill() => BillInfo(
+          amount: -30,
+          time: DateTime(2026, 10, 9, 12, 0),
+          category: '餐饮',
+          type: BillType.expense,
+          note: '便利店购物',
+          ledgerId: ledgerId,
+        );
+
+    AiBookkeeper bookkeeper() => AiBookkeeper(
+          repository: repo,
+          engine: _FakeEngine(),
+          persister: persister,
+          eventStore: eventStore,
+        );
+
+    test('选合并 → 并入指定交易,不新建第二笔(回归:选合并却新增一笔)', () async {
+      final targetTxId = await persister.createFromBill(
+          bill: targetBill(), ledgerId: ledgerId);
+      expect(targetTxId, isNotNull);
+      final store = PendingCandidateStore();
+      final candidate = PendingCandidate(
+        id: 'c-user-merge',
+        bill: candidateBill(),
+        source: 'notification',
+        capturedAt: DateTime(2026, 10, 9, 12, 1),
+        reason: 'duplicate',
+        matchedTransactionId: targetTxId,
+        matchScore: 0.65,
+      );
+      await store.add(candidate);
+
+      final returned = await bookkeeper().approvePending(candidate);
+      expect(returned, targetTxId, reason: '必须并入用户在确认页看到的合并目标');
+      final allTx = await (db.select(db.transactions)).get();
+      expect(allTx, hasLength(1), reason: '合并不能新建第二笔交易');
+      expect(await store.load(), isEmpty, reason: '候选确认后应出队');
+    });
+
+    test('合并目标已被删除 → 回退重新判重/创建,不返回悬空 id', () async {
+      final candidate = PendingCandidate(
+        id: 'c-user-merge-gone',
+        bill: candidateBill(),
+        source: 'notification',
+        capturedAt: DateTime(2026, 10, 9, 12, 1),
+        reason: 'duplicate',
+        matchedTransactionId: 999999,
+        matchScore: 0.65,
+      );
+
+      final returned = await bookkeeper().approvePending(candidate);
+      expect(returned, isNotNull);
+      expect(returned, isNot(999999), reason: '不能返回悬空 transactionId');
+      expect(await repo.getTransactionById(returned!), isNotNull);
+    });
+  });
 }

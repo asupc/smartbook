@@ -66,7 +66,9 @@ void main() {
       type: 'wechat',
       currency: 'CNY',
     );
-    final happenedAt = DateTime(2026, 9, 5, 10, 18);
+    // 相对时间基准:固定老日期会让候选 capturedAt 撞上 C8 的 30 天 TTL
+    // 读过滤,确认页读不到候选,断言随时间腐烂(2026-10 实际发生)。
+    final happenedAt = DateTime.now().subtract(const Duration(days: 1));
     final transactionId = await repo.addTransaction(
       ledgerId: ledgerId,
       type: 'expense',

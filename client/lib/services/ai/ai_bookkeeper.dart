@@ -316,6 +316,39 @@ class AiBookkeeper {
     // 合并到已有 canonical transaction。用户选择“仍记一笔”时跳过这层，
     // 但仍保留上面的同一 event 精确幂等保护。
     if (!forceCreate) {
+      // 用户选「合并到已有交易」时,合并目标就是入队时判重命中、并在
+      // 确认页展示给用户的那笔交易(matchedTransactionId)。不能再重跑
+      // 自动判重 —— 候选恰恰因为匹配不够强(possible)才进待确认,重跑
+      // 拿不到 isStrong 会落穿到新建,违背用户「合并」的明确裁决
+      // (2026-10 修复:选合并却新增一笔)。合并以 duplicate 落事件,
+      // 可被 undoMerge 撤销。
+      final matchedId = candidate.matchedTransactionId;
+      if (matchedId != null) {
+        try {
+          final matched = await _repo.getTransactionById(matchedId);
+          if (matched != null) {
+            await PendingCandidateStore().remove(candidate.id);
+            await _markCandidateEvent(
+              candidate,
+              state: AutoBookState.duplicate,
+              transactionId: matchedId,
+              reason: 'user_merged',
+            );
+            return matchedId;
+          }
+          // 目标已被删除(手删/同步删):不能合并到悬空 id,落回下方
+          // 重新判重路径,仍无强匹配则按普通候选创建。
+          logger.warning(
+            _tag,
+            '候选指定的合并目标交易已不存在,回退重新判重',
+            'tx=$matchedId',
+          );
+        } catch (e, st) {
+          // 目标反查失败不阻断用户确认,走重新判重路径。
+          logger.warning(_tag, '合并目标反查失败,回退重新判重', '$e');
+          logger.debug(_tag, '合并目标反查堆栈', st);
+        }
+      }
       try {
         final match = await _dedupMatcher.findBest(
           repository: _repo,

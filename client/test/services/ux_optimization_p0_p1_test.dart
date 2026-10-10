@@ -364,13 +364,17 @@ void main() {
       final eventStore = AutoBookEventStore(db);
       final store = PendingCandidateStore();
       final bill = _settledBill(merchant: '事件路候选');
+      // 相对时间基准:固定老日期会撞 30 天 TTL(event 侧 expireStalePending
+      // 按 capturedAt 计时、legacy 侧 load() 读过滤),两路候选都被判过期,
+      // 断言随时间腐烂(2026-10 实际发生)。
+      final yesterday = DateTime.now().subtract(const Duration(days: 1));
 
       // event store 路候选(模拟 recordEventItem 写入结构)
       final event = await eventStore.ensure(AutoBookInput(
         eventKey: 'sms:v3:count-evt',
         source: AutoBookSource.sms,
         ledgerId: ledgerId,
-        capturedAt: DateTime(2026, 9, 4, 10),
+        capturedAt: yesterday,
       ));
       // listPending 只投影 parent state=pending 的事件(真实流程中候选制确认
       // 后事件即为 pending 终态)
@@ -387,7 +391,7 @@ void main() {
           'candidate_id': 'c-evt',
           'billing_types': ['sms'],
           'source': 'sms',
-          'captured_at': DateTime(2026, 9, 4, 10).toIso8601String(),
+          'captured_at': yesterday.toIso8601String(),
         },
         reason: 'lowConfidence',
       );
@@ -396,7 +400,7 @@ void main() {
       await store.add(PendingCandidate(
         id: 'legacy-x',
         bill: _settledBill(merchant: '旧队列候选'),
-        capturedAt: DateTime(2026, 9, 4, 11),
+        capturedAt: yesterday.add(const Duration(hours: 1)),
         reason: 'lowConfidence',
       ));
 
