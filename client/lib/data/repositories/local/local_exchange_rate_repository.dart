@@ -15,6 +15,26 @@ class LocalExchangeRateRepository implements ExchangeRateRepository {
 
   LocalExchangeRateRepository(this.db, {required this.trackerGetter});
 
+  /// 缺陷 G:`exchange_rates.rate` / `exchange_rate_overrides.rate` 是十进制
+  /// **字符串**列,此前把任意文本原样落库。`invertRate` 对次正规输入会产出
+  /// 字面量 `"Infinity"`(misc_recurring_currency 测试已锁定该下溢面),
+  /// 字符串列不做 REAL 转换 → 该值**能落库**,消费方 `double.tryParse` 得到
+  /// Infinity/NaN 后绕过 `rate <= 0` 降级(NaN 与 Infinity 都不 `<= 0`)
+  /// → `computeNativeAmount` 产出非有限 nativeAmount,污染统计。
+  ///
+  /// 守卫口径(只拦**非有限**,不新增其它失败面):
+  /// - 可解析且非有限(`"Infinity"`/`"-Infinity"`/`"NaN"`/`"1e999"`)→ 拒;
+  /// - 完全不可解析(`"abc"`)→ **放行**,既有行为是消费方 `tryParse` 得 null
+  ///   后显式降级(README D5:缺失就是缺失),已有 HARDENING 测试锁定;
+  /// - 0 / 负值 → 放行(消费方 `rate <= 0` 显式降级)。
+  static void validateRateString(String rate, String field) {
+    final parsed = double.tryParse(rate.trim());
+    if (parsed != null && !parsed.isFinite) {
+      throw ArgumentError.value(rate, field,
+          '$field 不能是 NaN/Infinity(NaN 与 Infinity 都不命中 rate<=0 降级,会污染折算)');
+    }
+  }
+
   @override
   Future<void> upsertAutoRates({
     required String base,
@@ -26,6 +46,8 @@ class LocalExchangeRateRepository implements ExchangeRateRepository {
     final baseUp = base.toUpperCase();
     await db.batch((b) {
       for (final e in rates.entries) {
+        // 缺陷 G:自动汇率同样拦截非有限字符串字面量(invertRate 下溢面)。
+        validateRateString(e.value, 'rate(${e.key})');
         b.insert(
           db.exchangeRates,
           ExchangeRatesCompanion.insert(
@@ -95,6 +117,8 @@ class LocalExchangeRateRepository implements ExchangeRateRepository {
     required String quote,
     required String rate,
   }) async {
+    // 缺陷 G:手动汇率同补守卫(用户输入框可粘贴 "Infinity"/"NaN")。
+    validateRateString(rate, 'rate');
     final baseUp = base.toUpperCase();
     final quoteUp = quote.toUpperCase();
     final existing = await (db.select(db.exchangeRateOverrides)

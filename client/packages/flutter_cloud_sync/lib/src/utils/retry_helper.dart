@@ -81,7 +81,7 @@ class RetryHelper {
     void Function(int attempt, Exception error)? onRetry,
   }) async {
     int attempt = 0;
-    Duration currentDelay = config.initialDelay;
+    Duration currentDelay = _clampDelay(config.initialDelay, config);
     Exception? lastException;
 
     while (attempt < config.maxAttempts) {
@@ -108,18 +108,60 @@ class RetryHelper {
         // Wait before retrying
         await Future.delayed(currentDelay);
 
-        // Calculate next delay with exponential backoff
-        currentDelay = Duration(
-          milliseconds: (currentDelay.inMilliseconds * config.backoffMultiplier)
-              .round()
-              .clamp(0, config.maxDelay.inMilliseconds),
-        );
+        // Calculate next delay with exponential backoff.
+        //
+        // `currentDelay` is always kept within maxDelay: the initial delay is
+        // clamped on the first pass too (previously an `initialDelay` above
+        // `maxDelay` — or a huge one — was slept verbatim), and a degenerate
+        // multiplier cannot collapse the delay to zero, which would turn the
+        // retry loop into an unthrottled request storm.
+        currentDelay = _nextDelay(currentDelay, config);
       }
     }
 
     // This should never be reached, but just in case
     throw lastException ??
         CloudSyncException('Retry exhausted with no exception recorded');
+  }
+
+  /// Compute the next backoff delay, clamped to `[min, maxDelay]`.
+  ///
+  /// Defensive against hostile / misconfigured `RetryConfig` values:
+  /// * `initialDelay > maxDelay` (including multi-year values) → clamped;
+  /// * `backoffMultiplier` of 0 / NaN / Infinity / negative is rejected and
+  ///   replaced by 1.0 (constant delay), so every retry is separated by at
+  ///   least `initialDelay` instead of degrading into an unthrottled storm.
+  static Duration _nextDelay(Duration currentDelay, RetryConfig config) {
+    final multiplier = config.backoffMultiplier;
+    final effectiveMultiplier =
+        (multiplier.isFinite && multiplier >= 1.0) ? multiplier : 1.0;
+
+    final baseMs = _nonNegativeMs(currentDelay);
+    double scaled = baseMs * effectiveMultiplier;
+    if (!scaled.isFinite) {
+      scaled = _maxDelayMs(config).toDouble();
+    }
+    return _clampDelay(Duration(milliseconds: scaled.round()), config);
+  }
+
+  /// Clamp [delay] into `[Duration.zero, config.maxDelay]`.
+  ///
+  /// Guards every wait (including the very first one) so a single sleep can
+  /// never exceed `maxDelay`.
+  static Duration _clampDelay(Duration delay, RetryConfig config) {
+    final maxMs = _maxDelayMs(config);
+    final ms = _nonNegativeMs(delay);
+    return Duration(milliseconds: ms > maxMs ? maxMs : ms);
+  }
+
+  static int _maxDelayMs(RetryConfig config) {
+    final maxMs = config.maxDelay.inMilliseconds;
+    return maxMs < 0 ? 0 : maxMs;
+  }
+
+  static int _nonNegativeMs(Duration d) {
+    final ms = d.inMilliseconds;
+    return ms < 0 ? 0 : ms;
   }
 
   /// Execute an operation with a simple retry count
@@ -185,6 +227,14 @@ class RetryHelper {
     if (config.retryableExceptions != null) {
       return config.retryableExceptions!
           .any((type) => exception.runtimeType == type);
+    }
+
+    // Terminal HTTP 4xx responses (validation failures, 404, 422, …) will not
+    // succeed on replay: retrying them just repeats an invalid request. 408
+    // (request timeout) and 429 (too many requests) are transient and remain
+    // retryable — see CloudSyncException.isClientError.
+    if (exception is CloudSyncException && exception.isClientError) {
+      return false;
     }
 
     // Default behavior: retry on CloudStorageException but not on auth errors

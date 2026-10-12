@@ -14,6 +14,7 @@ import '../../widgets/biz/biz.dart';
 import '../../widgets/biz/smartbook_icon.dart';
 import '../transaction/search_page.dart';
 import '../../l10n/app_localizations.dart';
+import '../../styles/tokens.dart';
 import '../../services/system/logger_service.dart';
 import '../../utils/format_utils.dart';
 import '../../utils/month_range.dart';
@@ -25,6 +26,16 @@ import 'ledgers_page_new.dart';
 import '../../providers/shared_ledger_providers.dart';
 import '../automation/pending_confirmation_page.dart';
 
+import '../automation/auto_book_history_page.dart';
+import '../automation/auto_billing_settings_page.dart';
+import '../automation/auto_billing_setup_page.dart';
+import '../../services/automation/automation_health.dart';
+import '../../services/automation/automation_settings_store.dart';
+
+import '../transaction/transaction_editor_page.dart';
+
+import '../../widget/widget_data_service.dart';
+
 // 优化版首页 - 使用FlutterListView实现精准定位和丝滑跳转
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
@@ -33,7 +44,8 @@ class HomePage extends ConsumerStatefulWidget {
   ConsumerState<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends ConsumerState<HomePage> {
+class _HomePageState extends ConsumerState<HomePage>
+    with WidgetsBindingObserver {
   late FlutterListViewController _listController;
   bool _isJumping = false;
   final GlobalKey<TransactionListState> _transactionListKey =
@@ -87,8 +99,7 @@ class _HomePageState extends ConsumerState<HomePage> {
       'pending_banner_dismissed_date';
   static const String _pendingBannerDismissedCountKey =
       'pending_banner_dismissed_count';
-  String? _pendingBannerDismissedDate;
-  int _pendingBannerDismissedCount = 0;
+  // 兼容:冷静窗改内存态后,这两个 prefs 仍按旧键写入(便于降级版读取),本页不再读回。
   // 批次5:上次横幅关闭时刻(内存态)。当日一票抑制会让「处理了一半、剩几条」
   // 的残留候选当天不再提醒 —— 资金性质数据不该被静默;改为 4 小时冷静窗。
   DateTime? _pendingBannerDismissedAt;
@@ -96,26 +107,33 @@ class _HomePageState extends ConsumerState<HomePage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _listController = FlutterListViewController();
     _checkLastMonthReminder();
     _checkAnnualReportReminder();
     _checkBudgetSetupHint();
-    _loadPendingBannerDismissState();
+
     // 首页展示期间候选可能变化(后台捕获冷启动 drain 后即 resumed),拉一次新
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) ref.invalidate(pendingCandidateCountProvider);
+      if (!mounted) return;
+      ref.invalidate(pendingCandidateCountProvider);
+      // B5 任务 3:每日汇总只在「下一次可运行时」送达(不申请精确闹钟)。
+      unawaited(() async {
+        try {
+          await ref.read(autoBillingServiceProvider).maybeSendDailyDigest();
+        } catch (_) {}
+      }());
     });
   }
 
-  Future<void> _loadPendingBannerDismissState() async {
-    final prefs = await SharedPreferences.getInstance();
-    if (!mounted) return;
-    setState(() {
-      _pendingBannerDismissedDate =
-          prefs.getString(_pendingBannerDismissedDateKey);
-      _pendingBannerDismissedCount =
-          prefs.getInt(_pendingBannerDismissedCountKey) ?? 0;
-    });
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // B1 任务 2:页面恢复前台时补查状态,不在每次 build 里查原生桥/网络。
+    if (state == AppLifecycleState.resumed && mounted) {
+      ref.read(automationHealthRefreshProvider.notifier).state++;
+      ref.invalidate(automationHealthProvider);
+      ref.invalidate(pendingCandidateCountProvider);
+    }
   }
 
   /// 记录「今日已处理过提醒条」:点按进确认页或点关闭都算;
@@ -128,8 +146,6 @@ class _HomePageState extends ConsumerState<HomePage> {
     await prefs.setInt(_pendingBannerDismissedCountKey, count);
     if (mounted) {
       setState(() {
-        _pendingBannerDismissedDate = today;
-        _pendingBannerDismissedCount = count;
         // 批次5:关闭只进 4 小时冷静窗(不再当日一票抑制),残留候选
         // 晚些时候会再提醒 —— 处理到一半被忘记是资金数据风险。
         _pendingBannerDismissedAt = now;
@@ -237,6 +253,7 @@ class _HomePageState extends ConsumerState<HomePage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _debounceTimer?.cancel();
     _listController.dispose();
     super.dispose();
@@ -586,12 +603,55 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
   }
 
-  // 待确认提醒卡片(样式与月初提醒一致,P0-3)
-  Widget _buildPendingConfirmBanner(BuildContext context, int count) {
+  // 首页状态卡(B1 任务 3):运行状态 + 待确认提示合并成**一张**紧凑卡片,
+  // 同一问题不重复占位;待确认入口与 4 小时冷静窗逻辑保留。
+  // 没有任何可行动状态(全绿、无待确认、非演练)时不占位。
+  Widget _buildAutomationStatusCard(
+    BuildContext context, {
+    required int pendingCount,
+    required bool suppressPendingPrompt,
+  }) {
     final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
     final primaryColor = ref.watch(primaryColorProvider);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final accent = Colors.orange;
+    final isDark = theme.brightness == Brightness.dark;
+
+    final healthAsync = ref.watch(automationHealthProvider);
+    // AI 维度用事件流实时覆盖:状态变化不必重查原生桥。
+    final aiLive = ref.watch(automationAiStateProvider).valueOrNull;
+    final base = healthAsync.asData?.value;
+    if (base == null) return const SizedBox.shrink();
+    final health = aiLive == null ? base : base.withAiState(aiLive);
+
+    final issues = health.issues();
+    final showPending = pendingCount > 0 && !suppressPendingPrompt;
+    final showShadow = health.shadowMode;
+    if (issues.isEmpty && !showPending && !showShadow) {
+      return const SizedBox.shrink();
+    }
+
+    // 主行:演练 > 阻断问题 > 普通问题 > 运行正常
+    final shadow = showShadow;
+    final primaryIssue = issues.isEmpty
+        ? null
+        : (issues.where((i) => i.blocking).toList().isNotEmpty
+            ? issues.firstWhere((i) => i.blocking)
+            : issues.first);
+    final extraIssues =
+        issues.where((i) => !identical(i, primaryIssue)).toList();
+
+    final accent = shadow
+        ? const Color(0xFF7C3AED)
+        : (primaryIssue == null ? Colors.green : Colors.orange);
+
+    String primaryText;
+    if (shadow) {
+      primaryText = l10n.autoHealthShadowBanner;
+    } else if (primaryIssue == null) {
+      primaryText = l10n.autoHealthOk;
+    } else {
+      primaryText = AutomationHealth.describe(l10n, primaryIssue);
+    }
 
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 4, 12, 8),
@@ -623,56 +683,127 @@ class _HomePageState extends ConsumerState<HomePage> {
               child: Container(width: 4, color: accent),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
-              child: Row(
+              padding: const EdgeInsets.fromLTRB(16, 10, 8, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.fact_check_outlined, color: accent, size: 18),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      l10n.homePendingConfirmBanner(count),
-                      style: const TextStyle(fontSize: 14),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () async {
-                      await _dismissPendingBanner(count);
-                      if (!mounted) return;
-                      await Navigator.of(context).push(
-                        MaterialPageRoute(
-                            builder: (_) => const PendingConfirmationPage()),
-                      );
-                      if (mounted) {
-                        ref.invalidate(pendingCandidateCountProvider);
-                      }
-                    },
-                    child: Row(
-                      children: [
-                        Text(
-                          l10n.pendingConfirmationTitle,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: primaryColor,
-                          ),
+                  // 状态主行
+                  Row(
+                    children: [
+                      Icon(
+                        shadow
+                            ? Icons.science_outlined
+                            : (primaryIssue == null
+                                ? Icons.check_circle_outline
+                                : Icons.warning_amber_rounded),
+                        color: accent,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          primaryText,
+                          style: const TextStyle(
+                              fontSize: 14, fontWeight: FontWeight.w600),
                         ),
-                        Icon(Icons.chevron_right,
-                            size: 18, color: primaryColor),
-                      ],
-                    ),
+                      ),
+                      if (primaryIssue != null &&
+                          primaryIssue.action !=
+                              AutomationIssueAction.none)
+                        _statusAction(
+                          _actionLabel(l10n, primaryIssue.action),
+                          () => _runHealthAction(primaryIssue.action),
+                          primaryColor,
+                        ),
+                    ],
                   ),
-                  const SizedBox(width: 12),
-                  GestureDetector(
-                    onTap: () => _dismissPendingBanner(count),
-                    behavior: HitTestBehavior.opaque,
-                    child: Icon(
-                      Icons.close,
-                      size: 18,
-                      color: isDark ? Colors.white38 : Colors.black26,
+                  // 其余问题(最多两条,保持紧凑)
+                  for (final issue in extraIssues.take(2))
+                    Padding(
+                      padding: const EdgeInsets.only(left: 26, top: 2),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              AutomationHealth.describe(l10n, issue),
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: BeeTokens.textSecondary(context),
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (issue.action != AutomationIssueAction.none)
+                            _statusAction(
+                              _actionLabel(l10n, issue.action),
+                              () => _runHealthAction(issue.action),
+                              primaryColor,
+                            ),
+                        ],
+                      ),
                     ),
-                  ),
+                  // 待确认行(保留原入口与冷静窗)
+                  if (showPending)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 26, top: 4),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              l10n.homePendingConfirmBanner(pendingCount),
+                              style: theme.textTheme.bodySmall,
+                            ),
+                          ),
+                          _statusAction(
+                            l10n.pendingConfirmationTitle,
+                            () async {
+                              await _dismissPendingBanner(pendingCount);
+                              if (!mounted) return;
+                              await Navigator.of(context).push(
+                                MaterialPageRoute(
+                                    builder: (_) =>
+                                        const PendingConfirmationPage()),
+                              );
+                              if (mounted) {
+                                ref
+                                    .invalidate(pendingCandidateCountProvider);
+                              }
+                            },
+                            primaryColor,
+                          ),
+                          GestureDetector(
+                            onTap: () => _dismissPendingBanner(pendingCount),
+                            behavior: HitTestBehavior.opaque,
+                            child: Icon(
+                              Icons.close,
+                              size: 16,
+                              color:
+                                  isDark ? Colors.white38 : Colors.black26,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  // 最近捕获/处理时间:不凭「长期无新事件」判定断开
+                  if (health.lastCaptureAt != null ||
+                      health.lastProcessedAt != null)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 26, top: 4),
+                      child: Text(
+                        [
+                          if (health.lastCaptureAt != null)
+                            l10n.autoHealthLastCapture(
+                                _shortTime(health.lastCaptureAt!)),
+                          if (health.lastProcessedAt != null)
+                            l10n.autoHealthLastProcessed(
+                                _shortTime(health.lastProcessedAt!)),
+                        ].join(' · '),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: BeeTokens.textTertiary(context),
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -680,6 +811,124 @@ class _HomePageState extends ConsumerState<HomePage> {
         ),
       ),
     );
+  }
+
+  String _actionLabel(AppLocalizations l10n, AutomationIssueAction action) {
+    return switch (action) {
+      AutomationIssueAction.openPending => l10n.autoHealthViewPending,
+      AutomationIssueAction.openRecords => l10n.autoHealthViewRecords,
+      _ => l10n.autoHealthOpenSettings,
+    };
+  }
+
+  Widget _statusAction(String label, VoidCallback onTap, Color color) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+          Icon(Icons.chevron_right, size: 16, color: color),
+        ],
+      ),
+    );
+  }
+
+  /// B5 任务 4:快捷记账 —— 金额优先。用本月最常用支出分类直接打开金额
+  /// 编辑器(TransactionEditorPage 的 initialCategoryId 自动弹金额面板),
+  /// 账户走默认账户,分类可在面板里再改。
+  Future<void> _openQuickAdd() async {
+    final ledgerId = ref.read(currentLedgerIdProvider);
+    int? categoryId;
+    try {
+      final items = await WidgetDataService.gatherQuickAddCategories(
+        repository: ref.read(repositoryProvider),
+        ledgerId: ledgerId,
+        limit: 1,
+      );
+      if (items.isNotEmpty) categoryId = items.first.categoryId;
+    } catch (_) {
+      categoryId = null;
+    }
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => TransactionEditorPage(
+          initialKind: 'expense',
+          quickAdd: true,
+          initialCategoryId: categoryId,
+        ),
+      ),
+    );
+    if (mounted) {
+      ref.read(statsRefreshProvider.notifier).state++;
+      ref.invalidate(pendingCandidateCountProvider);
+    }
+    // 顺带补发每日汇总(到点后下一次可运行时送达)。
+    try {
+      await ref
+          .read(autoBillingServiceProvider)
+          .maybeSendDailyDigest();
+    } catch (_) {}
+  }
+
+  String get l10nQuickAddTooltip =>
+      AppLocalizations.of(context).homeQuickAddTitle;
+
+  /// 状态卡动作:按问题维度直达对应页面(设置/待确认/识别记录)。
+  Future<void> _runHealthAction(AutomationIssueAction action) async {
+    switch (action) {
+      case AutomationIssueAction.openPending:
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+              builder: (_) => const PendingConfirmationPage()),
+        );
+        if (mounted) ref.invalidate(pendingCandidateCountProvider);
+      case AutomationIssueAction.openRecords:
+        await Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const AutoBookHistoryPage()),
+        );
+        if (mounted) ref.invalidate(pendingCandidateCountProvider);
+      case AutomationIssueAction.openSetup:
+      case AutomationIssueAction.openSourceSettings:
+      case AutomationIssueAction.openPermissionPage:
+      case AutomationIssueAction.openListenerSettings:
+      case AutomationIssueAction.openAccessibilitySettings:
+      case AutomationIssueAction.openAiConfig:
+      case AutomationIssueAction.openSyncStatus:
+      case AutomationIssueAction.none:
+        final setupDone = await ref
+            .read(automationSettingsStoreProvider)
+            .isSetupCompleted();
+        if (!mounted) return;
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => setupDone
+                ? const AutoBillingSettingsPage()
+                : const AutoBillingSetupPage(),
+          ),
+        );
+        if (mounted) {
+          ref.read(automationHealthRefreshProvider.notifier).state++;
+          ref.invalidate(automationHealthProvider);
+        }
+    }
+  }
+
+  String _shortTime(DateTime t) {
+    final local = t.toLocal();
+    return '${local.month.toString().padLeft(2, '0')}-'
+        '${local.day.toString().padLeft(2, '0')} '
+        '${local.hour.toString().padLeft(2, '0')}:'
+        '${local.minute.toString().padLeft(2, '0')}';
   }
 
   // 年度账单提醒卡片（样式与月初提醒一致）
@@ -951,6 +1200,13 @@ class _HomePageState extends ConsumerState<HomePage> {
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor, // ⭐ 自适应背景色
+      // B5 任务 4:首页固定快捷记账入口 —— 复用金额编辑器、默认账户与最近
+      // 使用分类(与桌面快速记账组件同一套口径)。
+      floatingActionButton: FloatingActionButton(
+        tooltip: l10nQuickAddTooltip,
+        onPressed: _openQuickAdd,
+        child: const Icon(Icons.add),
+      ),
       body: Column(
         children: [
           Consumer(builder: (context, ref, _) {
@@ -1213,18 +1469,21 @@ class _HomePageState extends ConsumerState<HomePage> {
           // 年度账单提醒卡片（12月15日 - 次年1月31日）
           if (_showAnnualReportReminder)
             _buildAnnualReportReminderCard(context),
-          // 待确认提醒条(P0-3):有待确认候选必提醒;当日已点过且数量未增不再现
+          // 自动记账状态卡(B1 任务 3):运行状态 + 待确认提示合并为一张卡,
+          // 同一问题不重复占位;待确认入口与 4 小时冷静窗保留,状态问题不随
+          // 待确认被关掉而隐藏。
           Consumer(builder: (context, ref, _) {
             final count =
                 ref.watch(pendingCandidateCountProvider).valueOrNull ?? 0;
             final now = DateTime.now();
-            final today = '${now.year}-${now.month}-${now.day}';
             final dismissedRecently = _pendingBannerDismissedAt != null &&
                 now.difference(_pendingBannerDismissedAt!) <
                     const Duration(hours: 4);
-            final suppressed = count <= 0 || dismissedRecently;
-            if (suppressed) return const SizedBox.shrink();
-            return _buildPendingConfirmBanner(context, count);
+            return _buildAutomationStatusCard(
+              context,
+              pendingCount: count,
+              suppressPendingPrompt: dismissedRecently,
+            );
           }),
           // 预算设置引导卡片（无预算 + 未关闭过）
           Consumer(builder: (context, ref, _) {

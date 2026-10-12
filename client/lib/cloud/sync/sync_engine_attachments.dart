@@ -105,53 +105,74 @@ extension SyncEngineAttachmentsExt on SyncEngine {
     return uploaded;
   }
 
+  /// 低-3(a)(2026-10-11 三轮复查):附件网络操作统一走 [RetryHelper]。
+  ///
+  /// 旧实现是手写 3-attempt 循环,不检查 [CloudStorageException.statusCode] —
+  /// 400/404/409 等**终态** 4xx 也盲目退避重试(重放同样的请求永远同结果,
+  /// 白白 2 次退避 + 3 倍服务端 load)。RetryHelper 的 4xx 短路(408/429
+  /// 瞬态除外)此前是零调用点的死代码 —— 这里把它接到真正的生产路径上。
+  ///
+  /// 与旧循环语义对齐:3 attempts / 1s 起步指数退避(1s, 2s)/ 失败吞错返
+  /// false(不阻塞整批其余附件)。新增:终态 4xx 立即放弃(不重试)。
+  static final RetryConfig _attachmentRetryConfig = RetryConfig(
+    maxAttempts: 3,
+    initialDelay: const Duration(seconds: 1),
+    maxDelay: const Duration(seconds: 4),
+    backoffMultiplier: 2.0,
+  );
+
   Future<bool> _uploadOneWithRetry(
-      TransactionAttachment att, String serverLedgerId) async {
+    TransactionAttachment att, String serverLedgerId) async {
     final localFile = await _getAttachmentFile(att.fileName);
     if (localFile == null || !localFile.existsSync()) {
       logger.debug('SyncEngine', '附件本地文件不存在,跳过: ${att.fileName}');
       return false;
     }
-    Object? lastError;
-    for (var attempt = 0; attempt < 3; attempt++) {
-      try {
-        final bytes = await localFile.readAsBytes();
-        final result = await provider.uploadAttachment(
-          ledgerId: serverLedgerId,
-          bytes: bytes,
-          fileName: att.originalName ?? att.fileName,
-        );
-        await (db.update(db.transactionAttachments)
-              ..where((a) => a.id.equals(att.id)))
-            .write(TransactionAttachmentsCompanion(
-          cloudFileId: d.Value(result.fileId),
-          cloudSha256: d.Value(result.sha256),
-        ));
-        // 回填后给父 tx 登记 update change(详见旧 _legacyUploadAttachments 注释,
-        // 防 "仅元数据" race)。
-        final txRow = await (db.select(db.transactions)
-              ..where((t) => t.id.equals(att.transactionId)))
-            .getSingleOrNull();
-        if (txRow?.syncId != null) {
-          await changeTracker.recordLedgerChange(
-            entityType: 'transaction',
-            entityId: att.transactionId,
-            entitySyncId: txRow!.syncId!,
-            ledgerId: txRow.ledgerId,
-            action: 'update',
+    try {
+      await RetryHelper.execute(
+        () async {
+          final bytes = await localFile.readAsBytes();
+          final result = await provider.uploadAttachment(
+            ledgerId: serverLedgerId,
+            bytes: bytes,
+            fileName: att.originalName ?? att.fileName,
           );
-        }
-        return true;
-      } catch (e) {
-        lastError = e;
-        if (attempt < 2) {
-          await Future.delayed(Duration(seconds: 1 << attempt));
-        }
+          await (db.update(db.transactionAttachments)
+                ..where((a) => a.id.equals(att.id)))
+              .write(TransactionAttachmentsCompanion(
+            cloudFileId: d.Value(result.fileId),
+            cloudSha256: d.Value(result.sha256),
+          ));
+          return result;
+        },
+        config: _attachmentRetryConfig,
+        onRetry: (attempt, error) {
+          logger.warning('SyncEngine',
+              '附件上传重试 ${att.fileName} #$attempt: $error');
+        },
+      );
+      // 回填后给父 tx 登记 update change(详见旧 _legacyUploadAttachments 注释,
+      // 防 "仅元数据" race)。
+      final txRow = await (db.select(db.transactions)
+            ..where((t) => t.id.equals(att.transactionId)))
+          .getSingleOrNull();
+      if (txRow?.syncId != null) {
+        await changeTracker.recordLedgerChange(
+          entityType: 'transaction',
+          entityId: att.transactionId,
+          entitySyncId: txRow!.syncId!,
+          ledgerId: txRow.ledgerId,
+          action: 'update',
+        );
       }
+      return true;
+    } on Exception catch (e) {
+      // 终态 4xx(RetryHelper 已不重试)或 3 次耗尽:记录后放弃本条。
+      final terminal = e is CloudStorageException && e.isClientError;
+      logger.warning('SyncEngine',
+          '附件上传失败 ${att.fileName}: $e${terminal ? '(4xx 终态,不重试)' : ' after 3 attempts'}');
+      return false;
     }
-    logger.warning('SyncEngine',
-        '附件上传失败 ${att.fileName} after 3 attempts: $lastError');
-    return false;
   }
 
   /// 下载云端附件到本地。Phase 3:并发 + retry。
@@ -190,24 +211,29 @@ extension SyncEngineAttachmentsExt on SyncEngine {
     if (localFile.existsSync()) return false;
     final cloudFileId = att.cloudFileId;
     if (cloudFileId == null) return false;
-    Object? lastError;
-    for (var attempt = 0; attempt < 3; attempt++) {
-      try {
-        final bytes = await provider.downloadAttachment(fileId: cloudFileId);
-        final dir = localFile.parent;
-        if (!dir.existsSync()) dir.createSync(recursive: true);
-        await localFile.writeAsBytes(bytes);
-        return true;
-      } catch (e) {
-        lastError = e;
-        if (attempt < 2) {
-          await Future.delayed(Duration(seconds: 1 << attempt));
-        }
-      }
+    try {
+      await RetryHelper.execute(
+        () async {
+          final bytes = await provider.downloadAttachment(fileId: cloudFileId);
+          final dir = localFile.parent;
+          if (!dir.existsSync()) dir.createSync(recursive: true);
+          await localFile.writeAsBytes(bytes);
+          return bytes;
+        },
+        config: _attachmentRetryConfig,
+        onRetry: (attempt, error) {
+          logger.warning('SyncEngine',
+              '附件下载重试 fileId=$cloudFileId #$attempt: $error');
+        },
+      );
+      return true;
+    } on Exception catch (e) {
+      // 终态 4xx(如 404 — 云端文件已被清理)立即放弃,不重试。
+      final terminal = e is CloudStorageException && e.isClientError;
+      logger.warning('SyncEngine',
+          '附件下载失败 fileId=$cloudFileId: $e${terminal ? '(4xx 终态,不重试)' : ' after 3 attempts'}');
+      return false;
     }
-    logger.warning('SyncEngine',
-        '附件下载失败 fileId=$cloudFileId after 3 attempts: $lastError');
-    return false;
   }
 
   /// 处理 `_applyCategoryChange` 入队的自定义分类图标下载任务。
@@ -246,40 +272,51 @@ extension SyncEngineAttachmentsExt on SyncEngine {
 
   Future<bool> _downloadCustomIconWithRetry(CustomIconDownloadJob job) async {
     final iconSvc = CustomIconService();
-    Object? lastError;
-    for (var attempt = 0; attempt < 3; attempt++) {
-      try {
-        final existing = await (db.select(db.categories)
-              ..where((c) => c.id.equals(job.categoryId)))
-            .getSingleOrNull();
-        if (existing == null) return false;
-        if ((existing.customIconPath ?? '').contains(job.cloudFileId)) {
-          try {
-            final abs = await iconSvc.resolveIconPath(existing.customIconPath!);
-            if (await File(abs).exists()) return true;
-          } catch (_) {}
-        }
-        final bytes = await provider.downloadAttachment(fileId: job.cloudFileId);
-        final ext = _detectIconExtension(bytes, originalPath: job.expectedPath);
-        final iconDir = await iconSvc.getIconDirectory();
-        final safeName = '${job.cloudFileId.replaceAll('/', '_')}$ext';
-        final absPath = '${iconDir.path}/$safeName';
-        await File(absPath).writeAsBytes(bytes);
-        final relPath = 'custom_icons/$safeName';
-        await (db.update(db.categories)
-              ..where((c) => c.id.equals(job.categoryId)))
-            .write(CategoriesCompanion(customIconPath: d.Value(relPath)));
-        return true;
-      } catch (e) {
-        lastError = e;
-        if (attempt < 2) {
-          await Future.delayed(Duration(seconds: 1 << attempt));
-        }
-      }
+    // 分类已删 → 无处落地,不算失败也不重试(与旧实现一致)。
+    final existing = await (db.select(db.categories)
+          ..where((c) => c.id.equals(job.categoryId)))
+        .getSingleOrNull();
+    if (existing == null) return false;
+    try {
+      await RetryHelper.execute(
+        () async {
+          if ((existing.customIconPath ?? '').contains(job.cloudFileId)) {
+            try {
+              final abs =
+                  await iconSvc.resolveIconPath(existing.customIconPath!);
+              if (await File(abs).exists()) return;
+            } catch (_) {}
+          }
+          final bytes =
+              await provider.downloadAttachment(fileId: job.cloudFileId);
+          final ext =
+              _detectIconExtension(bytes, originalPath: job.expectedPath);
+          final iconDir = await iconSvc.getIconDirectory();
+          final safeName = '${job.cloudFileId.replaceAll('/', '_')}$ext';
+          final absPath = '${iconDir.path}/$safeName';
+          await File(absPath).writeAsBytes(bytes);
+          final relPath = 'custom_icons/$safeName';
+          await (db.update(db.categories)
+                ..where((c) => c.id.equals(job.categoryId)))
+              .write(CategoriesCompanion(customIconPath: d.Value(relPath)));
+        },
+        config: _attachmentRetryConfig,
+        onRetry: (attempt, error) {
+          logger.warning('SyncEngine',
+              '自定义图标下载重试 fileId=${job.cloudFileId} #$attempt: $error');
+        },
+      );
+      return true;
+    } on Exception catch (e) {
+      // 终态 4xx 或 3 次耗尽:drainCustomIconQueue 会把失败的 job 放回
+      // queue 等下次 drain —— 对终态 4xx 这仍是安全的(下次 drain 单次
+      // 请求即放弃,不再 3 连击)。
+      final terminal = e is CloudStorageException && e.isClientError;
+      logger.warning('SyncEngine',
+          '自定义图标下载失败 fileId=${job.cloudFileId}: $e'
+          '${terminal ? '(4xx 终态,不重试)' : ' after 3 attempts'}');
+      return false;
     }
-    logger.warning('SyncEngine',
-        '自定义图标下载失败 fileId=${job.cloudFileId}: $lastError');
-    return false;
   }
 
   /// 获取附件本地文件路径

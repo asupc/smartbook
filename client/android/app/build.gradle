@@ -38,6 +38,10 @@ android {
     }
 
     defaultConfig {
+
+        // B3(R01):原生队列的 SQLite 事务/迁移/ACK 走仪器测试。
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.smartbook.zhi"
         // You can update the following values to match your application needs.
@@ -228,4 +232,12 @@ dependencies {
 
     // SmsReceiver 纯函数过滤逻辑的 JVM 单测(见 test/java/com/tntlikely/smartbook/SmsReceiverTest.kt)
     testImplementation 'junit:junit:4.13.2'
+    // B3(R01):原生队列需要 Android 运行时(SQLite 事务),JVM 测不了。
+    // 只引 runner:版本须与工程既有 androidx.test 约束(1.2.0)一致;不用
+    // androidx.test:core —— 它的 BootstrapActivity 缺 android:exported,
+    // 在 targetSdk 32 下会把 test manifest 合并搞挂。
+    androidTestImplementation 'androidx.test:runner:1.2.0'
+    // B3:JVM 单测里 org.json 是 android.jar 桩(方法直接抛 Stub!),
+    // 队列封套/迁移去重是纯逻辑测试,需要真实实现。
+    testImplementation 'org.json:json:20240303'
 }

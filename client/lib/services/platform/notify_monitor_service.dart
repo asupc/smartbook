@@ -4,9 +4,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../automation/auto_billing_service.dart'
-    show AutoBillingService, SmsProcessOutcome, SmsProcessOutcomeEvent;
+    show AutoBookTestOptions, AutoBillingService, SmsProcessOutcome, SmsProcessOutcomeEvent;
 import '../automation/auto_book_coordinator.dart';
 import '../automation/auto_book_event.dart';
+
+import '../automation/automation_settings_store.dart';
 import '../data/source_channel_resolver.dart';
 import '../../ai/core/ai_runtime_state.dart';
 import '../../providers/automation_providers.dart';
@@ -137,28 +139,35 @@ class NotifyMonitorService {
       if (!_isEnabled) return; // 用户中途关闭:整条队列留在 native
       // 并行分发:逐条交给 Coordinator(有界并发,同 eventKey 串行),每条完成
       // 即 ACK,不再逐条 await —— 一批积压通知的识别墙钟时间 ≈ 1/并发数。
-      final futures = <Future<void>>[];
-      for (final raw in items) {
-        if (raw is! Map) continue;
-        final pkg = (raw['package'] ?? '').toString();
-        final title = (raw['title'] ?? '').toString();
-        final body = (raw['body'] ?? '').toString();
-        final fingerprint = (raw['fingerprint'] ?? '').toString();
-        final notificationKey = (raw['notificationKey'] ?? '').toString();
-        final notificationId =
-            int.tryParse((raw['notificationId'] ?? '').toString());
-        final timestamp = int.tryParse((raw['timestamp'] ?? '').toString());
-        futures.add(_processOne(
-          pkg: pkg,
-          title: title,
-          body: body,
-          fingerprint: fingerprint,
-          notificationKey: notificationKey,
-          notificationId: notificationId,
-          timestamp: timestamp,
-        ));
+            // B3:分批读取、有界处理 —— 每批最多 10 条,批内并发、批间串行,
+      // 避免一次把整队(单来源上限 500 条)同时压进 Coordinator。
+      const batchSize = 10;
+      for (var start = 0; start < items.length; start += batchSize) {
+        if (!_isEnabled) return; // 用户中途关闭:剩余项留队
+        final futures = <Future<void>>[];
+        for (final raw in items.skip(start).take(batchSize)) {
+          if (raw is! Map) continue;
+          final pkg = (raw['package'] ?? '').toString();
+          final title = (raw['title'] ?? '').toString();
+          final body = (raw['body'] ?? '').toString();
+          final fingerprint = (raw['fingerprint'] ?? '').toString();
+          final notificationKey = (raw['notificationKey'] ?? '').toString();
+          final notificationId =
+              int.tryParse((raw['notificationId'] ?? '').toString());
+          final timestamp = int.tryParse((raw['timestamp'] ?? '').toString());
+          futures.add(_processOne(
+            pkg: pkg,
+            title: title,
+            body: body,
+            fingerprint: fingerprint,
+            notificationKey: notificationKey,
+            notificationId: notificationId,
+            timestamp: timestamp,
+            queueItem: raw is Map ? raw : null,
+          ));
+        }
+        await Future.wait(futures);
       }
-      await Future.wait(futures);
     } catch (_) {
       // 队列读取/通道异常不抛;未 ack 的项下次 drain 通过指纹预检补 ack
     }
@@ -173,14 +182,22 @@ class NotifyMonitorService {
     required String notificationKey,
     int? notificationId,
     int? timestamp,
+    Map? queueItem,
   }) async {
     final alreadyWarned = _noAiNotified.contains(fingerprint);
     // native fingerprint 已包含 StatusBarNotification key/id/postTime；
     // 旧队列没有这些字段时仍能通过 content fingerprint 兼容。
     final eventKey = 'notification:v3:$fingerprint';
     final capturedAt = DateTime.now();
-    final execution = await _coordinator.execute(
-      input: AutoBookInput(
+    // B2:优先用捕获时冻结的目标快照,没有才按当前配置解析。
+    final snapshot = AutoBookQueueTargetSnapshot.fromQueueItem(queueItem);
+    final target = await resolveAutoBookTarget(
+      _container,
+      frozenRef: snapshot.ref,
+      frozenState: snapshot.state,
+      frozenConfigVersion: snapshot.version,
+    );
+    final input = AutoBookInput(
         eventKey: eventKey,
         source: AutoBookSource.notification,
         captureIntent: AutoBookCaptureIntent.automatic,
@@ -191,6 +208,9 @@ class NotifyMonitorService {
             ? null
             : DateTime.fromMillisecondsSinceEpoch(timestamp),
         contentHash: fingerprint,
+        targetRef: target.targetRef,
+        targetConfigVersion: target.configVersion,
+        targetState: target.stateName,
         sourceChannel: SourceChannelResolver.channelForPackage(pkg),
         rawTitle: title,
         rawText: body,
@@ -201,7 +221,20 @@ class NotifyMonitorService {
           if (notificationId != null) 'notificationId': notificationId,
           if (timestamp != null) 'timestamp': timestamp,
         },
-      ),
+    );
+    if (!target.canWrite) {
+      // B2:目标失效/待确定 —— 不调 AI、不 ACK,原始通知留到目标修好再处理。
+      await _coordinator.execute<SmsProcessOutcome>(
+        input: input,
+        action: () async => target.state == AutoBookTargetState.invalid
+            ? SmsProcessOutcome.targetInvalid
+            : SmsProcessOutcome.targetUndetermined,
+        updateFor: (o) => o.eventUpdate,
+      );
+      return;
+    }
+    final execution = await _coordinator.execute(
+      input: input,
       action: () => _autoBillingService.processNotification(
         pkg,
         title,
@@ -215,6 +248,7 @@ class NotifyMonitorService {
         notificationKey: notificationKey.isEmpty ? null : notificationKey,
         notificationId: notificationId ?? 0,
         postTime: timestamp ?? 0,
+        targetLedgerId: target.ledgerId,
       ),
       // M1-3:与短信/详情页共用一份走向映射。
       updateFor: (outcome) => outcome.eventUpdate,
@@ -238,13 +272,17 @@ class NotifyMonitorService {
   /// 模拟通知(调试/验证入口):直接注入通知文本走完整 AI 提取 → 落库流程,
   /// 用于没有真实支付通知时验证「自动记账是否正常」。skipDedup 保证同一
   /// 模板可反复发送。
-  Future<void> mockNotification(String title, String body) {
+  /// [testOptions] 缺省 = 解析链路测试**只解析不入账**(影子模式);
+  /// 显式传入 testLedgerId 时才写入该测试账本。
+  Future<void> mockNotification(String title, String body,
+      {AutoBookTestOptions? testOptions}) {
     return _enqueue(() async {
       await _autoBillingService.processNotification(
         'com.tencent.mm',
         title,
         body,
         skipDedup: true,
+        testOptions: testOptions,
       );
     });
   }

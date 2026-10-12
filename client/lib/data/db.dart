@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' show Locale;
 
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import '../l10n/app_localizations.dart';
 import '../services/data/category_service.dart';
 import '../services/data/seed_service.dart';
@@ -326,6 +328,15 @@ class AutoBookEvents extends Table {
   TextColumn get captureIntent =>
       text().withDefault(const Constant('automatic'))();
   IntColumn get ledgerId => integer().nullable()();
+
+  /// B2:捕获时冻结的自动目标快照。识别入账、确认与失败重放都用同一份,
+  /// 后续改设置/切浏览账本不改已捕获事件的目标(B0 §3.3)。
+  /// target_ref = `syncId:<v>` / `localId:<v>`;为空 = 尚未冻结。
+  TextColumn get targetRef => text().nullable()();
+  IntColumn get targetConfigVersion => integer().nullable()();
+  TextColumn get targetState =>
+      text().withDefault(const Constant('resolved'))();
+
   TextColumn get sourceChannel => text().nullable()();
   TextColumn get externalId => text().nullable()();
   TextColumn get contentHash => text().nullable()();
@@ -576,6 +587,59 @@ class SharedLedgerTags extends Table {
   Set<Column> get primaryKey => {ledgerSyncId, syncId};
 }
 
+/// 一条重复 (ledger_id, syncId) 组的 v45 去重计划。
+///
+/// 生成于任何 DML 之前(见 [BeeDatabase._v45BuildMergePlans]),写进
+/// `pre-v45-<ts>.json` 快照的 `dedupePlans`,再驱动执行(见
+/// [BeeDatabase._v45DeduplicateTransactionSyncIds])—— 去重不可逆,没有这份
+/// 记录就只能靠猜。
+///
+/// 字段语义:
+///  - [keeperId]:保留的行(合并目标);[loserIds] 是被删除的副本。
+///  - [keeperCompleteness]:keeper 在可空业务列上的非 NULL 计数(选择依据)。
+///  - [mergedValues]:从 loser 填进 keeper 的 **NULL** 列(列名 → 值)。
+///  - [discardedByLoser]:随 loser 行删除而丢失、未被采信的列值
+///    (loserId → {列名 → 值})。
+///  - [refusedByInvariant]:**因结构不变量被拒绝**的候选填充
+///    (`{loserId, column, value, rule}` 列表)。与 [discardedByLoser] 分开
+///    记录:这些值不是「keeper 已有同列值所以不用」,而是「填进去会造出
+///    自相矛盾的行」—— 见 [BeeDatabase._v45MergeableTransactionColumns]
+///    的 I1/I2/I3 规则。留着便于事后诊断(如统计错值溯源)。
+class _V45MergePlan {
+  const _V45MergePlan({
+    required this.ledgerId,
+    required this.syncId,
+    required this.keeperId,
+    required this.loserIds,
+    required this.keeperCompleteness,
+    required this.mergedValues,
+    required this.discardedByLoser,
+    this.refusedByInvariant = const [],
+  });
+
+  final int ledgerId;
+  final String syncId;
+  final int keeperId;
+  final List<int> loserIds;
+  final int keeperCompleteness;
+  final Map<String, Object?> mergedValues;
+  final Map<int, Map<String, Object?>> discardedByLoser;
+  final List<Map<String, Object?>> refusedByInvariant;
+
+  Map<String, dynamic> toJson() => {
+        'ledgerId': ledgerId,
+        'syncId': syncId,
+        'keeperId': keeperId,
+        'keeperCompleteness': keeperCompleteness,
+        'deletedRowIds': loserIds,
+        'mergedIntoKeeper': mergedValues,
+        'refusedByInvariant': refusedByInvariant,
+        'discardedByLoser': {
+          for (final e in discardedByLoser.entries) '${e.key}': e.value,
+        },
+      };
+}
+
 @DriftDatabase(tables: [
   Ledgers,
   Accounts,
@@ -612,14 +676,18 @@ class BeeDatabase extends _$BeeDatabase {
   BeeDatabase.forTesting(QueryExecutor executor) : super(executor);
 
   @override
-  int get schemaVersion => 43; // v43: 回收站 tombstone 表(删除可恢复);v42: 余额调整记录表
+  int get schemaVersion => 45; // v45: syncId 唯一索引(去重)/transaction_tags 唯一;v44: 自动目标快照
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
         onUpgrade: (migrator, from, to) async {
           if (from < 2) {
             // 添加 sortOrder 字段（使用原始 SQL，因为此时代码还未生成）
-            await customStatement(
+            //
+            // C3/建议-10:与 v24 同款幂等保护。SQLite DDL 隐式 commit 且不可
+            // 回滚 —— 半迁移库(ALTER 已提交但 user_version 未更新)重跑时
+            // 裸 ALTER 会 "duplicate column name" 把启动卡死。
+            await _addColumnIfMissing('categories', 'sort_order',
                 'ALTER TABLE categories ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0;');
 
             // 为现有分类设置默认的 sortOrder（按 id 顺序）
@@ -634,15 +702,16 @@ class BeeDatabase extends _$BeeDatabase {
           }
           if (from < 3) {
             // 创建重复交易表
-            await migrator.createTable(recurringTransactions);
+            await _createTableIfMissing(
+                migrator, 'recurring_transactions', recurringTransactions);
 
             // 为 transactions 表添加 recurring_id 字段
-            await customStatement(
+            await _addColumnIfMissing('transactions', 'recurring_id',
                 'ALTER TABLE transactions ADD COLUMN recurring_id INTEGER;');
           }
           if (from < 4) {
             // 为 accounts 表添加 initial_balance 字段
-            await customStatement(
+            await _addColumnIfMissing('accounts', 'initial_balance',
                 'ALTER TABLE accounts ADD COLUMN initial_balance REAL NOT NULL DEFAULT 0.0;');
           }
           if (from < 5) {
@@ -710,10 +779,23 @@ class BeeDatabase extends _$BeeDatabase {
             // v7: 周期账单支持转账
             // 需要将 category_id 改为可空，并添加 to_account_id 字段
             // SQLite 不支持修改列约束，所以需要重建表
-
-            // 1. 创建新表
-            print('[DB Migration] 步骤1: 创建新表');
-            await customStatement('''
+            //
+            // C3/建议-10:重建表是**最危险**的迁移形态(SQLite DDL 隐式 commit
+            // 且不可回滚):历史版在 DROP 与 RENAME 之间被杀,库会停在「旧表已删、
+            // 新表未改名」的半迁移态,重跑时 INSERT ... SELECT FROM
+            // recurring_transactions 直接 no such table 永久打不开。
+            // 三步全部加存在性守卫,让任意中间态都能续跑到终态。
+            final v7Cols =
+                await customSelect('PRAGMA table_info(recurring_transactions)')
+                    .get();
+            final hasToAccountId =
+                v7Cols.any((row) => row.data['name'] == 'to_account_id');
+            if (hasToAccountId) {
+              print('[DB Migration] v7 迁移跳过: to_account_id 已存在');
+            } else {
+              // 1. 创建新表
+              print('[DB Migration] 步骤1: 创建新表');
+              await customStatement('''
               CREATE TABLE IF NOT EXISTS recurring_transactions_new (
                 id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
                 ledger_id INTEGER NOT NULL,
@@ -737,9 +819,17 @@ class BeeDatabase extends _$BeeDatabase {
               );
             ''');
 
-            // 2. 复制数据
-            print('[DB Migration] 步骤2: 复制数据');
-            await customStatement('''
+              // 2. 复制数据(前一次已复制过就不再复制 —— 否则 id 主键冲突)
+              print('[DB Migration] 步骤2: 复制数据');
+              final newCnt = await customSelect(
+                      'SELECT COUNT(*) AS c FROM recurring_transactions_new')
+                  .getSingle();
+              final newCount = (newCnt.data['c'] as num?)?.toInt() ?? 0;
+              final oldTableRow = await customSelect(
+                      "SELECT name FROM sqlite_master WHERE type='table' AND name='recurring_transactions'")
+                  .getSingleOrNull();
+              if (oldTableRow != null && newCount == 0) {
+                await customStatement('''
               INSERT INTO recurring_transactions_new
               (id, ledger_id, type, amount, category_id, account_id, to_account_id, note,
                frequency, interval, day_of_month, day_of_week, month_of_year,
@@ -750,15 +840,17 @@ class BeeDatabase extends _$BeeDatabase {
                      start_date, end_date, last_generated_date, enabled, created_at, updated_at
               FROM recurring_transactions;
             ''');
+              }
 
-            // 3. 删除旧表
-            print('[DB Migration] 步骤3: 删除旧表');
-            await customStatement('DROP TABLE recurring_transactions;');
+              // 3. 删除旧表
+              print('[DB Migration] 步骤3: 删除旧表');
+              await customStatement('DROP TABLE IF EXISTS recurring_transactions;');
 
-            // 4. 重命名新表
-            print('[DB Migration] 步骤4: 重命名新表');
-            await customStatement(
-                'ALTER TABLE recurring_transactions_new RENAME TO recurring_transactions;');
+              // 4. 重命名新表
+              print('[DB Migration] 步骤4: 重命名新表');
+              await customStatement(
+                  'ALTER TABLE recurring_transactions_new RENAME TO recurring_transactions;');
+            }
             print('[DB Migration] v7 迁移完成');
           }
           if (from < 8) {
@@ -888,8 +980,9 @@ class BeeDatabase extends _$BeeDatabase {
             // v15: 交易添加 syncId 用于云同步
             print('[DB Migration] 开始迁移到 v15: 添加 syncId 字段');
 
-            // 1. 添加 sync_id 列
-            await customStatement(
+            // 1. 添加 sync_id 列 —— C3/建议-10:走 _addColumnIfMissing 幂等,
+            // 半迁移库重跑不再 duplicate column。
+            await _addColumnIfMissing('transactions', 'sync_id',
                 'ALTER TABLE transactions ADD COLUMN sync_id TEXT;');
             logger.info('DB', 'v15: sync_id 字段已添加');
 
@@ -919,7 +1012,7 @@ class BeeDatabase extends _$BeeDatabase {
             // v16: 账户添加 sortOrder 排序字段
             print('[DB Migration] 开始迁移到 v16: 账户排序');
 
-            await customStatement(
+            await _addColumnIfMissing('accounts', 'sort_order',
                 'ALTER TABLE accounts ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0;');
             logger.info('DB', 'v16: sort_order 字段已添加');
 
@@ -1109,43 +1202,49 @@ class BeeDatabase extends _$BeeDatabase {
           }
           if (from < 21) {
             // v21: ledgers 加 syncId（跨设备同步 ledger 匹配）
+            // C3/建议-10:原为裸 ALTER + 存在性判断的组合(部分幂等),统一走
+            // helper 并把回填与索引也纳入守卫,半迁移库可安全重跑。
             print('[DB Migration] 开始迁移到 v21: ledgers.sync_id');
 
             final ledgerInfo =
                 await customSelect('PRAGMA table_info(ledgers)').get();
-            if (!ledgerInfo.any((row) => row.data['name'] == 'sync_id')) {
-              await customStatement(
-                  'ALTER TABLE ledgers ADD COLUMN sync_id TEXT;');
-              // 把现有 ledger.id 回填成 syncId（转字符串）。这样旧 A 设备已推
-              // 到 server 的 external_id（= 当时的 id.toString()）对得上新列，
-              // 后续 push/pull 都走 syncId，无脑兼容。
-              await customStatement(
-                  "UPDATE ledgers SET sync_id = CAST(id AS TEXT) WHERE sync_id IS NULL;");
-              await customStatement(
-                  'CREATE INDEX IF NOT EXISTS idx_ledgers_sync_id ON ledgers(sync_id);');
-              logger.info('DB', 'v21: ledgers.sync_id 已添加并回填');
-            }
+            final hadSyncId =
+                ledgerInfo.any((row) => row.data['name'] == 'sync_id');
+            await _addColumnIfMissing('ledgers', 'sync_id',
+                'ALTER TABLE ledgers ADD COLUMN sync_id TEXT;');
+            // 把现有 ledger.id 回填成 syncId（转字符串）。这样旧 A 设备已推
+            // 到 server 的 external_id（= 当时的 id.toString()）对得上新列，
+            // 后续 push/pull 都走 syncId，无脑兼容。WHERE sync_id IS NULL
+            // 保证回填可重跑(不覆盖已同步下来的 UUID)。
+            await customStatement(
+                "UPDATE ledgers SET sync_id = CAST(id AS TEXT) WHERE sync_id IS NULL;");
+            await customStatement(
+                'CREATE INDEX IF NOT EXISTS idx_ledgers_sync_id ON ledgers(sync_id);');
+            logger.info('DB',
+                'v21: ledgers.sync_id ${hadSyncId ? "已存在" : "已添加"}并回填');
 
             print('[DB Migration] v21 迁移完成');
           }
           if (from < 22) {
             // v22: budgets 加 syncId(跨设备同步 budget 匹配)
+            // C3/建议-10:同 v21,统一幂等。
             print('[DB Migration] 开始迁移到 v22: budgets.sync_id');
 
             final budgetInfo =
                 await customSelect('PRAGMA table_info(budgets)').get();
-            if (!budgetInfo.any((row) => row.data['name'] == 'sync_id')) {
-              await customStatement(
-                  'ALTER TABLE budgets ADD COLUMN sync_id TEXT;');
-              // SQLite 没有原生 UUID。用 lower(hex(randomblob(16))) 造 32 位
-              // 随机 hex,足够当 server entity_sync_id 用。格式跟 UUID 不是
-              // 标准 36 位,但 server 侧校验只要求非空字符串。
-              await customStatement(
-                  "UPDATE budgets SET sync_id = lower(hex(randomblob(16))) WHERE sync_id IS NULL;");
-              await customStatement(
-                  'CREATE INDEX IF NOT EXISTS idx_budgets_sync_id ON budgets(sync_id);');
-              logger.info('DB', 'v22: budgets.sync_id 已添加并回填');
-            }
+            final hadSyncId =
+                budgetInfo.any((row) => row.data['name'] == 'sync_id');
+            await _addColumnIfMissing('budgets', 'sync_id',
+                'ALTER TABLE budgets ADD COLUMN sync_id TEXT;');
+            // SQLite 没有原生 UUID。用 lower(hex(randomblob(16))) 造 32 位
+            // 随机 hex,足够当 server entity_sync_id 用。格式跟 UUID 不是
+            // 标准 36 位,但 server 侧校验只要求非空字符串。
+            await customStatement(
+                "UPDATE budgets SET sync_id = lower(hex(randomblob(16))) WHERE sync_id IS NULL;");
+            await customStatement(
+                'CREATE INDEX IF NOT EXISTS idx_budgets_sync_id ON budgets(sync_id);');
+            logger.info('DB',
+                'v22: budgets.sync_id ${hadSyncId ? "已存在" : "已添加"}并回填');
 
             print('[DB Migration] v22 迁移完成');
           }
@@ -1284,7 +1383,8 @@ class BeeDatabase extends _$BeeDatabase {
           if (from < 27) {
             logger.info('DBMigration', '开始迁移到 v27: ledgers.month_start_day');
             // v27: 账本自定义每月起始日(1-28),默认 1=自然月
-            await customStatement(
+            // C3/建议-10:裸 ALTER → 幂等 helper。
+            await _addColumnIfMissing('ledgers', 'month_start_day',
                 'ALTER TABLE ledgers ADD COLUMN month_start_day INTEGER NOT NULL DEFAULT 1;');
             logger.info('DBMigration', 'v27 迁移完成');
           }
@@ -1438,6 +1538,57 @@ class BeeDatabase extends _$BeeDatabase {
             // v43 回收站 tombstone 表:删除的交易整行暂存,30 天内可恢复。
             await migrator.createTable(deletedTransactions);
           }
+          if (from < 44) {
+            // v44 自动目标快照:只有目标稳定标识/配置版本无法由既有字段安全
+            // 表达时才加列(B0 §5.2)。存量行保持 NULL + resolved,不回填、
+            // 不重写历史目标(计划 §5.4:历史数据不批量改账本)。
+            await _addColumnIfMissing('auto_book_events', 'target_ref',
+                'ALTER TABLE auto_book_events ADD COLUMN target_ref TEXT;');
+            await _addColumnIfMissing(
+                'auto_book_events',
+                'target_config_version',
+                'ALTER TABLE auto_book_events '
+                'ADD COLUMN target_config_version INTEGER;');
+            await _addColumnIfMissing(
+                'auto_book_events',
+                'target_state',
+                "ALTER TABLE auto_book_events "
+                "ADD COLUMN target_state TEXT DEFAULT 'resolved';");
+          }
+          if (from < 45) {
+            // ──────────────────────────────────────────────────────────────
+            // v45 syncId 身份族 + 关联表唯一约束(批次 C3)
+            //
+            // 【待确认产品决策 · 已按「更宽松/更安全」默认执行,待人工批准】
+            //   唯一索引维度 = UNIQUE(ledger_id, sync_id)(**带账本维度**),
+            //   而不是 UNIQUE(sync_id)。理由:syncId 的同步契约是「同一账本
+            //   内的实体同一性」,跨账本同 syncId 是否合法属产品未决项(计划
+            //   §九.2)。UNIQUE(ledger_id, sync_id) 保留跨账本同 id 的合法性,
+            //   不会因一次迁移把跨账本数据判为冲突而删行;若后续产品拍板
+            //   「全局唯一」,只需重建索引为 UNIQUE(sync_id)。
+            //   空串 syncId 不纳入唯一域(历史 HARDENING:空串是 caller 契约
+            //   外的输入,当前行为是一次写改多行),避免把存量空串行判为重复。
+            //
+            // 【回滚说明(阻塞-7a)】本迁移**不是**纯索引变更:
+            //   ① 合并重复 syncId 行(删除副本)与 ② 关联表去重都是**不可逆**
+            //      的数据删除。回滚只能依赖本迁移自动导出的快照
+            //      `pre-v45-<ts>.json`(还原脚本需按该文件重放,不提供自动
+            //      downgrade)。仅索引部分可回滚:
+            //      [v45RollbackDropIndexesSql] 里的 DROP INDEX 语句。
+            //   ③ 非有限金额(NaN/±Infinity)存量行被归零,同样不可逆,快照里
+            //      以 `amountUnrepresentable: true` 标记原值不可表示。
+            //
+            // 【安全设计(阻塞-7b)】
+            //   - 备份导出前先**过滤非有限值**:buildBackupJson 无法
+            //     jsonEncode Infinity → 若先备份后清洗,历史脏行会让备份抛
+            //     JsonUnsupportedObjectError;在 onUpgrade 内抛错 = 库永远打不开。
+            //   - 整个 v45 是**逐步骤 best-effort**:每步独立 try/catch + 告警,
+            //     绝不把异常抛出 onUpgrade。所有 DDL 都是 IF NOT EXISTS、所有
+            //     DML 都是幂等形态 → 任意半迁移态下次启动都能续跑到终态。
+            //   - 备份文件写失败只告警不中止(库仍可开,迁移照做)。
+            // ──────────────────────────────────────────────────────────────
+            await _v45SyncIdIdentityMigration();
+          }
           // v39(M3-1):索引统一到 _ensureIndexes(),无条件跑一遍。
           await _ensureIndexes();
         },
@@ -1448,6 +1599,13 @@ class BeeDatabase extends _$BeeDatabase {
               'ON exchange_rate_overrides (base_currency, quote_currency);');
           await _ensureIndexes();
         },
+        // C3/缺陷 D:v45 唯一索引的「下次启动重试」承诺必须落在 beforeOpen。
+        // `onUpgrade` 只在 versionBefore < versionNow 时执行 —— user_version
+        // 一旦已是 45,残余重复行 + 缺失唯一索引的库永远不会再进迁移分支
+        // (实测连续打开 3 次仍 uniqueIndex=0 dupRows=2)。
+        // beforeOpen 每次打开都跑(drift db_base.dart:137),先做常数级检查
+        // (两个索引是否都在),缺失才进入修复路径 → 正常打开零额外开销。
+        beforeOpen: (details) async => _v45RepairUniqueIndexesIfNeeded(),
       );
 
   /// 建全部二级索引(M3-1)。onCreate / onUpgrade 结束时都调用。
@@ -1478,6 +1636,15 @@ class BeeDatabase extends _$BeeDatabase {
             'ON transactions (ledger_id, type, happened_at DESC);',
         'CREATE INDEX IF NOT EXISTS idx_transactions_sync_id '
             'ON transactions (sync_id);',
+        // v45(C3/F-01..F-04):syncId 身份唯一性。带账本维度 —— 跨账本同
+        // syncId 是否合法属产品未决项(计划 §九.2),取更宽松的
+        // UNIQUE(ledger_id, sync_id) 保留跨账本合法性。部分索引:空串
+        // syncId 不纳入唯一域(HARDENING:空串是契约外输入)。只建普通
+        // 索引时同 syncId 可重复插入,导致 getTransactionBySyncId
+        // (getSingleOrNull)抛 Bad state、删除永远推不出去。
+        'CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_ledger_sync_id '
+            "ON transactions (ledger_id, sync_id) "
+            "WHERE sync_id IS NOT NULL AND sync_id <> '';",
         // PERF-P0-04 账户维度余额/统计聚合:按 account_id 范围扫描,替代
         // 逐账户全表扫描;时间列附带加速账户流水按日聚合。
         'CREATE INDEX IF NOT EXISTS idx_transactions_account_time '
@@ -1515,6 +1682,16 @@ class BeeDatabase extends _$BeeDatabase {
             'ON transaction_tags (transaction_id);',
         'CREATE INDEX IF NOT EXISTS idx_transaction_tags_tag '
             'ON transaction_tags (tag_id);',
+        // v45(C3/F-29):同交易同标签只允许一行(批量路径曾不去重 →
+        // getTagStats 的 INNER JOIN 把同一笔金额算成两倍)。
+        'CREATE UNIQUE INDEX IF NOT EXISTS idx_transaction_tags_pair '
+            'ON transaction_tags (transaction_id, tag_id);',
+      ],
+      // C3/F-33:此前 byTable 里没有这张表 —— idx_rate_override_pair 是
+      // 全库唯一真 UNIQUE 约束,却只在 onCreate/v28 分支建,丢失后不会自愈。
+      'exchange_rate_overrides': [
+        'CREATE UNIQUE INDEX IF NOT EXISTS idx_rate_override_pair '
+            'ON exchange_rate_overrides (base_currency, quote_currency);',
       ],
       'transaction_attachments': [
         'CREATE INDEX IF NOT EXISTS idx_attachments_transaction '
@@ -1638,6 +1815,1054 @@ class BeeDatabase extends _$BeeDatabase {
       return;
     }
     await m.createTable(table);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // v45 syncId 身份族迁移(批次 C3 / F-01..F-04、F-29、F-34)
+  //
+  // 设计要点(见 onUpgrade 内 v45 注释):
+  //  1. fail-safe:每步独立 try/catch,绝不向 onUpgrade/beforeOpen 抛错;
+  //  2. 幂等:全部 DDL 用 IF NOT EXISTS / DML 用「已处理则无操作」形态;
+  //  3. 备份:`pre-v45-<ts>.json`,序列化前清洗非有限值,**内嵌去重计划**;
+  //  4. 存量 Infinity/NaN 行清理(阻塞-7c);
+  //  5. 唯一索引带 ledger 维度 UNIQUE(ledger_id, sync_id)(待确认产品决策);
+  //  6. keeper 规则「最完整 → recorded_at 最新 → 引用最多 → id 最小」+ 字段级
+  //     merge(只填空不覆盖)+ **全部交易引用表**改指 + local_changes.payload_json
+  //     重写(缺陷 A/B/C,实现见 _v45BuildMergePlans / _v45DeduplicateTransactionSyncIds);
+  //  7. 唯一索引自愈放 beforeOpen(缺陷 D):user_version 已是 45 后 onUpgrade
+  //     永不再跑,「下次启动重试」只有每次打开都执行的钩子能兑现。
+  // ══════════════════════════════════════════════════════════════════════
+
+  /// 仅索引部分可回滚的 DROP 语句(数据去重部分不可回滚,见类注释)。
+  /// 备份恢复:用 `pre-v45-<ts>.json` 快照重放(无自动 downgrade)。
+  static const List<String> v45RollbackDropIndexesSql = [
+    'DROP INDEX IF EXISTS idx_transactions_ledger_sync_id',
+    'DROP INDEX IF EXISTS idx_transaction_tags_pair',
+  ];
+
+  /// v45 要保证存在的两条唯一索引(唯一且全部)。beforeOpen 自愈按此清单检查。
+  static const List<String> _v45UniqueIndexNames = [
+    'idx_transactions_ledger_sync_id',
+    'idx_transaction_tags_pair',
+  ];
+
+  /// 测试用:覆盖 pre-v45 快照的输出目录(测试环境无 path_provider 插件)。
+  /// 生产恒为 null → 走 `getApplicationDocumentsDirectory()/backups`。
+  @visibleForTesting
+  static String? v45BackupDirectoryOverrideForTesting;
+
+  /// 去重时可从 loser 填进 keeper 的**可空业务列**(缺陷 B)。
+  ///
+  /// 只列可空列:NOT NULL 列(type / amount / happened_at / ledger_id / sync_id)
+  /// 无法用「填空」语义表达,「保留哪一份」由 keeper 选择规则决定,不做字段级
+  /// 覆盖(amount=0.0 之类的非空值不会被 loser 的非零值顶掉 —— 宁可保守)。
+  /// 顺序即 merge 优先级:同一列多个 loser 都有值时取排在前面的 loser 的值
+  /// (loser 之间按 keeper 规则同序,最早/最完整者优先)。
+  ///
+  /// **列级规则不是「有值就填」**(跨审缺陷 1a/1b):merge 只填空不覆盖,但
+  /// 「空」不等于「任何 loser 的值都能放」。三个结构不变量在
+  /// [_v45BuildMergePlans] 内按列判定,拒绝会造出结构上自相矛盾的行:
+  ///
+  ///  I1 **原子三元组 `(amount, currency_code, native_amount)`**:
+  ///     账本维度统计一律读 `COALESCE(native_amount, amount)`
+  ///     (local_statistics_repository.dart:42/78/167/272、
+  ///     local_ledger_repository.dart:114),故 native 必须与 amount 同源。
+  ///     `currency_code` / `native_amount` 只从 **amount 与 keeper 相等**的
+  ///     loser 成对采纳;keeper 已有其一时,只接受与该值自洽的另一半。
+  ///     反例(跨审探针):keeper(999,无币种,无折算)+ loser(10,USD,72) 旧实现
+  ///     产出 (999,USD,72) → `SUM(COALESCE(native,amount))` = 72 而非 999。
+  ///  I2 **自转账**:`account_id` 与 `to_account_id` 不得相等(UI 侧有守卫
+  ///     transfer_form.dart:524,仓库层无)。且 `to_account_id` 只属于
+  ///     `type='transfer'` 行 —— 非 transfer 行带上它会让两个余额 API 口径
+  ///     分歧(getAccountBalance 的 `type='transfer'` 过滤 vs
+  ///     getAccountBalanceInLedger 的裸 `to_account_id = ?` 命中)。
+  ///     反例(跨审探针):keeper(transfer,account_id=5,to=NULL)+ loser(to=5)
+  ///     → 合并行 account_id == to_account_id,两个余额 API 永久分歧。
+  ///  I3 **本地 id 与 syncId override 互斥**:同一引用只有一种表示
+  ///     (category/account/to_account 三对)。两者并存时同步侧读 override
+  ///     (sync_engine_serialization.dart:191 等)、本地统计侧读 id
+  ///     (local_statistics_repository 的 override 过滤) → 同一行两个口径。
+  ///
+  /// 被拒绝的 loser 值不算静默丢失:仍进 `discardedByLoser` 审计(快照可重放)。
+  static const List<String> _v45MergeableTransactionColumns = [
+    'recorded_at',
+    'note',
+    'category_id',
+    'account_id',
+    'to_account_id',
+    'category_sync_id_override',
+    'account_sync_id_override',
+    'to_account_sync_id_override',
+    'tag_sync_ids_override',
+    'currency_code',
+    'native_amount',
+    'recurring_id',
+    'created_by_user_id',
+    'last_edited_by_user_id',
+  ];
+
+  /// 交易行的全部 int-id 引用列(缺陷 A)。枚举方法:遍历 db.dart 每个
+  /// `Table` 类里的 IntColumn,凡语义为「本地 transactions 主键」者入下表
+  /// (命名命中 `transactionId` / `duplicateOfTransactionId` / `transaction_id`
+  /// / `duplicate_of_transaction_id`)。**共 6 列,分布在 4 张表**:
+  /// transaction_tags / transaction_attachments / messages /
+  /// auto_book_events(2 列)/ auto_book_event_items。
+  ///
+  /// JSON 内嵌的本地 int 引用(不在列清单里,由专用路径处理):
+  ///   - `messages.metadata.txIds`(AI 卡片关联交易)和
+  ///     `messages.metadata.undoneIds`(已撤销子集,`isUndone` 的判据)
+  ///     → [_v45RewriteMessageTxIds];
+  ///   - `local_changes.entity_id` + `local_changes.payload_json`
+  ///     → 去重主体里的 entity_id 改指 + payload 按 keeper 终态重写。
+  ///
+  /// 未列入且**不需要**改指的引用(避免过度改写):
+  ///   - `transaction_tag_overrides.transaction_sync_id`:存 syncId 字符串,
+  ///     去重后 syncId 不变,无需改;
+  ///   - `deleted_transactions.sync_id` / `payload_json`:存 syncId,同上;
+  ///   - `auto_book_*.bill_json` 里的 `external_id`/`transaction_id` 键:那是
+  ///     **来源侧**(短信/通知)的商户单号,不是本地 int 主键(见 bill_info.dart
+  ///     的 externalId 解析),改指会破坏跨渠道判重。
+  static const List<({String table, String column})>
+      _v45TransactionIdReferenceColumns = [
+    (table: 'transaction_tags', column: 'transaction_id'),
+    (table: 'transaction_attachments', column: 'transaction_id'),
+    (table: 'messages', column: 'transaction_id'),
+    (table: 'auto_book_events', column: 'transaction_id'),
+    (table: 'auto_book_events', column: 'duplicate_of_transaction_id'),
+    (table: 'auto_book_event_items', column: 'transaction_id'),
+  ];
+
+  /// v45 主流程。每步独立 best-effort,绝不抛错。
+  Future<void> _v45SyncIdIdentityMigration() async {
+    logger.info('DBMigration', '开始 v45: syncId 唯一索引 / 关联表唯一 / 脏值清洗');
+
+    // ── 步骤 1:先算去重计划(只读) ──
+    // 备份必须记录「keeper 是谁、合并了什么、丢弃了什么」(缺陷 B 要求不静默
+    // 丢失),所以计划先于备份生成,备份内嵌同一份计划,执行阶段按它落地。
+    final plans = await _v45BuildMergePlans();
+
+    // ── 步骤 2:备份(导出前清洗非有限值,失败只告警不中止) ──
+    await _v45ExportBackupBestEffort(plans);
+
+    // ── 步骤 3:存量非有限金额清洗(阻塞-7c) ──
+    // NaN/±Infinity 会让所有聚合入口返回 Infinity/NaN(整账本统计不可用),
+    // 且会让 JSON 备份序列化失败。归零 + 记录数量(不删行,保住账目)。
+    await _v45SanitizeNonFiniteAmounts();
+
+    // ── 步骤 4:重复 syncId 去重(按计划执行) ──
+    await _v45DeduplicateTransactionSyncIds(plans: plans);
+
+    // ── 步骤 5:transaction_tags 去重 + 唯一索引 ──
+    await _v45AddTransactionTagsUnique();
+
+    // ── 步骤 6:唯一索引(带账本维度) ──
+    await _v45AddTransactionSyncIdUnique();
+
+    logger.info('DBMigration', 'v45 迁移完成');
+  }
+
+  /// v45 唯一索引自愈(缺陷 D)。**在 beforeOpen 里跑** —— onUpgrade 只在
+  /// `versionBefore < versionNow` 时执行,`user_version` 一旦是 45(哪怕索引
+  /// 因残余重复没建起来),`_v45AddTransactionSyncIdUnique` 里「下次启动重试」
+  /// 的注释永远等不到下一次(onUpgrade 不再运行,实测连开 3 次仍
+  /// uniqueIndex=0 / dupRows=2 / userVersion=45 → 重复行永久不解、
+  /// `getTransactionBySyncId` 永久不可靠)。
+  ///
+  /// 开销:先做**常数级检查**(两条唯一索引是否都在 sqlite_master),都在就
+  /// 直接返回 —— 正常打开零额外读写。只有缺失时才进修复路径(再备一次份 +
+  /// 去重 + 建索引),整段 best-effort,绝不抛错(beforeOpen 抛错 = 库打不开)。
+  Future<void> _v45RepairUniqueIndexesIfNeeded() async {
+    try {
+      final missing = <String>[];
+      for (final name in _v45UniqueIndexNames) {
+        final row = await customSelect(
+          "SELECT name FROM sqlite_master WHERE type='index' AND name = ?",
+          variables: [Variable<String>(name)],
+        ).getSingleOrNull();
+        if (row == null) missing.add(name);
+      }
+      if (missing.isEmpty) return; // 常态路径:两条索引都在,零额外工作
+
+      // 表不存在(极老/损坏库)→ 直接返回;缺表时补索引只会抛错。
+      final hasTx = await customSelect(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name = 'transactions'",
+      ).getSingleOrNull();
+      if (hasTx == null) return;
+
+      logger.warning('DBMigration',
+          'v45 唯一索引缺失(${missing.join(", ")}),启动期自愈:去重 + 重建索引');
+      final plans = await _v45BuildMergePlans();
+      await _v45ExportBackupBestEffort(plans);
+      await _v45SanitizeNonFiniteAmounts();
+      await _v45DeduplicateTransactionSyncIds(plans: plans);
+      await _v45AddTransactionTagsUnique();
+      await _v45AddTransactionSyncIdUnique();
+    } catch (e, st) {
+      // 自愈失败只告警:下次打开还会再试(索引仍缺失 → 检查仍会命中)。
+      logger.warning('DBMigration', 'v45 唯一索引自愈失败(不阻断启动): $e', st);
+    }
+  }
+
+  /// 导出 `pre-v45-<ts>.json` 快照。**绝不抛错**(备份失败不能阻断迁移/启动)。
+  ///
+  /// 清洗口径:非有限金额写 null + `<col>Unrepresentable: true`,其余非有限
+  /// 数值字段一并清洗,保证 jsonEncode 不会抛(阻塞-7b)。
+  ///
+  /// 快照同时内嵌 [plans]:每条重复的「keeper 是谁、delete 哪些行、从 loser
+  /// 合并了哪些字段值、丢弃了 loser 的哪些字段值」—— 去重不可逆,没有这份
+  /// 记录就只能靠猜(缺陷 B 的「不得静默丢失」)。
+  Future<void> _v45ExportBackupBestEffort(List<_V45MergePlan> plans) async {
+    try {
+      final ts = DateTime.now()
+          .toIso8601String()
+          .replaceAll(':', '-')
+          .replaceAll('.', '-');
+      final doc = <String, dynamic>{
+        'format': 'smartbook-pre-migration-snapshot',
+        'version': 2,
+        'reason': 'v45 syncId-unique migration',
+        'exportedAt': DateTime.now().toIso8601String(),
+        // 回滚必须依赖本快照:去重/清洗是破坏性且不可逆的(阻塞-7a)。
+        'rollbackNote': 'v45 合并重复 syncId 行与清洗非有限金额不可逆;'
+            '回滚需按本快照重放。仅索引部分可用 DROP INDEX 回滚'
+            '(见 BeeDatabase.v45RollbackDropIndexesSql)。',
+        // 去重计划与执行结果分开:plans 是「将要做什么」,执行日志另见
+        // logger;两者字段一致,便于把快照当重放脚本用。
+        'dedupePlans': [for (final plan in plans) plan.toJson()],
+        'ledgers': await _v45RowsToJson('SELECT * FROM ledgers'),
+        'accounts': await _v45RowsToJson('SELECT * FROM accounts'),
+        'categories': await _v45RowsToJson('SELECT * FROM categories'),
+        'transactions': await _v45RowsToJson('SELECT * FROM transactions'),
+        'transaction_tags':
+            await _v45RowsToJson('SELECT * FROM transaction_tags'),
+        'transaction_attachments':
+            await _v45RowsToJson('SELECT * FROM transaction_attachments'),
+        'budgets': await _v45RowsToJson('SELECT * FROM budgets'),
+        'account_adjustments':
+            await _v45RowsToJson('SELECT * FROM account_adjustments'),
+        'deleted_transactions':
+            await _v45RowsToJson('SELECT * FROM deleted_transactions'),
+        // 交易引用表的完整快照(缺陷 A 涉及的表在恢复重放时都要一起还原)。
+        'messages': await _v45RowsToJson('SELECT * FROM messages'),
+        'auto_book_events':
+            await _v45RowsToJson('SELECT * FROM auto_book_events'),
+        'auto_book_event_items':
+            await _v45RowsToJson('SELECT * FROM auto_book_event_items'),
+        'local_changes': await _v45RowsToJson('SELECT * FROM local_changes'),
+      };
+      final raw = jsonEncode(doc);
+      final overrideDir = v45BackupDirectoryOverrideForTesting;
+      final outDir = overrideDir != null
+          ? Directory(overrideDir)
+          : Directory(
+              p.join((await getApplicationDocumentsDirectory()).path, 'backups'));
+      if (!await outDir.exists()) {
+        await outDir.create(recursive: true);
+      }
+      final file = File(p.join(outDir.path, 'pre-v45-$ts.json'));
+      await file.writeAsString(raw);
+      logger.info('DBMigration', 'v45 备份已导出: ${file.path}');
+    } catch (e, st) {
+      // 关键:必须吞掉异常。onUpgrade 抛错 = user_version 不更新 + 库可能
+      // 永久打不开(见 v24 段注释里的 3.2.0 事故)。
+      logger.warning('DBMigration', 'v45 备份导出失败(不阻断迁移): $e', st);
+    }
+  }
+
+  /// 读表并转 json-ready 结构;所有非有限数值 → null(+ 标记)。
+  Future<List<Map<String, dynamic>>> _v45RowsToJson(String sql) async {
+    try {
+      final rows = await customSelect(sql).get();
+      return rows.map((r) {
+        final out = <String, dynamic>{};
+        r.data.forEach((k, v) {
+          if (v is double && !v.isFinite) {
+            out[k] = null;
+            out['${k}Unrepresentable'] = true;
+          } else {
+            out[k] = v;
+          }
+        });
+        return out;
+      }).toList();
+    } catch (e) {
+      logger.warning('DBMigration', 'v45 备份读取失败($sql): $e');
+      return const [];
+    }
+  }
+
+  /// 存量 NaN/±Infinity 金额归零(NOT NULL 列不能用 NULL;0.0 安全)。
+  /// 同时覆盖 native_amount。幂等:第二次跑没有非有限值可改。
+  Future<void> _v45SanitizeNonFiniteAmounts() async {
+    try {
+      final cols = await customSelect('PRAGMA table_info(transactions)').get();
+      if (cols.isEmpty) return; // 表不存在(极老库),跳过
+      // SQLite 里 NaN 存成 NULL(被 NOT NULL 拦下),Infinity 以 REAL 落库。
+      // 用 `amount > maxFinite` 判定溢出即等价于 ±Infinity。
+      const maxFinite = 1.7976931348623157e308;
+      final rows = await customSelect(
+        'SELECT id FROM transactions '
+        'WHERE (amount IS NOT NULL AND (amount > $maxFinite OR amount < -$maxFinite))',
+      ).get();
+      var fixed = 0;
+      for (final r in rows) {
+        final id = r.read<int>('id');
+        await customStatement(
+            'UPDATE transactions SET amount = 0.0 WHERE id = ?', [id]);
+        fixed++;
+      }
+      final hasNative =
+          cols.any((row) => row.read<String>('name') == 'native_amount');
+      if (hasNative) {
+        final nRows = await customSelect(
+          'SELECT id FROM transactions WHERE native_amount IS NOT NULL '
+          'AND (native_amount > $maxFinite OR native_amount < -$maxFinite)',
+        ).get();
+        for (final r in nRows) {
+          final id = r.read<int>('id');
+          await customStatement(
+            'UPDATE transactions SET native_amount = NULL WHERE id = ?', [id]);
+          fixed++;
+        }
+      }
+      if (fixed > 0) {
+        logger.warning('DBMigration',
+            'v45 清洗 $fixed 个非有限金额(NaN/Infinity → 0/null);原值已存 pre-v45 快照');
+      }
+    } catch (e, st) {
+      logger.warning('DBMigration', 'v45 非有限金额清洗失败(跳过): $e', st);
+    }
+  }
+
+  /// 只读扫描:找出全部重复 (ledger_id, sync_id) 组,选出 keeper,算出
+  /// 字段级 merge 计划。**不改任何数据**(备份以它为依据)。
+  ///
+  /// 幂等性:同库同状态下重复调用返回同一计划(排序确定:
+  /// completeness DESC, recorded_at DESC, refcount DESC, id ASC)。
+  Future<List<_V45MergePlan>> _v45BuildMergePlans() async {
+    final plans = <_V45MergePlan>[];
+    try {
+      final dupGroups = await customSelect(
+        '''
+        SELECT ledger_id, sync_id, COUNT(*) AS c
+        FROM transactions
+        WHERE sync_id IS NOT NULL AND sync_id <> ''
+        GROUP BY ledger_id, sync_id
+        HAVING c > 1
+        ''',
+      ).get();
+      if (dupGroups.isEmpty) return plans;
+
+      // 可空业务列:用于 completeness 打分 + 字段级 merge。
+      final mergeCols = _v45MergeableTransactionColumns;
+      final completenessExpr =
+          mergeCols.map((c) => '($c IS NOT NULL)').join(' + ');
+
+      for (final g in dupGroups) {
+        final ledgerId = g.read<int>('ledger_id');
+        final syncId = g.read<String>('sync_id');
+        final rows = await customSelect(
+          '''
+          SELECT t.id,
+                 t.recorded_at,
+                 t.type,
+                 t.amount,
+                 t.happened_at,
+                 $completenessExpr AS completeness,
+                 ${mergeCols.join(", ")},
+                 (SELECT COUNT(*) FROM transaction_tags tt WHERE tt.transaction_id = t.id)
+               + (SELECT COUNT(*) FROM transaction_attachments ta WHERE ta.transaction_id = t.id)
+                 AS refcount
+          FROM transactions t
+          WHERE t.ledger_id = ? AND t.sync_id = ?
+          ORDER BY completeness DESC, t.recorded_at DESC, refcount DESC, t.id ASC
+          ''',
+          variables: [Variable<int>(ledgerId), Variable<String>(syncId)],
+        ).get();
+        if (rows.length < 2) continue;
+
+        final keeper = rows.first;
+        final keeperId = keeper.read<int>('id');
+        final losers = rows.skip(1).toList(growable: false);
+        final loserIds =
+            losers.map((r) => r.read<int>('id')).toList(growable: false);
+
+        // 字段级 merge 计划:keeper 为 NULL 且 loser 有非 NULL 的列 → 取第一个
+        // 有值的 loser(loser 顺序 = keeper 同序 = 最完整者优先)。keeper 非 NULL
+        // 的列永不被覆盖;无 loser 有值的列不进计划。
+        //
+        // 非有限值(NaN/±Infinity)不参与 merge:① 它是 F-13 的脏数据,
+        // `_v45SanitizeNonFiniteAmounts` 会先把它归零/置 NULL,若在这里把它带进
+        // keeper 的 NULL 列,等于在清洗之后又把 Infinity 写回库;② jsonEncode
+        // 无法序列化 Infinity,会击穿备份(阻塞-7b)。
+        //
+        // **结构不变量闸门**(跨审缺陷 1a/1b):「填空」不是「有值就填」。
+        // 三个不变量(规则全文见 [_v45MergeableTransactionColumns] 的 I1/I2/I3):
+        //   I1 (amount, currency_code, native_amount) 原子三元组 —— 币种/折算
+        //      只从 amount 与 keeper 相等的 loser 采纳,且两者同源同一 loser;
+        //   I2 自转账禁止(account_id == to_account_id),to_account_* 仅属
+        //      transfer 行;
+        //   I3 本地 id 与 syncId override 互斥(同一引用只能有一种表示)。
+        // 被闸门拒绝的候选值不算静默丢失:仍进 refusedByInvariant +
+        // discardedByLoser 审计(快照可读、可重放)。
+        final mergedValues = <String, Object?>{};
+        final refusedByInvariant = <Map<String, Object?>>[];
+
+        // 非有限值不参与 merge(清洗后也不回写)。
+        bool acceptable(Object? v) => !(v is double && !v.isFinite);
+
+        // 第一个「有该列非 NULL 有限值」的 loser(loser 顺序 = 最完整者优先)。
+        ({int loserId, Object value})? firstLoser(String col) {
+          for (final loser in losers) {
+            final v = loser.data[col];
+            if (v == null || !acceptable(v)) continue;
+            return (loserId: loser.read<int>('id'), value: v);
+          }
+          return null;
+        }
+
+        void refuse(int loserId, String col, Object? value, String rule) {
+          refusedByInvariant.add({
+            'loserId': loserId,
+            'column': col,
+            'value': _v45JsonSafeValue(value),
+            'rule': rule,
+          });
+        }
+
+        // ── I1:(amount, currency_code, native_amount) 原子三元组 ──
+        // amount 是 NOT NULL 列,keeper 规则决定保留哪一份,**永不从 loser 取**,
+        // 故三元组的唯一合法来源是「amount == keeper.amount」的 loser:金额不同
+        // 的 loser 的币种/折算属于另一个金额,填进来会造出 (999, USD, 72) ——
+        // 账本统计 `SUM(COALESCE(native_amount, amount))` 静默返回 72 而非 999。
+        // 为避免「币种来自 A、折算来自 B」的缝合,两者取**同一个** loser。
+        final keeperAmount = (keeper.data['amount'] as num).toDouble();
+        ({int loserId, String? currency, double? native})? tripleSrc;
+        for (final loser in losers) {
+          final la = loser.data['amount'];
+          if (la is! num || la.toDouble() != keeperAmount) {
+            // 金额不同的 loser:其币种/折算永不采纳(记录原因,便于诊断统计错值来源)。
+            for (final col in const ['currency_code', 'native_amount']) {
+              final v = loser.data[col];
+              if (v != null && acceptable(v)) {
+                refuse(loser.read<int>('id'), col, v, 'I1-amount-mismatch');
+              }
+            }
+            continue;
+          }
+          final cur = loser.data['currency_code'];
+          final nat = loser.data['native_amount'];
+          final hasCur = cur is String && cur.isNotEmpty && acceptable(cur);
+          final hasNat = nat is num && acceptable(nat);
+          if (!hasCur && !hasNat) continue;
+          tripleSrc = (
+            loserId: loser.read<int>('id'),
+            currency: hasCur ? cur : null,
+            native: hasNat ? nat.toDouble() : null,
+          );
+          break; // 只认第一个同金额来源,不跨 loser 缝合
+        }
+        if (tripleSrc != null) {
+          final keeperCurrency = keeper.data['currency_code'];
+          final keeperNative = keeper.data['native_amount'];
+          if (keeperCurrency == null && tripleSrc.currency != null) {
+            mergedValues['currency_code'] = tripleSrc.currency;
+          }
+          if (keeperNative == null && tripleSrc.native != null) {
+            mergedValues['native_amount'] = tripleSrc.native;
+          }
+        }
+
+        // ── I3:引用对(本地 id ↔ syncId override)互斥 ──
+        // 同一引用只能有一种表示:同步侧读 override
+        // (sync_engine_serialization.dart:191 等),本地统计/余额侧读 id
+        // (local_statistics_repository 的 override 过滤)—— 两者并存时同一行
+        // 有两个口径。冲突取舍(确定性):keeper 自有值优先;两侧都来自 loser
+        // 时保留本地 id(主表示),override 记入 refusedByInvariant。
+        //
+        // 返回该对的最终值(含 keeper 自有 + loser 填充)+ 值来源 loser id
+        // (0 = 来自 keeper 自有值),供 I2 的账户/转入账户交叉判定使用。
+        ({
+          int? id,
+          String? override,
+          int? idFromLoser,
+          int? overrideFromLoser,
+        }) mergeReferencePair({
+          required String idCol,
+          required String overrideCol,
+        }) {
+          final keeperIdVal = keeper.data[idCol] as int?;
+          final keeperOvVal = keeper.data[overrideCol] as String?;
+          final idPick = keeperIdVal == null ? firstLoser(idCol) : null;
+          final ovPick = keeperOvVal == null ? firstLoser(overrideCol) : null;
+          int? finalId = keeperIdVal;
+          String? finalOv = keeperOvVal;
+          if (finalId != null) {
+            // 已有本地 id → override 只能被拒(双表示)。
+            if (ovPick != null) {
+              refuse(ovPick.loserId, overrideCol, ovPick.value,
+                  'I3-dual-representation');
+            }
+          } else if (finalOv != null) {
+            // 已有 override → 不再填 id(会造出双表示)。
+            if (idPick != null) {
+              refuse(idPick.loserId, idCol, idPick.value,
+                  'I3-dual-representation');
+            }
+          } else if (idPick != null) {
+            // 两者都空:优先本地 id(主表示),override 让位。
+            finalId = idPick.value as int;
+            if (ovPick != null) {
+              refuse(ovPick.loserId, overrideCol, ovPick.value,
+                  'I3-dual-representation');
+            }
+          } else if (ovPick != null) {
+            finalOv = ovPick.value as String;
+          }
+          if (finalId != null && keeperIdVal == null) {
+            mergedValues[idCol] = finalId;
+          }
+          if (finalOv != null && keeperOvVal == null) {
+            mergedValues[overrideCol] = finalOv;
+          }
+          return (
+            id: finalId,
+            override: finalOv,
+            idFromLoser: keeperIdVal == null && finalId != null
+                ? (idPick?.loserId ?? 0)
+                : null,
+            overrideFromLoser: keeperOvVal == null && finalOv != null
+                ? (ovPick?.loserId ?? 0)
+                : null,
+          );
+        }
+
+        mergeReferencePair(
+            idCol: 'category_id', overrideCol: 'category_sync_id_override');
+
+        // ── I2 + I3:账户引用对(account_id ↔ account_sync_id_override) ──
+        final accountPair = mergeReferencePair(
+            idCol: 'account_id', overrideCol: 'account_sync_id_override');
+
+        // ── I2 + I3:转入账户引用对(to_account_id ↔ to_account_sync_id_override) ──
+        // I2 附加闸门:
+        //  ① `to_account_*` 只属于 transfer 行 —— 非 transfer 行带转入引用会让
+        //     两个余额 API 永久分歧(getAccountBalance 过滤 `type='transfer'`,
+        //     getAccountBalanceInLedger 是裸 `to_account_id = ?` 命中);
+        //  ② 填入后不得与最终 account_id / account_sync_id_override 指向**同一
+        //     账户**(自转账)。比较按账户身份,不按表示:id↔id、override↔override
+        //     以及 id↔override(反查 accounts.sync_id)都算同一账户。UI 侧有守卫
+        //     (transfer_form.dart:524),仓库层此前没有 —— 跨审探针
+        //     keeper(transfer, account_id=5, to=NULL)+ loser(to=5) 会合并出
+        //     account_id == to_account_id,getAccountBalance 与
+        //     getAccountBalanceInLedger 从此永久分歧。
+        {
+          final isTransfer = keeper.data['type'] == 'transfer';
+          final finalAccountId = accountPair.id;
+          final finalAccountOv = accountPair.override;
+          var finalToId = keeper.data['to_account_id'];
+          var finalToOv = keeper.data['to_account_sync_id_override'];
+          final toIdPick =
+              finalToId == null ? firstLoser('to_account_id') : null;
+          final toOvPick = finalToOv == null
+              ? firstLoser('to_account_sync_id_override')
+              : null;
+
+          // 账户身份:id → syncId 反查,用于跨表示比较(缓存,每计划最多 2 次)。
+          // best-effort:极老/半迁移库没有 accounts 表时返回 null(退化为
+          // 「无法跨表示判定」),不让一次查表失败把整批合并计划清空。
+          final syncIdById = <int, String?>{};
+          Future<String?> syncIdOf(int? id) async {
+            if (id == null) return null;
+            if (syncIdById.containsKey(id)) return syncIdById[id];
+            String? s;
+            try {
+              final row = await customSelect(
+                'SELECT sync_id FROM accounts WHERE id = ?',
+                variables: [Variable<int>(id)],
+              ).getSingleOrNull();
+              s = row?.readNullable<String>('sync_id');
+            } catch (_) {
+              s = null;
+            }
+            return syncIdById[id] = (s == null || s.isEmpty) ? null : s;
+          }
+
+          /// 两个引用是否指向同一账户(id 相等 / syncId 相等 / 交叉解析相等)。
+          Future<bool> sameAccount(
+              int? aId, String? aOv, int? bId, String? bOv) async {
+            if (aId != null && bId != null && aId == bId) return true;
+            if (aOv != null && bOv != null && aOv == bOv) return true;
+            if (aId != null && bOv != null && await syncIdOf(aId) == bOv) {
+              return true;
+            }
+            if (bId != null && aOv != null && await syncIdOf(bId) == aOv) {
+              return true;
+            }
+            return false;
+          }
+
+          if (!isTransfer) {
+            // 非 transfer:拒绝全部转入引用填充(记录原因,值仍进 discarded)。
+            if (toIdPick != null) {
+              refuse(toIdPick.loserId, 'to_account_id', toIdPick.value,
+                  'I2-non-transfer');
+            }
+            if (toOvPick != null) {
+              refuse(toOvPick.loserId, 'to_account_sync_id_override',
+                  toOvPick.value, 'I2-non-transfer');
+            }
+          } else if (finalToId != null || finalToOv != null) {
+            // keeper 已有转入表示:另一种表示一律拒绝(I3 双表示)。
+            if (toIdPick != null) {
+              refuse(toIdPick.loserId, 'to_account_id', toIdPick.value,
+                  'I3-dual-representation');
+            }
+            if (toOvPick != null) {
+              refuse(toOvPick.loserId, 'to_account_sync_id_override',
+                  toOvPick.value, 'I3-dual-representation');
+            }
+          } else if (toIdPick != null) {
+            // 两者都空:优先本地 id(主表示)。
+            if (await sameAccount(
+                finalAccountId, finalAccountOv, toIdPick.value as int?, null)) {
+              refuse(toIdPick.loserId, 'to_account_id', toIdPick.value,
+                  'I2-self-transfer');
+              // id 被拒后才考虑 override(仍是同一账户则一并拒)。
+              if (toOvPick != null) {
+                if (await sameAccount(finalAccountId, finalAccountOv, null,
+                    toOvPick.value as String?)) {
+                  refuse(toOvPick.loserId, 'to_account_sync_id_override',
+                      toOvPick.value, 'I2-self-transfer');
+                } else {
+                  finalToOv = toOvPick.value;
+                }
+              }
+            } else {
+              finalToId = toIdPick.value;
+              if (toOvPick != null) {
+                refuse(toOvPick.loserId, 'to_account_sync_id_override',
+                    toOvPick.value, 'I3-dual-representation');
+              }
+            }
+          } else if (toOvPick != null) {
+            if (await sameAccount(finalAccountId, finalAccountOv, null,
+                toOvPick.value as String?)) {
+              refuse(toOvPick.loserId, 'to_account_sync_id_override',
+                  toOvPick.value, 'I2-self-transfer');
+            } else {
+              finalToOv = toOvPick.value;
+            }
+          }
+
+          if (finalToId != null && keeper.data['to_account_id'] == null) {
+            mergedValues['to_account_id'] = finalToId;
+          }
+          if (finalToOv != null &&
+              keeper.data['to_account_sync_id_override'] == null) {
+            mergedValues['to_account_sync_id_override'] = finalToOv;
+          }
+
+          // ── I2 反向交叉检查 ──
+          // 上面的闸门只覆盖「转入引用被填入」的方向。反向同样会造出自转账:
+          // keeper 自带 to_account_id=5,而**账户侧**从 loser 填进 account_id=5
+          // (或 account_sync_id_override 指向 ACC-5)。此时转出/转入同一账户,
+          // 两个余额 API 分歧。检测到即撤回账户侧的 loser 填充。
+          if (isTransfer &&
+              finalToId != null &&
+              (accountPair.idFromLoser != null ||
+                  accountPair.overrideFromLoser != null) &&
+              await sameAccount(
+                  accountPair.id, accountPair.override, finalToId, finalToOv)) {
+            if (accountPair.idFromLoser != null && accountPair.id != null) {
+              mergedValues.remove('account_id');
+              refuse(accountPair.idFromLoser!, 'account_id', accountPair.id,
+                  'I2-self-transfer');
+            }
+            if (accountPair.overrideFromLoser != null &&
+                accountPair.override != null) {
+              mergedValues.remove('account_sync_id_override');
+              refuse(accountPair.overrideFromLoser!, 'account_sync_id_override',
+                  accountPair.override, 'I2-self-transfer');
+            }
+          }
+        }
+
+        // ── 其余可空列:无结构耦合,原「填空」语义照旧 ──
+        const invariantManaged = <String>{
+          'currency_code',
+          'native_amount',
+          'category_id',
+          'category_sync_id_override',
+          'account_id',
+          'account_sync_id_override',
+          'to_account_id',
+          'to_account_sync_id_override',
+        };
+        for (final col in mergeCols) {
+          if (invariantManaged.contains(col)) continue;
+          if (keeper.data[col] != null) continue; // 不覆盖 keeper 的非空值
+          final pick = firstLoser(col);
+          if (pick != null) mergedValues[col] = pick.value;
+        }
+
+        // 丢弃审计:随 loser 行删除而消失、且**没有**被 merge 采纳的值。
+        // 结构:{loserId: {column: value}} —— 快照可读、可重放。
+        final discarded = <int, Map<String, Object?>>{};
+        for (final loser in losers) {
+          final loserId = loser.read<int>('id');
+          final perRow = <String, Object?>{};
+          for (final col in mergeCols) {
+            final lv = loser.data[col];
+            if (lv == null) continue;
+            final kv = keeper.data[col];
+            if (kv == lv) continue; // 值相同,无损失
+            if (kv == null && mergedValues[col] == lv) continue; // 已被采纳
+            perRow[col] = _v45JsonSafeValue(lv);
+          }
+          // NOT NULL 业务列:与 keeper 不同即被丢弃(不做字段级 merge,
+          // 避免「金额来自 A、备注来自 B」的缝合行)。
+          for (final col in const ['type', 'amount', 'happened_at', 'ledger_id']) {
+            final lv = loser.data[col];
+            final kv = keeper.data[col];
+            if (lv == null) continue;
+            if (kv == lv) continue;
+            perRow[col] = _v45JsonSafeValue(lv);
+          }
+          if (perRow.isNotEmpty) discarded[loserId] = perRow;
+        }
+
+        plans.add(_V45MergePlan(
+          ledgerId: ledgerId,
+          syncId: syncId,
+          keeperId: keeperId,
+          loserIds: loserIds,
+          keeperCompleteness: keeper.read<int>('completeness'),
+          mergedValues: mergedValues,
+          discardedByLoser: discarded,
+          refusedByInvariant: refusedByInvariant,
+        ));
+      }
+    } catch (e, st) {
+      // 计划失败 → 空计划(去重跳过);唯一索引失败后由 beforeOpen 自愈重试。
+      logger.warning('DBMigration', 'v45 去重计划生成失败(跳过去重): $e', st);
+      return const [];
+    }
+    return plans;
+  }
+
+  /// 重复 (ledger_id, sync_id) 去重(缺陷 A/B/C 的修复主体)。
+  ///
+  /// **keeper 选择规则**(缺陷 B,「最完整 → 最新 → 引用最多 → 最早」):
+  ///  1. 业务字段非 NULL 数**多**者为 keeper(空行不该赢过有数据的行);
+  ///  2. 平手比 `recorded_at`(server 首次落库时刻)**新**者;
+  ///  3. 再平手比引用数(transaction_tags + transaction_attachments)多者
+  ///     (保留引用多的行,减少改指面);
+  ///  4. 再平手取 `id` **小**者(最早,确定性收尾)。
+  ///
+  /// **字段级 merge**(只填空、不覆盖):
+  ///  - loser 的非 NULL 值填进 keeper 的 NULL 列,列清单见
+  ///    [_v45MergeableTransactionColumns];keeper 已有非 NULL 值永不被覆盖;
+  ///  - NOT NULL 列(type/amount/happened_at/ledger_id/sync_id)不做字段级
+  ///    merge —— 由 keeper 选择规则决定保留哪一份,避免「金额一半来自 A、
+  ///    一半来自 B」的缝合行(记录在快照 discarded 里)。
+  ///
+  /// **引用改指**(缺陷 A):[_v45TransactionIdReferenceColumns] 里**全部**表/
+  /// 列改指 keeper(先按 keeper 已有的业务键去重,避免改指后撞唯一约束)。
+  /// 旧实现只处理 transaction_tags / transaction_attachments,让
+  /// messages.transactionId / auto_book_events.transactionId /
+  /// auto_book_events.duplicateOfTransactionId /
+  /// auto_book_event_items.transactionId 指向被删行 —— 且这四张表**不在**
+  /// OrphanScanner 的 16 条规则里,损坏永久不可见。
+  ///
+  /// **local_changes.payload_json 重写**(缺陷 C):entity_id 改指 keeper 后,
+  /// payload 里嵌的旧快照仍带 loser 的值/`id`,使同一行自相矛盾
+  /// (`entity_id=1` + `payload_json={"id":2,...}`);ChangeTracker 已预留
+  /// payload 参数,是潜在的错值推送源。这里按 keeper 合并后的最终行重写。
+  ///
+  /// 幂等:第二次跑没有重复对可合并;所有 DML 都以「已处理则无操作」形态写。
+  Future<void> _v45DeduplicateTransactionSyncIds({
+    required List<_V45MergePlan> plans,
+  }) async {
+    if (plans.isEmpty) {
+      logger.info('DBMigration', 'v45 无重复 syncId,跳过去重');
+      return;
+    }
+    try {
+      var mergedRows = 0;
+      // 引用表存在性(半迁移库/极老库可能还没建 messages/auto_book_* 表)。
+      // 缺表时跳过该表的改指,而不是让一条 "no such table" 中止整组去重
+      // (中止会留下「部分计划已执行」的中间态;虽然 beforeOpen 会自愈重试,
+      // 少一次来回更好)。
+      final existingTables = await _v45ExistingTables([
+        ..._v45TransactionIdReferenceColumns.map((r) => r.table),
+        'messages',
+      ]);
+      for (final plan in plans) {
+        final keeperId = plan.keeperId;
+        final dupIds = plan.loserIds;
+        if (dupIds.isEmpty) continue;
+        // 幂等守卫:keeper 已被之前的运行删掉(不可能,防御)→ 跳过该计划。
+        final keeperAlive = await customSelect(
+          'SELECT id FROM transactions WHERE id = ?',
+          variables: [Variable<int>(keeperId)],
+        ).getSingleOrNull();
+        if (keeperAlive == null) continue;
+
+        // ① 字段级 merge:只填 keeper 的 NULL 列,不覆盖非 NULL。
+        //
+        // 注意 `customStatement` 的第二参是**裸值**列表(不是 drift 的
+        // Variable 表达式;传 Variable 会被 sqlite3 驱动拒绝:
+        // "Allowed parameters must either be null or bool, int, num, String")。
+        if (plan.mergedValues.isNotEmpty) {
+          final sets = <String>[];
+          final args = <Object?>[];
+          plan.mergedValues.forEach((column, value) {
+            sets.add('$column = ?');
+            args.add(value);
+          });
+          await customStatement(
+            'UPDATE transactions SET ${sets.join(", ")} '
+            'WHERE id = ? AND ${plan.mergedValues.keys.map((c) => "$c IS NULL").join(" AND ")}',
+            [...args, keeperId],
+          );
+        }
+
+        for (final dupId in dupIds) {
+          // ② 全部引用表改指 keeper。先删「改指后会重键」的副本行:
+          //    - transaction_tags / transaction_attachments:keeper 已有同业务键
+          //      → 删 loser 行(改指会造成重复关联/重复附件);
+          //    - 其余引用列(messages/auto_book_*):同一行只指向一笔交易,
+          //      改指即可,没有重键问题。
+          for (final ref in _v45TransactionIdReferenceColumns) {
+            if (!existingTables.contains(ref.table)) continue;
+            if (ref.table == 'transaction_tags') {
+              await customStatement(
+                'DELETE FROM transaction_tags WHERE ${ref.column} = ? '
+                'AND tag_id IN (SELECT tag_id FROM transaction_tags '
+                'WHERE ${ref.column} = ?)',
+                [dupId, keeperId],
+              );
+            } else if (ref.table == 'transaction_attachments') {
+              await customStatement(
+                'DELETE FROM transaction_attachments WHERE ${ref.column} = ? '
+                'AND file_name IN (SELECT file_name FROM transaction_attachments '
+                'WHERE ${ref.column} = ?)',
+                [dupId, keeperId],
+              );
+            }
+            await customStatement(
+              'UPDATE ${ref.table} SET ${ref.column} = ? WHERE ${ref.column} = ?',
+              [keeperId, dupId],
+            );
+          }
+
+          mergedRows++;
+        }
+
+        // ③ local_changes:整组 entity_id 改指 keeper,payload_json 重写为 keeper
+        //    合并后的最终行(缺陷 C)。payload 是「变更后的完整 JSON」,保持与
+        //    entity_id 自洽;旧实现只改 entity_id,payload 里还嵌着 loser 的
+        //    `{"id":<loser>,...}` 快照。
+        //
+        //    作用域带 ledger_id:唯一索引是 UNIQUE(ledger_id, sync_id),跨账本
+        //    同 syncId 合法 —— 不加账本过滤会误改另一个账本的同名 change。
+        await customStatement(
+          'UPDATE local_changes SET entity_id = ?, payload_json = ? '
+          "WHERE entity_type = 'transaction' AND entity_sync_id = ? "
+          'AND ledger_id = ?',
+          [
+            keeperId,
+            jsonEncode(await _v45KeeperPayloadJson(keeperId)),
+            plan.syncId,
+            plan.ledgerId,
+          ],
+        );
+
+        // ④ messages.metadata 内嵌的 "txIds" / "undoneIds" 数组(缺陷 A 的
+        //    JSON 内嵌引用)。AI 账单卡片的撤销/编辑/改账本按钮全部读它
+        //    (`ai_chat_page.dart` 的 `_parseBillMetadata`),只改
+        //    `messages.transaction_id` 会让卡片按钮仍指向被删行 —— 点撤销删不到
+        //    东西;`undoneIds` 是 txIds 的子集、决定卡片是否已置灰
+        //    (`isUndone`),漏改会让已撤销的卡片复活成「可撤销」。
+        //    两个数组都替换 loser id → keeper id,并去重。
+        if (existingTables.contains('messages')) {
+          await _v45RewriteMessageTxIds(
+              dupIds: dupIds, keeperId: keeperId);
+        }
+
+        await customStatement(
+          'DELETE FROM transactions WHERE id IN (${dupIds.join(",")})',
+        );
+        logger.warning('DBMigration',
+            'v45 合并重复 syncId=${plan.syncId}(ledger=${plan.ledgerId}): '
+            'keeper=$keeperId, 删 ${dupIds.length} 行, '
+            '合并字段=${plan.mergedValues.keys.join(",")}, '
+            '丢弃字段=${plan.discardedByLoser.values.expand((m) => m.keys).toSet().join(",")}');
+      }
+      if (mergedRows > 0) {
+        logger.warning('DBMigration',
+            'v45 共合并 $mergedRows 行重复交易(不可逆;合并/丢弃明细见 pre-v45 快照的 dedupePlans)');
+      }
+    } catch (e, st) {
+      // 去重失败不阻断:唯一索引步骤会因残余重复而失败并被捕获;beforeOpen
+      // 自愈会在下次打开时重试(缺陷 D),故这里不再依赖「下次 onUpgrade」。
+      logger.warning('DBMigration', 'v45 syncId 去重失败(跳过): $e', st);
+    }
+  }
+
+  /// 这批表里哪些确实存在(半迁移库/极老库可能还没建)。恒返回去重集合。
+  Future<Set<String>> _v45ExistingTables(List<String> names) async {
+    final wanted = names.toSet();
+    if (wanted.isEmpty) return const {};
+    final placeholders = List.filled(wanted.length, '?').join(',');
+    final rows = await customSelect(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name IN ($placeholders)",
+      variables: wanted.map((n) => Variable<String>(n)).toList(),
+    ).get();
+    return rows.map((r) => r.read<String>('name')).toSet();
+  }
+
+  /// 重写 `messages.metadata` 里 `txIds` / `undoneIds` 数组中的 loser id →
+  /// keeper id(缺陷 A 的 JSON 内嵌引用;AI 账单卡片的撤销/编辑/改账本按钮读
+  /// 这一列)。
+  ///
+  /// **两个数组都是本地 int 交易主键列表**:`txIds` 是卡片关联的交易,
+  /// `undoneIds` 是其中已被「撤销」的子集(契约见
+  /// `ai_chat_page.dart:1816` "undoneIds 是 txIds 的子集";消费侧
+  /// `ai_chat_page.dart:1888` 用 `undoneIds.contains(txId)` 决定卡片是否置灰)。
+  /// 只改 `txIds` 会让同一张卡片自相矛盾:txIds 指向 keeper(未撤销),
+  /// undoneIds 还留着被删的 loser id → 去重前已撤销的卡片复活成可撤销。
+  ///
+  /// **不碰** `bills` 里业务字段:那是 AI 识别的账单内容,不是本地主键引用。
+  /// 老格式(`{billInfo, isUndone}`)无需处理:它读 `messages.transaction_id`
+  /// 列(同一批已改指)+ 布尔标志,不含 id 列表。
+  /// JSON 解析失败的行原样保留(损坏数据不该被迁移二次破坏)。
+  /// 幂等:替换后不存在 loser id,重跑无改动。
+  Future<void> _v45RewriteMessageTxIds({
+    required List<int> dupIds,
+    required int keeperId,
+  }) async {
+    if (dupIds.isEmpty) return;
+    // 只扫描真正引用了 loser 的行,避免全表 decode。
+    final placeholders = List.filled(dupIds.length, '?').join(',');
+    final rows = await customSelect(
+      'SELECT id, transaction_id, metadata FROM messages '
+      "WHERE metadata LIKE '%txIds%' OR metadata LIKE '%undoneIds%' "
+      "OR transaction_id IN ($placeholders)",
+      variables: dupIds.map((i) => Variable<int>(i)).toList(),
+    ).get();
+    final dupSet = dupIds.toSet();
+    for (final row in rows) {
+      final metadata = row.readNullable<String>('metadata');
+      if (metadata == null || metadata.isEmpty) continue;
+      dynamic decoded;
+      try {
+        decoded = jsonDecode(metadata);
+      } catch (_) {
+        continue; // 损坏 JSON:保持原样
+      }
+      if (decoded is! Map) continue;
+      var changed = false;
+      // txIds / undoneIds 同为本地 int 交易主键列表,同一映射规则 + 去重
+      // (两个 loser id 都指同一笔时不留重复项;undoneIds 与 txIds 各自去重,
+      // 保持「undo 集合 ⊆ tx 集合」)。
+      for (final key in const ['txIds', 'undoneIds']) {
+        final rawIds = decoded[key];
+        if (rawIds is! List) continue;
+        final rewritten = <dynamic>[];
+        for (final id in rawIds) {
+          final mapped = (id is int && dupSet.contains(id)) ? keeperId : id;
+          if (!rewritten.contains(mapped)) rewritten.add(mapped);
+        }
+        // 元素变了(id 改指)或长度变了(去重)才算改动;纯遍历不动。
+        final same = rewritten.length == rawIds.length &&
+            rewritten.asMap().entries.every((e) => e.value == rawIds[e.key]);
+        if (same) continue;
+        decoded[key] = rewritten;
+        changed = true;
+      }
+      if (!changed) continue;
+      await customStatement(
+        'UPDATE messages SET metadata = ? WHERE id = ?',
+        [jsonEncode(decoded), row.read<int>('id')],
+      );
+    }
+  }
+
+  /// 快照/日志用:`double` 非有限值 → 标记字符串,避免 jsonEncode 抛
+  /// (阻塞-7b;`_V45MergePlan.toJson` 会被写进 pre-v45 快照)。
+  static Object? _v45JsonSafeValue(Object? value) {
+    if (value is double && !value.isFinite) return '<non-finite>';
+    return value;
+  }
+
+  /// keeper 合并后的最终行 → 与 EntitySerializer/`_archiveToTrash` 同口径的
+  /// JSON(供 local_changes.payload_json 重写,缺陷 C)。
+  ///
+  /// 字段集对齐 `_archiveToTrash` 的 payload:同步侧读的是 entity_sync_id +
+  /// int id,这里把整行关键字段序列化,杜绝 `{"id":<loser>}` 这类陈旧值。
+  /// 非有限 double 走 `_v45JsonSafeValue`(jsonEncode 会直接抛,而这一步在
+  /// DML 里抛出会让整个去重计划半途而废)。
+  Future<Map<String, dynamic>> _v45KeeperPayloadJson(int keeperId) async {
+    final row = await customSelect(
+      'SELECT * FROM transactions WHERE id = ?',
+      variables: [Variable<int>(keeperId)],
+    ).getSingleOrNull();
+    if (row == null) return const {};
+    final data = <String, dynamic>{
+      for (final e in row.data.entries) e.key: _v45JsonSafeValue(e.value),
+    };
+    data['id'] = keeperId; // 自洽:payload.id == local_changes.entity_id
+    return data;
+  }
+
+  /// transaction_tags 去重 + UNIQUE(transaction_id, tag_id)。
+  Future<void> _v45AddTransactionTagsUnique() async {
+    try {
+      final dupes = await customSelect(
+        '''
+        SELECT transaction_id, tag_id, COUNT(*) AS c
+        FROM transaction_tags
+        GROUP BY transaction_id, tag_id
+        HAVING c > 1
+        ''',
+      ).get();
+      for (final d in dupes) {
+        final txId = d.read<int>('transaction_id');
+        final tagId = d.read<int>('tag_id');
+        // 保留最小 id 行,删其余
+        await customStatement(
+          'DELETE FROM transaction_tags WHERE transaction_id = ? AND tag_id = ? '
+          'AND id NOT IN (SELECT MIN(id) FROM transaction_tags '
+          'WHERE transaction_id = ? AND tag_id = ?)',
+          [txId, tagId, txId, tagId],
+        );
+      }
+      if (dupes.isNotEmpty) {
+        logger.warning('DBMigration',
+            'v45 transaction_tags 去重 ${dupes.length} 组(不可逆;原值见 pre-v45 快照)');
+      }
+      await customStatement(
+        'CREATE UNIQUE INDEX IF NOT EXISTS idx_transaction_tags_pair '
+        'ON transaction_tags (transaction_id, tag_id);');
+    } catch (e, st) {
+      logger.warning('DBMigration', 'v45 transaction_tags 唯一索引失败(跳过): $e', st);
+    }
+  }
+
+  /// UNIQUE(ledger_id, sync_id) 部分索引(仅非空、非空串 sync_id)。
+  Future<void> _v45AddTransactionSyncIdUnique() async {
+    try {
+      await customStatement(
+        'CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_ledger_sync_id '
+        "ON transactions (ledger_id, sync_id) "
+        "WHERE sync_id IS NOT NULL AND sync_id <> '';");
+      logger.info('DBMigration', 'v45 idx_transactions_ledger_sync_id 已建立');
+    } catch (e, st) {
+      logger.warning('DBMigration',
+          'v45 syncId 唯一索引未建立(残余重复未清干净,下次启动重试): $e', st);
+    }
   }
 
   // Seed minimal data

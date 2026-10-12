@@ -184,6 +184,14 @@ class DatabaseSyncManager {
   /// Offline operations queue
   final Queue<PendingSyncOperation> _offlineQueue = Queue();
 
+  /// Operations that exceeded [maxRetryAttempts].
+  ///
+  /// These are no longer retried, but they are **retained** instead of being
+  /// dropped: a silently discarded user write is unrecoverable, while a
+  /// queryable dead-letter lets the UI report it and lets the caller decide
+  /// (retry, export, discard).
+  final List<PendingSyncOperation> _deadLetterQueue = [];
+
   /// Active realtime subscriptions
   final Map<String, RealtimeChannel> _subscriptions = {};
 
@@ -206,6 +214,9 @@ class DatabaseSyncManager {
     this.maxRetryAttempts = 3,
   });
 
+  /// Whether [dispose] has run.
+  bool _disposed = false;
+
   /// Current sync status
   DatabaseSyncStatus get status => _status;
 
@@ -214,6 +225,33 @@ class DatabaseSyncManager {
 
   /// Pending operations count
   int get pendingOperationsCount => _offlineQueue.length;
+
+  /// Operations that permanently failed (exceeded [maxRetryAttempts]).
+  ///
+  /// Retained so callers can surface / recover them; the queue itself only
+  /// contains operations that are still eligible for retry.
+  List<PendingSyncOperation> get deadLetterOperations =>
+      List<PendingSyncOperation>.unmodifiable(_deadLetterQueue);
+
+  /// Number of permanently failed operations.
+  int get deadLetterCount => _deadLetterQueue.length;
+
+  /// Re-queue every dead-lettered operation for another attempt.
+  ///
+  /// Resets their retry counters so they get a full fresh window.
+  int retryDeadLetterOperations() {
+    final restored = _deadLetterQueue.length;
+    for (final op in _deadLetterQueue) {
+      _offlineQueue.add(op.copyWith(retryCount: 0, error: null));
+    }
+    _deadLetterQueue.clear();
+    return restored;
+  }
+
+  /// Permanently drop dead-lettered operations.
+  void clearDeadLetterOperations() {
+    _deadLetterQueue.clear();
+  }
 
   /// Check if currently syncing
   bool get isSyncing => _status == DatabaseSyncStatus.syncing;
@@ -275,7 +313,7 @@ class DatabaseSyncManager {
 
       // Cloud record exists, check for conflicts
       if (!forceUpdate) {
-        final conflict = _detectConflict(localRecord, cloudRecord);
+        final conflict = _detectConflict(localRecord, cloudRecord, table: table);
         if (conflict != null) {
           logger?.warning('Conflict detected for $table/$recordId');
           final resolved = await _resolveConflict(conflict);
@@ -379,7 +417,17 @@ class DatabaseSyncManager {
             ),
           );
         } else {
-          logger?.error('Operation max retries reached: ${operation.id}');
+          // Out of attempts: park it in the dead-letter list rather than
+          // dropping it. A silently discarded user write can never be
+          // recovered or even reported.
+          logger?.error('Operation max retries reached: ${operation.id} '
+              '— moved to dead-letter (${_deadLetterQueue.length + 1} total)');
+          _deadLetterQueue.add(
+            operation.copyWith(
+              retryCount: operation.retryCount + 1,
+              error: e.toString(),
+            ),
+          );
         }
       }
     }
@@ -543,26 +591,34 @@ class DatabaseSyncManager {
   /// Returns null if no conflict, otherwise returns SyncConflict.
   SyncConflict? _detectConflict(
     Map<String, dynamic> localRecord,
-    Map<String, dynamic> cloudRecord,
-  ) {
+    Map<String, dynamic> cloudRecord, {
+    String table = '',
+  }) {
     // Compare version numbers (optimistic locking)
     final localVersion = localRecord['version'] as int?;
     final cloudVersion = cloudRecord['version'] as int?;
 
     if (localVersion != null && cloudVersion != null) {
-      if (localVersion <= cloudVersion) {
-        // Local version is not newer, no conflict
-        return null;
-      }
       if (localVersion == cloudVersion + 1) {
-        // Local is exactly one version ahead, normal update
+        // Local is exactly one version ahead: the normal, expected update.
         return null;
       }
-      // Version mismatch, conflict detected
+      if (localVersion == cloudVersion) {
+        // Same version number: nothing to arbitrate, local is a no-op replay.
+        return null;
+      }
+      // Any other ordering is a potential lost update:
+      //  * local newer by more than one  → local may have skipped versions
+      //    (possibly based on stale data);
+      //  * local OLDER than cloud        → writing local would overwrite a
+      //    newer cloud edit with stale data.
+      // Both go through _resolveConflict so LWW actually runs; previously the
+      // `localVersion <= cloudVersion` shortcut let stale local data silently
+      // overwrite a newer cloud record.
       return SyncConflict(
         localRecord: localRecord,
         cloudRecord: cloudRecord,
-        table: '', // Will be filled by caller
+        table: table,
         recordId: localRecord['id'] as String,
       );
     }
@@ -581,7 +637,16 @@ class DatabaseSyncManager {
         return SyncConflict(
           localRecord: localRecord,
           cloudRecord: cloudRecord,
-          table: '',
+          table: table,
+          recordId: localRecord['id'] as String,
+        );
+      }
+      if (cloudUpdated.isAfter(localUpdated)) {
+        // Cloud is newer: writing local would discard the cloud edit.
+        return SyncConflict(
+          localRecord: localRecord,
+          cloudRecord: cloudRecord,
+          table: table,
           recordId: localRecord['id'] as String,
         );
       }
@@ -676,9 +741,12 @@ class DatabaseSyncManager {
 
   /// Update sync status and notify listeners
   void _updateStatus(DatabaseSyncStatus newStatus) {
+    if (_disposed) return;
     if (_status != newStatus) {
       _status = newStatus;
-      _statusController.add(_status);
+      if (!_statusController.isClosed) {
+        _statusController.add(_status);
+      }
       logger?.debug('Status changed: $newStatus');
     }
   }
@@ -699,6 +767,8 @@ class DatabaseSyncManager {
 
   /// Dispose resources
   void dispose() {
+    if (_disposed) return;
+    _disposed = true;
     logger?.info('Disposing DatabaseSyncManager');
     _statusController.close();
     // Note: Don't unsubscribe here, let caller manage subscription lifecycle

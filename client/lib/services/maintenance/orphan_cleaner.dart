@@ -126,12 +126,39 @@ class OrphanCleaner {
         await _deleteSharedCategory(r);
       case OrphanType.txTagOverrideMissingTx:
         await _deleteTxTagOverride(r);
+      // C3/F-31:交易悬挂 ledger_id → 删除该交易(它不属于任何账本,
+      // 无法被任何视图访问;清理是唯一出路)
+      case OrphanType.txMissingLedger:
+        await _deleteTxMissingLedger(r);
+      // C3/F-22:调整记录悬挂 → 删除该记录
+      case OrphanType.adjustmentMissingAccount:
+        await _deleteAdjustment(r);
       case OrphanType.fileOrphanAttachment:
       case OrphanType.fileOrphanCustomIcon:
       case OrphanType.fileOrphanSharedIcon:
       case OrphanType.localChangeMissingEntity:
         throw StateError('_cleanDb 收到非 DB 类型: ${r.type}');
     }
+  }
+
+  /// A11:交易悬挂 ledger_id —— 连同它的关联一起清掉。
+  Future<void> _deleteTxMissingLedger(OrphanRecord r) async {
+    final id = r.localId;
+    if (id == null) throw StateError('tx record 缺 localId');
+    await (db.delete(db.transactionTags)
+          ..where((t) => t.transactionId.equals(id)))
+        .go();
+    await (db.delete(db.transactionAttachments)
+          ..where((t) => t.transactionId.equals(id)))
+        .go();
+    await (db.delete(db.transactions)..where((t) => t.id.equals(id))).go();
+  }
+
+  /// A12:余额调整悬挂 —— 删记录。
+  Future<void> _deleteAdjustment(OrphanRecord r) async {
+    final id = r.localId;
+    if (id == null) throw StateError('adjustment record 缺 localId');
+    await (db.delete(db.accountAdjustments)..where((t) => t.id.equals(id))).go();
   }
 
   Future<void> _deleteBudget(OrphanRecord r) async {

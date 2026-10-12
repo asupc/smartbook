@@ -4,9 +4,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../automation/auto_billing_service.dart'
-    show AutoBillingService, SmsProcessOutcome, SmsProcessOutcomeEvent;
+    show AutoBookTestOptions, AutoBillingService, SmsProcessOutcome, SmsProcessOutcomeEvent;
 import '../automation/auto_book_coordinator.dart';
 import '../automation/auto_book_event.dart';
+
+import '../automation/automation_settings_store.dart';
 import '../data/source_channel_resolver.dart';
 import '../../ai/core/ai_runtime_state.dart';
 import '../../providers/automation_providers.dart';
@@ -144,30 +146,37 @@ class SmsMonitorService {
       if (!_isEnabled) return; // 用户中途关闭:整条队列留在 native
       // 并行分发:逐条交给 Coordinator(有界并发,同 eventKey 串行),每条完成
       // 即 ACK,不再逐条 await —— 一批积压短信的识别墙钟时间 ≈ 1/并发数。
-      final futures = <Future<void>>[];
-      for (final raw in items) {
-        if (raw is! Map) continue;
-        final sender = (raw['sender'] ?? '').toString();
-        final body = (raw['body'] ?? '').toString();
-        final fingerprint = (raw['fingerprint'] ?? '').toString();
-        final nativeEventKey = (raw['eventKey'] ?? '').toString().trim();
-        final timestamp = int.tryParse((raw['timestamp'] ?? '').toString());
-        final eventKey = nativeEventKey.isNotEmpty
-            ? 'sms:v3:$nativeEventKey'
-            : 'sms:v2:$fingerprint:${timestamp ?? 0}';
-        if (body.isEmpty) {
-          futures.add(_ack(fingerprint, eventKey));
-          continue;
+      // B3:分批读取、有界处理 —— 每批最多 10 条,批内并发、批间串行,
+      // 避免一次把整队(单来源上限 500 条)同时压进 Coordinator。
+      const batchSize = 10;
+      for (var start = 0; start < items.length; start += batchSize) {
+        if (!_isEnabled) return; // 用户中途关闭:剩余项留队
+        final futures = <Future<void>>[];
+        for (final raw in items.skip(start).take(batchSize)) {
+          if (raw is! Map) continue;
+          final sender = (raw['sender'] ?? '').toString();
+          final body = (raw['body'] ?? '').toString();
+          final fingerprint = (raw['fingerprint'] ?? '').toString();
+          final nativeEventKey = (raw['eventKey'] ?? '').toString().trim();
+          final timestamp = int.tryParse((raw['timestamp'] ?? '').toString());
+          final eventKey = nativeEventKey.isNotEmpty
+              ? 'sms:v3:$nativeEventKey'
+              : 'sms:v2:$fingerprint:${timestamp ?? 0}';
+          if (body.isEmpty) {
+            futures.add(_ack(fingerprint, eventKey));
+            continue;
+          }
+          futures.add(_processOne(
+            sender: sender,
+            body: body,
+            fingerprint: fingerprint,
+            eventKey: eventKey,
+            timestamp: timestamp,
+            queueItem: raw,
+          ));
         }
-        futures.add(_processOne(
-          sender: sender,
-          body: body,
-          fingerprint: fingerprint,
-          eventKey: eventKey,
-          timestamp: timestamp,
-        ));
+        await Future.wait(futures);
       }
-      await Future.wait(futures);
     } catch (e) {
       // 队列读取/通道异常不抛:不影响主流程。
       // 已处理项未 ack 会在下次 drain 通过指纹预检补 ack。
@@ -181,12 +190,20 @@ class SmsMonitorService {
     required String fingerprint,
     required String eventKey,
     int? timestamp,
+    Map? queueItem,
   }) async {
     // AI 未配置的提示每事件只弹一次(会话内)
     final alreadyWarned = _noAiNotified.contains(eventKey);
     final capturedAt = DateTime.now();
-    final execution = await _coordinator.execute(
-      input: AutoBookInput(
+    // B2:优先用捕获时冻结的目标快照(原生队列项),没有才按当前配置解析。
+    final snapshot = AutoBookQueueTargetSnapshot.fromQueueItem(queueItem);
+    final target = await resolveAutoBookTarget(
+      _container,
+      frozenRef: snapshot.ref,
+      frozenState: snapshot.state,
+      frozenConfigVersion: snapshot.version,
+    );
+    final input = AutoBookInput(
         // v2 把 native 时间带入 key，避免同一模板在不同日期被误当成
         // 同一条短信；同一条广播重放仍保持相同 key。
         eventKey: eventKey,
@@ -199,6 +216,9 @@ class SmsMonitorService {
             ? null
             : DateTime.fromMillisecondsSinceEpoch(timestamp),
         contentHash: fingerprint,
+        targetRef: target.targetRef,
+        targetConfigVersion: target.configVersion,
+        targetState: target.stateName,
         sourceChannel: SourceChannelResolver.channelForSmsSender(sender),
         rawText: body,
         rawActor: sender,
@@ -208,7 +228,20 @@ class SmsMonitorService {
             'nativeEventKey': eventKey.substring('sms:v3:'.length),
           if (timestamp != null) 'timestamp': timestamp,
         },
-      ),
+    );
+    if (!target.canWrite) {
+      // B2:目标失效/待确定 —— 不调 AI、不 ACK,原始短信留到目标修好再处理。
+      await _coordinator.execute<SmsProcessOutcome>(
+        input: input,
+        action: () async => target.state == AutoBookTargetState.invalid
+            ? SmsProcessOutcome.targetInvalid
+            : SmsProcessOutcome.targetUndetermined,
+        updateFor: (o) => o.eventUpdate,
+      );
+      return;
+    }
+    final execution = await _coordinator.execute(
+      input: input,
       action: () => _autoBillingService.processSms(
         sender,
         body,
@@ -217,6 +250,7 @@ class SmsMonitorService {
         // 误判成已处理。
         skipDedup: true,
         eventKey: eventKey,
+        targetLedgerId: target.ledgerId,
       ),
       // M1-3:走向 → 事件状态的映射收敛到 SmsProcessOutcomeEvent,四路
       // 监听共用一份,新增走向不会漏分支。
@@ -273,12 +307,15 @@ class SmsMonitorService {
   /// 模拟短信(调试/验证入口):不经过 native 接收链路,直接注入一条短信
   /// 走完整 AI 提取 → 落库流程,用于没有真实短信时验证「自动记账是否正常」。
   /// skipDedup 传入 processSms(真实路径不变),同一模板可反复发送。
-  Future<void> mockSms(String body) {
+  /// [testOptions] 缺省 = 解析链路测试**只解析不入账**(影子模式);
+  /// 显式传入 testLedgerId 时才写入该测试账本。
+  Future<void> mockSms(String body, {AutoBookTestOptions? testOptions}) {
     return _enqueue(() async {
       if (!_isEnabled) {
         logger.warning('SmsMonitor', '短信自动记账未开启,模拟数据仍处理(仅验证链路)');
       }
-      await _autoBillingService.processSms('TEST', body, skipDedup: true);
+      await _autoBillingService.processSms('TEST', body,
+          skipDedup: true, testOptions: testOptions);
     });
   }
 

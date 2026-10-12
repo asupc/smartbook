@@ -116,7 +116,10 @@ class AutoBookPolicy {
     }
 
     final amount = bill.amount;
-    if (amount == null || amount.abs() <= 0) {
+    // A6(2026-10-11):非有限金额必须按 invalid_amount 丢弃。`NaN.abs() <= 0`
+    // 与 `Infinity.abs() <= 0` 恒为 false,旧判定会把它们判成 allow ——
+    // 静默坏数据(Infinity 落库污染统计)与硬崩(NaN 违反 NOT NULL)都由此来。
+    if (amount == null || !amount.isFinite || amount.abs() <= 0) {
       return AutoBookPolicyDecision(
         action: AutoBookPolicyAction.ignore,
         reason: 'invalid_amount',

@@ -40,6 +40,14 @@ enum OrphanType {
   /// A10 TransactionTagOverrides 失主交易
   txTagOverrideMissingTx,
 
+  /// A11 交易的 ledger_id 失主(C3/F-31:交易挂在已不存在的账本上 ——
+  /// 既不计入任何账本视图,也不会被扫描器报出来)
+  txMissingLedger,
+
+  /// A12 account_adjustments 失主账户(C3/F-22:余额调整记录应级联删除,
+  /// 历史残留行此前无任何检查项覆盖 → 永久孤儿)
+  adjustmentMissingAccount,
+
   /// B1 附件原图无引用
   fileOrphanAttachment,
 

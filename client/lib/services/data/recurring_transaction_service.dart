@@ -23,6 +23,35 @@ enum RecurringFrequency {
   }
 }
 
+/// 单个周期模板生成失败的可诊断快照(缺陷 E②)。
+///
+/// 之前一个坏模板(如负金额/非有限金额,被落库守卫拒绝)会让
+/// `generatePendingTransactionsStatic` 的 catch 吞掉**整轮**生成:同账本
+/// 后续模板全部不生成,调用方只看到 `{}`。现在逐模板隔离,失败清单暴露在
+/// [_RecurringFailures.lastFailures],调用方可据此提示用户"哪些模板被跳过"。
+class RecurringTemplateFailure {
+  final int recurringId;
+  final int ledgerId;
+  final double amount;
+  final String error;
+  const RecurringTemplateFailure({
+    required this.recurringId,
+    required this.ledgerId,
+    required this.amount,
+    required this.error,
+  });
+
+  @override
+  String toString() =>
+      'RecurringTemplateFailure(#$recurringId ledger=$ledgerId '
+      'amount=$amount: $error)';
+}
+
+/// 本轮生成失败的模板清单(静态面,读 [`RecurringTransactionService.lastFailures`])。
+class _RecurringFailures {
+  static final List<RecurringTemplateFailure> lastFailures = [];
+}
+
 /// 重复交易服务
 ///
 /// 注意：此服务主要用于生成待处理的周期交易记录
@@ -31,6 +60,12 @@ enum RecurringFrequency {
 /// repository 参数可以是 BeeRepository 或 CloudRepository
 class RecurringTransactionService {
   static const _tag = 'Recurring';
+
+  /// 最近一次生成中逐模板失败的清单(缺陷 E②)。每次
+  /// [generatePendingTransactions] 开始时清空,失败时追加。
+  /// 调用方(启动流程 / 设置页)可据此向用户提示被跳过的模板。
+  List<RecurringTemplateFailure> get lastFailures =>
+      _RecurringFailures.lastFailures;
 
   final dynamic repository;
   final AutoBookCoordinator? coordinator;
@@ -57,6 +92,15 @@ class RecurringTransactionService {
         coordinator: coordinator,
       );
       final generatedTransactions = await service.generatePendingTransactions();
+
+      // 缺陷 E②:本轮有模板失败时**不静默** —— 逐条告警(失败清单已在
+      // service.lastFailures,调用方可读)。生成成功的部分照常返回。
+      if (service.lastFailures.isNotEmpty) {
+        logger.warning(
+            _tag,
+            '本次生成有 ${service.lastFailures.length} 个模板被跳过(其余正常生成):'
+            '${service.lastFailures.join("; ")}');
+      }
 
       if (generatedTransactions.isNotEmpty) {
         final ledgerIds = generatedTransactions.map((t) => t.ledgerId).toSet();
@@ -187,6 +231,8 @@ class RecurringTransactionService {
     logger.info(_tag, '获取到 ${ledgers.length} 个账本');
 
     final generatedTransactions = <Transaction>[];
+    // 缺陷 E②:每个模板的失败被隔离记录,不再让单个坏模板吞掉整轮生成。
+    lastFailures.clear();
 
     // 全部账本共用一次 recurring 全量读(PERF-P0-01):此前放在账本循环内,
     // 代价是 账本数 × 全表。
@@ -204,32 +250,74 @@ class RecurringTransactionService {
       for (final recurring in recurringList) {
         logger.info(_tag,
             '处理周期交易 id=${recurring.id} freq=${recurring.frequency} interval=${recurring.interval} start=${recurring.startDate} end=${recurring.endDate} lastGen=${recurring.lastGeneratedDate}');
-
-        // 账户隐藏(#240 E2):关联账户(转账含转出/转入两端)任一被隐藏,本次
-        // 扫描整体跳过 —— 不推进 lastGeneratedDate,账户恢复后靠现有"补生成"
-        // 机制(calculateNextDate 按 lastGeneratedDate 续算)自动追上遗漏周期。
-        final fromAccount = recurring.accountId != null
-            ? await repository.getAccount(recurring.accountId)
-            : null;
-        final toAccount = recurring.toAccountId != null
-            ? await repository.getAccount(recurring.toAccountId)
-            : null;
-        if ((fromAccount?.hidden ?? false) || (toAccount?.hidden ?? false)) {
-          logger.info(_tag,
-              '周期交易 id=${recurring.id} 跳过:关联账户已隐藏(accountId=${recurring.accountId}, toAccountId=${recurring.toAccountId})');
-          continue;
+        // 缺陷 E②:**按模板隔离**。此前整个 for 循环体在 `generatePending-
+        // TransactionsStatic` 的单个 try/catch 之下 —— 一个负金额模板被
+        // `validateTransactionAmount` 拒(或任何其它异常)会让**这一轮扫描
+        // 全部中止**:同账本/后续账本的正常模板全部不生成,而 catch 只打一行
+        // 错误日志且返回 `{}`,UI 上看不出"少了一轮"。现在单模板失败只跳过
+        // 该模板,其余照常生成,并逐条记入 [lastFailures] 暴露给调用方。
+        try {
+          generatedTransactions
+              .addAll(await _generateForTemplate(recurring));
+        } catch (e, stackTrace) {
+          final failure = RecurringTemplateFailure(
+            recurringId: recurring.id,
+            ledgerId: recurring.ledgerId,
+            amount: recurring.amount,
+            error: '$e',
+          );
+          lastFailures.add(failure);
+          logger.error(
+              _tag,
+              '周期交易 id=${recurring.id} 生成失败(已跳过,不影响其它模板):'
+                  'type=${recurring.type} amount=${recurring.amount}',
+              e,
+              stackTrace);
         }
+      }
+    }
 
-        // 循环生成所有缺失的交易记录
-        var currentRecurring = recurring;
-        var loopGuard = 0;
-        while (true) {
-          // 防御:任何情况下单条周期交易一次扫描不应生成上千笔 —— 拦截死循环
-          if (++loopGuard > 1000) {
-            logger.warning(
-                _tag, '周期交易 id=${recurring.id} 单次生成超过 1000 笔,强制中止以防死循环');
-            break;
-          }
+    if (lastFailures.isNotEmpty) {
+      // 汇总告警:调用方(main 启动流程)与日志都能看到"本轮错过了 N 个模板"。
+      logger.warning(
+          _tag,
+          '本轮 ${lastFailures.length} 个周期模板生成失败:'
+          '${lastFailures.map((f) => "#${f.recurringId}(${f.error})").join("; ")}');
+    }
+    return generatedTransactions;
+  }
+
+  /// 单个模板的缺额补齐循环(从 [generatePendingTransactions] 抽出以便按模板
+  /// 隔离异常)。返回本次为该模板生成的交易。
+  Future<List<Transaction>> _generateForTemplate(
+      RecurringTransaction recurring) async {
+    final out = <Transaction>[];
+
+    // 账户隐藏(#240 E2):关联账户(转账含转出/转入两端)任一被隐藏,本次
+    // 扫描整体跳过 —— 不推进 lastGeneratedDate,账户恢复后靠现有"补生成"
+    // 机制(calculateNextDate 按 lastGeneratedDate 续算)自动追上遗漏周期。
+    final fromAccount = recurring.accountId != null
+        ? await repository.getAccount(recurring.accountId)
+        : null;
+    final toAccount = recurring.toAccountId != null
+        ? await repository.getAccount(recurring.toAccountId)
+        : null;
+    if ((fromAccount?.hidden ?? false) || (toAccount?.hidden ?? false)) {
+      logger.info(_tag,
+          '周期交易 id=${recurring.id} 跳过:关联账户已隐藏(accountId=${recurring.accountId}, toAccountId=${recurring.toAccountId})');
+      return out;
+    }
+
+    // 循环生成所有缺失的交易记录
+    var currentRecurring = recurring;
+    var loopGuard = 0;
+    while (true) {
+      // 防御:任何情况下单条周期交易一次扫描不应生成上千笔 —— 拦截死循环
+      if (++loopGuard > 1000) {
+        logger.warning(
+            _tag, '周期交易 id=${recurring.id} 单次生成超过 1000 笔,强制中止以防死循环');
+        break;
+      }
           final nextDate = calculateNextDate(currentRecurring);
           if (nextDate == null) break;
 
@@ -264,18 +352,16 @@ class RecurringTransactionService {
           // 流查询)只为按 id 过滤出一条。
           final transaction = await repository.getTransactionById(transactionId);
           if (transaction != null) {
-            generatedTransactions.add(transaction);
+            out.add(transaction);
           }
 
           // lastGeneratedDate 已在 _createOccurrence 内落库;内存同步推进游标,
           // 免去每笔 occurrence 再全量重读一次 recurring 表(PERF-P0-01)。
           currentRecurring =
               currentRecurring.copyWith(lastGeneratedDate: d.Value(nextDate));
-        }
-      }
     }
 
-    return generatedTransactions;
+    return out;
   }
 
   Future<int> _createOccurrence({

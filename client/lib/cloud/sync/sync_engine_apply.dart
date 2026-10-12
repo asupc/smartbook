@@ -6,6 +6,98 @@ part of 'sync_engine.dart';
 /// 这里所有方法都是 private(以 `_` 开头),只在主 library 内被 `_pull` 调
 /// 用,所以 extension 可以保持 private。
 extension SyncEngineApplyExt on SyncEngine {
+  /// U-08(2026-10-11):登记一条"依赖未就绪、必须重放"的 change。
+  ///
+  /// 语义区别于普通 skip:普通 skip 是"这条 change 不该落地"(自己推的变更 /
+  /// 未知 entityType),重放也不会有不同结果;deferred 是"**现在**落不了地,
+  /// 前序 change(ledger)到达后就能落地" —— 所以它的 change_id 绝不能落到
+  /// cursor 之后。[_applyPullPage] 据此判定,本页不 commit cursor。
+  void _deferChange(SmartBookCloudSyncChange change) {
+    _deferredChangeIds.add(change.changeId);
+  }
+
+  /// 中-2(2026-10-11 三轮复查):handler 执行期间是否新登记了值跳过。
+  ///
+  /// [applyRemoteChange] 在每个 case handler 跑完后调它决定返回值:值跳过
+  /// 命中(本轮新登记,或同页早前同 change_id 已登记 —— 服务端异常重发)时
+  /// 返回 false,让 [_applyPullPage] 把这条计进 **skipped 而不是 applied**。
+  /// 只看 `[_valueSkips]` 命中与否,不看 handler 别的副作用。
+  bool _valueSkipRegistered(SmartBookCloudSyncChange change, bool before) {
+    return !before && _valueSkips.containsKey(change.changeId);
+  }
+
+  /// pull-apply 的金额判据(缺陷 F/G/F-04 客户端面)。
+  ///
+  /// **本文件是 `sync_engine.dart` 的 part,不能加 import**,而
+  /// `LocalTransactionRepository.txAmountViolation` 需要 import 才能引用;
+  /// `sync_engine.dart` 由另一 agent 持有(禁改),故此处镜像同样的判据并
+  /// 保留**同一份上限常量值**。⚠️ 两处必须同步修改(见交接记录:
+  /// `LocalTransactionRepository.maxWriteAmount` 与
+  /// `_pullAmountViolation` 的 `1e12` 必须一致)。
+  ///
+  /// 策略与本地写路径**不同**:pull 路径**绝不抛错** —— 抛错会中断整页
+  /// apply(游标不推进 → 这条坏 change 每轮重放、页内所有好 change 永远
+  /// 应用不到,同步彻底卡死)。故:**跳过该条 change + 告警**,并保留
+  /// cursor 推进语义(change 已在 server 侧,重放不会变好)。
+  ///
+  /// 非有限值此前能落库(SQLite REAL 接受 Inf)并**毒化整个 push 通道**
+  /// (provider `jsonEncode` 整批失败,U-04)。这里把入口堵住。
+  static String? _pullAmountViolation(String type, double amount) {
+    if (!amount.isFinite) return 'non_finite';
+    if (amount.abs() >= 1e12) return 'exceeds_magnitude';
+    const directional = {'expense', 'income', 'transfer'};
+    if (directional.contains(type) && amount < 0) return 'negative_directional';
+    return null;
+  }
+
+  /// pull 侧非有限金额的统一处理:命中即告警 + 登记值跳过 + 返回 true
+  /// (表示"这条不应用")。调用方据此 `return`(不 defer、不抛)。
+  ///
+  /// 缺陷 A(2026-10-11 复现缺陷修复):跳过**不再只写日志** —— 同时经
+  /// [_markPulledValueSkip] 登记为 [PulledValueSkipped] 错误行(带 change id /
+  /// entityType / entitySyncId / reason),由 [_applyPullPage] 在页事务 commit
+  /// 之后落 [pullErrors],并排除出同轮的 markResolved 集合,使其在
+  /// `watchUnresolved()`(UI 面)持续可见。否则这条 change 的 change_id 落到
+  /// cursor 之后永久拉不回来,用户只能从 48h 日志里看到一行 warning。
+  bool _skipPulledTxIfInvalid(SmartBookCloudSyncChange change, String type,
+      double amount, double? nativeAmount) {
+    final reason = _pullAmountViolation(type, amount);
+    final nativeBad = nativeAmount != null && !nativeAmount.isFinite;
+    if (reason == null && !nativeBad) {
+      return false;
+    }
+    final detail = 'reason=${reason ?? 'native_non_finite'} type=$type '
+        'amount=$amount nativeAmount=$nativeAmount';
+    logger.warning(
+        'SyncEngine',
+        'pull: 跳过交易 ${change.entitySyncId} —— 远端金额不可用'
+        '($detail);cursor 照常推进,避免坏 change 卡死整页 apply');
+    _markPulledValueSkip(change, '远端交易金额不可用($detail,已跳过该条,'
+        'cursor 照常推进;重放不会变好,需服务端修数据或全量重放)');
+    return true;
+  }
+
+  /// pull 侧账户/预算/调整等金额列的跳过判据(缺陷 G)。同 [nativeAmount] 口径:
+  /// 非有限 → 跳过该条 change + 告警 + 值跳过登记(不抛、不 defer)。
+  bool _skipPulledMoneyIfInvalid(
+      SmartBookCloudSyncChange change, Map<String, double?> fields) {
+    for (final e in fields.entries) {
+      final v = e.value;
+      if (v != null && !v.isFinite) {
+        final detail = '${e.key}=$v 非有限(NaN/Infinity 会污染余额/预算聚合)';
+        logger.warning(
+            'SyncEngine',
+            'pull: 跳过 ${change.entityType} ${change.entitySyncId} —— 远端 '
+            '$detail;cursor 照常推进');
+        _markPulledValueSkip(change, '远端 ${change.entityType} 金额不可用'
+            '($detail,已跳过该条,cursor 照常推进;重放不会变好,'
+            '需服务端修数据或全量重放)');
+        return true;
+      }
+    }
+    return false;
+  }
+
   /// 应用单条远程变更到本地数据库
   /// 返回 true 表示已应用，false 表示跳过
   Future<bool> applyRemoteChange(SmartBookCloudSyncChange change) async {
@@ -20,31 +112,37 @@ extension SyncEngineApplyExt on SyncEngine {
       return false;
     }
 
+    // 中-2(2026-10-11 三轮复查):返回值在值跳过(_markPulledValueSkip)命中时
+    // 必须是 false —— [_applyPullPage] 据它累计 applied/skipped。旧行为对所有
+    // 已知 entityType 无条件 `return true`,Infinity payload 的行没落库但
+    // `pull()` 返回 1、日志报 "applied 1/1"、skipped 恒 0(计数与事实相反,
+    // "跳过"只能从值跳过日志行倒推)。cursor 推进 / 错误行登记行为**不变**。
+    final valueSkippedBefore = _valueSkips.containsKey(change.changeId);
     switch (change.entityType) {
       case 'transaction':
         await _applyTransactionChange(change);
-        return true;
+        return !_valueSkipRegistered(change, valueSkippedBefore);
       case 'account':
         await _applyAccountChange(change);
-        return true;
+        return !_valueSkipRegistered(change, valueSkippedBefore);
       case 'category':
         await _applyCategoryChange(change);
-        return true;
+        return !_valueSkipRegistered(change, valueSkippedBefore);
       case 'tag':
         await _applyTagChange(change);
-        return true;
+        return !_valueSkipRegistered(change, valueSkippedBefore);
       case 'budget':
         await _applyBudgetChange(change);
-        return true;
+        return !_valueSkipRegistered(change, valueSkippedBefore);
       case 'account_adjustment':
         await _applyAccountAdjustmentChange(change);
-        return true;
+        return !_valueSkipRegistered(change, valueSkippedBefore);
       case 'exchange_rate_override':
         await _applyExchangeRateOverrideChange(change);
-        return true;
+        return !_valueSkipRegistered(change, valueSkippedBefore);
       case 'ledger':
         await _applyLedgerChange(change);
-        return true;
+        return !_valueSkipRegistered(change, valueSkippedBefore);
       case 'ledger_snapshot':
         // 全量快照在 fullPull 中处理，这里跳过
         return false;
@@ -94,9 +192,30 @@ extension SyncEngineApplyExt on SyncEngine {
     // increment int id 跟 server 不一致，必须按 syncId 查本地 int id。
     // 只有没命中时才 fallback 到直接 parse（向后兼容老数据 ledger_id 就是
     // int 字符串的场景）。
-    final ledgerIdInt = await _resolveLedgerIdBySyncId(change.ledgerId) ??
-        int.tryParse(change.ledgerId) ??
-        -1;
+    //
+    // U-06 家族 + 审核记录阻塞-4(2026-10-11):解析不出账本时**绝不落 -1**。
+    // transactions.ledgerId 无外键约束,落 -1 会插出一条**不属于任何账本**的
+    // 孤儿行(任何列表/统计都查不到,用户看不见也删不掉),而且该 syncId 被
+    // 永久占用 —— 后续同 syncId 的 change 只会 update 这一行,永远挂不回
+    // 正确账本。payload.ledgerSyncId 是 serializer 明确带来的稳定引用,先按它
+    // 查;仍解析不到 → 登记 deferred(cursor 不推进),等 ledger change 到达后
+    // 的下一轮 pull 重放整页。这是"推迟"而不是"丢弃":数据不丢、不产生孤儿。
+    var ledgerIdInt = await _resolveLedgerIdBySyncId(change.ledgerId);
+    if (ledgerIdInt == null) {
+      final payloadLedgerSyncId = payload['ledgerSyncId'] as String?;
+      if (payloadLedgerSyncId != null && payloadLedgerSyncId.isNotEmpty) {
+        ledgerIdInt = await _resolveLedgerIdBySyncId(payloadLedgerSyncId);
+      }
+    }
+    ledgerIdInt ??= int.tryParse(change.ledgerId);
+    if (ledgerIdInt == null) {
+      logger.warning(
+          'SyncEngine',
+          'pull: 交易 $syncId 的账本解析失败(change.ledgerId="${change.ledgerId}" '
+          'payload.ledgerSyncId="${payload['ledgerSyncId']}"),推迟重放本页(不落 -1 孤儿行)');
+      _deferChange(change);
+      return;
+    }
 
     // 解析 payload 字段
     final type = payload['type'] as String? ?? 'expense';
@@ -215,6 +334,15 @@ extension SyncEngineApplyExt on SyncEngine {
         hasCurrencyKey ? (payload['currencyCode'] as String?) : null;
     final payloadNative =
         hasNativeKey ? (payload['nativeAmount'] as num?)?.toDouble() : null;
+
+    // 缺陷 F(2026-10-11):远端金额守卫放在**所有写入之前** —— 一行坏金额
+    // 既不能落库(污染聚合),也不能抛(抛会中断整页 apply → cursor 不动 →
+    // 本页所有好 change 永远应用不到,同步静默死亡)。策略:跳过 + 告警 +
+    // 值跳过登记(缺陷 A:可观测,见 [_markPulledValueSkip])。
+    // 位置在 payload 解析之后、existing/insert 分叉之前,两条分支共用。
+    if (_skipPulledTxIfInvalid(change, type, amount, payloadNative)) {
+      return;
+    }
 
     // v40 记录时间(createdAt):server 首次落库盖章,pull 下发(增量经
     // server pull 端 enrichment 补齐,老 change 无键 → null)。update 同样
@@ -347,6 +475,13 @@ extension SyncEngineApplyExt on SyncEngine {
     final initialBalance =
         (payload['initialBalance'] as num?)?.toDouble() ?? 0.0;
     final sortOrder = (payload['sortOrder'] as num?)?.toInt() ?? 0;
+    // 缺陷 G:账户金额列守卫(跳过 + 告警 + 值跳过登记,不抛 —— 抛会卡死整页 apply)。
+    if (_skipPulledMoneyIfInvalid(change, {
+      'initialBalance': initialBalance,
+      'creditLimit': (payload['creditLimit'] as num?)?.toDouble(),
+    })) {
+      return;
+    }
 
     // 账户隐藏(#240,D6 缺键保留):payload 不含该键 → null → update 走
     // Value.absent() 不覆盖本地;含键(包括显式 false)→ 覆盖。insert 路径
@@ -464,16 +599,45 @@ extension SyncEngineApplyExt on SyncEngine {
     final icon = payload['icon'] as String?;
     final iconType = payload['iconType'] as String? ?? 'material';
     final parentName = payload['parentName'] as String?;
+    final parentSyncId = payload['parentSyncId'] as String?;
 
-    // 解析 parentId
+    // 解析 parentId。U-07(2026-10-11):**优先用 payload.parentSyncId** ——
+    // 它是跨设备稳定的 id,serializer 与 server projection 都按它对齐,契约
+    // 明确"按 id 取名、不依赖 cascade 改写"。旧实现只读 parentName:父分类
+    // 一旦被重命名,对端反查 miss → 子分类 parentId=null,父子关系静默断裂
+    //(数据不丢但结构错,变成孤儿一级分类)。
+    // parentSyncId 缺失 / 查不到才回落 parentName(老 payload 无该键的兼容路径)。
     int? parentId;
-    if (parentName != null && parentName.isNotEmpty) {
-      final parent = await (db.select(db.categories)
+    if (parentSyncId != null && parentSyncId.isNotEmpty) {
+      parentId = await _resolveCategoryIdBySyncId(parentSyncId);
+      if (parentId == null) {
+        logger.warning(
+            'SyncEngine',
+            'pull: 分类 $syncId 的 parentSyncId=$parentSyncId 本地未命中,'
+            '回落 parentName 反查(父分类可能尚未同步下来)');
+      }
+    }
+    if (parentId == null && parentName != null && parentName.isNotEmpty) {
+      // U-06(2026-10-11):这里原为 `getSingleOrNull()` —— 同名一级分类 x2
+      //(跨设备 seed / 重放)是常态,多行会抛 `Too many elements` →
+      // 整页事务回滚 → cursor 卡死。改用 limit(1) + 历史最早一条(id ASC)
+      // 确定性选取,与 U-05 resolvers 侧同口径。这是该模式的**第三处**
+      // 调用点(审核记录建议-8),三处必须同批修,否则任一处都能单独卡死 pull。
+      final parents = await (db.select(db.categories)
             ..where((c) => c.name.equals(parentName))
             ..where((c) => c.kind.equals(kind))
-            ..where((c) => c.level.equals(1)))
-          .getSingleOrNull();
-      parentId = parent?.id;
+            ..where((c) => c.level.equals(1))
+            ..orderBy([(c) => d.OrderingTerm.asc(c.id)])
+            ..limit(2))
+          .get();
+      if (parents.length > 1) {
+        logger.warning(
+            'SyncEngine',
+            'pull: 分类 $syncId 的 parentName="$parentName" kind=$kind 命中 '
+            '${parents.length}+ 行同名一级分类,取历史最早一条'
+            '(id=${parents.first.id})');
+      }
+      parentId = parents.isEmpty ? null : parents.first.id;
     }
 
     var existing = await (db.select(db.categories)
@@ -483,12 +647,29 @@ extension SyncEngineApplyExt on SyncEngine {
     // Fallback：syncId 查不到 → 本地可能是 seed 默认分类（syncId 为 NULL）。
     // 按 name + kind 匹配 NULL syncId 行，把 syncId 补上。避免 device B 首次
     // pull 远端分类插第二份同名 seed。
+    //
+    // U-06 家族第三处(2026-10-11,审核记录建议-8):原为 `getSingleOrNull()`
+    // —— categories.name 无唯一约束,v19/v22 迁移给老行补 syncId 时也可能
+    // 留下**两行 syncId IS NULL 的同名同类分类**(迁移中途失败 / 用户从两个
+    // 老版本设备升级),此时多行会抛 `Too many elements` → 整页事务回滚 →
+    // pull 永久卡死在这条 change 上。改 limit(1) + 历史最早一条(id ASC),
+    // 与 _resolveCategoryId / 父分类反查同口径(三处必须同批修)。
     if (existing == null && name.isNotEmpty) {
-      final seeded = await (db.select(db.categories)
+      final seededRows = await (db.select(db.categories)
             ..where((c) => c.name.equals(name))
             ..where((c) => c.kind.equals(kind))
-            ..where((c) => c.syncId.isNull()))
-          .getSingleOrNull();
+            ..where((c) => c.syncId.isNull())
+            ..orderBy([(c) => d.OrderingTerm.asc(c.id)])
+            ..limit(2))
+          .get();
+      if (seededRows.length > 1) {
+        logger.warning(
+            'SyncEngine',
+            'pull: 收编候选 name="$name" kind=$kind 命中 ${seededRows.length}+ 行'
+            'syncId IS NULL 的同名分类,取历史最早一条(id=${seededRows.first.id}),'
+            '其余保持 NULL(建议在分类管理页清理重复 seed)');
+      }
+      final seeded = seededRows.isEmpty ? null : seededRows.first;
       if (seeded != null) {
         await (db.update(db.categories)..where((c) => c.id.equals(seeded.id)))
             .write(CategoriesCompanion(syncId: d.Value(syncId)));
@@ -693,12 +874,26 @@ extension SyncEngineApplyExt on SyncEngine {
     final period = payload['period'] as String? ?? 'monthly';
     final startDay = (payload['startDay'] as num?)?.toInt() ?? 1;
     final enabled = payload['enabled'] as bool? ?? true;
+    // 缺陷 G:预算金额守卫(跳过 + 告警 + 值跳过登记;非有限值会让预算卡显示
+    // Infinity 使用率、remaining 变 NaN)。
+    if (_skipPulledMoneyIfInvalid(change, {'amount': amount})) {
+      return;
+    }
 
     // 先解析外键 —— 本地 ledger 找不到就 skip,等 ledger change 先到再说。
+    //
+    // U-08(2026-10-11,阻断-4):这里**必须**登记 deferred(而不是静默 return)
+    // —— 调用方 `_applyPullPage` / `_runPullLoop` 会因此**不推进 cursor**,
+    // 本页留待下一轮 pull 重放。旧实现只 return:applyRemoteChange 仍返 true、
+    // 游标照推 → 这条 budget 的 change_id 落到 cursor 之后,**等 ledger 就绪
+    // 后也永远拉不回来**(除非整体 replayAllChanges)。
+    // 返回 true 保持不变:applied 计数语义未变(旧测试明确锁定"跳过也计
+    // applied"),真正的门禁是 deferred → cursor 不 commit。
     final localLedgerId = await _resolveLedgerIdBySyncId(ledgerSyncId);
     if (localLedgerId == null) {
       logger.info('SyncEngine',
-          'pull: 预算 $syncId 的 ledgerSyncId=$ledgerSyncId 本地未就绪,跳过');
+          'pull: 预算 $syncId 的 ledgerSyncId=$ledgerSyncId 本地未就绪,推迟(本页不推进 cursor)');
+      _deferChange(change);
       return;
     }
     final localCategoryId = await _resolveCategoryIdBySyncId(categorySyncId);
@@ -766,12 +961,21 @@ extension SyncEngineApplyExt on SyncEngine {
     final note = payload['note'] as String?;
     final recordedAt =
         DateTime.tryParse(payload['createdAt']?.toString() ?? '');
+    // 缺陷 G:余额调整三列金额守卫(带符号,只拦非有限;跳过 + 告警 + 值跳过登记)。
+    if (_skipPulledMoneyIfInvalid(change, {
+      'amount': amount,
+      'balanceBefore': balanceBefore,
+      'balanceAfter': balanceAfter,
+    })) {
+      return;
+    }
 
     final localLedgerId = await _resolveLedgerIdBySyncId(ledgerSyncId) ??
         int.tryParse(change.ledgerId);
     if (localLedgerId == null) {
       logger.info('SyncEngine',
-          'pull: 余额调整 $syncId 的 ledgerSyncId=$ledgerSyncId 本地未就绪,跳过');
+          'pull: 余额调整 $syncId 的 ledgerSyncId=$ledgerSyncId 本地未就绪,推迟(本页不推进 cursor)');
+      _deferChange(change);
       return;
     }
 
@@ -846,6 +1050,16 @@ extension SyncEngineApplyExt on SyncEngine {
     final rate = p['rate']?.toString();
     if (base == null || quote == null || rate == null || rate.isEmpty) {
       logger.warning('SyncEngine', 'exchange_rate_override payload 缺字段,跳过');
+      return;
+    }
+    // 缺陷 G:rate 是字符串列,远端可能下发字面量 "Infinity"/"NaN"(客户端
+    // invertRate 下溢面即产出该字面量)。消费方 tryParse 后 NaN/Infinity
+    // 都**不命中** rate<=0 的降级分支 → 折算出非有限 nativeAmount。
+    // 策略:跳过 + 告警(抛会中断整页 apply)。
+    final parsedRate = double.tryParse(rate.trim());
+    if (parsedRate != null && !parsedRate.isFinite) {
+      logger.warning('SyncEngine',
+          'pull: 跳过 exchange_rate_override $base/$quote —— 远端 rate="$rate" 非有限');
       return;
     }
     final updatedAt = DateTime.tryParse(p['updatedAt']?.toString() ?? '');

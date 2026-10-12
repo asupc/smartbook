@@ -356,7 +356,7 @@ open class ScreenTextWatcher : AccessibilityService() {
             val fingerprint = fingerprint(pkg, text)
             val timestamp = System.currentTimeMillis()
             val eventKey = eventKey(pkg, fingerprint, timestamp)
-            if (!enqueue(prefs, eventKey, fingerprint, pkg, text, timestamp)) {
+            if (!enqueue(this@ScreenTextWatcher, prefs, eventKey, fingerprint, pkg, text, timestamp)) {
                 log("页面已在已处理记录或待处理队列中,丢弃: $pkg len=$logLen")
                 recordDecision(this, pkg, "duplicate", "同页面已在队列/已处理")
                 return
@@ -595,12 +595,21 @@ open class ScreenTextWatcher : AccessibilityService() {
     }
 
     /**
-     * 页面指纹:sha256(pkg|text) 前 16 位 hex。与短信/通知指纹不共用命名空间
-     * (pkg ≠ sender 并不会冲突,但独立 key 更清晰);Dart 侧同口径。
+     * 指纹字段编码:每个字段写成 `${长度}:${内容}`,再以 `|` 拼接。
+     * 长度前缀让字段边界自描述 —— 屏幕文本含大量用户内容与 `|`,
+     * 裸拼接时 pkg/text 边界可互换构造同一指纹(2026-10-11 批次 C2)。
+     * Dart 侧 `AutoBillingService.screenTextFingerprint` 同口径。
+     */
+    private fun fieldEncoded(fields: List<String>): String =
+        fields.joinToString("|") { "${it.length}:$it" }
+
+    /**
+     * 页面指纹:sha256(长度前缀拼接 pkg/text) 前 16 位 hex。与短信/通知指纹
+     * 不共用命名空间(pkg ≠ sender 并不会冲突,但独立 key 更清晰);Dart 侧同口径。
      */
     fun fingerprint(pkg: String, text: String): String {
         return MessageDigest.getInstance("SHA-256")
-            .digest("$pkg|$text".toByteArray())
+            .digest(fieldEncoded(listOf(pkg, text)).toByteArray())
             .take(8)
             .joinToString("") { "%02x".format(it.toInt() and 0xff) }
     }
@@ -614,9 +623,14 @@ open class ScreenTextWatcher : AccessibilityService() {
         const val BRIDGE_ACTION = "com.smartbook.zhi.SCREEN_TEXT_CAPTURED"
 
         const val PREFS_NAME = "screen_text_monitor_prefs"
+        /** 统一队列里的来源标识(B3)。 */
+        const val SOURCE = "screenText"
         const val KEY_ENABLED = "enabled"
         const val KEY_FINGERPRINTS = "processed_fingerprints"
         const val KEY_QUEUE = "pending_queue"
+
+        // B1 状态卡「最近捕获时间」:入队时落盘,ACK 清空队列后仍保留。
+        const val KEY_LAST_CAPTURE_AT = "last_capture_at"
 
         const val MAX_FINGERPRINTS = 200
         const val MAX_QUEUE = 30
@@ -867,6 +881,7 @@ open class ScreenTextWatcher : AccessibilityService() {
 
         @Synchronized
         private fun enqueue(
+            context: Context,
             prefs: SharedPreferences,
             eventKey: String,
             fingerprint: String,
@@ -874,6 +889,7 @@ open class ScreenTextWatcher : AccessibilityService() {
             text: String,
             ts: Long,
         ): Boolean {
+            NativeAutoBookQueue.migrateFromPrefs(context, SOURCE, PREFS_NAME, KEY_QUEUE)
             // 内容指纹优先判重:同一账单详情页文本完全一致,指纹稳定;事件键含
             // 捕获时间戳,每次进入详情页都会变化,不能作为去重依据(2026-09-07
             // 修复:重复进入被当成新事件,导致文本反复送 AI 记账)。已处理与队列
@@ -882,47 +898,44 @@ open class ScreenTextWatcher : AccessibilityService() {
             if (processed.contains(fingerprint) ||
                 processed.contains(PROCESSED_EVENT_PREFIX + eventKey)
             ) return false
-            val arr = JSONArray(prefs.getString(KEY_QUEUE, null) ?: "[]")
-            for (i in 0 until arr.length()) {
-                val obj = arr.optJSONObject(i) ?: continue
-                val queuedFp = obj.optString("fingerprint")
-                if (queuedFp == fingerprint || queuedFp.isEmpty() &&
-                    obj.optString("eventKey") == eventKey
-                ) {
-                    return false
-                }
-            }
-            arr.put(
-                JSONObject()
-                    .put("eventKey", eventKey)
-                    .put("fingerprint", fingerprint)
-                    .put("package", pkg)
-                    .put("text", text)
-                    .put("timestamp", ts)
+            // 队列内去重交给统一队列(同 source + event_key 主键冲突即重复);
+            // 内容指纹的「已处理」判定仍走上面的 processed 备忘录。
+            val item = JSONObject()
+                .put("eventKey", eventKey)
+                .put("fingerprint", fingerprint)
+                .put("package", pkg)
+                .put("text", text)
+                .put("timestamp", ts)
+            val target = AutoBookTargetStore.enqueueFields(context)
+            val result = NativeAutoBookQueue.enqueue(
+                context = context,
+                source = SOURCE,
+                item = item,
+                nowMs = System.currentTimeMillis(),
+                targetRef = target["targetRef"] as? String,
+                targetVersion = target["targetVersion"] as? Int,
+                targetState = target["targetState"] as? String,
             )
-            while (arr.length() > MAX_QUEUE) arr.remove(0)
-            prefs.edit().putString(KEY_QUEUE, arr.toString()).apply()
+            if (result != NativeAutoBookQueue.EnqueueResult.added) return false
+            prefs.edit().putLong(KEY_LAST_CAPTURE_AT, ts).apply()
             return true
+        }
+
+        /** 最近一次入队时间(0 = 本机从未捕获过)。只读状态查询用。 */
+        @Synchronized
+        fun lastCaptureAt(context: Context): Long {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            return prefs.getLong(KEY_LAST_CAPTURE_AT, 0L)
         }
 
         @Synchronized
         fun peekQueue(context: Context): ArrayList<Map<String, String>> {
-            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            val raw = prefs.getString(KEY_QUEUE, null) ?: return ArrayList()
-            val arr = JSONArray(raw)
-            val result = ArrayList<Map<String, String>>(arr.length())
-            for (i in 0 until arr.length()) {
-                val obj = arr.optJSONObject(i) ?: continue
-                result.add(
-                    mapOf(
-                        "eventKey" to obj.optString("eventKey"),
-                        "fingerprint" to obj.optString("fingerprint"),
-                        "package" to obj.optString("package"),
-                        "text" to obj.optString("text"),
-                        "timestamp" to obj.optString("timestamp")
-                    )
-                )
-            }
+            NativeAutoBookQueue.migrateFromPrefs(context, SOURCE, PREFS_NAME, KEY_QUEUE)
+            val items = NativeAutoBookQueue.peekBatch(
+                context, SOURCE, NativeAutoBookQueue.MAX_PER_SOURCE
+            )
+            val result = ArrayList<Map<String, String>>(items.size)
+            for (item in items) result.add(NativeAutoBookQueue.toMap(item))
             return result
         }
 
@@ -933,31 +946,24 @@ open class ScreenTextWatcher : AccessibilityService() {
             eventKeys: List<String> = emptyList(),
         ) {
             if (fingerprints.isEmpty() && eventKeys.isEmpty()) return
+            NativeAutoBookQueue.migrateFromPrefs(context, SOURCE, PREFS_NAME, KEY_QUEUE)
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            val raw = prefs.getString(KEY_QUEUE, null) ?: return
-            val wanted = (fingerprints + eventKeys).toSet()
-            val arr = JSONArray(raw)
-            val remaining = JSONArray()
+            val wanted = (fingerprints + eventKeys).filter { it.isNotEmpty() }.toSet()
+            if (wanted.isEmpty()) return
+            // 先取回原始项:删除后就无法再补「已处理」备忘录。
             val acked = mutableSetOf<String>()
-            for (i in 0 until arr.length()) {
-                val obj = arr.optJSONObject(i) ?: continue
+            for (obj in NativeAutoBookQueue.itemsFor(context, SOURCE, wanted)) {
                 val fp = obj.optString("fingerprint")
                 val key = obj.optString("eventKey")
-                if (wanted.contains(fp) || (key.isNotEmpty() && wanted.contains(key))) {
-                    // 已处理记录同时写指纹与事件键:指纹作为去重主依据(同内容不再
-                    // 记),事件键保留作兜底(2026-09-07)。之前只写 event:eventKey,
-                    // 而 eventKey 含时间戳每次变化,漏记了指纹导致重复入账。
-                    if (fp.isNotEmpty()) acked.add(fp)
-                    if (key.isNotEmpty()) acked.add(PROCESSED_EVENT_PREFIX + key)
-                } else {
-                    remaining.put(obj)
-                }
+                // 已处理记录同时写指纹与事件键:指纹作去重主依据,事件键兜底。
+                if (fp.isNotEmpty()) acked.add(fp)
+                if (key.isNotEmpty()) acked.add(PROCESSED_EVENT_PREFIX + key)
             }
+            NativeAutoBookQueue.ack(context, SOURCE, wanted.toList())
             if (acked.isEmpty()) return
             val processed = loadFingerprints(prefs)
             processed.addAll(acked)
             saveFingerprints(prefs, processed)
-            prefs.edit().putString(KEY_QUEUE, remaining.toString()).apply()
         }
 
         private fun log(msg: String) {

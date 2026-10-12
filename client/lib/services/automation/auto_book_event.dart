@@ -138,6 +138,15 @@ class AutoBookInput {
   final String? externalId;
   final String? contentHash;
 
+  /// B2:捕获时冻结的自动目标快照(`syncId:<v>` / `localId:<v>`)。
+  /// 为空表示本次未冻结(由事件行解析后回填的场景不存在 —— 事件一经创建
+  /// 就带上快照)。
+  final String? targetRef;
+  final int? targetConfigVersion;
+
+  /// 'resolved' | 'unconfirmed' | 'invalid' | 'undetermined'
+  final String targetState;
+
   /// 可选原始证据。仅当隐私策略允许时写入本地/上传服务端。
   final String? rawTitle;
   final String? rawText;
@@ -155,6 +164,9 @@ class AutoBookInput {
     this.sourceChannel,
     this.externalId,
     this.contentHash,
+    this.targetRef,
+    this.targetConfigVersion,
+    this.targetState = 'resolved',
     this.rawTitle,
     this.rawText,
     this.rawActor,

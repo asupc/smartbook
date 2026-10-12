@@ -73,6 +73,21 @@ class LocalTagRepository implements TagRepository {
     String? color,
     int? sortOrder,
   }) async {
+    // C3/F-28:改名与新建同规则(对称校验)。旧实现改名不查重 → 可制造同名标签,
+    // 之后 getTagByName(getSingleOrNull)在多行时抛 Bad state,「按名字找标签」
+    // (import / app_link / tag_seed)拿到不确定结果。
+    if (name != null) {
+      final clash = await (db.select(db.tags)
+            ..where((t) => t.name.equals(name) & t.id.equals(id).not()))
+          .get();
+      if (clash.isNotEmpty) {
+        throw DuplicateNameException(
+          entityType: 'tag',
+          name: name,
+          existingId: clash.first.id,
+        );
+      }
+    }
     await (db.update(db.tags)..where((t) => t.id.equals(id))).write(
       TagsCompanion(
         name: name != null ? d.Value(name) : const d.Value.absent(),
@@ -129,20 +144,29 @@ class LocalTagRepository implements TagRepository {
     required int transactionId,
     required int tagId,
   }) async {
-    // 检查是否已存在
-    final existing = await (db.select(db.transactionTags)
-          ..where((t) =>
-              t.transactionId.equals(transactionId) & t.tagId.equals(tagId)))
-        .getSingleOrNull();
-
-    if (existing == null) {
+    // C3/F-36:挂标签与「交易是否存在」同事务、同判据。旧实现是
+    // select-then-insert 且**不校验 transactionId 存在** —— 并发
+    // 「挂标签 vs 删交易」竞态下,先删后挂会留下指向已删交易的悬挂关联行
+    // (只有孤儿扫描器能清)。现在事务内复检交易存在性:不存在则**静默不建**
+    // (no-op,调用方语义上看到的是"关联没有建立"),残留恒为 0 行。
+    // 重复插入交由 v45 的 UNIQUE(transaction_id, tag_id) + insertOrIgnore 兜住。
+    await db.transaction(() async {
+      final txExists = await (db.select(db.transactions)
+            ..where((t) => t.id.equals(transactionId))
+            ..limit(1))
+          .getSingleOrNull();
+      if (txExists == null) {
+        // 交易已被并发删除 → 不建立悬挂关联(不改调用方契约:不抛错)
+        return;
+      }
       await db.into(db.transactionTags).insert(
             TransactionTagsCompanion.insert(
               transactionId: transactionId,
               tagId: tagId,
             ),
+            mode: d.InsertMode.insertOrIgnore,
           );
-    }
+    });
   }
 
   @override
@@ -676,6 +700,10 @@ class LocalTagRepository implements TagRepository {
     var income = 0.0;
     for (final t in txs) {
       count++;
+      // C3/F-18:与本地分支同口径 —— 金额计入前必须排除 excludeFromStats
+      // (旧实现无条件累加,同一笔「不计入收支」的账挂本地标签算 0、挂共享
+      // 标签算 300)。count 沿用列表语义(与本地分支一致,不按 flag 收窄)。
+      if (t.excludeFromStats) continue;
       if (t.type == 'expense') {
         expense += t.nativeAmount ?? t.amount;
       } else if (t.type == 'income') {

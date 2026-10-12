@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
@@ -318,9 +319,23 @@ class PendingCandidateStore {
     await prefs.remove(_archivedHintKey);
   }
 
-  Future<bool> remove(String id) => _serial(() async {
+  /// 按候选 id 移除;事件投影与兼容副本 id 不同时,按子项身份一起清理。
+  /// 不把旧候选缺失的索引当作 0,避免误删同事件的其它候选。
+  Future<bool> remove(
+    String id, {
+    String? eventKey,
+    int? eventItemIndex,
+  }) =>
+      _serial(() async {
         final list = await _loadUnlocked();
-        final next = list.where((c) => c.id != id).toList();
+        final next = list
+            .where((c) =>
+                c.id != id &&
+                !(eventKey != null &&
+                    eventItemIndex != null &&
+                    c.eventKey == eventKey &&
+                    c.eventItemIndex == eventItemIndex))
+            .toList();
         if (next.length == list.length) return false;
         await _saveUnlocked(next);
         return true;
@@ -430,4 +445,38 @@ Map<String, dynamic>? _tryJson(String s) {
   } catch (_) {
     return null;
   }
+}
+
+
+/// B4:确认 / 忽略 / 恢复 / 重试的**共享互斥层**。
+///
+/// 同一 `(事件键, 子项)` 的裁决必须串行执行 —— 页面按钮禁用挡不住后台重试
+/// 或另一个入口(通知直达/批量)同时操作同一项;真正兜底的是 store 侧的
+/// 期望状态检查([AutoBookEventStore.resolvePendingItem] / `reopenItem`),
+/// 这里负责把同键操作排成一条链,避免「快速重复点击执行两次」。
+class PendingDecisionCoordinator {
+  PendingDecisionCoordinator._();
+
+  static final Map<String, Future<void>> _tails = {};
+
+  /// 按 key 串行执行;异常不打断后续队列。
+  static Future<T> run<T>(String key, Future<T> Function() action) async {
+    final previous = _tails[key] ?? Future<void>.value();
+    final gate = Completer<void>();
+    _tails[key] = gate.future;
+    try {
+      await previous.catchError((_) {});
+      return await action();
+    } finally {
+      gate.complete();
+      if (identical(_tails[key], gate.future)) _tails.remove(key);
+    }
+  }
+
+  /// 候选裁决的 key:同事件同子项恒定,跨页一致。
+  static String keyFor(PendingCandidate candidate) =>
+      'pending:${candidate.eventKey ?? candidate.id}:${candidate.eventItemIndex ?? 0}';
+
+  /// 仅测试用:清空队列状态。
+  static void resetForTest() => _tails.clear();
 }

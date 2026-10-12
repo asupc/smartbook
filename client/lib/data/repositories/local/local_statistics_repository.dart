@@ -31,6 +31,11 @@ class LocalStatisticsRepository implements StatisticsRepository {
   }) async {
     // C5:SQL GROUP BY 下推(此前全表物化后在 Dart 循环累加,10 万行 = 10 万
     // 个 data class)。共享账本 override 兜底单独一条小查询。
+    //
+    // C3/F-19:主查询**排除** override 行(category_id IS NULL 且
+    // category_sync_id_override 非空)—— 它们本属共享分类桶,旧实现的
+    // GROUP BY c.id 会把它们塞进「未分类」,随后 override 补充查询又加一次
+    // → 同一笔 ¥30 在总额里出现两次。补上与 hierarchy 版一致的过滤即可。
     final rows = await db.customSelect(
       '''
       SELECT c.id AS catId, c.name AS catName, c.icon AS catIcon,
@@ -39,6 +44,9 @@ class LocalStatisticsRepository implements StatisticsRepository {
       LEFT JOIN categories c ON c.id = t.category_id
       WHERE t.ledger_id = ?1 AND t.type = ?2 AND t.exclude_from_stats = 0
         AND t.happened_at >= ?3 AND t.happened_at < ?4
+        AND (t.category_sync_id_override IS NULL
+             OR t.category_sync_id_override = ''
+             OR t.category_id IS NOT NULL)
       GROUP BY c.id, c.name, c.icon
       ''',
       variables: [

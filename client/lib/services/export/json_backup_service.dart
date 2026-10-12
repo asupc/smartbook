@@ -42,6 +42,13 @@ class BackupTx {
 }
 
 /// 构建备份 JSON(纯同步;调用方负责 jsonEncode 与落盘)。
+///
+/// 非有限金额(NaN / ±Infinity)会让 `jsonEncode` 抛
+/// `JsonUnsupportedObjectError`,**整份备份导出失败**(用户拿不到任何备份)。
+/// 这类值可由历史脏数据/同步链路落库(见解析器域 P-1),导出侧必须逐笔隔离:
+/// 非有限金额记为 `null` 并打 `amountUnrepresentable` 标记(而不是跳过整笔 ——
+/// 那样会静默丢一笔真实交易),`nativeAmount` 则直接省略。导出不应因一行脏
+/// 数据而失败。
 Map<String, dynamic> buildBackupJson({
   required ({int id, String name, String currency}) ledger,
   required List<({int id, String name, String type, String currency})>
@@ -84,7 +91,8 @@ Map<String, dynamic> buildBackupJson({
         {
           'id': t.id,
           'type': t.type,
-          'amount': t.amount,
+          'amount': t.amount.isFinite ? t.amount : null,
+          if (!t.amount.isFinite) 'amountUnrepresentable': true,
           if (t.categoryId != null) 'categoryId': t.categoryId,
           if (t.accountId != null) 'accountId': t.accountId,
           if (t.toAccountId != null) 'toAccountId': t.toAccountId,
@@ -92,7 +100,8 @@ Map<String, dynamic> buildBackupJson({
           if (t.note != null && t.note!.isNotEmpty) 'note': t.note,
           if (t.currencyCode != null && t.currencyCode!.isNotEmpty)
             'currencyCode': t.currencyCode,
-          if (t.nativeAmount != null) 'nativeAmount': t.nativeAmount,
+          if (t.nativeAmount != null && t.nativeAmount!.isFinite)
+            'nativeAmount': t.nativeAmount,
           'excludeFromStats': t.excludeFromStats,
           'tags': t.tags,
           'attachments': t.attachments,

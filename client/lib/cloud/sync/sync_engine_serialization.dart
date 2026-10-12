@@ -1,5 +1,56 @@
 part of 'sync_engine.dart';
 
+/// U-04(2026-10-11):payload 里是否含**非有限**数值(NaN / ±Infinity,含嵌套)。
+///
+/// 根因:远端 change 的 `amount` 可以是 JSON 字面量 `1e400`,dart:convert 解出
+/// `double.infinity`,apply 原样写进 SQLite REAL。此后该行一旦被登记为待推,
+/// push 就把 Infinity 交给 provider,而真实 provider 对**整批** body 做
+/// `jsonEncode`(smartbook_cloud_provider.dart:1790/3482)→
+/// `JsonUnsupportedObjectError` → 该设备**整个推送通道瘫痪**,所有正常变更都
+/// 推不出去。engine 无法在 provider 内逐条隔离,所以守卫必须放在**交给 provider
+/// 之前**(push egress):命中即跳过该条 + 告警 + 保留本地 change(保守不丢)。
+///
+/// 与 C1 的 `isFinite` 守卫同源:C1 拦"新写入"(解析器 / policy / 落库前),
+/// 这里拦"已经落库的历史脏行"在出口上的最后一次机会。
+bool _hasNonFiniteNumber(Object? value) {
+  if (value is double) return !value.isFinite;
+  if (value is num || value is String || value is bool || value == null) {
+    return false;
+  }
+  if (value is List) {
+    for (final v in value) {
+      if (_hasNonFiniteNumber(v)) return true;
+    }
+    return false;
+  }
+  if (value is Map) {
+    for (final v in value.values) {
+      if (_hasNonFiniteNumber(v)) return true;
+    }
+    return false;
+  }
+  return false;
+}
+
+/// push 通道的"毒 payload"丢弃计数(本进程累计,供日志/诊断)。
+/// 非持久化:它只是可观测性指标,不参与同步语义决策。
+final Map<String, int> _pushPoisonDropCounters = {};
+
+/// U-04:记录并跳过一条"不可编码 payload"。change 保留在 local_changes
+/// (不 markPushed)—— 保守重推,绝不静默丢;但**不能**交给 provider,否则
+/// 整批 jsonEncode 失败。
+void _skipPoisonPayload(String entityType, String entitySyncId) {
+  final key = '$entityType\u0000$entitySyncId';
+  final n = (_pushPoisonDropCounters[key] ?? 0) + 1;
+  _pushPoisonDropCounters[key] = n;
+  logger.error(
+      'SyncEngine',
+      'push: $entityType($entitySyncId) payload 含非有限数值(NaN/Infinity),'
+      '跳过发送(第 $n 次)—— 真实 provider 对整批 body 一次 jsonEncode,'
+      '放行会让**整批**变更推送失败;change 保留本地等待数据修正',
+      'push_non_finite_payload');
+}
+
 /// push 路径上把本地实体序列化成 server payload 的逻辑。
 ///
 /// 包括:
@@ -657,12 +708,37 @@ extension SyncEngineSerializationExt on SyncEngine {
     // 分批推送:每条 change 平均 ~500 字节,500 条 ≈ 250KB,远低于网关限制,
     // 但单次请求内 server 事务处理时间 ~100ms 可接受。
     // 5 倍原先 100 的吞吐,3 万条交易上传从 300 批降到 60 批,耗时约 1/5。
+    //
+    // U-04(2026-10-11):分批之前先滤掉"含非有限数值"的条目 —— 一条远端脏
+    // 交易(amount=Infinity)混进任一批就会让该批 jsonEncode 失败,使
+    // fullPush 整体 rethrow(下面 catch 里 rethrow)。过滤后其余实体照常上传。
+    final encodable = <Map<String, dynamic>>[];
+    final poisoned = <Map<String, dynamic>>[];
+    for (final sc in syncChanges) {
+      if (_hasNonFiniteNumber(sc['payload'])) {
+        poisoned.add(sc);
+      } else {
+        encodable.add(sc);
+      }
+    }
+    if (poisoned.isNotEmpty) {
+      for (final sc in poisoned) {
+        _skipPoisonPayload(
+          sc['entity_type'] as String? ?? 'unknown',
+          sc['entity_sync_id'] as String? ?? 'unknown',
+        );
+      }
+      logger.warning('SyncEngine',
+          'fullPush: 过滤 ${poisoned.length} 条含非有限数值的 change(共 ${syncChanges.length}),'
+          '其余 ${encodable.length} 条照常推送');
+    }
+
     const batchSize = 500;
-    for (var i = 0; i < syncChanges.length; i += batchSize) {
-      final end = (i + batchSize > syncChanges.length)
-          ? syncChanges.length
+    for (var i = 0; i < encodable.length; i += batchSize) {
+      final end = (i + batchSize > encodable.length)
+          ? encodable.length
           : i + batchSize;
-      final batch = syncChanges.sublist(i, end);
+      final batch = encodable.sublist(i, end);
       try {
         logger.info('SyncEngine',
             '推送批次 ${i ~/ batchSize + 1}: ${batch.length}条 (${i + 1}-$end)');
@@ -741,6 +817,27 @@ extension SyncEngineSerializationExt on SyncEngine {
       ));
     }
 
+    // U-04(2026-10-11):快照同样是"一次 jsonEncode 编码全部"的形态 ——
+    // 一条 amount=Infinity 的脏交易会让整个 jsonEncode 抛
+    // JsonUnsupportedObjectError,fullPush 的快照上传被整体跳过(只剩
+    // 个体变更通道)。这里过滤掉含非有限数值的条目 + 告警,其余照常导出;
+    // 坏条目在增量通道仍会被出口守卫单独拦下并保留在本地等待数据修正。
+    final encodableItems = <Map<String, dynamic>>[];
+    var skippedPoison = 0;
+    for (final item in items) {
+      if (_hasNonFiniteNumber(item)) {
+        skippedPoison++;
+        _skipPoisonPayload('transaction', item['syncId']?.toString() ?? '?');
+      } else {
+        encodableItems.add(item);
+      }
+    }
+    if (skippedPoison > 0) {
+      logger.warning('SyncEngine',
+          'fullPush: 快照导出过滤 $skippedPoison 条含非有限数值的交易(共 ${items.length}),'
+          '其余 ${encodableItems.length} 条照常导出');
+    }
+
     return jsonEncode({
       'version': 6,
       'exportedAt': DateTime.now().toUtc().toIso8601String(),
@@ -748,7 +845,7 @@ extension SyncEngineSerializationExt on SyncEngine {
       'ledgerName': ledger.name,
       'currency': ledger.currency,
       'monthStartDay': ledger.monthStartDay,
-      'count': items.length,
+      'count': encodableItems.length,
       'accounts':
           accounts.map((a) => EntitySerializer.serializeAccount(a)).toList(),
       'categories': categories.map((c) {
@@ -765,7 +862,7 @@ extension SyncEngineSerializationExt on SyncEngine {
             parentName: parentName, parentSyncId: parentSyncId);
       }).toList(),
       'tags': tags.map((t) => EntitySerializer.serializeTag(t)).toList(),
-      'items': items,
+      'items': encodableItems,
     });
   }
 }

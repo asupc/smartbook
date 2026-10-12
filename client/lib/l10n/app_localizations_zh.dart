@@ -8157,4 +8157,700 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get pendingCandidateReasonAlreadyProcessed => '同一账单已处理过';
+
+  @override
+  String get autoBookReasonTimeMissing => '没有识别到交易时间，未入账';
+
+  @override
+  String get autoBookReasonTimeInferred => '交易时间由模型推测，未入账';
+
+  @override
+  String get autoBookReasonInvalidAmount => '金额无效，未入账';
+
+  @override
+  String get autoBookReasonStatementOrBalance => '账单汇总或余额提醒，不是一笔交易';
+
+  @override
+  String get autoBookReasonUnsettledOrder => '订单尚未结算，暂不入账';
+
+  @override
+  String get autoBookReasonTimePrecisionWeak => '只识别到日期，需确认时间';
+
+  @override
+  String get autoBookReasonPendingConfirmation => '识别结果需确认后入账';
+
+  @override
+  String get autoBookReasonAiNotConfigured => 'AI 未配置，配置后会继续处理';
+
+  @override
+  String get autoBookReasonAiRetryable => '处理失败，等待恢复后自动重试';
+
+  @override
+  String get autoBookReasonAiPermanentFailure => '处理失败，需要检查 AI 配置';
+
+  @override
+  String get autoBookReasonAuthExpired => '需要重新登录，事件暂存';
+
+  @override
+  String get autoBookReasonAiUnavailable => 'AI 暂不可用，等待恢复后处理';
+
+  @override
+  String get autoBookReasonEvidenceMissing => '原始材料已清理，无法重放';
+
+  @override
+  String get autoBookReasonDraftEvidenceMissing => '重试材料已过期，无法重放';
+
+  @override
+  String get autoBookReasonShadowMode => '演练模式：仅识别，不入账';
+
+  @override
+  String get autoBookReasonNoBill => '未识别到账单';
+
+  @override
+  String get autoBookReasonUserInitiated => '手动记账，不受自动规则限制';
+
+  @override
+  String get autoBookReasonSettledTransaction => '已结算交易，自动入账';
+
+  @override
+  String get autoBookReasonSettledFinancialEvent => '已结算的退款/费用/收入，自动入账';
+
+  @override
+  String get autoBookReasonUnknownFailed => '处理失败';
+
+  @override
+  String get autoBookReasonUnknownExpired => '已过期，未入账';
+
+  @override
+  String get autoBookReasonUnknownIgnored => '已按自动规则跳过';
+
+  @override
+  String get autoBookReasonUnknown => '未入账';
+
+  @override
+  String get autoHealthOk => '运行正常';
+
+  @override
+  String get autoHealthChecking => '状态检查中…';
+
+  @override
+  String get autoHealthShadowBanner => '演练模式：仅识别，不生成账单或候选';
+
+  @override
+  String get autoHealthPermissionRevoked => '权限被撤销';
+
+  @override
+  String get autoHealthListenerDisconnected => '监听未连接';
+
+  @override
+  String get autoHealthAccessibilityDisconnected => '无障碍服务未连接';
+
+  @override
+  String get autoHealthListenerUnverified => '监听状态待验证';
+
+  @override
+  String get autoHealthStatusQueryFailed => '状态查询失败，请重试';
+
+  @override
+  String get autoHealthAiUnconfigured => 'AI 未配置';
+
+  @override
+  String get autoHealthAiLoginRequired => '需要重新登录';
+
+  @override
+  String get autoHealthAiOffline => 'AI 网络不可用，等待恢复';
+
+  @override
+  String get autoHealthAiProviderError => 'AI 服务异常，请检查配置';
+
+  @override
+  String get autoHealthAiInitializing => 'AI 正在就绪';
+
+  @override
+  String get autoHealthAiCapabilityMissing => 'AI 能力未配置完整';
+
+  @override
+  String get autoHealthBatteryOptimization => '电池优化未忽略，后台可能被杀';
+
+  @override
+  String autoHealthQueueBacklog(Object count) {
+    return '已保存 $count 条，恢复后继续处理';
+  }
+
+  @override
+  String autoHealthPendingCount(Object count) {
+    return '$count 条待确认';
+  }
+
+  @override
+  String get autoHealthDimUnknown => '待验证';
+
+  @override
+  String get autoHealthDimSwitch => '来源开关';
+
+  @override
+  String get autoHealthDimPermission => '系统权限';
+
+  @override
+  String get autoHealthDimListener => '监听连接';
+
+  @override
+  String get autoHealthDimAi => 'AI 能力';
+
+  @override
+  String get autoHealthDimQueue => '处理队列';
+
+  @override
+  String get autoHealthDimSync => '云同步';
+
+  @override
+  String get autoHealthViewPending => '去确认';
+
+  @override
+  String get autoHealthViewRecords => '查看记录';
+
+  @override
+  String get autoHealthOpenSettings => '去设置';
+
+  @override
+  String autoHealthLastCapture(Object time) {
+    return '最近捕获 $time';
+  }
+
+  @override
+  String autoHealthLastProcessed(Object time) {
+    return '最近处理 $time';
+  }
+
+  @override
+  String get autoSetupTitle => '开通自动记账';
+
+  @override
+  String get autoSetupSubtitle => '五步完成配置，进度自动保存，可随时退出续接';
+
+  @override
+  String get autoSetupStepService => '连接与 AI';
+
+  @override
+  String get autoSetupStepTarget => '入账目标';
+
+  @override
+  String get autoSetupStepSources => '选择来源';
+
+  @override
+  String get autoSetupStepBackground => '后台运行';
+
+  @override
+  String get autoSetupStepVerify => '实际验证';
+
+  @override
+  String get autoSetupServiceDesc => '先确认云服务登录与 AI 能力可用，识别才有落账能力。';
+
+  @override
+  String get autoSetupServiceTitle => '云服务登录';
+
+  @override
+  String get autoSetupLoginOk => '已登录';
+
+  @override
+  String get autoSetupLoginMissing => '未登录或仅本地模式，AI 中转不可用';
+
+  @override
+  String get autoSetupRecheck => '重新检查';
+
+  @override
+  String get autoSetupAiTitle => 'AI 能力';
+
+  @override
+  String get autoSetupAiOk => 'AI 已就绪';
+
+  @override
+  String autoSetupAiText(Object state) {
+    return '文本模型：$state';
+  }
+
+  @override
+  String autoSetupAiVision(Object state) {
+    return '视觉模型：$state';
+  }
+
+  @override
+  String get autoSetupConfigured => '已配置';
+
+  @override
+  String get autoSetupNotConfigured => '未配置';
+
+  @override
+  String get autoSetupPaused => '每一步都会保存进度，可以随时退出，下次继续。';
+
+  @override
+  String get autoSetupTargetDesc => '选择自动入账的账本与默认账户；它与你浏览的账本相互独立。';
+
+  @override
+  String get autoSetupTargetLedgerLabel => '自动入账账本';
+
+  @override
+  String get autoSetupTargetLocalLedger => '本地账本（未同步，仅本机有效）';
+
+  @override
+  String get autoSetupTargetAccountLabel => '默认账户';
+
+  @override
+  String get autoSetupTargetDefaultAccount => '跟随识别结果 / 系统默认';
+
+  @override
+  String get autoSetupTargetChangeable => '之后可以在这里随时更换自动入账目标。';
+
+  @override
+  String get autoSetupSourcesDesc => '先开启支付通知与银行短信；详情页识别与截图可按需开启，权限在开启对应来源时才申请。';
+
+  @override
+  String get autoSetupSourcesPrimary => '常用来源';
+
+  @override
+  String get autoSetupSourcesOptional => '按需来源';
+
+  @override
+  String get autoSetupSourcesAtLeastOne => '至少开启一个来源，自动记账才会工作。';
+
+  @override
+  String get autoSetupSourceOn => '已开启';
+
+  @override
+  String get autoSetupSourceOff => '未开启';
+
+  @override
+  String get autoSetupBackgroundDesc => '为保证监听存活，请处理电池优化与自启动；不同机型路径不同。';
+
+  @override
+  String get autoSetupBackgroundNote => '后台限制过严会导致收不到通知或短信，状态卡会显示对应问题。';
+
+  @override
+  String get autoSetupVerifyDesc => '用手机收到一条真实支付通知或银行短信，然后回来检查。模拟数据不能算作监听通过。';
+
+  @override
+  String get autoSetupVerifyOk => '检测到新的捕获，验证通过';
+
+  @override
+  String get autoSetupVerifyPending => '还没有检测到新的捕获';
+
+  @override
+  String get autoSetupVerifyAction => '我已收到，检查结果';
+
+  @override
+  String get autoSetupVerifyRetry => '暂未检测到新捕获，请确认来源已开启后再试';
+
+  @override
+  String get autoSetupSkipVerify => '暂时跳过';
+
+  @override
+  String get autoSetupVerifyNotice => '这一步只验证真实监听链路；解析测试不能替代它。';
+
+  @override
+  String get autoSetupVerifySkippedNote => '已跳过真实验证：状态卡仍会提示未验证。';
+
+  @override
+  String get autoSetupBack => '上一步';
+
+  @override
+  String get autoSetupNext => '下一步';
+
+  @override
+  String get autoSetupFinish => '完成';
+
+  @override
+  String get autoSetupCompletedTitle => '自动记账已开通';
+
+  @override
+  String get autoSetupBannerTitle => '还没有完成自动记账开通';
+
+  @override
+  String get autoSetupBannerDesc => '按引导完成目标、来源与真实验证，识别才真正可用';
+
+  @override
+  String get autoSetupBannerAction => '继续开通';
+
+  @override
+  String get autoParseTestTitle => '解析链路测试';
+
+  @override
+  String get autoParseTestDesc => '模拟数据只验证解析与判重链路，不能证明真实监听已通过；默认只解析不入账。';
+
+  @override
+  String get autoParseTestWrite => '允许写入测试账本';
+
+  @override
+  String autoParseTestWriteDesc(Object ledger) {
+    return '识别结果写入独立测试账本「$ledger」，不会计入正式账本';
+  }
+
+  @override
+  String get autoParseTestPreviewOn => '当前为预览模式：只识别，不产生交易或候选';
+
+  @override
+  String get autoParseTestNoticeResult => '解析成功 ≠ 真实监听通过；真实链路请用真实通知/短信验证。';
+
+  @override
+  String get autoParseTestSubmittedPreview => '已提交（预览模式：只识别，不入账）';
+
+  @override
+  String autoParseTestSubmittedWrite(Object ledger) {
+    return '已提交，结果写入测试账本「$ledger」';
+  }
+
+  @override
+  String get autoBookDetailDiagnostics => '诊断信息';
+
+  @override
+  String get autoBookManualAdd => '手动补记';
+
+  @override
+  String get autoBookManualAddTimeHint => '不会带入推测时间，请在编辑器里确认交易时间后再保存';
+
+  @override
+  String get autoBookManualAddPickItem => '选择要补记的一笔';
+
+  @override
+  String get autoBookManualAddUnavailable => '没有可恢复的结构化摘要，无法补记';
+
+  @override
+  String get automationGroupRecognition => '识别与入账';
+
+  @override
+  String get automationGroupRecognitionDesc => '通知、短信、截图自动识别与确认';
+
+  @override
+  String get automationGroupSchedule => '固定计划';
+
+  @override
+  String get welcomeAutoBillingTitle => '自动记账';
+
+  @override
+  String get welcomeAutoBillingDesc => '开启后，支付通知与银行短信会自动识别并入账；可先跳过，稍后在「我的」里开通。';
+
+  @override
+  String get welcomeAutoBillingStart => '现在开通';
+
+  @override
+  String get welcomeAutoBillingLater => '稍后再说';
+
+  @override
+  String get welcomeAutoBillingNote => '开通共五步，进度会自动保存。';
+
+  @override
+  String get channelMappingScopeLedger => '作用账本';
+
+  @override
+  String get channelMappingSources => '适用来源（不选＝全部来源）';
+
+  @override
+  String get channelMappingSourceSms => '短信';
+
+  @override
+  String get channelMappingSourceNotify => '通知';
+
+  @override
+  String get channelMappingSourceScreen => '详情页';
+
+  @override
+  String get channelMappingSourceImage => '截图';
+
+  @override
+  String get channelMappingSourceAny => '全部来源';
+
+  @override
+  String get channelMappingCardLast4 => '卡号后四位';
+
+  @override
+  String get channelMappingCardLast4Hint => '只存 4 位，不存完整卡号';
+
+  @override
+  String channelMappingCardLast4Short(Object last4) {
+    return '尾号 $last4';
+  }
+
+  @override
+  String get channelMappingCurrency => '币种';
+
+  @override
+  String get channelMappingCurrencyAny => '不限币种';
+
+  @override
+  String channelMappingLegacyBanner(Object count) {
+    return '有 $count 条旧版渠道规则：尚未确认作用账本，确认前只在 AI 未识别账户时生效，也不会推广到所有账本';
+  }
+
+  @override
+  String get channelMappingLegacyRule => '旧版渠道规则';
+
+  @override
+  String get channelMappingConfirmScope => '确认作用账本';
+
+  @override
+  String channelMappingConfirmScopeDesc(Object channel) {
+    return '规则「$channel」创建于旧版本，没有作用账本。确认后才按新规则优先级生效。';
+  }
+
+  @override
+  String get channelMappingScopeSaved => '作用账本已确认';
+
+  @override
+  String get channelMappingDisabled => '已停用';
+
+  @override
+  String get autoTargetTitle => '自动入账目标';
+
+  @override
+  String autoTargetLedger(Object name) {
+    return '入账账本：$name';
+  }
+
+  @override
+  String get autoTargetLedgerMissing => '目标账本不存在';
+
+  @override
+  String get autoTargetUnconfirmed => '目标未确认：暂按旧口径（当前浏览账本）入账';
+
+  @override
+  String get autoTargetUnconfirmedHint => '确认后浏览账本不再影响自动入账';
+
+  @override
+  String get autoTargetInvalid => '目标失效：已暂停自动写入';
+
+  @override
+  String get autoTargetInvalidScope => '账号变化导致目标不匹配，请重新选择账本';
+
+  @override
+  String get autoTargetInvalidMissing => '目标账本已删除或共享权限被撤销，请重新选择';
+
+  @override
+  String get autoTargetUndetermined => '目标待确定：先选择自动入账账本';
+
+  @override
+  String get autoTargetConfirm => '确认目标';
+
+  @override
+  String get autoTargetChange => '更换目标';
+
+  @override
+  String get autoTargetSaved => '目标已保存';
+
+  @override
+  String get autoTargetPausedHint => '修复前不会写入任何账单，已捕获事件保留在识别记录中';
+
+  @override
+  String autoTargetConfigVersion(Object version) {
+    return '配置版本 $version';
+  }
+
+  @override
+  String get autoBookReasonAccountRuleConflict => '账户规则无法验证，需确认账户';
+
+  @override
+  String get autoBookReasonTargetInvalid => '自动入账目标失效，已暂停写入';
+
+  @override
+  String get autoBookReasonTargetUndetermined => '自动入账目标待确定';
+
+  @override
+  String get autoHealthTargetInvalid => '自动入账目标失效，已暂停写入';
+
+  @override
+  String get autoHealthTargetUndetermined => '自动入账目标待确定';
+
+  @override
+  String get autoHealthTargetUnconfirmed => '自动入账目标待确认,';
+
+  @override
+  String autoHealthQueueLoss(Object count) {
+    return '有 $count 条容量/过期清理记录';
+  }
+
+  @override
+  String get commonUndo => '撤销';
+
+  @override
+  String get pendingIgnoredTab => '已忽略';
+
+  @override
+  String get pendingIgnoredEmpty => '暂无已忽略的候选。\n被忽略的候选会在这里保留一段时间，可随时恢复为待确认。';
+
+  @override
+  String get pendingIgnoredRestore => '恢复';
+
+  @override
+  String get pendingIgnoredRestored => '已恢复为待确认';
+
+  @override
+  String get pendingIgnoredUnavailable => '无法恢复：材料或目标已不可用';
+
+  @override
+  String get pendingIgnoredUndoHint => '已忽略 1 条候选';
+
+  @override
+  String get pendingIgnoredUndone => '已撤销忽略';
+
+  @override
+  String get pendingFieldMerchant => '商户';
+
+  @override
+  String get pendingFieldAccount => '账户';
+
+  @override
+  String get pendingFieldLedger => '目标账本';
+
+  @override
+  String get pendingFieldTime => '交易时间';
+
+  @override
+  String get pendingFieldHintTime => '时间需要确认';
+
+  @override
+  String get pendingFieldHintAccount => '缺少账户';
+
+  @override
+  String get pendingFieldHintAmount => '请核对金额';
+
+  @override
+  String get pendingTimeTrusted => '分钟级';
+
+  @override
+  String get pendingTimeDateOnly => '仅日期';
+
+  @override
+  String get pendingTimeInferred => '推测';
+
+  @override
+  String get pendingSelectAccount => '选择账户';
+
+  @override
+  String get pendingSelectCategory => '选择分类';
+
+  @override
+  String get pendingRememberAsk => '记住这个分类吗？';
+
+  @override
+  String pendingRememberBody(Object category, Object merchant) {
+    return '以后「$merchant」的同类账单自动用「$category」；只影响未来账单。';
+  }
+
+  @override
+  String get pendingRememberOnce => '仅本次';
+
+  @override
+  String get pendingRememberYes => '记住';
+
+  @override
+  String pendingRememberSaved(Object category, Object merchant) {
+    return '已记住：$merchant → $category';
+  }
+
+  @override
+  String get pendingRememberSaveFailed => '分类规则保存失败，不影响本次入账';
+
+  @override
+  String get automationRulesTitle => '自动记账规则';
+
+  @override
+  String get automationRulesDesc => '分类学习、渠道账户与判重豁免都只影响未来账单，可随时停用或删除。';
+
+  @override
+  String get automationRulesCategoryTitle => '分类学习规则';
+
+  @override
+  String get automationRulesCategoryDesc => '同商户关键词 → 分类；命中时优先于 AI 猜测。';
+
+  @override
+  String automationRulesLegacyBanner(Object count) {
+    return '有 $count 条规则未绑定账本，确认前按旧口径全局生效，不会自动推广到其它账本。';
+  }
+
+  @override
+  String get automationRulesBindLedger => '绑定账本';
+
+  @override
+  String get automationRulesBoundSaved => '已绑定作用账本';
+
+  @override
+  String get automationRulesEnabled => '启用';
+
+  @override
+  String get automationRulesDisabled => '已停用';
+
+  @override
+  String get automationRulesDeleteAsk => '删除这条规则？删除后不影响已有账单。';
+
+  @override
+  String get automationRulesEdit => '编辑';
+
+  @override
+  String get automationRulesEmpty => '还没有分类学习规则。在待确认页「编辑确认」并选择「记住」后会出现在这里。';
+
+  @override
+  String get automationRulesLedgerAll => '全部账本（旧版）';
+
+  @override
+  String get automationRulesChannelEntry => '渠道 → 账户规则';
+
+  @override
+  String get automationRulesDedupEntry => '判重豁免规则';
+
+  @override
+  String get automationRulesUpdated => '规则已更新';
+
+  @override
+  String get automationRulesDeleted => '规则已删除';
+
+  @override
+  String get pendingFieldHintRememberKeyword => '只保存商户关键词，不会保存整段备注';
+
+  @override
+  String get autoBillingDigestTitle => '自动记账日报';
+
+  @override
+  String autoBillingDigestBody(Object booked, Object failed, Object pending) {
+    return '今日已入账 $booked 笔 · 待确认 $pending 笔 · 待重试 $failed 笔';
+  }
+
+  @override
+  String get notifyModeTitle => '通知提醒方式';
+
+  @override
+  String get notifyModeDesc => '只影响自动记账的提醒；系统通知权限与通知渠道仍由你控制。';
+
+  @override
+  String get notifyModeEverySuccess => '每笔成功提醒';
+
+  @override
+  String get notifyModeEverySuccessDesc => '每一笔自动入账都提醒（升级用户的既有行为）';
+
+  @override
+  String get notifyModeConfirmFault => '仅需确认或故障时提醒';
+
+  @override
+  String get notifyModeConfirmFaultDesc => '有待确认候选或出问题时才提醒（新用户默认）';
+
+  @override
+  String get notifyModeDigest => '每日汇总';
+
+  @override
+  String get notifyModeDigestDesc => '晚 8 点后汇总当天入账 / 待确认 / 待重试笔数';
+
+  @override
+  String get notifyModeSaved => '提醒方式已保存';
+
+  @override
+  String get homeQuickAddTitle => '快捷记账';
+
+  @override
+  String get homeQuickAddDesc => '先输金额，用默认账户与最近分类快速记一笔';
+
+  @override
+  String get amountEditorAgain => '保存后再记一笔';
+
+  @override
+  String get amountEditorAgainHint => '保存后面板不关闭，改金额继续记下一笔';
+
+  @override
+  String get autoSetupNotifyDefaultNote => '新用户默认「仅需确认或故障时提醒」，可随时改。';
 }

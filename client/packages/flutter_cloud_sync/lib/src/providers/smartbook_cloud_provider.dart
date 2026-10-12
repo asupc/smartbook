@@ -92,6 +92,11 @@ class SmartBookCloudProvider implements CloudProvider {
     if (apiPrefix != null && apiPrefix is! String) {
       return false;
     }
+    if (apiPrefix is String && apiPrefixHasTraversal(apiPrefix)) {
+      // `Uri` would normalize these away and redirect requests outside the
+      // configured namespace (see [_normalizeApiPrefix]).
+      return false;
+    }
     return true;
   }
 
@@ -1132,7 +1137,14 @@ String? _trimOrNull(String? value) {
 bool _isValidHttpBaseUrl(String raw) {
   final uri = Uri.tryParse(raw.trim());
   if (uri == null) return false;
-  return (uri.scheme == 'http' || uri.scheme == 'https') && uri.host.isNotEmpty;
+  if (uri.scheme != 'http' && uri.scheme != 'https') return false;
+  if (uri.host.isEmpty) return false;
+  // Reject credentials embedded in the URL: `https://user:secret@host` makes
+  // the password part of every log line, error message and reverse-proxy
+  // access record that touches baseUrl. The app has dedicated credential
+  // fields for this, so nothing legitimate is lost.
+  if (uri.userInfo.isNotEmpty) return false;
+  return true;
 }
 
 String _firstNonEmpty(List<String?> values, {required String fallback}) {
@@ -1157,9 +1169,10 @@ String _joinNonEmpty(List<String?> values) {
 class SmartBookCloudAuthService implements CloudAuthService {
   SmartBookCloudAuthService({
     required this.baseUrl,
-    required this.apiPrefix,
+    required String apiPrefix,
     http.Client? httpClient,
-  }) : _httpClient = httpClient ?? http.Client();
+  })  : apiPrefix = _normalizeApiPrefix(apiPrefix),
+        _httpClient = httpClient ?? http.Client();
 
   final String baseUrl;
   final String apiPrefix;
@@ -1179,6 +1192,11 @@ class SmartBookCloudAuthService implements CloudAuthService {
   String? _recoveryPassword;
   Future<CloudUser>? _recoveryInFlight;
 
+  /// Set by [dispose]. After disposal the auth state stream is closed, so any
+  /// late callback (Riverpod release racing a UI callback, for example) must
+  /// degrade to a no-op instead of throwing StateError from `add()`.
+  bool _disposed = false;
+
   /// 静默恢复失败后冷却到这个时间点,期间所有 currentUser / requireAccessToken
   /// 调用都直接返 null,**不再发新的 /auth/login 请求**。
   /// 防止 UI 频繁 rebuild 导致 silent recovery 狂打 login 撞上 server 30/min 限流,
@@ -1191,6 +1209,7 @@ class SmartBookCloudAuthService implements CloudAuthService {
   static const _silentRecoveryCooldown = Duration(seconds: 30);
 
   void setRecoveryCredentials({String? email, String? password}) {
+    if (_disposed) return;
     _recoveryEmail = (email != null && email.isNotEmpty) ? email : null;
     _recoveryPassword =
         (password != null && password.isNotEmpty) ? password : null;
@@ -1622,21 +1641,26 @@ class SmartBookCloudAuthService implements CloudAuthService {
 
   @override
   Future<void> signOut() async {
+    // Signing out is a user decision: whatever happens to the network call,
+    // the local session AND every in-memory auto-login credential must be
+    // dropped, otherwise the next read silently logs the user back in.
     final session = _session;
-    if (session == null) {
-      return;
-    }
-
     try {
-      await _request(
-        method: 'POST',
-        path: '/auth/logout',
-        body: {'refresh_token': session.refreshToken},
-        accessToken: session.accessToken,
-      );
+      if (session != null) {
+        await _request(
+          method: 'POST',
+          path: '/auth/logout',
+          body: {'refresh_token': session.refreshToken},
+          accessToken: session.accessToken,
+        );
+      }
     } catch (_) {
-      // Ignore network/logout errors and clear local session directly.
+      // Ignore network/logout errors and clear local state directly.
     } finally {
+      _recoveryEmail = null;
+      _recoveryPassword = null;
+      _recoveryInFlight = null;
+      _silentRecoveryCooldownUntil = null;
       await _clearSession();
     }
   }
@@ -1653,6 +1677,8 @@ class SmartBookCloudAuthService implements CloudAuthService {
   }
 
   void dispose() {
+    if (_disposed) return;
+    _disposed = true;
     _authStateController.close();
     _httpClient.close();
   }
@@ -1727,10 +1753,12 @@ class SmartBookCloudAuthService implements CloudAuthService {
     _session = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_sessionStorageKey);
+    if (_disposed) return;
     _authStateController.add(null);
   }
 
   void _emitCurrentUser() {
+    if (_disposed) return;
     final session = _session;
     if (session == null) {
       _authStateController.add(null);
@@ -1798,10 +1826,11 @@ class SmartBookCloudAuthService implements CloudAuthService {
 class SmartBookCloudStorageService implements CloudStorageService {
   SmartBookCloudStorageService({
     required this.baseUrl,
-    required this.apiPrefix,
+    required String apiPrefix,
     required this.auth,
     http.Client? httpClient,
-  }) : _httpClient = httpClient ?? http.Client();
+  })  : apiPrefix = _normalizeApiPrefix(apiPrefix),
+        _httpClient = httpClient ?? http.Client();
 
   final String baseUrl;
   final String apiPrefix;
@@ -1891,7 +1920,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
-          'Upload failed: ${_extractErrorMessage(response)}');
+          'Upload failed: ${_extractErrorMessage(response)}',
+          response.statusCode);
     }
   }
 
@@ -1909,21 +1939,40 @@ class SmartBookCloudStorageService implements CloudStorageService {
     }
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
-          'Download failed: ${_extractErrorMessage(response)}');
+          'Download failed: ${_extractErrorMessage(response)}',
+          response.statusCode);
     }
 
-    final payload = _decodeJsonObject(response.body);
+    final payload = _decodeJsonObject(response.body, action: 'Download');
     final snapshot = payload['snapshot'];
-    if (snapshot == null || snapshot is! Map<String, dynamic>) {
+    if (snapshot == null) {
+      // Legitimately empty snapshot (server says "no snapshot for this ledger").
       return null;
+    }
+    if (snapshot is! Map<String, dynamic>) {
+      throw CloudStorageException(
+          'Download failed: corrupt snapshot (expected a JSON object)');
     }
 
     final changePayload = snapshot['payload'];
-    if (changePayload is! Map<String, dynamic>) {
+    if (changePayload == null) {
       return null;
     }
+    if (changePayload is! Map<String, dynamic>) {
+      throw CloudStorageException(
+          'Download failed: corrupt snapshot payload (expected a JSON object)');
+    }
     final content = changePayload['content'];
-    return content is String ? content : null;
+    if (content == null) {
+      return null;
+    }
+    if (content is! String) {
+      // Distinguishable from a 404: data exists but is damaged. Callers must
+      // never treat this as "no cloud backup" and upload over it.
+      throw CloudStorageException(
+          'Download failed: corrupt snapshot content (expected a string)');
+    }
+    return content;
   }
 
   /// 下载服务端权威快照，并同时返回 `latest_cursor`（/sync/full 顶层字段）。
@@ -1946,7 +1995,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     }
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
-          'Download full snapshot failed: ${_extractErrorMessage(response)}');
+          'Download full snapshot failed: ${_extractErrorMessage(response)}',
+          response.statusCode);
     }
 
     final payload = _decodeJsonObject(response.body);
@@ -1998,7 +2048,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
-          'Delete failed: ${_extractErrorMessage(response)}');
+          'Delete failed: ${_extractErrorMessage(response)}',
+          response.statusCode);
     }
   }
 
@@ -2008,12 +2059,14 @@ class SmartBookCloudStorageService implements CloudStorageService {
     final response = await _authedRequest(method: 'GET', path: '/sync/ledgers');
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
-          'List failed: ${_extractErrorMessage(response)}');
+          'List failed: ${_extractErrorMessage(response)}',
+          response.statusCode);
     }
 
-    final data = jsonDecode(response.body);
-    if (data is! List) {
-      return const [];
+    final data = _decodeJsonArray(response.body, action: 'List');
+    if (data == null) {
+      throw CloudStorageException(
+          'List failed: unexpected response shape (expected a JSON array)');
     }
 
     final files = <CloudFile>[];
@@ -2077,7 +2130,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
-          'Raw evidence request failed (HTTP ${response.statusCode})', response.statusCode);
+          'Raw evidence request failed (HTTP ${response.statusCode})',
+          response.statusCode);
     }
     return SmartBookCloudRawEvidence.fromJson(_decodeJsonObject(response.body));
   }
@@ -2106,7 +2160,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
-          'Raw evidence request failed (HTTP ${response.statusCode})', response.statusCode);
+          'Raw evidence request failed (HTTP ${response.statusCode})',
+          response.statusCode);
     }
     return SmartBookCloudRawEvidenceList.fromJson(
         _decodeJsonObject(response.body));
@@ -2121,7 +2176,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
-          'Raw evidence request failed (HTTP ${response.statusCode})', response.statusCode);
+          'Raw evidence request failed (HTTP ${response.statusCode})',
+          response.statusCode);
     }
     return SmartBookCloudRawEvidence.fromJson(_decodeJsonObject(response.body));
   }
@@ -2133,7 +2189,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
-          'Raw evidence request failed (HTTP ${response.statusCode})', response.statusCode);
+          'Raw evidence request failed (HTTP ${response.statusCode})',
+          response.statusCode);
     }
   }
 
@@ -2148,7 +2205,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
-          'Raw evidence request failed (HTTP ${response.statusCode})', response.statusCode);
+          'Raw evidence request failed (HTTP ${response.statusCode})',
+          response.statusCode);
     }
     return (_decodeJsonObject(response.body)['deleted'] as num?)?.toInt() ?? 0;
   }
@@ -2175,56 +2233,101 @@ class SmartBookCloudStorageService implements CloudStorageService {
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
-          'Pull failed: ${_extractErrorMessage(response)}');
+          'Pull failed: ${_extractErrorMessage(response)}',
+          response.statusCode);
     }
 
-    final payload = _decodeJsonObject(response.body);
+    final payload = _decodeJsonObject(response.body, action: 'Pull');
     final rawChanges = payload['changes'];
+    if (rawChanges != null && rawChanges is! List) {
+      throw CloudStorageException(
+          'Pull failed: unexpected response shape (changes is not an array)');
+    }
+    // A non-numeric / malformed `server_cursor` is rejected (falls back to the
+    // current cursor) instead of being propagated or silently zeroed.
     final nextCursor =
-        (payload['server_cursor'] as num?)?.toInt() ?? currentCursor;
+        _asEventIntOrNull(payload['server_cursor']) ?? currentCursor;
     final hasMore = payload['has_more'] == true;
 
     final changes = <SmartBookCloudSyncChange>[];
+    var droppedCount = 0;
+    // Highest change_id that is safe to advance past: rows arrive ordered by
+    // change_id, so advancing stops at the first row that could not be
+    // decoded. Otherwise a dropped change would be skipped forever.
+    var safeCursor = currentCursor;
+    var sawDrop = false;
+
     if (rawChanges is List) {
-      for (final row in rawChanges) {
-        if (row is! Map<String, dynamic>) {
+      for (var index = 0; index < rawChanges.length; index++) {
+        final change = _parsePullChange(rawChanges[index]);
+        if (change == null) {
+          droppedCount++;
+          sawDrop = true;
+          debugPrint('[BCC] pullChanges: 跳过畸形 change 行 '
+              '(index=$index): ${rawChanges[index]}');
           continue;
         }
-        final changeId = (row['change_id'] as num?)?.toInt();
-        final ledgerId = row['ledger_id'];
-        final entityType = row['entity_type'];
-        final entitySyncId = row['entity_sync_id'];
-        final action = row['action'];
-        if (changeId == null ||
-            ledgerId is! String ||
-            entityType is! String ||
-            entitySyncId is! String ||
-            action is! String) {
-          continue;
+        if (!sawDrop && change.changeId > safeCursor) {
+          safeCursor = change.changeId;
         }
-        final rawPayload = row['payload'];
-        changes.add(
-          SmartBookCloudSyncChange(
-            changeId: changeId,
-            ledgerId: ledgerId,
-            entityType: entityType,
-            entitySyncId: entitySyncId,
-            action: action,
-            updatedByDeviceId: row['updated_by_device_id'] as String?,
-            updatedAt: row['updated_at'] as String?,
-            payload: rawPayload is Map<String, dynamic> ? rawPayload : null,
-          ),
-        );
+        changes.add(change);
       }
     }
 
-    if (persistCursor) {
-      await _saveCursor(nextCursor);
+    // Only advance the cursor when every row was decoded. A single dropped row
+    // means part of the batch could not be applied, and silently committing a
+    // position past it would lose those changes permanently.
+    if (droppedCount == 0) {
+      if (persistCursor) {
+        await _saveCursor(nextCursor);
+      }
+      return SmartBookCloudPullResult(
+        changes: changes,
+        serverCursor: nextCursor,
+        hasMore: hasMore,
+      );
     }
+
+    debugPrint('[BCC] pullChanges: 丢弃 $droppedCount 条畸形 change,'
+        'cursor 停在 $safeCursor(不推进到 $nextCursor)');
     return SmartBookCloudPullResult(
       changes: changes,
-      serverCursor: nextCursor,
+      serverCursor: safeCursor,
       hasMore: hasMore,
+    );
+  }
+
+  /// Decode one `/sync/pull` row, or `null` when the row cannot be used.
+  ///
+  /// Compared with the previous bare `row['change_id'] as num?`, a wrongly
+  /// typed `change_id` now yields `null` (skip + log) instead of a `_TypeError`
+  /// that aborted the whole page and deadlocked sync — consistent with the
+  /// `continue`-on-malformed-row intent of the surrounding validation.
+  static SmartBookCloudSyncChange? _parsePullChange(Object? row) {
+    if (row is! Map<String, dynamic>) return null;
+
+    final changeId = _asRowIntOrNull(row['change_id']);
+    final ledgerId = row['ledger_id'];
+    final entityType = row['entity_type'];
+    final entitySyncId = row['entity_sync_id'];
+    final action = row['action'];
+    if (changeId == null ||
+        ledgerId is! String ||
+        entityType is! String ||
+        entitySyncId is! String ||
+        action is! String) {
+      return null;
+    }
+    final rawPayload = row['payload'];
+    return SmartBookCloudSyncChange(
+      changeId: changeId,
+      ledgerId: ledgerId,
+      entityType: entityType,
+      entitySyncId: entitySyncId,
+      action: action,
+      updatedByDeviceId: row['updated_by_device_id'] as String?,
+      updatedAt: row['updated_at'] as String?,
+      payload: rawPayload is Map<String, dynamic> ? rawPayload : null,
     );
   }
 
@@ -2234,8 +2337,13 @@ class SmartBookCloudStorageService implements CloudStorageService {
   }) async {
     if (changes.isEmpty) {
       return const SmartBookPushResult(
-        accepted: 0, rejected: 0, conflictCount: 0, conflictSamples: [],
-        failedCount: 0, failedSamples: [], serverCursor: 0,
+        accepted: 0,
+        rejected: 0,
+        conflictCount: 0,
+        conflictSamples: [],
+        failedCount: 0,
+        failedSamples: [],
+        serverCursor: 0,
       );
     }
     // 先确保 session 有效（触发 token refresh），再读 deviceId
@@ -2265,7 +2373,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
         '[BCC] pushEntityChanges response: ${response.statusCode} $bodyPreview');
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
-          'Push entity changes failed (${response.statusCode}): ${_extractErrorMessage(response)}');
+          'Push entity changes failed (${response.statusCode}): ${_extractErrorMessage(response)}',
+          response.statusCode);
     }
     return SmartBookPushResult.fromJson(_decodeJsonObject(response.body));
   }
@@ -2292,7 +2401,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
-          'Attachment batch exists failed: ${_extractErrorMessage(response)}');
+          'Attachment batch exists failed: ${_extractErrorMessage(response)}',
+          response.statusCode);
     }
     final payload = _decodeJsonObject(response.body);
     final itemsRaw = payload['items'];
@@ -2314,7 +2424,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
-          'Get profile failed: ${_extractErrorMessage(response)}');
+          'Get profile failed: ${_extractErrorMessage(response)}',
+          response.statusCode);
     }
     final payload = _decodeJsonObject(response.body);
     return SmartBookCloudProfile.fromJson(
@@ -2361,7 +2472,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     }
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
-          'Fetch exchange rates failed: ${_extractErrorMessage(response)}');
+          'Fetch exchange rates failed: ${_extractErrorMessage(response)}',
+          response.statusCode);
     }
     return _decodeJsonObject(response.body);
   }
@@ -2412,7 +2524,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
-          'Update profile failed: ${_extractErrorMessage(response)}');
+          'Update profile failed: ${_extractErrorMessage(response)}',
+          response.statusCode);
     }
     final payload = _decodeJsonObject(response.body);
     return SmartBookCloudProfile.fromJson(
@@ -2436,10 +2549,18 @@ class SmartBookCloudStorageService implements CloudStorageService {
       token: token,
     );
     if (response.statusCode == 401) {
+      // Capture the server's reason before refreshing: it is the only place
+      // the caller can learn *why* the session ended (device revoked, password
+      // changed, token expired…). CloudSyncException.toString() redacts and
+      // truncates originalError, so surfacing it cannot leak credentials.
+      final unauthorizedDetail = _extractErrorMessage(response);
       final refreshed = await auth.tryRefreshSession();
       if (!refreshed) {
         throw CloudNotAuthenticatedException(
-            'Session expired, please login again.');
+          'Session expired, please login again.',
+          unauthorizedDetail,
+          401,
+        );
       }
       token = await auth.requireAccessToken();
       response = await _profileAvatarMultipartRequest(
@@ -2451,7 +2572,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     }
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
-          'Avatar upload failed: ${_extractErrorMessage(response)}');
+          'Avatar upload failed: ${_extractErrorMessage(response)}',
+          response.statusCode);
     }
     final payload = _decodeJsonObject(response.body);
     return SmartBookCloudAvatarUploadResult.fromJson(
@@ -2477,10 +2599,18 @@ class SmartBookCloudStorageService implements CloudStorageService {
       token: token,
     );
     if (response.statusCode == 401) {
+      // Capture the server's reason before refreshing: it is the only place
+      // the caller can learn *why* the session ended (device revoked, password
+      // changed, token expired…). CloudSyncException.toString() redacts and
+      // truncates originalError, so surfacing it cannot leak credentials.
+      final unauthorizedDetail = _extractErrorMessage(response);
       final refreshed = await auth.tryRefreshSession();
       if (!refreshed) {
         throw CloudNotAuthenticatedException(
-            'Session expired, please login again.');
+          'Session expired, please login again.',
+          unauthorizedDetail,
+          401,
+        );
       }
       token = await auth.requireAccessToken();
       response = await _multipartRequest(
@@ -2493,7 +2623,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     }
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
-          'Attachment upload failed: ${_extractErrorMessage(response)}');
+          'Attachment upload failed: ${_extractErrorMessage(response)}',
+          response.statusCode);
     }
     final payload = _decodeJsonObject(response.body);
     return SmartBookCloudAttachmentUploadResult.fromJson(payload);
@@ -2521,10 +2652,18 @@ class SmartBookCloudStorageService implements CloudStorageService {
       token: token,
     );
     if (response.statusCode == 401) {
+      // Capture the server's reason before refreshing: it is the only place
+      // the caller can learn *why* the session ended (device revoked, password
+      // changed, token expired…). CloudSyncException.toString() redacts and
+      // truncates originalError, so surfacing it cannot leak credentials.
+      final unauthorizedDetail = _extractErrorMessage(response);
       final refreshed = await auth.tryRefreshSession();
       if (!refreshed) {
         throw CloudNotAuthenticatedException(
-            'Session expired, please login again.');
+          'Session expired, please login again.',
+          unauthorizedDetail,
+          401,
+        );
       }
       token = await auth.requireAccessToken();
       response = await _categoryIconMultipartRequest(
@@ -2536,7 +2675,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     }
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
-          'Category icon upload failed: ${_extractErrorMessage(response)}');
+          'Category icon upload failed: ${_extractErrorMessage(response)}',
+          response.statusCode);
     }
     final payload = _decodeJsonObject(response.body);
     return SmartBookCloudAttachmentUploadResult.fromJson(payload);
@@ -2549,7 +2689,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
-          'Attachment download failed: ${_extractErrorMessage(response)}');
+          'Attachment download failed: ${_extractErrorMessage(response)}',
+          response.statusCode);
     }
     return response.bodyBytes;
   }
@@ -2567,7 +2708,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
-          'Avatar download failed: ${_extractErrorMessage(response)}');
+          'Avatar download failed: ${_extractErrorMessage(response)}',
+          response.statusCode);
     }
     return response.bodyBytes;
   }
@@ -2589,7 +2731,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
-          'List devices failed: ${_extractErrorMessage(response)}');
+          'List devices failed: ${_extractErrorMessage(response)}',
+          response.statusCode);
     }
     final decoded = jsonDecode(response.body);
     if (decoded is! List) return const [];
@@ -2608,7 +2751,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
-          'Revoke device failed: ${_extractErrorMessage(response)}');
+          'Revoke device failed: ${_extractErrorMessage(response)}',
+          response.statusCode);
     }
   }
 
@@ -2619,7 +2763,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
-          'Read ledgers failed: ${_extractErrorMessage(response)}');
+          'Read ledgers failed: ${_extractErrorMessage(response)}',
+          response.statusCode);
     }
     final decoded = jsonDecode(response.body);
     if (decoded is! List) return const [];
@@ -2640,7 +2785,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
-          'Read ledger detail failed: ${_extractErrorMessage(response)}');
+          'Read ledger detail failed: ${_extractErrorMessage(response)}',
+          response.statusCode);
     }
     final payload = _decodeJsonObject(response.body);
     return SmartBookCloudReadLedgerDetail.fromJson(payload);
@@ -2657,7 +2803,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
-          'Read ledger stats failed: ${_extractErrorMessage(response)}');
+          'Read ledger stats failed: ${_extractErrorMessage(response)}',
+          response.statusCode);
     }
     final payload = _decodeJsonObject(response.body);
     return SmartBookCloudLedgerStats.fromJson(payload);
@@ -2670,7 +2817,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     final response = await _httpClient.get(uri);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
-          'Fetch version failed: ${_extractErrorMessage(response)}');
+          'Fetch version failed: ${_extractErrorMessage(response)}',
+          response.statusCode);
     }
     final payload = _decodeJsonObject(response.body);
     return SmartBookCloudServerVersion.fromJson(payload);
@@ -2692,7 +2840,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
-          'Create invite failed: ${_extractErrorMessage(response)}');
+          'Create invite failed: ${_extractErrorMessage(response)}',
+          response.statusCode);
     }
     return SmartBookCloudInvite.fromJson(_decodeJsonObject(response.body));
   }
@@ -2705,7 +2854,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
-          'List invites failed: ${_extractErrorMessage(response)}');
+          'List invites failed: ${_extractErrorMessage(response)}',
+          response.statusCode);
     }
     final decoded = jsonDecode(response.body);
     if (decoded is! List) return const [];
@@ -2723,7 +2873,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
-          'Revoke invite failed: ${_extractErrorMessage(response)}');
+          'Revoke invite failed: ${_extractErrorMessage(response)}',
+          response.statusCode);
     }
   }
 
@@ -2735,7 +2886,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
-          'Preview invite failed: ${_extractErrorMessage(response)}');
+          'Preview invite failed: ${_extractErrorMessage(response)}',
+          response.statusCode);
     }
     return SmartBookCloudInvitePreview.fromJson(
         _decodeJsonObject(response.body));
@@ -2749,7 +2901,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
-          'Accept invite failed: ${_extractErrorMessage(response)}');
+          'Accept invite failed: ${_extractErrorMessage(response)}',
+          response.statusCode);
     }
     return SmartBookCloudInviteAcceptResult.fromJson(
         _decodeJsonObject(response.body));
@@ -2763,7 +2916,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
-          'List members failed: ${_extractErrorMessage(response)}');
+          'List members failed: ${_extractErrorMessage(response)}',
+          response.statusCode);
     }
     final decoded = jsonDecode(response.body);
     if (decoded is! List) return const [];
@@ -2786,7 +2940,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
-          'Update member role failed: ${_extractErrorMessage(response)}');
+          'Update member role failed: ${_extractErrorMessage(response)}',
+          response.statusCode);
     }
     return SmartBookCloudLedgerMember.fromJson(
         _decodeJsonObject(response.body));
@@ -2800,7 +2955,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
-          'Remove member failed: ${_extractErrorMessage(response)}');
+          'Remove member failed: ${_extractErrorMessage(response)}',
+          response.statusCode);
     }
   }
 
@@ -2813,7 +2969,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
-          'Fetch shared resources failed: ${_extractErrorMessage(response)}');
+          'Fetch shared resources failed: ${_extractErrorMessage(response)}',
+          response.statusCode);
     }
     return SmartBookCloudSharedResources.fromJson(
         _decodeJsonObject(response.body));
@@ -2839,7 +2996,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
-          'Fetch member stats failed: ${_extractErrorMessage(response)}');
+          'Fetch member stats failed: ${_extractErrorMessage(response)}',
+          response.statusCode);
     }
     return SmartBookCloudMemberStats.fromJson(_decodeJsonObject(response.body));
   }
@@ -2868,7 +3026,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
-          'Read transactions failed: ${_extractErrorMessage(response)}');
+          'Read transactions failed: ${_extractErrorMessage(response)}',
+          response.statusCode);
     }
     final decoded = jsonDecode(response.body);
     if (decoded is! List) return const [];
@@ -2893,7 +3052,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
-          'Read accounts failed: ${_extractErrorMessage(response)}');
+          'Read accounts failed: ${_extractErrorMessage(response)}',
+          response.statusCode);
     }
     final decoded = jsonDecode(response.body);
     if (decoded is! List) return const [];
@@ -2914,7 +3074,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
-          'Read categories failed: ${_extractErrorMessage(response)}');
+          'Read categories failed: ${_extractErrorMessage(response)}',
+          response.statusCode);
     }
     final decoded = jsonDecode(response.body);
     if (decoded is! List) return const [];
@@ -2935,7 +3096,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
-          'Read tags failed: ${_extractErrorMessage(response)}');
+          'Read tags failed: ${_extractErrorMessage(response)}',
+          response.statusCode);
     }
     final decoded = jsonDecode(response.body);
     if (decoded is! List) return const [];
@@ -3375,7 +3537,8 @@ class SmartBookCloudStorageService implements CloudStorageService {
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CloudStorageException(
-          'Write request failed: ${_extractErrorMessage(response)}');
+          'Write request failed: ${_extractErrorMessage(response)}',
+          response.statusCode);
     }
     final payload = _decodeJsonObject(response.body);
     return SmartBookCloudWriteCommitMeta.fromJson(payload);
@@ -3440,10 +3603,18 @@ class SmartBookCloudStorageService implements CloudStorageService {
     );
 
     if (response.statusCode == 401) {
+      // Capture the server's reason before refreshing: it is the only place
+      // the caller can learn *why* the session ended (device revoked, password
+      // changed, token expired…). CloudSyncException.toString() redacts and
+      // truncates originalError, so surfacing it cannot leak credentials.
+      final unauthorizedDetail = _extractErrorMessage(response);
       final refreshed = await auth.tryRefreshSession();
       if (!refreshed) {
         throw CloudNotAuthenticatedException(
-            'Session expired, please login again.');
+          'Session expired, please login again.',
+          unauthorizedDetail,
+          401,
+        );
       }
       token = await auth.requireAccessToken();
       response = await _request(
@@ -3590,6 +3761,8 @@ class _SmartBookCloudSession {
     final expiresIn = payload['expires_in'];
     final deviceId = payload['device_id'];
 
+    // Structural mismatch → FormatException (a malformed response is not an
+    // auth decision).
     if (userId is! String ||
         accessToken is! String ||
         refreshToken is! String ||
@@ -3598,13 +3771,50 @@ class _SmartBookCloudSession {
       throw const FormatException('Invalid auth response payload');
     }
 
+    // Semantically invalid but well-typed values → CloudAuthException: the
+    // login must be rejected rather than "succeeding" with unusable
+    // credentials. An empty bearer token silently loops 401 → refresh, and a
+    // multi-megabyte token is persisted and copied into request headers on
+    // every call.
+    if (accessToken.isEmpty || refreshToken.isEmpty) {
+      throw CloudAuthException(
+          'Invalid auth response: empty access/refresh token');
+    }
+    if (accessToken.length > kMaxAuthTokenLength ||
+        refreshToken.length > kMaxAuthTokenLength) {
+      throw CloudAuthException(
+          'Invalid auth response: token exceeds the maximum length');
+    }
+    if (userId.isEmpty || deviceId.isEmpty) {
+      throw CloudAuthException(
+          'Invalid auth response: empty user id / device id');
+    }
+
+    // `expires_in` is server-controlled numeric input:
+    //  * JSON `1e999` decodes to `double.infinity` → `.toInt()` previously
+    //    threw an UnsupportedError that escaped the package's hierarchy;
+    //  * `1e19` saturates int64, so the seconds→microseconds multiplication
+    //    overflowed into a negative Duration and the fresh session was
+    //    permanently "expired" (each read rotating the refresh token).
+    if (!expiresIn.isFinite) {
+      throw CloudAuthException('Invalid auth response: non-finite expires_in');
+    }
+    final expiresInSeconds = expiresIn.toInt();
+    if (expiresInSeconds < 0) {
+      throw CloudAuthException('Invalid auth response: negative expires_in');
+    }
+    // Clamp the finite remainder so the expiry arithmetic can never overflow.
+    final safeExpiresInSeconds = expiresInSeconds > kMaxAuthExpiresInSeconds
+        ? kMaxAuthExpiresInSeconds
+        : expiresInSeconds;
+
     return _SmartBookCloudSession(
       userId: userId,
       email: user['email'] as String?,
       accessToken: accessToken,
       refreshToken: refreshToken,
       accessTokenExpiresAt:
-          DateTime.now().toUtc().add(Duration(seconds: expiresIn.toInt())),
+          DateTime.now().toUtc().add(Duration(seconds: safeExpiresInSeconds)),
       deviceId: deviceId,
     );
   }
@@ -4415,8 +4625,14 @@ class SmartBookCloudRealtimeClient {
 
   Stream<SmartBookCloudRealtimeEvent> get events => _events.stream;
 
+  bool _disposed = false;
+
+  /// Starts the realtime connection.
+  ///
+  /// No-op after [dispose]: the event stream is closed, so reconnecting could
+  /// never deliver anything and would retry forever in the background.
   Future<void> start() async {
-    if (_running) {
+    if (_disposed || _running) {
       return;
     }
     _running = true;
@@ -4436,11 +4652,22 @@ class SmartBookCloudRealtimeClient {
   }
 
   void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    _running = false;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
+    _channelSub?.cancel();
+    _channelSub = null;
+    _channel?.sink.close();
+    _channel = null;
     _events.close();
   }
 
   Future<void> _connect() async {
-    if (!_running || _connecting) {
+    if (!_running || _connecting || _disposed) {
       return;
     }
     _connecting = true;
@@ -4450,6 +4677,19 @@ class SmartBookCloudRealtimeClient {
       final uri = _buildWebSocketUri(token);
       final channel = WebSocketChannel.connect(uri);
       _channel = channel;
+
+      // The handshake completes asynchronously: `WebSocketChannel.connect`
+      // returns synchronously while its `ready` future later fails on a
+      // rejected upgrade (401/403/non-WS endpoint). Awaiting it here keeps the
+      // failure inside this try/catch — otherwise it escapes as an unhandled
+      // async error that callers can never observe.
+      await channel.ready;
+
+      if (_disposed || !_running) {
+        // dispose()/stop() landed while the handshake was in flight.
+        await channel.sink.close();
+        return;
+      }
 
       _channelSub = channel.stream.listen(
         _onMessage,
@@ -4468,12 +4708,28 @@ class SmartBookCloudRealtimeClient {
       // 发一条 "connected" 事件给业务层，让 SyncEngine 知道 WS 重连成功 ——
       // 离线累积的 local_changes 可以此时 flush。没有这个通知的话，断网
       // 期间用户改的东西要等下一次交易写入 / PostProcessor.sync() 才推出去。
-      _events.add(const SmartBookCloudRealtimeEvent(type: 'connected'));
-    } catch (_) {
+      _addEvent(const SmartBookCloudRealtimeEvent(type: 'connected'));
+    } catch (e) {
+      // Handshake / token failures are reported on the event stream (when
+      // someone is listening) and then retried with backoff, so the failure is
+      // observable instead of escaping to the Zone.
+      _addEventError(e);
       _scheduleReconnect();
     } finally {
       _connecting = false;
     }
+  }
+
+  /// Emit an event unless the controller is already closed.
+  void _addEvent(SmartBookCloudRealtimeEvent event) {
+    if (_disposed || _events.isClosed) return;
+    _events.add(event);
+  }
+
+  /// Surface a connection error on the stream, when the stream is still open.
+  void _addEventError(Object error) {
+    if (_disposed || _events.isClosed) return;
+    _events.addError(error);
   }
 
   Uri _buildWebSocketUri(String token) {
@@ -4510,8 +4766,15 @@ class SmartBookCloudRealtimeClient {
       if (type is! String || type.isEmpty) {
         return;
       }
-      final serverCursor = (payload['serverCursor'] as num?)?.toInt();
-      _events.add(
+      // A malformed `serverCursor` degrades to null; the event itself is still
+      // delivered, because callers key off `type`/`ledgerId` to trigger a pull
+      // and dropping the frame entirely would silently stall realtime sync.
+      final serverCursor = _asEventIntOrNull(payload['serverCursor']);
+      if (serverCursor == null && payload.containsKey('serverCursor')) {
+        debugPrint('[BCC] realtime: 忽略非法 serverCursor='
+            '${payload['serverCursor']}(type=$type)');
+      }
+      _addEvent(
         SmartBookCloudRealtimeEvent(
           type: type,
           ledgerId: payload['ledgerId'] as String?,
@@ -4523,7 +4786,7 @@ class SmartBookCloudRealtimeClient {
   }
 
   void _scheduleReconnect([Object? _, StackTrace? __]) {
-    if (!_running) {
+    if (!_running || _disposed) {
       return;
     }
 
@@ -4544,8 +4807,8 @@ class SmartBookCloudRealtimeClient {
     var delaySeconds =
         exp > _kReconnectMaxDelaySeconds ? _kReconnectMaxDelaySeconds : exp;
     final jitterFactor = 0.8 + Random().nextDouble() * 0.4; // 0.8 ~ 1.2
-    final delay = Duration(
-        milliseconds: (delaySeconds * 1000 * jitterFactor).round());
+    final delay =
+        Duration(milliseconds: (delaySeconds * 1000 * jitterFactor).round());
     _reconnectTimer = Timer(delay, () async {
       if (!_running) {
         return;
@@ -4568,6 +4831,16 @@ class SmartBookCloudRealtimeClient {
 const Duration kCloudHttpDeadline = Duration(seconds: 30);
 const Duration kCloudHttpUploadDeadline = Duration(seconds: 60);
 
+/// Upper bound for `access_token` / `refresh_token` accepted from an auth
+/// response. Real JWTs are a few KB; anything approaching this is either a
+/// malformed response or an attempt to bloat request headers / storage.
+const int kMaxAuthTokenLength = 8192;
+
+/// Upper bound for a server supplied `expires_in` (seconds). ~100 years: large
+/// enough to be "effectively never", small enough that the
+/// seconds→microseconds multiplication cannot overflow.
+const int kMaxAuthExpiresInSeconds = 3153600000;
+
 Future<http.Response> sendWithDeadline(
   http.Client client,
   http.BaseRequest request, {
@@ -4578,26 +4851,110 @@ Future<http.Response> sendWithDeadline(
   return http.Response.fromStream(streamed).timeout(d);
 }
 
+/// Sanitize a configured API prefix.
+///
+/// `Uri` normalizes `..` segments per RFC 3986, so a prefix of
+/// `/api/v1/../../etc` would silently rewrite every request outside `/api/v1`
+/// (observed: `/etc/auth/login`). Dropping `.` / `..` / empty segments here
+/// keeps each request inside the namespace it was configured with, no matter
+/// how the prefix was written.
 String _normalizeApiPrefix(String raw) {
-  var prefix = raw.trim();
-  if (prefix.isEmpty) {
+  final trimmed = raw.trim();
+  if (trimmed.isEmpty) {
     return '/api/v1';
   }
-  if (!prefix.startsWith('/')) {
-    prefix = '/$prefix';
+  var prefix = trimmed.startsWith('/') ? trimmed : '/$trimmed';
+
+  final segments = <String>[];
+  for (final segment in prefix.split('/')) {
+    if (segment.isEmpty || segment == '.' || segment == '..') {
+      continue;
+    }
+    segments.add(segment);
   }
-  if (prefix.endsWith('/')) {
-    prefix = prefix.substring(0, prefix.length - 1);
+  if (segments.isEmpty) {
+    return '/api/v1';
   }
-  return prefix;
+  return '/${segments.join('/')}';
 }
 
-Map<String, dynamic> _decodeJsonObject(String raw) {
-  final decoded = jsonDecode(raw);
+/// Whether [raw] contains path traversal segments and must be rejected by
+/// config validation before it reaches [_normalizeApiPrefix].
+bool apiPrefixHasTraversal(String raw) {
+  return raw.split('/').any((segment) => segment == '..' || segment == '.');
+}
+
+/// Decode a 2xx response body into a JSON object.
+///
+/// Every parse failure — including a body that is not JSON at all (a reverse
+/// proxy / captive portal returning an HTML page with status 200) — is
+/// surfaced as a [CloudStorageException] so callers and [RetryHelper] see one
+/// classification instead of a bare [FormatException]. The raw body is never
+/// interpolated into the message.
+Map<String, dynamic> _decodeJsonObject(String raw, {String? action}) {
+  final Object? decoded;
+  try {
+    decoded = jsonDecode(raw);
+  } catch (_) {
+    final prefix = action == null ? '' : '$action failed: ';
+    throw CloudStorageException(
+        '${prefix}unexpected response body (not valid JSON)');
+  }
   if (decoded is! Map<String, dynamic>) {
-    throw const FormatException('Invalid JSON response');
+    final prefix = action == null ? '' : '$action failed: ';
+    throw CloudStorageException(
+        '${prefix}unexpected response body (expected a JSON object)');
   }
   return decoded;
+}
+
+/// Decode a 2xx response body expected to be a JSON array.///
+/// Returns `null` when the body is not a JSON array, letting the caller raise a
+/// domain-specific error. A malformed body throws [CloudStorageException].
+List<dynamic>? _decodeJsonArray(String raw, {String? action}) {
+  final Object? decoded;
+  try {
+    decoded = jsonDecode(raw);
+  } catch (_) {
+    final prefix = action == null ? '' : '$action failed: ';
+    throw CloudStorageException(
+        '${prefix}unexpected response body (not valid JSON)');
+  }
+  return decoded is List ? decoded : null;
+}
+
+/// Tolerant integer extraction for server supplied cursors.
+///
+/// Accepts `num` and numeric strings (`'42'`, `' 42 '`); returns `null` for
+/// anything else (non-numeric string, non-finite double, out-of-int64 value).
+/// Callers treat `null` as "reject this value": the pull cursor falls back to
+/// its previous position, and the realtime client degrades `serverCursor` to
+/// null while still delivering the event. This must never throw — a
+/// `_TypeError` here aborts an entire pull page / drops a whole frame.
+int? _asEventIntOrNull(Object? value) {
+  if (value is num) {
+    if (!value.isFinite) return null;
+    final truncated = value.truncate();
+    if (truncated > 9223372036854775807 || truncated < -9223372036854775808) {
+      return null;
+    }
+    return truncated;
+  }
+  if (value is String) {
+    return int.tryParse(value.trim());
+  }
+  return null;
+}
+
+/// Strict integer extraction for `/sync/pull` row ids.
+///
+/// Only a genuine finite JSON number is accepted. A wrongly typed id (e.g. a
+/// string) makes the whole row undecodable so the caller skips it — consistent
+/// with the surrounding field validation — instead of throwing a `_TypeError`
+/// that aborts the page.
+int? _asRowIntOrNull(Object? value) {
+  if (value is! num) return null;
+  return _asEventIntOrNull(value);
 }
 
 List<String> _toStringList(Object? value) {
@@ -5081,4 +5438,45 @@ class SmartBookPushResult {
         for (final s in failedSamples)
           if (s['entitySyncId'] is String) s['entitySyncId']! as String,
       };
+
+  /// ⚠️ **终态拒绝 reason 集合 —— 必须与 `server/src/routers/sync/push.py`
+  /// 逐字保持一致**(READ-ONLY 对照,2026-10-11 抄录):
+  ///
+  /// | reason | push.py 位置 | 语义 |
+  /// |---|---|---|
+  /// | `membership_revoked` | :538 | caller 曾是成员但已被移除(踢出/退出) |
+  /// | `unknown_ledger` | :570 | ghost-ledger guard:非首绑推未知 external_id |
+  /// | `ledger_deleted` | :611 | 账本已软删(F-10) |
+  /// | `sync_id_mismatch` | :657 | entity_sync_id 与 payload.syncId 不一致(F-05) |
+  /// | `entity_sync_id_too_long` | :682 | entity_sync_id 超 255 上限(F-11) |
+  ///
+  /// 这些拒绝**重试永远不可能成功**(账本没了 / 成员资格没了 / 数据本身
+  /// 畸形)—— 与 LWW 判负(`lww_rejected_older_change` / `lww_tie_action_kept`)
+  /// 和瞬态 `apply_failed` 不同,后者保留重试语义。**服务端新增终态 reason 时
+  /// 必须同步维护本集合**,否则客户端会回到"无限重推"循环。
+  static const Set<String> terminalRejectionReasons = {
+    'ledger_deleted',
+    'membership_revoked',
+    'unknown_ledger',
+    'sync_id_mismatch',
+    'entity_sync_id_too_long',
+  };
+
+  static bool _hasTerminalReason(Map<String, dynamic> sample) {
+    final reason = sample['reason'];
+    return reason is String && terminalRejectionReasons.contains(reason);
+  }
+
+  /// conflict/failed samples 中 reason 属于 [terminalRejectionReasons] 的
+  /// 子集(原样保留 entityType / entitySyncId / reason 等字段)。
+  ///
+  /// 调用方(SyncEngine)据此把被终态拒绝的 change 从推送队列**丢弃**并落
+  /// 持久化错误行 —— 重推它们只会永久循环(8 次/会话 + 每 30min 探测 +
+  /// 重启计数重置)。
+  List<Map<String, dynamic>> get terminalRejectionSamples => [
+        for (final s in conflictSamples)
+          if (_hasTerminalReason(s)) s,
+        for (final s in failedSamples)
+          if (_hasTerminalReason(s)) s,
+      ];
 }

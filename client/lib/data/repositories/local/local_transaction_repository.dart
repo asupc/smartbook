@@ -12,6 +12,7 @@ import '../../../utils/month_range.dart';
 import '../../../utils/shared_ledger_picker_filter.dart';
 import '../../../models/note_history.dart';
 import '../transaction_repository.dart';
+import 'chunk_utils.dart';
 import '../../../services/system/logger_service.dart';
 
 /// 本地交易Repository实现
@@ -413,6 +414,165 @@ class LocalTransactionRepository implements TransactionRepository {
 
   static const _uuid = Uuid();
 
+  /// 交易金额写入的**统一判据**(C3/F-12/F-13/U-1/U-04 同源,缺陷 F 收口点)。
+  ///
+  /// 所有直写 `transactions` 的入口都走这里,per-path 只决定「违规怎么处理」:
+  ///
+  /// | 路径 | 策略 |
+  /// |---|---|
+  /// | [addTransaction] / [updateTransaction] / [insertTransactionCompanion] / | 抛 `ArgumentError` |
+  /// | [insertTransactionsBatch] / [insertTransactionsBatchWithRelations] | (fail-closed;批内 `db.transaction` 整体回滚) |
+  /// | [updateTransactionBySyncId] / [updateTransactionsBatchBySyncId] | **跳过该行 + 告警**(同步/合并路径:一条坏行不能拖垮整批) |
+  /// | pull-apply(`sync_engine_apply.dart`) | 跳过该行 + 告警(抛错会中断整页 apply、cursor 卡死) |
+  ///
+  /// 判据:
+  /// - **非有限值**(NaN/±Infinity)一律拒绝:Infinity 落库会让月/年/全期
+  ///   所有聚合变成 Infinity,整账本统计不可用(D1/U-04)。
+  /// - **数量上限** `|amount| < [maxWriteAmount]`(约 12 位整数,U-1):超出 UI
+  ///   金额键盘位数上限的值不是正常录入面,放行只会让账本卡/统计卡渲染退化
+  ///   (渲染侧对 ≥1e21 另有指数记法兜底,见 [formatBalanceFull])。
+  /// - **负数**对 expense/income/transfer 一律拒绝:方向由 `type` 表达,负金额
+  ///   会与其他支出互相抵消、把转账资金流反转(D3)。非方向性类型(如
+  ///   `adjustment` 余额调整)允许负数。
+  /// - **0 允许**:历史导入/备份快照/周期模板会写入 0 金额行,且无方向歧义,
+  ///   拒绝会产生新的失败面(计划要求 `!= 0`,此处按「不新增失败」放宽并记录)。
+  ///
+  /// **[currentAmount] = 库内当前值时的「存量豁免」(缺陷 E)**:两值相等
+  /// (含 NaN 自等)**且方向语义(type)也未被改动**时,视为金额未改动,跳过全部
+  /// 判据。`updateTransaction` 是整行写入,search_page 批量改备注/分类会把
+  /// `tx.amount` 原样回传 —— 若对回传值重新校验,存量脏值行(legacy 负值/超大值/
+  /// Infinity)会**永久不可编辑**(只能删了重建)。豁免不会引入新的脏值:能通过
+  /// 等值判定的值必然已在库内。
+  ///
+  /// **缺陷 C(2026-10-11 复现缺陷修复)**:豁免只在 `type` 也等于库内现值时成立。
+  /// 旧实现只看金额:app 自己创建的 `adjustment/-500`(合法负值)被
+  /// `updateTransaction(id, type:'expense', amount:-500)` **改类型**时,金额
+  /// 等值 → 整条豁免放行 → 库里出现方向性非法的 `expense/-500`
+  /// (而 `addTransaction(expense, -500)` 被正确拒绝)。方向由 type 表达,
+  /// 改类型 = 改方向语义 → 必须对金额**重新校验**。
+  /// 传 [currentType] = 库内当前 type 即启用该收紧;不传(无现值上下文/新建
+  /// 路径)保持原语义(等值即豁免)。
+  static String? txAmountViolation(String type, double amount,
+      {double? currentAmount, String? currentType}) {
+    if (currentAmount != null &&
+        sameAmountValue(amount, currentAmount) &&
+        (currentType == null || currentType == type)) {
+      return null; // 金额与方向语义均未改动 → 存量豁免(其它字段仍可编辑)
+    }
+    if (!amount.isFinite) return 'non_finite';
+    if (amount.abs() >= maxWriteAmount) return 'exceeds_magnitude';
+    const directional = {'expense', 'income', 'transfer'};
+    if (directional.contains(type) && amount < 0) return 'negative_directional';
+    return null;
+  }
+
+  /// double 等值判定:`==` 对 NaN 恒 false,而 NaN 自等必须在「存量豁免」里
+  /// 成立(否则 legacy NaN 行回传 NaN 会被判为"改了金额",重新落入不可编辑)。
+  static bool sameAmountValue(double a, double b) =>
+      a == b || (a.isNaN && b.isNaN);
+
+  /// 金额写入上限:整数位 12 位(U-1 的 UI 金额键盘 `_append` 同源)。
+  /// UI 能提交的最大值是 999,999,999,999;数据层放行 ≥1e12 属于口径不一致。
+  static const double maxWriteAmount = 1e12;
+
+  /// 违规原因码 → 可读消息(消息口径与修复前保持一致,便于既有断言/日志检索)。
+  static String violationMessage(String reason, String type, double amount) {
+    switch (reason) {
+      case 'non_finite':
+        return '金额必须是有限数(NaN/Infinity 会污染全部聚合): $amount';
+      case 'exceeds_magnitude':
+        return '金额超过上限(约 12 位整数,$maxWriteAmount): $amount';
+      default:
+        return '$type 的金额必须 >= 0(方向由 type 表达,负金额会反转资金流): $amount';
+    }
+  }
+
+  /// 交易金额校验(C3/F-12/F-13)。抛出版本,语义见 [txAmountViolation]。
+  ///
+  /// [currentAmount] 非空且与 [amount] 相等(且 [currentType] 等于 [type])→
+  /// 存量豁免(缺陷 E/C)。
+  static void validateTransactionAmount(String type, double amount,
+      {double? currentAmount, String? currentType}) {
+    final reason = txAmountViolation(type, amount,
+        currentAmount: currentAmount, currentType: currentType);
+    if (reason != null) {
+      throw ArgumentError.value(
+          amount, 'amount', violationMessage(reason, type, amount));
+    }
+  }
+
+  /// 折算金额(native_amount)守卫。
+  ///
+  /// 只拒非有限值,**不设** [maxWriteAmount] —— native = amount × 汇率 是派生
+  /// 值,汇率可大于 1,合法折算本就会超过基数位的量级。
+  /// [currentNativeAmount] 与 [nativeAmount] 相等时同样走「存量豁免」(缺陷 E)。
+  static void validateTxNativeAmount(double? nativeAmount,
+      {double? currentNativeAmount}) {
+    if (nativeAmount == null) return;
+    if (currentNativeAmount != null &&
+        sameAmountValue(nativeAmount, currentNativeAmount)) {
+      return;
+    }
+    if (!nativeAmount.isFinite) {
+      throw ArgumentError.value(
+          nativeAmount, 'nativeAmount', '折算金额必须是有限数(NaN/Infinity 不能落库)');
+    }
+  }
+
+  /// 单条直写路径的统一收口(私有):判据由 [txAmountViolation] 定义,
+  /// 违规抛 `ArgumentError`。[path] 只用于定位是哪个入口写坏的。
+  static void _assertTxValues({
+    required String type,
+    required double amount,
+    double? nativeAmount,
+    double? currentAmount,
+    double? currentNativeAmount,
+    String? currentType,
+    required String path,
+  }) {
+    final reason = txAmountViolation(type, amount,
+        currentAmount: currentAmount, currentType: currentType);
+    if (reason != null) {
+      throw ArgumentError.value(amount, 'amount',
+          '[$path] ${violationMessage(reason, type, amount)}');
+    }
+    validateTxNativeAmount(nativeAmount,
+        currentNativeAmount: currentNativeAmount);
+  }
+
+  /// 批量/companion 直写路径的统一预检:缺 `type`/`amount` 直接抛(而不是
+  /// 落到 SQLite NOT NULL 才报错),随后走同一判据。
+  static void _assertTxCompanion(TransactionsCompanion item,
+      {required String path}) {
+    if (!item.type.present || !item.amount.present) {
+      throw ArgumentError(
+          '[$path] 交易行缺少必需字段(type=${item.type.present ? item.type.value : "<absent>"}, '
+          'amount=${item.amount.present ? item.amount.value : "<absent>"})');
+    }
+    _assertTxValues(
+      type: item.type.value,
+      amount: item.amount.value,
+      nativeAmount: item.nativeAmount.present ? item.nativeAmount.value : null,
+      path: path,
+    );
+  }
+
+  /// 单条插入的唯一收口(私有):先预检再落库。
+  Future<int> _insertTx(TransactionsCompanion item,
+      {required String path}) async {
+    _assertTxCompanion(item, path: path);
+    return db.into(db.transactions).insert(item);
+  }
+
+  /// 列表/分页入口的统一 limit 口径(C3/F-15):`<= 0` 视为**空页**。
+  ///
+  /// SQLite 把 `LIMIT -1` 当「无上限」,把 `OFFSET -N` 当 0 —— 原样下推会让
+  /// 调用方负值静默变成全表物化(长账本 ANR/OOM),`searchTransactions` 更会
+  /// 在 Dart 侧 `.take(-1)` 抛未捕获 RangeError。统一钳到 0 = fail-closed。
+  /// (游标分页 `getTransactionPageWithCategory` 另有文档化契约 clamp(1,400),
+  /// 它需要 +1 探测 `hasMore`,故不并入本口径。)
+  static int clampListLimit(int limit) => limit <= 0 ? 0 : limit;
+
   @override
   Future<int> addTransaction({
     required int ledgerId,
@@ -432,6 +592,11 @@ class LocalTransactionRepository implements TransactionRepository {
     String? currencyCode,
     double? nativeAmount,
   }) async {
+    _assertTxValues(
+        type: type,
+        amount: amount,
+        nativeAmount: nativeAmount,
+        path: 'addTransaction');
     // v30:子仓收「已定值」直写;带折算的兜底(查账户/汇率)在聚合
     // LocalRepository 包装层(子仓拿不到汇率)。
     return db.into(db.transactions).insert(TransactionsCompanion.insert(
@@ -456,6 +621,109 @@ class LocalTransactionRepository implements TransactionRepository {
         ));
   }
 
+  /// 批量插入的 syncId 冲突处理(C3/F-02/F-03/F-04)。
+  ///
+  /// 两个层次,语义按调用方法区分:
+  /// ① **批内重复** `(ledger_id, syncId)`:
+  ///    - [regenerateIntraBatchDuplicates] = false(`insertTransactionsBatch`):
+  ///      **丢弃**后续重复项(保留首条)。该 API 的契约是「返回插入条数」,重复
+  ///      syncId 意味着同一同步实体的重放,去重即幂等。
+  ///    - = true(`insertTransactionsBatchWithRelations`):给后续重复项**重新生成
+  ///      UUID**。该 API 的契约是「返回的 id 列表与输入顺序对齐」,调用方
+  ///      (import)按 index 挂标签/附件;丢行会让关联错位,而保留重复 syncId
+  ///      会被唯一索引拒绝整批。
+  /// ② **库中已存在** `(ledger_id, syncId)` → **跳过**该行(重放幂等,F-04/W4)。
+  ///
+  /// 空串 syncId 不参与去重(HARDENING:空串是调用方契约外输入,老行为允许
+  /// 多行;v45 的部分唯一索引也把它排除在唯一域外)。
+  ///
+  /// 之所以不用 `INSERT OR IGNORE`:那会连主键冲突一起吞掉,F5 依赖主键冲突
+  /// 抛错并整批回滚。带 WHERE 的部分唯一索引也无法作为 drift `DoNothing(target:)`
+  /// 的冲突目标(实测 "ON CONFLICT clause does not match any PRIMARY KEY or
+  /// UNIQUE constraint")。
+  Future<
+      ({
+        List<TransactionsCompanion> pending,
+        Map<int, int> pendingIndexByInput,
+        Map<int, String> effectiveSyncIdByInput
+      })> _prepareBatchSyncIds(
+    List<TransactionsCompanion> items, {
+    required bool regenerateIntraBatchDuplicates,
+  }) async {
+    // ① 批内重复处理
+    final seen = <String>{};
+    final effective = <TransactionsCompanion>[];
+    final keptInputIndexes = <int>[];
+    for (var i = 0; i < items.length; i++) {
+      final item = items[i];
+      final sid = item.syncId.value;
+      if (sid == null || sid.isEmpty) {
+        effective.add(item);
+        keptInputIndexes.add(i);
+        continue;
+      }
+      final key = '${item.ledgerId.value}\u0000$sid';
+      if (seen.add(key)) {
+        effective.add(item);
+        keptInputIndexes.add(i);
+      } else if (regenerateIntraBatchDuplicates) {
+        // 关联批次:换新 UUID 保住每笔账目与它自己的标签/附件
+        effective.add(item.copyWith(syncId: d.Value(_uuid.v4())));
+        keptInputIndexes.add(i);
+      }
+      // 非关联批次:直接丢弃重复项
+    }
+
+    // ② 库中已存在的 (ledger_id, syncId) → 跳过
+    final syncIds = effective
+        .map((c) => c.syncId.value)
+        .whereType<String>()
+        .where((s) => s.isNotEmpty)
+        .toSet()
+        .toList();
+    final existing = <String>{};
+    if (syncIds.isNotEmpty) {
+      for (final chunk in chunkIds(syncIds)) {
+        final placeholders = List.filled(chunk.length, '?').join(',');
+        final rows = await db.customSelect(
+          'SELECT ledger_id, sync_id FROM transactions '
+          'WHERE sync_id IN ($placeholders)',
+          variables: chunk.map((s) => d.Variable.withString(s)).toList(),
+          readsFrom: {db.transactions},
+        ).get();
+        for (final r in rows) {
+          final l = r.data['ledger_id'];
+          final s = r.data['sync_id'];
+          if (l is int && s is String && s.isNotEmpty) {
+            existing.add('$l\u0000$s');
+          }
+        }
+      }
+    }
+    final pending = <TransactionsCompanion>[];
+    final pendingIndexByInput = <int, int>{};
+    // 输入 index → 最终 syncId(批内重复项被换了 UUID,调用方必须用这一份
+    // 去反查落库 id,否则会拿到同 syncId 的第一行 → 关联错挂,即 F-03)
+    final effectiveSyncIdByInput = <int, String>{};
+    for (var k = 0; k < effective.length; k++) {
+      final item = effective[k];
+      final sid = item.syncId.value;
+      final inputIndex = keptInputIndexes[k];
+      if (sid != null && sid.isNotEmpty &&
+          existing.contains('${item.ledgerId.value}\u0000$sid')) {
+        continue; // 已存在(重放)→ 跳过
+      }
+      pendingIndexByInput[inputIndex] = pending.length;
+      pending.add(item);
+      if (sid != null) effectiveSyncIdByInput[inputIndex] = sid;
+    }
+    return (
+      pending: pending,
+      pendingIndexByInput: pendingIndexByInput,
+      effectiveSyncIdByInput: effectiveSyncIdByInput,
+    );
+  }
+
   @override
   Future<int> insertTransactionsBatch(
     List<TransactionsCompanion> items, {
@@ -464,6 +732,11 @@ class LocalTransactionRepository implements TransactionRepository {
     // 子仓库不挂 changeTracker,recordChanges 参数对它无作用 — 真正的 record
     // 在 LocalRepository wrapper 那一层。这里保留参数只是为了接口一致。
     if (items.isEmpty) return 0;
+    // 缺陷 F:批量直写曾在守卫之外(负值/Infinity 静默落库)。预检先于任何
+    // 写入 → 违规整批抛错(fail-closed),`db.transaction` 保证无半提交。
+    for (final item in items) {
+      _assertTxCompanion(item, path: 'insertTransactionsBatch');
+    }
     final effectiveItems = items.map((item) {
       if (item.syncId == const d.Value.absent() || item.syncId.value == null) {
         return item.copyWith(syncId: d.Value(_uuid.v4()));
@@ -471,8 +744,11 @@ class LocalTransactionRepository implements TransactionRepository {
       return item;
     }).toList();
     return db.transaction(() async {
-      await db.batch((b) => b.insertAll(db.transactions, effectiveItems));
-      return effectiveItems.length;
+      final filtered = await _prepareBatchSyncIds(effectiveItems,
+          regenerateIntraBatchDuplicates: false);
+      if (filtered.pending.isEmpty) return 0;
+      await db.batch((b) => b.insertAll(db.transactions, filtered.pending));
+      return filtered.pending.length;
     });
   }
 
@@ -484,6 +760,10 @@ class LocalTransactionRepository implements TransactionRepository {
     bool recordChanges = true,
   }) async {
     if (transactions.isEmpty) return const [];
+    // 缺陷 F:data_import_service 主路径,曾在守卫之外。同批量口径 fail-closed。
+    for (final tx in transactions) {
+      _assertTxCompanion(tx, path: 'insertTransactionsBatchWithRelations');
+    }
     // 预填充 syncId — batch insertAll 不返回 row id,必须靠 syncId 反查。
     final effective = transactions.map((tx) {
       if (tx.syncId == const d.Value.absent() || tx.syncId.value == null) {
@@ -493,33 +773,62 @@ class LocalTransactionRepository implements TransactionRepository {
     }).toList();
 
     return db.transaction(() async {
-      // 1. 一次性 batch insert 所有 tx
-      await db.batch((b) => b.insertAll(db.transactions, effective));
+      // 1. syncId 冲突处理(批内重复 → 换 UUID;库中已存在 → 跳过)
+      final filtered = await _prepareBatchSyncIds(effective,
+          regenerateIntraBatchDuplicates: true);
+      if (filtered.pending.isNotEmpty) {
+        await db.batch((b) => b.insertAll(db.transactions, filtered.pending));
+      }
 
-      // 2. SELECT 回拿 (id, syncId) 映射,按 effective 顺序对齐
-      final syncIds = effective.map((c) => c.syncId.value!).toList();
-      final inserted = await (db.select(db.transactions)
-            ..where((t) => t.syncId.isIn(syncIds)))
-          .get();
-      final idBySyncId = <String, int>{
-        for (final tx in inserted)
-          if (tx.syncId != null) tx.syncId!: tx.id,
-      };
-      final ids = syncIds.map((s) => idBySyncId[s]!).toList();
+      // 2. SELECT 回拿 (id, syncId) 映射
+      final syncIds = filtered.pending.map((c) => c.syncId.value!).toList();
+      final idBySyncId = <String, int>{};
+      if (syncIds.isNotEmpty) {
+        for (final chunk in chunkIds(syncIds)) {
+          final inserted = await (db.select(db.transactions)
+                ..where((t) => t.syncId.isIn(chunk)))
+              .get();
+          for (final tx in inserted) {
+            final sid = tx.syncId;
+            // 同 syncId 可能跨账本存在(唯一索引带 ledger 维度)→ 取最小 id
+            if (sid != null &&
+                (!idBySyncId.containsKey(sid) || tx.id < idBySyncId[sid]!)) {
+              idBySyncId[sid] = tx.id;
+            }
+          }
+        }
+      }
+      // 输入 index → txId。必须用 effectiveSyncIdByInput(批内重复项已换 UUID),
+      // 用原始 syncId 会拿到同 syncId 的第一行 → 两笔账目的标签/附件全挂同一行
+      // (F-03 的原症状)。
+      final relationTargets = <int, int>{};
+      for (final entry in filtered.effectiveSyncIdByInput.entries) {
+        final txId = idBySyncId[entry.value];
+        if (txId != null) relationTargets[entry.key] = txId;
+      }
+      // 返回 id 列表:与输入顺序对齐(跳过的重放行缺位)
+      final ids = <int>[
+        for (var i = 0; i < effective.length; i++)
+          if (relationTargets.containsKey(i)) relationTargets[i]!,
+      ];
 
-      // 3. batch insert tag 关联 — 调用方需保证 tagIds 已去重,本方法不查重
-      //   (TransactionTags 表没 UNIQUE 约束,select 防重就是 N+1 来源)
+      // 3. batch insert tag 关联 — 同 (tx,tag) 去重;transaction_tags 已有
+      //    UNIQUE(transaction_id, tag_id)(v45),重复 insert 会被约束拒绝。
       if (tagIdsByIndex.isNotEmpty) {
+        final seenPairs = <String>{};
         await db.batch((b) {
           for (final entry in tagIdsByIndex.entries) {
-            final txId = ids[entry.key];
+            final txId = relationTargets[entry.key];
+            if (txId == null) continue;
             for (final tagId in entry.value) {
+              if (!seenPairs.add('$txId\u0000$tagId')) continue;
               b.insert(
                 db.transactionTags,
                 TransactionTagsCompanion.insert(
                   transactionId: txId,
                   tagId: tagId,
                 ),
+                mode: d.InsertMode.insertOrIgnore,
               );
             }
           }
@@ -530,7 +839,8 @@ class LocalTransactionRepository implements TransactionRepository {
       if (attachmentsByIndex.isNotEmpty) {
         await db.batch((b) {
           for (final entry in attachmentsByIndex.entries) {
-            final txId = ids[entry.key];
+            final txId = relationTargets[entry.key];
+            if (txId == null) continue;
             for (final att in entry.value) {
               b.insert(
                 db.transactionAttachments,
@@ -555,23 +865,45 @@ class LocalTransactionRepository implements TransactionRepository {
     });
   }
 
+  /// 哨兵:区分「未传」与「显式清空」([updateTransaction] 的可选字段)。
+  /// 复用接口层的公共常量 —— wrapper 与子仓必须用**同一个** sentinel 实例,
+  /// 否则 identical() 判定失效(包装层原样透传,子仓认不出)。
+  static const Object _unset = unsetTransactionField;
+
   @override
   Future<void> updateTransaction({
     required int id,
     required String type,
     required double amount,
-    int? categoryId,
-    String? note,
+    Object? categoryId = _unset,
+    Object? note = _unset,
     DateTime? happenedAt,
     dynamic accountId,
-    String? categorySyncIdOverride,
-    String? accountSyncIdOverride,
-    String? toAccountSyncIdOverride,
+    Object? categorySyncIdOverride = _unset,
+    Object? accountSyncIdOverride = _unset,
+    Object? toAccountSyncIdOverride = _unset,
     bool? excludeFromStats,
     bool? excludeFromBudget,
     String? currencyCode,
     double? nativeAmount,
   }) async {
+    // 缺陷 E:已有行读一次现值,金额相等即「存量豁免」。
+    // search_page 批量改备注/分类会把 `tx.amount` 原样回传 —— 无豁免时
+    // legacy 负值行(以及历史上的 Infinity/超大值行)会永久不可编辑,
+    // 只能删除重建。豁免只放行「等于库内现值」的写,新负值/新非有限值照拒。
+    final current = await (db.select(db.transactions)
+          ..where((t) => t.id.equals(id)))
+        .getSingleOrNull();
+    _assertTxValues(
+      type: type,
+      amount: amount,
+      nativeAmount: nativeAmount,
+      currentAmount: current?.amount,
+      currentNativeAmount: current?.nativeAmount,
+      // 缺陷 C:改 type = 改方向语义 → 等值豁免失效,金额必须重新校验。
+      currentType: current?.type,
+      path: 'updateTransaction',
+    );
     // 处理 accountId 参数
     final d.Value<int?> accountIdValue;
     if (accountId == null) {
@@ -581,19 +913,29 @@ class LocalTransactionRepository implements TransactionRepository {
     } else {
       accountIdValue = d.Value(accountId as int?);
     }
+    // C3/F-11:可选字段用哨兵区分「未传」与「显式清空」。
+    // 旧实现 `d.Value(categoryId)` 把未传(null)当成清空,与同方法内
+    // happenedAt/accountId 的 absent 保护语义冲突 —— 「只改金额」会静默丢掉
+    // 分类与备注(search_page 批量改备注/改分类必须回填全部字段才不丢数据)。
+    d.Value<int?> sentinelInt(Object? v) => identical(v, _unset)
+        ? const d.Value.absent()
+        : d.Value(v as int?);
+    d.Value<String?> sentinelStr(Object? v) => identical(v, _unset)
+        ? const d.Value.absent()
+        : d.Value(v as String?);
 
     await (db.update(db.transactions)..where((t) => t.id.equals(id))).write(
       TransactionsCompanion(
         type: d.Value(type),
         amount: d.Value(amount),
-        categoryId: d.Value(categoryId),
-        note: d.Value(note),
+        categoryId: sentinelInt(categoryId),
+        note: sentinelStr(note),
         happenedAt:
             happenedAt != null ? d.Value(happenedAt) : const d.Value.absent(),
         accountId: accountIdValue,
-        categorySyncIdOverride: d.Value(categorySyncIdOverride),
-        accountSyncIdOverride: d.Value(accountSyncIdOverride),
-        toAccountSyncIdOverride: d.Value(toAccountSyncIdOverride),
+        categorySyncIdOverride: sentinelStr(categorySyncIdOverride),
+        accountSyncIdOverride: sentinelStr(accountSyncIdOverride),
+        toAccountSyncIdOverride: sentinelStr(toAccountSyncIdOverride),
         // null = 不更新(保持原值);非 null = 显式写入
         excludeFromStats: excludeFromStats == null
             ? const d.Value.absent()
@@ -637,18 +979,31 @@ class LocalTransactionRepository implements TransactionRepository {
     // v43 回收站:整行搬到 DeletedTransactions tombstone(标签/附件关联随主表
     // 行移除自然失效,物理附件延后到「彻底删除/过期清理」再删)。恢复走
     // [restoreDeletedTransaction];30 天后由 cleanupDeletedTransactions 清理。
-    final tx = await getTransactionById(id);
-    if (tx == null) return;
-    await _archiveToTrash(tx);
+    //
+    // C3/F-05:级联清 transaction_attachments **行**。旧实现只清 tags,附件行
+    // 悬挂(需用户主动跑孤儿扫描器);且墓碑 payload 不含关联 → 恢复后
+    // 标签/附件永久丢失。现在整体包在单事务里,墓碑 + 关联快照 + 删行原子提交。
+    await db.transaction(() async {
+      final tx = await getTransactionById(id);
+      if (tx == null) return;
+      await _archiveToTrash(tx);
 
-    // 主表删行(tombstone 已存 payload,级联的标签关联一并清掉)。
-    await (db.delete(db.transactionTags)
-          ..where((tt) => tt.transactionId.equals(id)))
-        .go();
-    await (db.delete(db.transactions)..where((t) => t.id.equals(id))).go();
+      // 主表删行(tombstone 已存 payload,级联的标签/附件关联一并清掉)。
+      await (db.delete(db.transactionTags)
+            ..where((tt) => tt.transactionId.equals(id)))
+          .go();
+      // 附件行级联删除(物理文件由 purge/cleanup 路径按引用计数 GC)。
+      await (db.delete(db.transactionAttachments)
+            ..where((a) => a.transactionId.equals(id)))
+          .go();
+      await (db.delete(db.transactions)..where((t) => t.id.equals(id))).go();
+    });
   }
 
   /// 把交易行序列化进回收站 tombstone。同 syncId 已在回收站则跳过(幂等)。
+  ///
+  /// C3/F-05③:payload 带 tags/attachments 快照(Name+元数据),恢复时重建
+  /// 关联 —— 旧 payload 只有交易行字段,恢复后关联永久丢失。
   Future<void> _archiveToTrash(Transaction tx) async {
     final syncId = tx.syncId;
     if (syncId != null) {
@@ -657,6 +1012,15 @@ class LocalTransactionRepository implements TransactionRepository {
           .getSingleOrNull();
       if (exists != null) return;
     }
+    // 标签关联快照:以 tagId 列表存(恢复时按 id 重建;标签被删则跳过)。
+    final tagRows = await (db.select(db.transactionTags)
+          ..where((tt) => tt.transactionId.equals(tx.id)))
+        .get();
+    // 附件元数据快照:按 fileName 重建(物理文件可能已被引用计数 GC,
+    // 恢复时行照建,文件缺失由 UI 兜底)。
+    final attRows = await (db.select(db.transactionAttachments)
+          ..where((a) => a.transactionId.equals(tx.id)))
+        .get();
     final payload = {
       'syncId': syncId,
       'ledgerId': tx.ledgerId,
@@ -679,11 +1043,46 @@ class LocalTransactionRepository implements TransactionRepository {
       'excludeFromBudget': tx.excludeFromBudget,
       'currencyCode': tx.currencyCode,
       'nativeAmount': tx.nativeAmount,
+      // C3 恢复不丢关联:
+      'tagIds': [for (final t in tagRows) t.tagId],
+      'attachments': [
+        for (final a in attRows)
+          {
+            'fileName': a.fileName,
+            'originalName': a.originalName,
+            'fileSize': a.fileSize,
+            'width': a.width,
+            'height': a.height,
+            'sortOrder': a.sortOrder,
+            'cloudFileId': a.cloudFileId,
+            'cloudSha256': a.cloudSha256,
+          },
+      ],
     };
+    // 缺陷 G:deleted_transactions.amount 此前原样镜像主表值。两个后果:
+    //   ① 非有限值会先炸在 jsonEncode(payload)(JsonUnsupportedObjectError)
+    //      → **存量 Infinity 行删不掉**(与缺陷 E 同类:脏行卡死操作);
+    //   ② 侥幸写进列也是非有限值,污染回收站列表渲染/统计。
+    // 策略:非有限值 → 列与 payload 都落 0.0 + 告警(脏值本是不可用数据,
+    // 落 0 不编造金额方向;原始行仍在 pre-v45 快照/备份里可回溯)。
+    // 有限值(含负数/超大值)按镜像语义原样保留 —— 回收站是主表的忠实快照。
+    final finiteAmount =
+        tx.amount.isFinite ? tx.amount : 0.0;
+    if (!tx.amount.isFinite) {
+      logger.warning(
+          'LocalTransactionRepository',
+          '删除交易 $syncId 时 amount=${tx.amount} 非有限,墓碑列与 payload 归一为 0.0'
+          '(原文保留在删除前快照/备份)');
+      payload['amount'] = 0.0;
+    }
+    if (payload['nativeAmount'] is num &&
+        !(payload['nativeAmount'] as num).toDouble().isFinite) {
+      payload['nativeAmount'] = null;
+    }
     await db.into(db.deletedTransactions).insert(DeletedTransactionsCompanion.insert(
           syncId: syncId ?? 'local:${tx.id}',
           ledgerId: tx.ledgerId,
-          amount: tx.amount,
+          amount: finiteAmount,
           txType: tx.type,
           happenedAt: tx.happenedAt,
           payloadJson: jsonEncode(payload),
@@ -702,109 +1101,190 @@ class LocalTransactionRepository implements TransactionRepository {
   }
 
   /// 从回收站恢复一条:payload 写回主表(新 int id),tombstone 删除。
-  /// 返回新交易 id;找不到/已过期返回 null。
+  /// 返回新交易 id;找不到/已过期/结构损坏返回 null。
+  ///
+  /// C3/F-07/F-08/W2:
+  /// - payload 结构损坏(合法 JSON 但缺字段)→ 返回 null(不再抛 _TypeError),
+  ///   与 B6 的非法 JSON 分支口径一致;
+  /// - 主表已存在同 (ledger_id, syncId)(远端已 pull 复活)→ 幂等:不再插第二行
+  ///   (旧实现让主表出现同 syncId 两行 → getTransactionBySyncId 全断),只消费墓碑;
+  /// - 四步(读墓碑/解析/插主表/删墓碑)包在单事务里,并发两次 restore 只有一次生效。
   Future<int?> restoreDeletedTransaction(int tombstoneId) async {
-    final tomb = await (db.select(db.deletedTransactions)
-          ..where((d0) => d0.id.equals(tombstoneId)))
-        .getSingleOrNull();
-    if (tomb == null) return null;
-    final Map<String, dynamic> payload;
-    try {
-      payload = jsonDecode(tomb.payloadJson) as Map<String, dynamic>;
-    } catch (_) {
-      return null;
-    }
-    final newId = await db.into(db.transactions).insert(TransactionsCompanion.insert(
-          ledgerId: payload['ledgerId'] as int,
-          type: payload['type'] as String,
-          amount: (payload['amount'] as num).toDouble(),
-          categoryId: d.Value(payload['categoryId'] as int?),
-          accountId: d.Value(payload['accountId'] as int?),
-          toAccountId: d.Value(payload['toAccountId'] as int?),
-          happenedAt:
-              d.Value(DateTime.parse(payload['happenedAt'] as String)),
-          recordedAt: d.Value(payload['recordedAt'] == null
-              ? null
-              : DateTime.parse(payload['recordedAt'] as String)),
-          note: d.Value(payload['note'] as String?),
-          recurringId: d.Value(payload['recurringId'] as int?),
-          syncId: d.Value(payload['syncId'] as String?),
-          createdByUserId: d.Value(payload['createdByUserId'] as String?),
-          lastEditedByUserId: d.Value(payload['lastEditedByUserId'] as String?),
-          categorySyncIdOverride:
-              d.Value(payload['categorySyncIdOverride'] as String?),
-          accountSyncIdOverride:
-              d.Value(payload['accountSyncIdOverride'] as String?),
-          toAccountSyncIdOverride:
-              d.Value(payload['toAccountSyncIdOverride'] as String?),
-          tagSyncIdsOverride: d.Value(payload['tagSyncIdsOverride'] as String?),
-          excludeFromStats: d.Value(payload['excludeFromStats'] as bool? ?? false),
-          excludeFromBudget:
-              d.Value(payload['excludeFromBudget'] as bool? ?? false),
-          currencyCode: d.Value(payload['currencyCode'] as String?),
-          nativeAmount: d.Value((payload['nativeAmount'] as num?)?.toDouble()),
-        ));
-    await (db.delete(db.deletedTransactions)
-          ..where((d0) => d0.id.equals(tombstoneId)))
-        .go();
-    return newId;
+    return db.transaction(() async {
+      final tomb = await (db.select(db.deletedTransactions)
+            ..where((d0) => d0.id.equals(tombstoneId)))
+          .getSingleOrNull();
+      if (tomb == null) return null;
+      final Map<String, dynamic> payload;
+      try {
+        final decoded = jsonDecode(tomb.payloadJson);
+        if (decoded is! Map<String, dynamic>) return null;
+        payload = decoded;
+      } catch (_) {
+        return null;
+      }
+      // C3/F-07:结构校验 + 容错取值,损坏 payload 一律返回 null(墓碑保留)。
+      final ledgerId = payload['ledgerId'];
+      final type = payload['type'];
+      final amount = payload['amount'];
+      final happenedAtRaw = payload['happenedAt'];
+      if (ledgerId is! int ||
+          type is! String ||
+          amount is! num ||
+          happenedAtRaw is! String) {
+        return null;
+      }
+      final happenedAt = DateTime.tryParse(happenedAtRaw);
+      if (happenedAt == null) return null;
+      // 缺陷 G:payload 是非有限值(手改墓碑/老版本写入)→ 按结构损坏处理,
+      // 返回 null 且墓碑保留 —— 绝不把 Infinity 恢复回主表污染统计。
+      // 有限的大值(1e21 等)照常放行:那是用户历史数据,恢复语义是忠实回写。
+      if (!amount.toDouble().isFinite) return null;
+      final syncId = payload['syncId'] as String?;
+      // C3/F-08:主表已有同 (ledger_id, syncId) → 幂等消费墓碑,不产生重复行。
+      if (syncId != null && syncId.isNotEmpty) {
+        final existing = await (db.select(db.transactions)
+              ..where((t) => t.ledgerId.equals(ledgerId) & t.syncId.equals(syncId))
+              ..limit(1))
+            .getSingleOrNull();
+        if (existing != null) {
+          await (db.delete(db.deletedTransactions)
+                ..where((d0) => d0.id.equals(tombstoneId)))
+              .go();
+          return existing.id;
+        }
+      }
+      final newId = await db.into(db.transactions).insert(TransactionsCompanion.insert(
+            ledgerId: ledgerId,
+            type: type,
+            amount: amount.toDouble(),
+            categoryId: d.Value(payload['categoryId'] as int?),
+            accountId: d.Value(payload['accountId'] as int?),
+            toAccountId: d.Value(payload['toAccountId'] as int?),
+            happenedAt: d.Value(happenedAt),
+            recordedAt: d.Value(payload['recordedAt'] == null
+                ? null
+                : DateTime.tryParse(payload['recordedAt'] as String)),
+            note: d.Value(payload['note'] as String?),
+            recurringId: d.Value(payload['recurringId'] as int?),
+            syncId: d.Value(syncId),
+            createdByUserId: d.Value(payload['createdByUserId'] as String?),
+            lastEditedByUserId:
+                d.Value(payload['lastEditedByUserId'] as String?),
+            categorySyncIdOverride:
+                d.Value(payload['categorySyncIdOverride'] as String?),
+            accountSyncIdOverride:
+                d.Value(payload['accountSyncIdOverride'] as String?),
+            toAccountSyncIdOverride:
+                d.Value(payload['toAccountSyncIdOverride'] as String?),
+            tagSyncIdsOverride:
+                d.Value(payload['tagSyncIdsOverride'] as String?),
+            excludeFromStats:
+                d.Value(payload['excludeFromStats'] as bool? ?? false),
+            excludeFromBudget:
+                d.Value(payload['excludeFromBudget'] as bool? ?? false),
+            currencyCode: d.Value(payload['currencyCode'] as String?),
+            nativeAmount: d.Value((payload['nativeAmount'] as num?)?.toDouble()),
+          ));
+      // C3/F-05③:恢复关联快照(标签按 id;附件按元数据重建)。
+      final rawTagIds = payload['tagIds'];
+      if (rawTagIds is List && rawTagIds.isNotEmpty) {
+        final seen = <int>{};
+        await db.batch((b) {
+          for (final v in rawTagIds) {
+            if (v is! int || !seen.add(v)) continue;
+            b.insert(
+              db.transactionTags,
+              TransactionTagsCompanion.insert(
+                transactionId: newId,
+                tagId: v,
+              ),
+              mode: d.InsertMode.insertOrIgnore,
+            );
+          }
+        });
+      }
+      final rawAtts = payload['attachments'];
+      if (rawAtts is List && rawAtts.isNotEmpty) {
+        await db.batch((b) {
+          for (final v in rawAtts) {
+            if (v is! Map) continue;
+            final fileName = v['fileName'];
+            if (fileName is! String || fileName.isEmpty) continue;
+            b.insert(
+              db.transactionAttachments,
+              TransactionAttachmentsCompanion.insert(
+                transactionId: newId,
+                fileName: fileName,
+                originalName: d.Value(v['originalName'] as String?),
+                fileSize: d.Value(v['fileSize'] as int?),
+                width: d.Value(v['width'] as int?),
+                height: d.Value(v['height'] as int?),
+                sortOrder: d.Value((v['sortOrder'] as num?)?.toInt() ?? 0),
+                cloudFileId: d.Value(v['cloudFileId'] as String?),
+                cloudSha256: d.Value(v['cloudSha256'] as String?),
+              ),
+            );
+          }
+        });
+      }
+      await (db.delete(db.deletedTransactions)
+            ..where((d0) => d0.id.equals(tombstoneId)))
+          .go();
+      return newId;
+    });
   }
 
   /// 彻底删除一条回收站记录(含物理附件文件 GC)。
+  ///
+  /// C3/F-05①:删除交易时已级联清 `transaction_attachments` **行**(见
+  /// [deleteTransaction]),但物理文件**故意保留到这一步** —— 30 天恢复窗口内
+  /// 用户点「恢复」需要文件本体,提前删会让恢复出空图。彻底删除(用户选
+  /// 「永久删除」/ 过期 cleanup)时才按墓碑 payload 的附件快照 GC 文件。
   Future<void> purgeDeletedTransaction(int tombstoneId) async {
     final tomb = await (db.select(db.deletedTransactions)
           ..where((d0) => d0.id.equals(tombstoneId)))
         .getSingleOrNull();
     if (tomb == null) return;
+    // 先按 payload 快照回收物理文件(引用计数:仍被其它行/其它墓碑引用则保留)
+    await _purgeTombstoneFiles(tomb);
     await (db.delete(db.deletedTransactions)
           ..where((d0) => d0.id.equals(tombstoneId)))
         .go();
-    // 附件文件在主表删除时已按引用计数清理过兜底;这里再跑一次孤儿清理,
-    // 覆盖「同文件被多笔引用、当时未删」的场景。
   }
 
-  /// 清理超过 [days] 天的回收站记录。返回清理条数。
-  Future<int> cleanupDeletedTransactions({int days = 30}) async {
-    final cutoff = DateTime.now().subtract(Duration(days: days));
-    return await (db.delete(db.deletedTransactions)
-          ..where((d0) => d0.deletedAt.isSmallerOrEqualValue(cutoff)))
-        .go();
-  }
-
-  /// 删除交易关联的所有附件（包括文件和数据库记录）
-  Future<void> _deleteAttachmentsForTransaction(int transactionId) async {
+  /// 从墓碑 payload 取附件文件名,按引用计数回收物理文件(含缩略图)。
+  /// 失败只 log,不阻断删除。
+  Future<void> _purgeTombstoneFiles(DeletedTransaction tomb) async {
     try {
-      // 获取该交易的所有附件
-      final attachments = await (db.select(db.transactionAttachments)
-            ..where((a) => a.transactionId.equals(transactionId)))
-          .get();
-
-      if (attachments.isEmpty) return;
-
-      // 获取附件存储目录
+      final Object? decoded = jsonDecode(tomb.payloadJson);
+      if (decoded is! Map) return;
+      final rawAtts = decoded['attachments'];
+      if (rawAtts is! List) return;
+      final fileNames = <String>{
+        for (final v in rawAtts)
+          if (v is Map && v['fileName'] is String) v['fileName'] as String,
+      };
+      if (fileNames.isEmpty) return;
       final appDir = await getApplicationDocumentsDirectory();
       final attachmentDir = Directory('${appDir.path}/attachments');
       final cacheDir = await getTemporaryDirectory();
       final thumbDir = Directory('${cacheDir.path}/attachment_thumbs');
-
-      final fileNames = attachments.map((a) => a.fileName).toSet();
-
-      // 先删数据库记录,再按引用计数删物理文件:多笔共享同一文件时,仅当没有
-      // 其他行引用该 fileName 才删物理文件,避免误删别笔还在用的图。
-      await (db.delete(db.transactionAttachments)
-            ..where((a) => a.transactionId.equals(transactionId)))
-          .go();
-
       for (final fileName in fileNames) {
-        final stillRef = await (db.select(db.transactionAttachments)
-              ..where((a) => a.fileName.equals(fileName)))
+        // 引用计数:其它 transaction_attachments 行或其它墓碑仍引用 → 保留
+        final liveRefs = await (db.select(db.transactionAttachments)
+              ..where((a) => a.fileName.equals(fileName))
+              ..limit(1))
             .getSingleOrNull();
-        if (stillRef != null) continue; // 仍有其他行引用,保留物理文件
-
+        if (liveRefs != null) continue;
+        final otherTomb = await (db.select(db.deletedTransactions)
+              ..where((d0) => d0.payloadJson.like('%$fileName%'))
+              ..limit(1))
+            .getSingleOrNull();
+        if (otherTomb != null) continue;
         final file = File('${attachmentDir.path}/$fileName');
         if (await file.exists()) {
           await file.delete();
-          logger.debug('LocalTransactionRepository', '删除附件文件: $fileName');
         }
         final thumbName =
             '${path.basenameWithoutExtension(fileName)}_thumb.jpg';
@@ -813,13 +1293,25 @@ class LocalTransactionRepository implements TransactionRepository {
           await thumbFile.delete();
         }
       }
-
-      logger.info('LocalTransactionRepository',
-          '已删除交易 $transactionId 的 ${attachments.length} 个附件');
-    } catch (e, stackTrace) {
-      logger.error('LocalTransactionRepository', '删除交易附件失败', e, stackTrace);
-      // 不抛出异常，继续删除交易
+    } catch (e, st) {
+      logger.warning('LocalTransactionRepository', '回收站附件文件 GC 失败: $e', st);
     }
+  }
+
+  /// 清理超过 [days] 天的回收站记录。返回清理条数。
+  Future<int> cleanupDeletedTransactions({int days = 30}) async {
+    final cutoff = DateTime.now().subtract(Duration(days: days));
+    final expired = await (db.select(db.deletedTransactions)
+          ..where((d0) => d0.deletedAt.isSmallerOrEqualValue(cutoff)))
+        .get();
+    if (expired.isEmpty) return 0;
+    // C3/F-05:cascade 的附件物理文件在各墓碑**真正消失**这一步回收。
+    for (final tomb in expired) {
+      await _purgeTombstoneFiles(tomb);
+    }
+    return await (db.delete(db.deletedTransactions)
+          ..where((d0) => d0.deletedAt.isSmallerOrEqualValue(cutoff)))
+        .go();
   }
 
   @override
@@ -831,8 +1323,18 @@ class LocalTransactionRepository implements TransactionRepository {
   @override
   Future<List<Transaction>> getTransactionsByIds(List<int> ids) async {
     if (ids.isEmpty) return const [];
-    return await (db.select(db.transactions)..where((t) => t.id.isIn(ids)))
-        .get();
+    // C3/阻塞-6(F-38):按 sqliteBindChunkSize(400)分块 —— 与
+    // getTagsForTransactions / getAttachmentCountsForTransactions 口径一致。
+    // 不分块时 > SQLITE_MAX_VARIABLE_NUMBER(本机 32766,部分 Android 编译版
+    // 低至 999)会抛 "too many SQL variables";真实可达路径是导出全部交易
+    // (export_page.dart)、AI 记账(ai_bookkeeper.dart)。
+    final out = <Transaction>[];
+    for (final chunk in chunkIds(ids)) {
+      out.addAll(await (db.select(db.transactions)
+            ..where((t) => t.id.isIn(chunk)))
+          .get());
+    }
+    return out;
   }
 
   @override
@@ -841,11 +1343,12 @@ class LocalTransactionRepository implements TransactionRepository {
     bool recordChanges = true,
   }) async {
     // 子仓库不挂 changeTracker,recordChanges 仅为接口一致保留。
+    // 缺陷 F:此路径此前不校验 → `amount=Infinity` 静默落库(单条直写)。
     final effective =
         item.syncId == const d.Value.absent() || item.syncId.value == null
             ? item.copyWith(syncId: d.Value(_uuid.v4()))
             : item;
-    return await db.into(db.transactions).insert(effective);
+    return _insertTx(effective, path: 'insertTransactionCompanion');
   }
 
   @override
@@ -939,14 +1442,22 @@ class LocalTransactionRepository implements TransactionRepository {
           DateTime(endDate.year, endDate.month, endDate.day, 23, 59, 59)));
     }
 
+    // C3/F-14/F-15:limit 统一钳制(<=0 → 空)。旧实现 `limit * 2` 让 -1 变 -2
+    // 被 SQLite 当无上限,随后 `hydrated.take(-1)` 抛未捕获 RangeError 冒泡到 UI。
+    final effectiveLimit = clampListLimit(limit);
+    if (effectiveLimit == 0) return const [];
+
     final q = (db.select(db.transactions).join(_txJoins())
           ..where(d.Expression.and(conds))
           ..orderBy([
             d.OrderingTerm(
                 expression: db.transactions.happenedAt,
                 mode: d.OrderingMode.desc),
+            // C3/F-37:补 id tie-breaker,与分页入口同口径(同时间戳顺序确定)。
+            d.OrderingTerm(
+                expression: db.transactions.id, mode: d.OrderingMode.desc),
           ])
-          ..limit(limit * 2)); // 金额串兜底过滤会再筛一轮,取宽一页
+          ..limit(effectiveLimit * 2)); // 金额串兜底过滤会再筛一轮,取宽一页
     final rows = await q.get();
     final hydrated = await _hydrateSharedOverrides(rows
         .map((r) => (
@@ -957,7 +1468,7 @@ class LocalTransactionRepository implements TransactionRepository {
             ))
         .toList());
 
-    if (!hasText) return hydrated.take(limit).toList();
+    if (!hasText) return hydrated.take(effectiveLimit).toList();
 
     // Dart 兜底:金额串 contains(SQL LIKE 无法表达 CAST 后任意位置子串)
     // 与分类显示名(l10n 后)匹配。SQL 已按备注/原始分类名过滤过的结果集
@@ -968,7 +1479,7 @@ class LocalTransactionRepository implements TransactionRepository {
         .where((item) =>
             (item.t.note?.toLowerCase().contains(text) ?? false) ||
             (item.category?.name.toLowerCase().contains(text) ?? false))
-        .take(limit)
+        .take(effectiveLimit)
         .toList();
   }
 
@@ -1232,11 +1743,15 @@ class LocalTransactionRepository implements TransactionRepository {
 
   @override
   Future<List<Transaction>> getTransactionsByLedger(int ledgerId) async {
+    // C3/F-37:补 id tie-breaker。旧实现只按 happened_at DESC,同时间戳行的
+    // 顺序是 SQLite 实现产物(实测 id 升序),与分页入口的 id 降序**相反** ——
+    // 任何 .first/.last 或跨入口顺序比较都会翻转。
     return await (db.select(db.transactions)
           ..where((t) => t.ledgerId.equals(ledgerId))
           ..orderBy([
             (t) => d.OrderingTerm(
-                expression: t.happenedAt, mode: d.OrderingMode.desc)
+                expression: t.happenedAt, mode: d.OrderingMode.desc),
+            (t) => d.OrderingTerm(expression: t.id, mode: d.OrderingMode.desc),
           ]))
         .get();
   }
@@ -1254,7 +1769,8 @@ class LocalTransactionRepository implements TransactionRepository {
               t.happenedAt.isSmallerThanValue(end))
           ..orderBy([
             (t) => d.OrderingTerm(
-                expression: t.happenedAt, mode: d.OrderingMode.desc)
+                expression: t.happenedAt, mode: d.OrderingMode.desc),
+            (t) => d.OrderingTerm(expression: t.id, mode: d.OrderingMode.desc),
           ]))
         .get();
   }
@@ -1292,13 +1808,20 @@ class LocalTransactionRepository implements TransactionRepository {
     int ledgerId, {
     int limit = 10,
   }) async {
+    // C3/F-15:统一 limit 口径(`<= 0` → 空)。旧行为把 -1 下推成 SQLite 的
+    // "无上限",静默物化整账本。
+    final effectiveLimit = clampListLimit(limit);
+    if (effectiveLimit == 0) return const [];
     return await (db.select(db.transactions)
           ..where((t) => t.ledgerId.equals(ledgerId))
           ..orderBy([
             (t) => d.OrderingTerm(
-                expression: t.happenedAt, mode: d.OrderingMode.desc)
+                expression: t.happenedAt, mode: d.OrderingMode.desc),
+            // C3/F-37:tie-breaker,与分页入口同口径。
+            (t) => d.OrderingTerm(
+                expression: t.id, mode: d.OrderingMode.desc),
           ])
-          ..limit(limit))
+          ..limit(effectiveLimit))
         .get();
   }
 
@@ -1415,9 +1938,14 @@ class LocalTransactionRepository implements TransactionRepository {
 
     // SQL 聚合查询
     // Drift 存储 DateTime 为 Unix timestamp（秒），直接使用 strftime
+    //
+    // C3/F-16:SQLite 的 'localtime' 修饰符在部分 Android 构建(不含 OS 时区
+    // 支持)返回 NULL → 日历月视图恒空。改用本机时区偏移秒手工还原(与
+    // local_statistics_repository.totalsByDay 同款已验证方案)。
+    final tzOffset = DateTime.now().timeZoneOffset.inSeconds;
     final query = '''
       SELECT
-        strftime('%Y-%m-%d', happened_at, 'unixepoch', 'localtime') as date,
+        strftime('%Y-%m-%d', happened_at + $tzOffset, 'unixepoch') as date,
         SUM(CASE WHEN type = 'income' AND exclude_from_stats = 0 THEN COALESCE(native_amount, amount) ELSE 0 END) as income,
         SUM(CASE WHEN type = 'expense' AND exclude_from_stats = 0 THEN COALESCE(native_amount, amount) ELSE 0 END) as expense
       FROM transactions
@@ -1854,8 +2382,12 @@ class LocalTransactionRepository implements TransactionRepository {
     final startDate = DateTime(month.year, month.month, 1);
     final endDate = DateTime(month.year, month.month + 1, 0, 23, 59, 59);
 
+    // C3/F-16:DATE(happened_at) 缺 'unixepoch' 解释 → drift 存的 UTC unix 秒
+    // 被当儒略日,结果恒 NULL。补上 unixepoch + 时区偏移,与
+    // getDailyTotalsByMonth 同口径。
+    final tzOffset = DateTime.now().timeZoneOffset.inSeconds;
     final query = '''
-      SELECT DISTINCT DATE(happened_at) as date
+      SELECT DISTINCT DATE(happened_at + $tzOffset, 'unixepoch') as date
       FROM transactions
       WHERE ledger_id = ?
         AND happened_at >= ?
@@ -1883,8 +2415,15 @@ class LocalTransactionRepository implements TransactionRepository {
 
   @override
   Future<Transaction?> getTransactionBySyncId(String syncId) async {
+    // C3/F-01/F-02:limit(1) 取代 getSingleOrNull —— 唯一索引建立后同账本不会
+    // 重复,但跨账本同 syncId 仍合法(UNIQUE(ledger_id, sync_id)),且历史脏库
+    // 可能残留重复行;多行时抛 Bad state 会让所有按 syncId 的操作(含删除推送)
+    // 永久断裂。确定性取最小 id(最早一行)。
     return await (db.select(db.transactions)
-          ..where((t) => t.syncId.equals(syncId)))
+          ..where((t) => t.syncId.equals(syncId))
+          ..orderBy([(t) => d.OrderingTerm(
+              expression: t.id, mode: d.OrderingMode.asc)])
+          ..limit(1))
         .getSingleOrNull();
   }
 
@@ -1899,6 +2438,8 @@ class LocalTransactionRepository implements TransactionRepository {
     required DateTime happenedAt,
     String? note,
   }) async {
+    // 缺陷 F:按 syncId 的单条直写此前不校验(与批量入口同族)。
+    _assertTxValues(type: type, amount: amount, path: 'updateTransactionBySyncId');
     await (db.update(db.transactions)..where((t) => t.syncId.equals(syncId)))
         .write(TransactionsCompanion(
       type: d.Value(type),
@@ -1913,11 +2454,52 @@ class LocalTransactionRepository implements TransactionRepository {
 
   @override
   Future<void> deleteTransactionBySyncId(String syncId) async {
-    // 先查找交易ID，以便删除关联数据
-    final tx = await getTransactionBySyncId(syncId);
-    if (tx != null) {
+    // C3/缺陷 I:syncId 只在账本内唯一(UNIQUE(ledger_id, sync_id);跨账本同
+    // syncId 是合法状态)。旧实现把「所有匹配行」全删 —— 两个账本各有一笔同
+    // syncId 时,删一个账本的交易会连带删掉另一个账本的账目(实测 remaining
+    // tx ids = []),而 updateTransactionLedger(ai_chat_page 的「改账本」)就会
+    // 制造这种跨账本同 syncId 状态,路径可达。
+    //
+    // 语义(与 deleteTransactionsBatchBySyncIds 一致,共用
+    // [_crossLedgerSyncIds] 判定):同一账本内的匹配行全部删除;**该 syncId
+    // 命中多个账本时显式抛错**,不再静默批量删除。接口没有账本维度(改动签名
+    // 要动 TransactionRepository 接口,超出本次改动面),故用 fail-closed:
+    // 调用方拿到明确异常,而不是另一个账本的数据静默消失。
+    final txs = await (db.select(db.transactions)
+          ..where((t) => t.syncId.equals(syncId)))
+        .get();
+    if (txs.isEmpty) return;
+    if (_crossLedgerSyncIds([syncId], txs).isNotEmpty) {
+      final ledgers = txs.map((t) => t.ledgerId).toSet().toList()..sort();
+      throw StateError(
+          'deleteTransactionBySyncId("$syncId") 命中 ${txs.length} 行、跨 '
+          '${ledgers.length} 个账本(${ledgers.join(",")}):syncId 只在账本内唯一,'
+          '拒绝静默跨账本批量删除;请改按本地 id 删除或先按账本过滤。');
+    }
+    for (final tx in txs) {
       await deleteTransaction(tx.id);
     }
+  }
+
+  /// 批量删除的 fail-closed 判定(单条/批量入口共用):
+  /// **单个 syncId 命中多个账本**的 syncId 列表(空 = 批次合法)。
+  ///
+  /// 判据是「一个 syncId 跨账本」,不是「批次里出现了多个账本」:
+  /// UNIQUE(ledger_id, sync_id) 下跨账本同 syncId 合法,两个**不同** syncId
+  /// 各属一个账本是完全正常的批次(旧判定会整批 StateError 且一行不删)。
+  /// 单条入口传 `[syncId]` 时退化为「该 syncId 是否跨账本」,语义一致。
+  static List<String> _crossLedgerSyncIds(
+      List<String> syncIds, List<Transaction> rows) {
+    final ledgersBySyncId = <String, Set<int>>{};
+    for (final r in rows) {
+      final s = r.syncId;
+      if (s == null) continue;
+      (ledgersBySyncId[s] ??= <int>{}).add(r.ledgerId);
+    }
+    return [
+      for (final s in syncIds)
+        if ((ledgersBySyncId[s]?.length ?? 0) > 1) s,
+    ];
   }
 
   @override
@@ -1926,9 +2508,27 @@ class LocalTransactionRepository implements TransactionRepository {
     bool recordChanges = true,
   }) async {
     if (updates.isEmpty) return const {};
+    // 缺陷 F:此路径被 sync_diff_service.applySyncChanges 用于「从云端快照
+    // 合并本地交易」,此前完全不校验 → 远端脏金额(负值/Infinity)静默覆盖本地。
+    // **策略:跳过该行 + 告警**(非抛错)—— 调用方是批量合并,一条坏行抛错会
+    // 让整批(含正常行)回滚,同步预览的"成功 N 条"变成 0 且用户无法只吞坏行。
+    // 跳过仅影响该 syncId,其余行照常更新,tag 关联也照常反查。
+    final accepted = <TransactionUpdateBySyncIdData>[];
+    for (final u in updates) {
+      final reason = txAmountViolation(u.type, u.amount);
+      if (reason != null) {
+        logger.warning(
+            'LocalTransactionRepository',
+            '[updateTransactionsBatchBySyncId] 跳过 syncId=${u.syncId}:'
+                '${violationMessage(reason, u.type, u.amount)}');
+        continue;
+      }
+      accepted.add(u);
+    }
+    if (accepted.isEmpty) return const {};
     return db.transaction(() async {
       await db.batch((b) {
-        for (final u in updates) {
+        for (final u in accepted) {
           b.update(
             db.transactions,
             TransactionsCompanion(
@@ -1945,7 +2545,7 @@ class LocalTransactionRepository implements TransactionRepository {
         }
       });
       // 反查 (syncId, txId) 映射,caller 用它批量更新 tag 关联
-      final syncIds = updates.map((u) => u.syncId).toList();
+      final syncIds = accepted.map((u) => u.syncId).toList();
       final rows = await (db.select(db.transactions)
             ..where((t) => t.syncId.isIn(syncIds)))
           .get();
@@ -1963,14 +2563,35 @@ class LocalTransactionRepository implements TransactionRepository {
   }) async {
     // recordChanges 由 LocalRepository wrapper 处理(子仓库无 changeTracker)。
     if (syncIds.isEmpty) return 0;
+    // C3/F-06:批量删除与单条删除**同语义** —— 进回收站(tombstone)而非硬删。
+    // 旧实现直接 DELETE 主表 + 关联,客户端回收站为空且 wrapper 不补 change
+    // → 云端不知情,下次 pull 全部复活,本地又不可恢复。
+    //
+    // C3/缺陷 I(修正版):syncId 只在账本内唯一(UNIQUE(ledger_id, sync_id)),
+    // 跨账本同 syncId 合法。真正的危险条件是**单个 syncId 命中 >1 个账本** ——
+    // 此时无法判断该删哪个账本的那一笔,删除会静默波及另一个账本。
+    //
+    // 旧判定是「批次命中的行来自 >1 个账本」,把**两个不同 syncId 各属一个
+    // 账本**的完全合法批次也整批拒绝(StateError 且一行不删)。修正为按
+    // syncId 分组判定:一个 syncId 跨账本 → fail-closed;不同 syncId 分属
+    // 不同账本 → 正常删除(每行只受自己账本约束)。
     return db.transaction(() async {
-      // 先 SELECT 拿到 tx id 列表(用来删 transactionTags / attachments 关联)
       final rows = await (db.select(db.transactions)
             ..where((t) => t.syncId.isIn(syncIds)))
           .get();
+      if (rows.isEmpty) return 0;
+      final conflicting = _crossLedgerSyncIds(syncIds, rows);
+      if (conflicting.isNotEmpty) {
+        throw StateError(
+            'deleteTransactionsBatchBySyncIds 中 ${conflicting.length} 个 syncId '
+            '命中多个账本(${conflicting.join(",")}):syncId 只在账本内唯一,'
+            '拒绝静默跨账本批量删除;请改按本地 id 删除。');
+      }
+      for (final tx in rows) {
+        await _archiveToTrash(tx);
+      }
       final txIds = rows.map((r) => r.id).toList();
-      if (txIds.isEmpty) return 0;
-      // 删关联数据(级联)
+      // 删关联数据(级联;附件行同样清,避免悬挂)
       await (db.delete(db.transactionTags)
             ..where((t) => t.transactionId.isIn(txIds)))
           .go();

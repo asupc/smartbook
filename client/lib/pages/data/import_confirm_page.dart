@@ -9,6 +9,7 @@ import '../../widgets/ui/ui.dart';
 import '../../data/db.dart' as schema;
 import '../../l10n/app_localizations.dart';
 import '../../services/import/csv_parser.dart';
+import '../../services/import/amount_text.dart';
 import '../../utils/category_utils.dart';
 import '../../services/import/bill_parser.dart';
 import '../../services/import/parsers/generic_parser.dart';
@@ -1060,12 +1061,15 @@ class _ImportConfirmPageState extends ConsumerState<ImportConfirmPage> {
       }
 
       // 金额解析：非法值保留为 0，由导入服务计入 invalid，不允许落库。
-      final amountClean = (amountStr ?? '').replaceAll(RegExp(r'[¥$,+-]'), '');
-      final amount = double.tryParse(amountClean)?.abs() ?? 0.0;
+      // 清洗口径统一在 `cleanAmountText`/`parseImportAmount`(全角符号、
+      // 全角数字、汉字单位「元/块」、混排文字都能救回),不再只删 ASCII `¥$`。
+      final amount = parseImportAmount(amountStr);
       final refundAmount = normalizedRefundAmount;
 
       // 日期解析：非法/空日期使用 epoch sentinel，导入服务会拒绝该行，
       // 不再用当前时间伪造一笔交易。
+      // 用 `tryParse`（失败即 null，绝不回落 now()）—— 否则垃圾日期会被
+      // 当成"导入那一刻"的合法时间直接入账，sentinel 成为死代码。
       final date = DateParser.tryParse(dateStr) ?? DateTime(1970, 1, 1);
 
       // 解析标签名称列表

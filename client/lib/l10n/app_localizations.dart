@@ -15464,6 +15464,1326 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'同一账单已处理过'**
   String get pendingCandidateReasonAlreadyProcessed;
+
+  /// No description provided for @autoBookReasonTimeMissing.
+  ///
+  /// In zh, this message translates to:
+  /// **'没有识别到交易时间，未入账'**
+  String get autoBookReasonTimeMissing;
+
+  /// No description provided for @autoBookReasonTimeInferred.
+  ///
+  /// In zh, this message translates to:
+  /// **'交易时间由模型推测，未入账'**
+  String get autoBookReasonTimeInferred;
+
+  /// No description provided for @autoBookReasonInvalidAmount.
+  ///
+  /// In zh, this message translates to:
+  /// **'金额无效，未入账'**
+  String get autoBookReasonInvalidAmount;
+
+  /// No description provided for @autoBookReasonStatementOrBalance.
+  ///
+  /// In zh, this message translates to:
+  /// **'账单汇总或余额提醒，不是一笔交易'**
+  String get autoBookReasonStatementOrBalance;
+
+  /// No description provided for @autoBookReasonUnsettledOrder.
+  ///
+  /// In zh, this message translates to:
+  /// **'订单尚未结算，暂不入账'**
+  String get autoBookReasonUnsettledOrder;
+
+  /// No description provided for @autoBookReasonTimePrecisionWeak.
+  ///
+  /// In zh, this message translates to:
+  /// **'只识别到日期，需确认时间'**
+  String get autoBookReasonTimePrecisionWeak;
+
+  /// No description provided for @autoBookReasonPendingConfirmation.
+  ///
+  /// In zh, this message translates to:
+  /// **'识别结果需确认后入账'**
+  String get autoBookReasonPendingConfirmation;
+
+  /// No description provided for @autoBookReasonAiNotConfigured.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 未配置，配置后会继续处理'**
+  String get autoBookReasonAiNotConfigured;
+
+  /// No description provided for @autoBookReasonAiRetryable.
+  ///
+  /// In zh, this message translates to:
+  /// **'处理失败，等待恢复后自动重试'**
+  String get autoBookReasonAiRetryable;
+
+  /// No description provided for @autoBookReasonAiPermanentFailure.
+  ///
+  /// In zh, this message translates to:
+  /// **'处理失败，需要检查 AI 配置'**
+  String get autoBookReasonAiPermanentFailure;
+
+  /// No description provided for @autoBookReasonAuthExpired.
+  ///
+  /// In zh, this message translates to:
+  /// **'需要重新登录，事件暂存'**
+  String get autoBookReasonAuthExpired;
+
+  /// No description provided for @autoBookReasonAiUnavailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 暂不可用，等待恢复后处理'**
+  String get autoBookReasonAiUnavailable;
+
+  /// No description provided for @autoBookReasonEvidenceMissing.
+  ///
+  /// In zh, this message translates to:
+  /// **'原始材料已清理，无法重放'**
+  String get autoBookReasonEvidenceMissing;
+
+  /// No description provided for @autoBookReasonDraftEvidenceMissing.
+  ///
+  /// In zh, this message translates to:
+  /// **'重试材料已过期，无法重放'**
+  String get autoBookReasonDraftEvidenceMissing;
+
+  /// No description provided for @autoBookReasonShadowMode.
+  ///
+  /// In zh, this message translates to:
+  /// **'演练模式：仅识别，不入账'**
+  String get autoBookReasonShadowMode;
+
+  /// No description provided for @autoBookReasonNoBill.
+  ///
+  /// In zh, this message translates to:
+  /// **'未识别到账单'**
+  String get autoBookReasonNoBill;
+
+  /// No description provided for @autoBookReasonUserInitiated.
+  ///
+  /// In zh, this message translates to:
+  /// **'手动记账，不受自动规则限制'**
+  String get autoBookReasonUserInitiated;
+
+  /// No description provided for @autoBookReasonSettledTransaction.
+  ///
+  /// In zh, this message translates to:
+  /// **'已结算交易，自动入账'**
+  String get autoBookReasonSettledTransaction;
+
+  /// No description provided for @autoBookReasonSettledFinancialEvent.
+  ///
+  /// In zh, this message translates to:
+  /// **'已结算的退款/费用/收入，自动入账'**
+  String get autoBookReasonSettledFinancialEvent;
+
+  /// No description provided for @autoBookReasonUnknownFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'处理失败'**
+  String get autoBookReasonUnknownFailed;
+
+  /// No description provided for @autoBookReasonUnknownExpired.
+  ///
+  /// In zh, this message translates to:
+  /// **'已过期，未入账'**
+  String get autoBookReasonUnknownExpired;
+
+  /// No description provided for @autoBookReasonUnknownIgnored.
+  ///
+  /// In zh, this message translates to:
+  /// **'已按自动规则跳过'**
+  String get autoBookReasonUnknownIgnored;
+
+  /// No description provided for @autoBookReasonUnknown.
+  ///
+  /// In zh, this message translates to:
+  /// **'未入账'**
+  String get autoBookReasonUnknown;
+
+  /// No description provided for @autoHealthOk.
+  ///
+  /// In zh, this message translates to:
+  /// **'运行正常'**
+  String get autoHealthOk;
+
+  /// No description provided for @autoHealthChecking.
+  ///
+  /// In zh, this message translates to:
+  /// **'状态检查中…'**
+  String get autoHealthChecking;
+
+  /// No description provided for @autoHealthShadowBanner.
+  ///
+  /// In zh, this message translates to:
+  /// **'演练模式：仅识别，不生成账单或候选'**
+  String get autoHealthShadowBanner;
+
+  /// No description provided for @autoHealthPermissionRevoked.
+  ///
+  /// In zh, this message translates to:
+  /// **'权限被撤销'**
+  String get autoHealthPermissionRevoked;
+
+  /// No description provided for @autoHealthListenerDisconnected.
+  ///
+  /// In zh, this message translates to:
+  /// **'监听未连接'**
+  String get autoHealthListenerDisconnected;
+
+  /// No description provided for @autoHealthAccessibilityDisconnected.
+  ///
+  /// In zh, this message translates to:
+  /// **'无障碍服务未连接'**
+  String get autoHealthAccessibilityDisconnected;
+
+  /// No description provided for @autoHealthListenerUnverified.
+  ///
+  /// In zh, this message translates to:
+  /// **'监听状态待验证'**
+  String get autoHealthListenerUnverified;
+
+  /// No description provided for @autoHealthStatusQueryFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'状态查询失败，请重试'**
+  String get autoHealthStatusQueryFailed;
+
+  /// No description provided for @autoHealthAiUnconfigured.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 未配置'**
+  String get autoHealthAiUnconfigured;
+
+  /// No description provided for @autoHealthAiLoginRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'需要重新登录'**
+  String get autoHealthAiLoginRequired;
+
+  /// No description provided for @autoHealthAiOffline.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 网络不可用，等待恢复'**
+  String get autoHealthAiOffline;
+
+  /// No description provided for @autoHealthAiProviderError.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 服务异常，请检查配置'**
+  String get autoHealthAiProviderError;
+
+  /// No description provided for @autoHealthAiInitializing.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 正在就绪'**
+  String get autoHealthAiInitializing;
+
+  /// No description provided for @autoHealthAiCapabilityMissing.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 能力未配置完整'**
+  String get autoHealthAiCapabilityMissing;
+
+  /// No description provided for @autoHealthBatteryOptimization.
+  ///
+  /// In zh, this message translates to:
+  /// **'电池优化未忽略，后台可能被杀'**
+  String get autoHealthBatteryOptimization;
+
+  /// No description provided for @autoHealthQueueBacklog.
+  ///
+  /// In zh, this message translates to:
+  /// **'已保存 {count} 条，恢复后继续处理'**
+  String autoHealthQueueBacklog(Object count);
+
+  /// No description provided for @autoHealthPendingCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count} 条待确认'**
+  String autoHealthPendingCount(Object count);
+
+  /// No description provided for @autoHealthDimUnknown.
+  ///
+  /// In zh, this message translates to:
+  /// **'待验证'**
+  String get autoHealthDimUnknown;
+
+  /// No description provided for @autoHealthDimSwitch.
+  ///
+  /// In zh, this message translates to:
+  /// **'来源开关'**
+  String get autoHealthDimSwitch;
+
+  /// No description provided for @autoHealthDimPermission.
+  ///
+  /// In zh, this message translates to:
+  /// **'系统权限'**
+  String get autoHealthDimPermission;
+
+  /// No description provided for @autoHealthDimListener.
+  ///
+  /// In zh, this message translates to:
+  /// **'监听连接'**
+  String get autoHealthDimListener;
+
+  /// No description provided for @autoHealthDimAi.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 能力'**
+  String get autoHealthDimAi;
+
+  /// No description provided for @autoHealthDimQueue.
+  ///
+  /// In zh, this message translates to:
+  /// **'处理队列'**
+  String get autoHealthDimQueue;
+
+  /// No description provided for @autoHealthDimSync.
+  ///
+  /// In zh, this message translates to:
+  /// **'云同步'**
+  String get autoHealthDimSync;
+
+  /// No description provided for @autoHealthViewPending.
+  ///
+  /// In zh, this message translates to:
+  /// **'去确认'**
+  String get autoHealthViewPending;
+
+  /// No description provided for @autoHealthViewRecords.
+  ///
+  /// In zh, this message translates to:
+  /// **'查看记录'**
+  String get autoHealthViewRecords;
+
+  /// No description provided for @autoHealthOpenSettings.
+  ///
+  /// In zh, this message translates to:
+  /// **'去设置'**
+  String get autoHealthOpenSettings;
+
+  /// No description provided for @autoHealthLastCapture.
+  ///
+  /// In zh, this message translates to:
+  /// **'最近捕获 {time}'**
+  String autoHealthLastCapture(Object time);
+
+  /// No description provided for @autoHealthLastProcessed.
+  ///
+  /// In zh, this message translates to:
+  /// **'最近处理 {time}'**
+  String autoHealthLastProcessed(Object time);
+
+  /// No description provided for @autoSetupTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'开通自动记账'**
+  String get autoSetupTitle;
+
+  /// No description provided for @autoSetupSubtitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'五步完成配置，进度自动保存，可随时退出续接'**
+  String get autoSetupSubtitle;
+
+  /// No description provided for @autoSetupStepService.
+  ///
+  /// In zh, this message translates to:
+  /// **'连接与 AI'**
+  String get autoSetupStepService;
+
+  /// No description provided for @autoSetupStepTarget.
+  ///
+  /// In zh, this message translates to:
+  /// **'入账目标'**
+  String get autoSetupStepTarget;
+
+  /// No description provided for @autoSetupStepSources.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择来源'**
+  String get autoSetupStepSources;
+
+  /// No description provided for @autoSetupStepBackground.
+  ///
+  /// In zh, this message translates to:
+  /// **'后台运行'**
+  String get autoSetupStepBackground;
+
+  /// No description provided for @autoSetupStepVerify.
+  ///
+  /// In zh, this message translates to:
+  /// **'实际验证'**
+  String get autoSetupStepVerify;
+
+  /// No description provided for @autoSetupServiceDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'先确认云服务登录与 AI 能力可用，识别才有落账能力。'**
+  String get autoSetupServiceDesc;
+
+  /// No description provided for @autoSetupServiceTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'云服务登录'**
+  String get autoSetupServiceTitle;
+
+  /// No description provided for @autoSetupLoginOk.
+  ///
+  /// In zh, this message translates to:
+  /// **'已登录'**
+  String get autoSetupLoginOk;
+
+  /// No description provided for @autoSetupLoginMissing.
+  ///
+  /// In zh, this message translates to:
+  /// **'未登录或仅本地模式，AI 中转不可用'**
+  String get autoSetupLoginMissing;
+
+  /// No description provided for @autoSetupRecheck.
+  ///
+  /// In zh, this message translates to:
+  /// **'重新检查'**
+  String get autoSetupRecheck;
+
+  /// No description provided for @autoSetupAiTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 能力'**
+  String get autoSetupAiTitle;
+
+  /// No description provided for @autoSetupAiOk.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 已就绪'**
+  String get autoSetupAiOk;
+
+  /// No description provided for @autoSetupAiText.
+  ///
+  /// In zh, this message translates to:
+  /// **'文本模型：{state}'**
+  String autoSetupAiText(Object state);
+
+  /// No description provided for @autoSetupAiVision.
+  ///
+  /// In zh, this message translates to:
+  /// **'视觉模型：{state}'**
+  String autoSetupAiVision(Object state);
+
+  /// No description provided for @autoSetupConfigured.
+  ///
+  /// In zh, this message translates to:
+  /// **'已配置'**
+  String get autoSetupConfigured;
+
+  /// No description provided for @autoSetupNotConfigured.
+  ///
+  /// In zh, this message translates to:
+  /// **'未配置'**
+  String get autoSetupNotConfigured;
+
+  /// No description provided for @autoSetupPaused.
+  ///
+  /// In zh, this message translates to:
+  /// **'每一步都会保存进度，可以随时退出，下次继续。'**
+  String get autoSetupPaused;
+
+  /// No description provided for @autoSetupTargetDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择自动入账的账本与默认账户；它与你浏览的账本相互独立。'**
+  String get autoSetupTargetDesc;
+
+  /// No description provided for @autoSetupTargetLedgerLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'自动入账账本'**
+  String get autoSetupTargetLedgerLabel;
+
+  /// No description provided for @autoSetupTargetLocalLedger.
+  ///
+  /// In zh, this message translates to:
+  /// **'本地账本（未同步，仅本机有效）'**
+  String get autoSetupTargetLocalLedger;
+
+  /// No description provided for @autoSetupTargetAccountLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'默认账户'**
+  String get autoSetupTargetAccountLabel;
+
+  /// No description provided for @autoSetupTargetDefaultAccount.
+  ///
+  /// In zh, this message translates to:
+  /// **'跟随识别结果 / 系统默认'**
+  String get autoSetupTargetDefaultAccount;
+
+  /// No description provided for @autoSetupTargetChangeable.
+  ///
+  /// In zh, this message translates to:
+  /// **'之后可以在这里随时更换自动入账目标。'**
+  String get autoSetupTargetChangeable;
+
+  /// No description provided for @autoSetupSourcesDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'先开启支付通知与银行短信；详情页识别与截图可按需开启，权限在开启对应来源时才申请。'**
+  String get autoSetupSourcesDesc;
+
+  /// No description provided for @autoSetupSourcesPrimary.
+  ///
+  /// In zh, this message translates to:
+  /// **'常用来源'**
+  String get autoSetupSourcesPrimary;
+
+  /// No description provided for @autoSetupSourcesOptional.
+  ///
+  /// In zh, this message translates to:
+  /// **'按需来源'**
+  String get autoSetupSourcesOptional;
+
+  /// No description provided for @autoSetupSourcesAtLeastOne.
+  ///
+  /// In zh, this message translates to:
+  /// **'至少开启一个来源，自动记账才会工作。'**
+  String get autoSetupSourcesAtLeastOne;
+
+  /// No description provided for @autoSetupSourceOn.
+  ///
+  /// In zh, this message translates to:
+  /// **'已开启'**
+  String get autoSetupSourceOn;
+
+  /// No description provided for @autoSetupSourceOff.
+  ///
+  /// In zh, this message translates to:
+  /// **'未开启'**
+  String get autoSetupSourceOff;
+
+  /// No description provided for @autoSetupBackgroundDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'为保证监听存活，请处理电池优化与自启动；不同机型路径不同。'**
+  String get autoSetupBackgroundDesc;
+
+  /// No description provided for @autoSetupBackgroundNote.
+  ///
+  /// In zh, this message translates to:
+  /// **'后台限制过严会导致收不到通知或短信，状态卡会显示对应问题。'**
+  String get autoSetupBackgroundNote;
+
+  /// No description provided for @autoSetupVerifyDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'用手机收到一条真实支付通知或银行短信，然后回来检查。模拟数据不能算作监听通过。'**
+  String get autoSetupVerifyDesc;
+
+  /// No description provided for @autoSetupVerifyOk.
+  ///
+  /// In zh, this message translates to:
+  /// **'检测到新的捕获，验证通过'**
+  String get autoSetupVerifyOk;
+
+  /// No description provided for @autoSetupVerifyPending.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没有检测到新的捕获'**
+  String get autoSetupVerifyPending;
+
+  /// No description provided for @autoSetupVerifyAction.
+  ///
+  /// In zh, this message translates to:
+  /// **'我已收到，检查结果'**
+  String get autoSetupVerifyAction;
+
+  /// No description provided for @autoSetupVerifyRetry.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂未检测到新捕获，请确认来源已开启后再试'**
+  String get autoSetupVerifyRetry;
+
+  /// No description provided for @autoSetupSkipVerify.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂时跳过'**
+  String get autoSetupSkipVerify;
+
+  /// No description provided for @autoSetupVerifyNotice.
+  ///
+  /// In zh, this message translates to:
+  /// **'这一步只验证真实监听链路；解析测试不能替代它。'**
+  String get autoSetupVerifyNotice;
+
+  /// No description provided for @autoSetupVerifySkippedNote.
+  ///
+  /// In zh, this message translates to:
+  /// **'已跳过真实验证：状态卡仍会提示未验证。'**
+  String get autoSetupVerifySkippedNote;
+
+  /// No description provided for @autoSetupBack.
+  ///
+  /// In zh, this message translates to:
+  /// **'上一步'**
+  String get autoSetupBack;
+
+  /// No description provided for @autoSetupNext.
+  ///
+  /// In zh, this message translates to:
+  /// **'下一步'**
+  String get autoSetupNext;
+
+  /// No description provided for @autoSetupFinish.
+  ///
+  /// In zh, this message translates to:
+  /// **'完成'**
+  String get autoSetupFinish;
+
+  /// No description provided for @autoSetupCompletedTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'自动记账已开通'**
+  String get autoSetupCompletedTitle;
+
+  /// No description provided for @autoSetupBannerTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没有完成自动记账开通'**
+  String get autoSetupBannerTitle;
+
+  /// No description provided for @autoSetupBannerDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'按引导完成目标、来源与真实验证，识别才真正可用'**
+  String get autoSetupBannerDesc;
+
+  /// No description provided for @autoSetupBannerAction.
+  ///
+  /// In zh, this message translates to:
+  /// **'继续开通'**
+  String get autoSetupBannerAction;
+
+  /// No description provided for @autoParseTestTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'解析链路测试'**
+  String get autoParseTestTitle;
+
+  /// No description provided for @autoParseTestDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'模拟数据只验证解析与判重链路，不能证明真实监听已通过；默认只解析不入账。'**
+  String get autoParseTestDesc;
+
+  /// No description provided for @autoParseTestWrite.
+  ///
+  /// In zh, this message translates to:
+  /// **'允许写入测试账本'**
+  String get autoParseTestWrite;
+
+  /// No description provided for @autoParseTestWriteDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'识别结果写入独立测试账本「{ledger}」，不会计入正式账本'**
+  String autoParseTestWriteDesc(Object ledger);
+
+  /// No description provided for @autoParseTestPreviewOn.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前为预览模式：只识别，不产生交易或候选'**
+  String get autoParseTestPreviewOn;
+
+  /// No description provided for @autoParseTestNoticeResult.
+  ///
+  /// In zh, this message translates to:
+  /// **'解析成功 ≠ 真实监听通过；真实链路请用真实通知/短信验证。'**
+  String get autoParseTestNoticeResult;
+
+  /// No description provided for @autoParseTestSubmittedPreview.
+  ///
+  /// In zh, this message translates to:
+  /// **'已提交（预览模式：只识别，不入账）'**
+  String get autoParseTestSubmittedPreview;
+
+  /// No description provided for @autoParseTestSubmittedWrite.
+  ///
+  /// In zh, this message translates to:
+  /// **'已提交，结果写入测试账本「{ledger}」'**
+  String autoParseTestSubmittedWrite(Object ledger);
+
+  /// No description provided for @autoBookDetailDiagnostics.
+  ///
+  /// In zh, this message translates to:
+  /// **'诊断信息'**
+  String get autoBookDetailDiagnostics;
+
+  /// No description provided for @autoBookManualAdd.
+  ///
+  /// In zh, this message translates to:
+  /// **'手动补记'**
+  String get autoBookManualAdd;
+
+  /// No description provided for @autoBookManualAddTimeHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'不会带入推测时间，请在编辑器里确认交易时间后再保存'**
+  String get autoBookManualAddTimeHint;
+
+  /// No description provided for @autoBookManualAddPickItem.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择要补记的一笔'**
+  String get autoBookManualAddPickItem;
+
+  /// No description provided for @autoBookManualAddUnavailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'没有可恢复的结构化摘要，无法补记'**
+  String get autoBookManualAddUnavailable;
+
+  /// No description provided for @automationGroupRecognition.
+  ///
+  /// In zh, this message translates to:
+  /// **'识别与入账'**
+  String get automationGroupRecognition;
+
+  /// No description provided for @automationGroupRecognitionDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'通知、短信、截图自动识别与确认'**
+  String get automationGroupRecognitionDesc;
+
+  /// No description provided for @automationGroupSchedule.
+  ///
+  /// In zh, this message translates to:
+  /// **'固定计划'**
+  String get automationGroupSchedule;
+
+  /// No description provided for @welcomeAutoBillingTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'自动记账'**
+  String get welcomeAutoBillingTitle;
+
+  /// No description provided for @welcomeAutoBillingDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'开启后，支付通知与银行短信会自动识别并入账；可先跳过，稍后在「我的」里开通。'**
+  String get welcomeAutoBillingDesc;
+
+  /// No description provided for @welcomeAutoBillingStart.
+  ///
+  /// In zh, this message translates to:
+  /// **'现在开通'**
+  String get welcomeAutoBillingStart;
+
+  /// No description provided for @welcomeAutoBillingLater.
+  ///
+  /// In zh, this message translates to:
+  /// **'稍后再说'**
+  String get welcomeAutoBillingLater;
+
+  /// No description provided for @welcomeAutoBillingNote.
+  ///
+  /// In zh, this message translates to:
+  /// **'开通共五步，进度会自动保存。'**
+  String get welcomeAutoBillingNote;
+
+  /// No description provided for @channelMappingScopeLedger.
+  ///
+  /// In zh, this message translates to:
+  /// **'作用账本'**
+  String get channelMappingScopeLedger;
+
+  /// No description provided for @channelMappingSources.
+  ///
+  /// In zh, this message translates to:
+  /// **'适用来源（不选＝全部来源）'**
+  String get channelMappingSources;
+
+  /// No description provided for @channelMappingSourceSms.
+  ///
+  /// In zh, this message translates to:
+  /// **'短信'**
+  String get channelMappingSourceSms;
+
+  /// No description provided for @channelMappingSourceNotify.
+  ///
+  /// In zh, this message translates to:
+  /// **'通知'**
+  String get channelMappingSourceNotify;
+
+  /// No description provided for @channelMappingSourceScreen.
+  ///
+  /// In zh, this message translates to:
+  /// **'详情页'**
+  String get channelMappingSourceScreen;
+
+  /// No description provided for @channelMappingSourceImage.
+  ///
+  /// In zh, this message translates to:
+  /// **'截图'**
+  String get channelMappingSourceImage;
+
+  /// No description provided for @channelMappingSourceAny.
+  ///
+  /// In zh, this message translates to:
+  /// **'全部来源'**
+  String get channelMappingSourceAny;
+
+  /// No description provided for @channelMappingCardLast4.
+  ///
+  /// In zh, this message translates to:
+  /// **'卡号后四位'**
+  String get channelMappingCardLast4;
+
+  /// No description provided for @channelMappingCardLast4Hint.
+  ///
+  /// In zh, this message translates to:
+  /// **'只存 4 位，不存完整卡号'**
+  String get channelMappingCardLast4Hint;
+
+  /// No description provided for @channelMappingCardLast4Short.
+  ///
+  /// In zh, this message translates to:
+  /// **'尾号 {last4}'**
+  String channelMappingCardLast4Short(Object last4);
+
+  /// No description provided for @channelMappingCurrency.
+  ///
+  /// In zh, this message translates to:
+  /// **'币种'**
+  String get channelMappingCurrency;
+
+  /// No description provided for @channelMappingCurrencyAny.
+  ///
+  /// In zh, this message translates to:
+  /// **'不限币种'**
+  String get channelMappingCurrencyAny;
+
+  /// No description provided for @channelMappingLegacyBanner.
+  ///
+  /// In zh, this message translates to:
+  /// **'有 {count} 条旧版渠道规则：尚未确认作用账本，确认前只在 AI 未识别账户时生效，也不会推广到所有账本'**
+  String channelMappingLegacyBanner(Object count);
+
+  /// No description provided for @channelMappingLegacyRule.
+  ///
+  /// In zh, this message translates to:
+  /// **'旧版渠道规则'**
+  String get channelMappingLegacyRule;
+
+  /// No description provided for @channelMappingConfirmScope.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认作用账本'**
+  String get channelMappingConfirmScope;
+
+  /// No description provided for @channelMappingConfirmScopeDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'规则「{channel}」创建于旧版本，没有作用账本。确认后才按新规则优先级生效。'**
+  String channelMappingConfirmScopeDesc(Object channel);
+
+  /// No description provided for @channelMappingScopeSaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'作用账本已确认'**
+  String get channelMappingScopeSaved;
+
+  /// No description provided for @channelMappingDisabled.
+  ///
+  /// In zh, this message translates to:
+  /// **'已停用'**
+  String get channelMappingDisabled;
+
+  /// No description provided for @autoTargetTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'自动入账目标'**
+  String get autoTargetTitle;
+
+  /// No description provided for @autoTargetLedger.
+  ///
+  /// In zh, this message translates to:
+  /// **'入账账本：{name}'**
+  String autoTargetLedger(Object name);
+
+  /// No description provided for @autoTargetLedgerMissing.
+  ///
+  /// In zh, this message translates to:
+  /// **'目标账本不存在'**
+  String get autoTargetLedgerMissing;
+
+  /// No description provided for @autoTargetUnconfirmed.
+  ///
+  /// In zh, this message translates to:
+  /// **'目标未确认：暂按旧口径（当前浏览账本）入账'**
+  String get autoTargetUnconfirmed;
+
+  /// No description provided for @autoTargetUnconfirmedHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认后浏览账本不再影响自动入账'**
+  String get autoTargetUnconfirmedHint;
+
+  /// No description provided for @autoTargetInvalid.
+  ///
+  /// In zh, this message translates to:
+  /// **'目标失效：已暂停自动写入'**
+  String get autoTargetInvalid;
+
+  /// No description provided for @autoTargetInvalidScope.
+  ///
+  /// In zh, this message translates to:
+  /// **'账号变化导致目标不匹配，请重新选择账本'**
+  String get autoTargetInvalidScope;
+
+  /// No description provided for @autoTargetInvalidMissing.
+  ///
+  /// In zh, this message translates to:
+  /// **'目标账本已删除或共享权限被撤销，请重新选择'**
+  String get autoTargetInvalidMissing;
+
+  /// No description provided for @autoTargetUndetermined.
+  ///
+  /// In zh, this message translates to:
+  /// **'目标待确定：先选择自动入账账本'**
+  String get autoTargetUndetermined;
+
+  /// No description provided for @autoTargetConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认目标'**
+  String get autoTargetConfirm;
+
+  /// No description provided for @autoTargetChange.
+  ///
+  /// In zh, this message translates to:
+  /// **'更换目标'**
+  String get autoTargetChange;
+
+  /// No description provided for @autoTargetSaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'目标已保存'**
+  String get autoTargetSaved;
+
+  /// No description provided for @autoTargetPausedHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'修复前不会写入任何账单，已捕获事件保留在识别记录中'**
+  String get autoTargetPausedHint;
+
+  /// No description provided for @autoTargetConfigVersion.
+  ///
+  /// In zh, this message translates to:
+  /// **'配置版本 {version}'**
+  String autoTargetConfigVersion(Object version);
+
+  /// No description provided for @autoBookReasonAccountRuleConflict.
+  ///
+  /// In zh, this message translates to:
+  /// **'账户规则无法验证，需确认账户'**
+  String get autoBookReasonAccountRuleConflict;
+
+  /// No description provided for @autoBookReasonTargetInvalid.
+  ///
+  /// In zh, this message translates to:
+  /// **'自动入账目标失效，已暂停写入'**
+  String get autoBookReasonTargetInvalid;
+
+  /// No description provided for @autoBookReasonTargetUndetermined.
+  ///
+  /// In zh, this message translates to:
+  /// **'自动入账目标待确定'**
+  String get autoBookReasonTargetUndetermined;
+
+  /// No description provided for @autoHealthTargetInvalid.
+  ///
+  /// In zh, this message translates to:
+  /// **'自动入账目标失效，已暂停写入'**
+  String get autoHealthTargetInvalid;
+
+  /// No description provided for @autoHealthTargetUndetermined.
+  ///
+  /// In zh, this message translates to:
+  /// **'自动入账目标待确定'**
+  String get autoHealthTargetUndetermined;
+
+  /// No description provided for @autoHealthTargetUnconfirmed.
+  ///
+  /// In zh, this message translates to:
+  /// **'自动入账目标待确认,'**
+  String get autoHealthTargetUnconfirmed;
+
+  /// No description provided for @autoHealthQueueLoss.
+  ///
+  /// In zh, this message translates to:
+  /// **'有 {count} 条容量/过期清理记录'**
+  String autoHealthQueueLoss(Object count);
+
+  /// No description provided for @commonUndo.
+  ///
+  /// In zh, this message translates to:
+  /// **'撤销'**
+  String get commonUndo;
+
+  /// No description provided for @pendingIgnoredTab.
+  ///
+  /// In zh, this message translates to:
+  /// **'已忽略'**
+  String get pendingIgnoredTab;
+
+  /// No description provided for @pendingIgnoredEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂无已忽略的候选。\n被忽略的候选会在这里保留一段时间，可随时恢复为待确认。'**
+  String get pendingIgnoredEmpty;
+
+  /// No description provided for @pendingIgnoredRestore.
+  ///
+  /// In zh, this message translates to:
+  /// **'恢复'**
+  String get pendingIgnoredRestore;
+
+  /// No description provided for @pendingIgnoredRestored.
+  ///
+  /// In zh, this message translates to:
+  /// **'已恢复为待确认'**
+  String get pendingIgnoredRestored;
+
+  /// No description provided for @pendingIgnoredUnavailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'无法恢复：材料或目标已不可用'**
+  String get pendingIgnoredUnavailable;
+
+  /// No description provided for @pendingIgnoredUndoHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'已忽略 1 条候选'**
+  String get pendingIgnoredUndoHint;
+
+  /// No description provided for @pendingIgnoredUndone.
+  ///
+  /// In zh, this message translates to:
+  /// **'已撤销忽略'**
+  String get pendingIgnoredUndone;
+
+  /// No description provided for @pendingFieldMerchant.
+  ///
+  /// In zh, this message translates to:
+  /// **'商户'**
+  String get pendingFieldMerchant;
+
+  /// No description provided for @pendingFieldAccount.
+  ///
+  /// In zh, this message translates to:
+  /// **'账户'**
+  String get pendingFieldAccount;
+
+  /// No description provided for @pendingFieldLedger.
+  ///
+  /// In zh, this message translates to:
+  /// **'目标账本'**
+  String get pendingFieldLedger;
+
+  /// No description provided for @pendingFieldTime.
+  ///
+  /// In zh, this message translates to:
+  /// **'交易时间'**
+  String get pendingFieldTime;
+
+  /// No description provided for @pendingFieldHintTime.
+  ///
+  /// In zh, this message translates to:
+  /// **'时间需要确认'**
+  String get pendingFieldHintTime;
+
+  /// No description provided for @pendingFieldHintAccount.
+  ///
+  /// In zh, this message translates to:
+  /// **'缺少账户'**
+  String get pendingFieldHintAccount;
+
+  /// No description provided for @pendingFieldHintAmount.
+  ///
+  /// In zh, this message translates to:
+  /// **'请核对金额'**
+  String get pendingFieldHintAmount;
+
+  /// No description provided for @pendingTimeTrusted.
+  ///
+  /// In zh, this message translates to:
+  /// **'分钟级'**
+  String get pendingTimeTrusted;
+
+  /// No description provided for @pendingTimeDateOnly.
+  ///
+  /// In zh, this message translates to:
+  /// **'仅日期'**
+  String get pendingTimeDateOnly;
+
+  /// No description provided for @pendingTimeInferred.
+  ///
+  /// In zh, this message translates to:
+  /// **'推测'**
+  String get pendingTimeInferred;
+
+  /// No description provided for @pendingSelectAccount.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择账户'**
+  String get pendingSelectAccount;
+
+  /// No description provided for @pendingSelectCategory.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择分类'**
+  String get pendingSelectCategory;
+
+  /// No description provided for @pendingRememberAsk.
+  ///
+  /// In zh, this message translates to:
+  /// **'记住这个分类吗？'**
+  String get pendingRememberAsk;
+
+  /// No description provided for @pendingRememberBody.
+  ///
+  /// In zh, this message translates to:
+  /// **'以后「{merchant}」的同类账单自动用「{category}」；只影响未来账单。'**
+  String pendingRememberBody(Object category, Object merchant);
+
+  /// No description provided for @pendingRememberOnce.
+  ///
+  /// In zh, this message translates to:
+  /// **'仅本次'**
+  String get pendingRememberOnce;
+
+  /// No description provided for @pendingRememberYes.
+  ///
+  /// In zh, this message translates to:
+  /// **'记住'**
+  String get pendingRememberYes;
+
+  /// No description provided for @pendingRememberSaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'已记住：{merchant} → {category}'**
+  String pendingRememberSaved(Object category, Object merchant);
+
+  /// No description provided for @pendingRememberSaveFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'分类规则保存失败，不影响本次入账'**
+  String get pendingRememberSaveFailed;
+
+  /// No description provided for @automationRulesTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'自动记账规则'**
+  String get automationRulesTitle;
+
+  /// No description provided for @automationRulesDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'分类学习、渠道账户与判重豁免都只影响未来账单，可随时停用或删除。'**
+  String get automationRulesDesc;
+
+  /// No description provided for @automationRulesCategoryTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'分类学习规则'**
+  String get automationRulesCategoryTitle;
+
+  /// No description provided for @automationRulesCategoryDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'同商户关键词 → 分类；命中时优先于 AI 猜测。'**
+  String get automationRulesCategoryDesc;
+
+  /// No description provided for @automationRulesLegacyBanner.
+  ///
+  /// In zh, this message translates to:
+  /// **'有 {count} 条规则未绑定账本，确认前按旧口径全局生效，不会自动推广到其它账本。'**
+  String automationRulesLegacyBanner(Object count);
+
+  /// No description provided for @automationRulesBindLedger.
+  ///
+  /// In zh, this message translates to:
+  /// **'绑定账本'**
+  String get automationRulesBindLedger;
+
+  /// No description provided for @automationRulesBoundSaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'已绑定作用账本'**
+  String get automationRulesBoundSaved;
+
+  /// No description provided for @automationRulesEnabled.
+  ///
+  /// In zh, this message translates to:
+  /// **'启用'**
+  String get automationRulesEnabled;
+
+  /// No description provided for @automationRulesDisabled.
+  ///
+  /// In zh, this message translates to:
+  /// **'已停用'**
+  String get automationRulesDisabled;
+
+  /// No description provided for @automationRulesDeleteAsk.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除这条规则？删除后不影响已有账单。'**
+  String get automationRulesDeleteAsk;
+
+  /// No description provided for @automationRulesEdit.
+  ///
+  /// In zh, this message translates to:
+  /// **'编辑'**
+  String get automationRulesEdit;
+
+  /// No description provided for @automationRulesEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没有分类学习规则。在待确认页「编辑确认」并选择「记住」后会出现在这里。'**
+  String get automationRulesEmpty;
+
+  /// No description provided for @automationRulesLedgerAll.
+  ///
+  /// In zh, this message translates to:
+  /// **'全部账本（旧版）'**
+  String get automationRulesLedgerAll;
+
+  /// No description provided for @automationRulesChannelEntry.
+  ///
+  /// In zh, this message translates to:
+  /// **'渠道 → 账户规则'**
+  String get automationRulesChannelEntry;
+
+  /// No description provided for @automationRulesDedupEntry.
+  ///
+  /// In zh, this message translates to:
+  /// **'判重豁免规则'**
+  String get automationRulesDedupEntry;
+
+  /// No description provided for @automationRulesUpdated.
+  ///
+  /// In zh, this message translates to:
+  /// **'规则已更新'**
+  String get automationRulesUpdated;
+
+  /// No description provided for @automationRulesDeleted.
+  ///
+  /// In zh, this message translates to:
+  /// **'规则已删除'**
+  String get automationRulesDeleted;
+
+  /// No description provided for @pendingFieldHintRememberKeyword.
+  ///
+  /// In zh, this message translates to:
+  /// **'只保存商户关键词，不会保存整段备注'**
+  String get pendingFieldHintRememberKeyword;
+
+  /// No description provided for @autoBillingDigestTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'自动记账日报'**
+  String get autoBillingDigestTitle;
+
+  /// No description provided for @autoBillingDigestBody.
+  ///
+  /// In zh, this message translates to:
+  /// **'今日已入账 {booked} 笔 · 待确认 {pending} 笔 · 待重试 {failed} 笔'**
+  String autoBillingDigestBody(Object booked, Object failed, Object pending);
+
+  /// No description provided for @notifyModeTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'通知提醒方式'**
+  String get notifyModeTitle;
+
+  /// No description provided for @notifyModeDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'只影响自动记账的提醒；系统通知权限与通知渠道仍由你控制。'**
+  String get notifyModeDesc;
+
+  /// No description provided for @notifyModeEverySuccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'每笔成功提醒'**
+  String get notifyModeEverySuccess;
+
+  /// No description provided for @notifyModeEverySuccessDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'每一笔自动入账都提醒（升级用户的既有行为）'**
+  String get notifyModeEverySuccessDesc;
+
+  /// No description provided for @notifyModeConfirmFault.
+  ///
+  /// In zh, this message translates to:
+  /// **'仅需确认或故障时提醒'**
+  String get notifyModeConfirmFault;
+
+  /// No description provided for @notifyModeConfirmFaultDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'有待确认候选或出问题时才提醒（新用户默认）'**
+  String get notifyModeConfirmFaultDesc;
+
+  /// No description provided for @notifyModeDigest.
+  ///
+  /// In zh, this message translates to:
+  /// **'每日汇总'**
+  String get notifyModeDigest;
+
+  /// No description provided for @notifyModeDigestDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'晚 8 点后汇总当天入账 / 待确认 / 待重试笔数'**
+  String get notifyModeDigestDesc;
+
+  /// No description provided for @notifyModeSaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'提醒方式已保存'**
+  String get notifyModeSaved;
+
+  /// No description provided for @homeQuickAddTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'快捷记账'**
+  String get homeQuickAddTitle;
+
+  /// No description provided for @homeQuickAddDesc.
+  ///
+  /// In zh, this message translates to:
+  /// **'先输金额，用默认账户与最近分类快速记一笔'**
+  String get homeQuickAddDesc;
+
+  /// No description provided for @amountEditorAgain.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存后再记一笔'**
+  String get amountEditorAgain;
+
+  /// No description provided for @amountEditorAgainHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存后面板不关闭，改金额继续记下一笔'**
+  String get amountEditorAgainHint;
+
+  /// No description provided for @autoSetupNotifyDefaultNote.
+  ///
+  /// In zh, this message translates to:
+  /// **'新用户默认「仅需确认或故障时提醒」，可随时改。'**
+  String get autoSetupNotifyDefaultNote;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

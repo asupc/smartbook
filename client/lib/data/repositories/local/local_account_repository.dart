@@ -6,6 +6,7 @@ import '../../../services/system/logger_service.dart';
 import '../../../utils/account_type_utils.dart';
 import '../account_repository.dart';
 import '../exceptions.dart';
+import 'chunk_utils.dart';
 
 /// 单账户聚合结果(余额增量 / 支出 / 收入)。
 typedef _AccountAggregates = ({
@@ -21,6 +22,40 @@ class LocalAccountRepository implements AccountRepository {
   final BeeDatabase db;
 
   LocalAccountRepository(this.db);
+
+  /// 缺陷 G:`accounts.initial_balance` / `credit_limit` 此前无守卫。
+  /// 探针实测 `createAccount(initialBalance: Infinity)` 落库后
+  /// `getAccountBalance()` 返回 Infinity → 余额卡/净资产/账户列表全部污染。
+  /// 有限的大值照旧放行(用户可能有历史巨额余额);NaN/±Infinity 一律拒。
+  static void validateAccountAmounts(
+      {double? initialBalance, double? creditLimit}) {
+    if (initialBalance != null && !initialBalance.isFinite) {
+      throw ArgumentError.value(initialBalance, 'initialBalance',
+          '账户初始余额必须是有限数(NaN/Infinity 会污染余额/净资产聚合)');
+    }
+    if (creditLimit != null && !creditLimit.isFinite) {
+      throw ArgumentError.value(creditLimit, 'creditLimit',
+          '信用额度必须是有限数(NaN/Infinity 会污染可用额度计算)');
+    }
+  }
+
+  /// 缺陷 G:`account_adjustments.amount/balance_before/balance_after` 此前
+  /// 无守卫。调整是**带符号**的(正=调增/负=调减),故只拒非有限值。
+  static void validateAdjustmentAmounts(
+      {required double amount, double? balanceBefore, double? balanceAfter}) {
+    if (!amount.isFinite) {
+      throw ArgumentError.value(
+          amount, 'amount', '调整金额必须是有限数(NaN/Infinity 会污染账户余额)');
+    }
+    if (balanceBefore != null && !balanceBefore.isFinite) {
+      throw ArgumentError.value(balanceBefore, 'balanceBefore',
+          '调整前余额快照必须是有限数');
+    }
+    if (balanceAfter != null && !balanceAfter.isFinite) {
+      throw ArgumentError.value(balanceAfter, 'balanceAfter',
+          '调整后余额快照必须是有限数');
+    }
+  }
 
   @override
   Stream<List<Account>> watchAccountsForLedger(int ledgerId) {
@@ -109,50 +144,60 @@ class LocalAccountRepository implements AccountRepository {
   }) async {
     // 撞同名抛 DuplicateNameException(name 全局唯一)。静默路径(import /
     // app-link 等)请改用 [upsertAccount]。
-    final existingByName =
-        await (db.select(db.accounts)..where((a) => a.name.equals(name))).get();
-    if (existingByName.isNotEmpty) {
-      throw DuplicateNameException(
-        entityType: 'account',
-        name: name,
-        existingId: existingByName.first.id,
-      );
-    }
-    try {
-      // 计算同类型最大 sortOrder + 1
-      final maxSortOrderResult = await db.customSelect(
-        'SELECT COALESCE(MAX(sort_order), -1) AS max_order FROM accounts WHERE type = ?1',
-        variables: [d.Variable.withString(type)],
-        readsFrom: {db.accounts},
-      ).getSingle();
-      final nextSortOrder = (maxSortOrderResult.data['max_order'] as int) + 1;
+    //
+    // C3/F-35:查重 + 插入包在同一事务里。旧实现是 select-then-insert 两步,
+    // 中间有 await 让步点 → 两个并发调用**都可能**通过查重,落 2 行同名账户,
+    // 而 DB 层无 UNIQUE 兜底("name 全局唯一"契约只靠概率)。drift 的事务
+    // 串行化(单连接)保证第二步读到第一步的结果。
+    validateAccountAmounts(
+        initialBalance: initialBalance, creditLimit: creditLimit);
+    return db.transaction(() async {
+      final existingByName = await (db.select(db.accounts)
+            ..where((a) => a.name.equals(name)))
+          .get();
+      if (existingByName.isNotEmpty) {
+        throw DuplicateNameException(
+          entityType: 'account',
+          name: name,
+          existingId: existingByName.first.id,
+        );
+      }
+      try {
+        // 计算同类型最大 sortOrder + 1
+        final maxSortOrderResult = await db.customSelect(
+          'SELECT COALESCE(MAX(sort_order), -1) AS max_order FROM accounts WHERE type = ?1',
+          variables: [d.Variable.withString(type)],
+          readsFrom: {db.accounts},
+        ).getSingle();
+        final nextSortOrder = (maxSortOrderResult.data['max_order'] as int) + 1;
 
-      final companion = AccountsCompanion.insert(
-        ledgerId: ledgerId,
-        name: name,
-        type: d.Value(type),
-        currency: d.Value(currency),
-        initialBalance: d.Value(initialBalance),
-        createdAt: d.Value(DateTime.now()),
-        sortOrder: d.Value(nextSortOrder),
-        creditLimit: d.Value(creditLimit),
-        billingDay: d.Value(billingDay),
-        paymentDueDay: d.Value(paymentDueDay),
-        bankName: d.Value(bankName),
-        cardLastFour: d.Value(cardLastFour),
-        note: d.Value(note),
-        syncId: d.Value(syncId ?? _uuid.v4()),
-      );
+        final companion = AccountsCompanion.insert(
+          ledgerId: ledgerId,
+          name: name,
+          type: d.Value(type),
+          currency: d.Value(currency),
+          initialBalance: d.Value(initialBalance),
+          createdAt: d.Value(DateTime.now()),
+          sortOrder: d.Value(nextSortOrder),
+          creditLimit: d.Value(creditLimit),
+          billingDay: d.Value(billingDay),
+          paymentDueDay: d.Value(paymentDueDay),
+          bankName: d.Value(bankName),
+          cardLastFour: d.Value(cardLastFour),
+          note: d.Value(note),
+          syncId: d.Value(syncId ?? _uuid.v4()),
+        );
 
-      final id = await db.into(db.accounts).insert(companion);
-      // 单条 INFO 日志(import 批量场景下 3 条/账户 会把 logger 队列冲爆,降级
-      // 到 debug;只在出错时 error)
-      logger.debug('AccountCreate', '账户创建: id=$id name=$name type=$type');
-      return id;
-    } catch (e, stack) {
-      logger.error('AccountCreate', '创建账户失败 name=$name', e, stack);
-      rethrow;
-    }
+        final id = await db.into(db.accounts).insert(companion);
+        // 单条 INFO 日志(import 批量场景下 3 条/账户 会把 logger 队列冲爆,降级
+        // 到 debug;只在出错时 error)
+        logger.debug('AccountCreate', '账户创建: id=$id name=$name type=$type');
+        return id;
+      } catch (e, stack) {
+        logger.error('AccountCreate', '创建账户失败 name=$name', e, stack);
+        rethrow;
+      }
+    });
   }
 
   @override
@@ -194,6 +239,23 @@ class LocalAccountRepository implements AccountRepository {
     bool clearMetadataFields = false,
     bool? hidden,
   }) async {
+    // C3/F-28:改名与新建同规则(对称校验)。旧实现改名不查重 → 可制造同名
+    // 账户,转账选择器无法区分,而 createAccount 会拒绝同样的输入。
+    // 缺陷 G:金额列(initialBalance/creditLimit)同补非有限守卫。
+    validateAccountAmounts(
+        initialBalance: initialBalance, creditLimit: creditLimit);
+    if (name != null) {
+      final clash = await (db.select(db.accounts)
+            ..where((a) => a.name.equals(name) & a.id.equals(id).not()))
+          .get();
+      if (clash.isNotEmpty) {
+        throw DuplicateNameException(
+          entityType: 'account',
+          name: name,
+          existingId: clash.first.id,
+        );
+      }
+    }
     await (db.update(db.accounts)..where((a) => a.id.equals(id))).write(
       AccountsCompanion(
         name: name != null ? d.Value(name) : const d.Value.absent(),
@@ -232,7 +294,23 @@ class LocalAccountRepository implements AccountRepository {
 
   @override
   Future<void> deleteAccount(int id) async {
-    await (db.delete(db.accounts)..where((a) => a.id.equals(id))).go();
+    // C3/F-30:删除账户时级联清引用,避免悬挂孤儿。
+    //  - transactions.account_id / to_account_id 置 null(旧实现只裸 DELETE
+    //    账户行;交易引用悬空导致净值凭空变化,只有用户主动跑孤儿扫描器才修)
+    //  - account_adjustments 行删除(旧实现不级联,且扫描器无该检查项 →
+    //    永久孤儿:既占空间,重建同名账户时还可能被误配)
+    await db.transaction(() async {
+      await (db.update(db.transactions)
+            ..where((t) => t.accountId.equals(id)))
+          .write(const TransactionsCompanion(accountId: d.Value(null)));
+      await (db.update(db.transactions)
+            ..where((t) => t.toAccountId.equals(id)))
+          .write(const TransactionsCompanion(toAccountId: d.Value(null)));
+      await (db.delete(db.accountAdjustments)
+            ..where((a) => a.accountId.equals(id)))
+          .go();
+      await (db.delete(db.accounts)..where((a) => a.id.equals(id))).go();
+    });
   }
 
   /// 「以成员身份加入的共享账本」ledger id 集合 —— **个人资产统计一律排除
@@ -691,9 +769,16 @@ SELECT aid,
   @override
   Future<List<Account>> getAccountsByIds(List<int> accountIds) async {
     if (accountIds.isEmpty) return [];
-    return await (db.select(db.accounts)
-          ..where((a) => a.id.isIn(accountIds)))
-        .get();
+    // C3/阻塞-6(F-38):按 sqliteBindChunkSize(400)分块。不分块时
+    // sync_diff_service.dart 用账号 id 全集调用,大账号数下抛
+    // "too many SQL variables"。
+    final out = <Account>[];
+    for (final chunk in chunkIds(accountIds)) {
+      out.addAll(await (db.select(db.accounts)
+            ..where((a) => a.id.isIn(chunk)))
+          .get());
+    }
+    return out;
   }
 
   @override
@@ -854,12 +939,16 @@ SELECT aid,
   @override
   Future<List<({int? id, String name, String? icon, double total})>>
       getAccountCategoryStats(int accountId, {required String type}) async {
+    // C3/F-17:补 exclude_from_stats = 0 —— 本入口此前完全不看 exclude flags,
+    // 同一账户的「总支出」(getAccountStats=3)与「分类明细合计」(=10)不一致,
+    // 账户详情页饼图/排行会把「不计入收支」的账目算进去。
     final results = await db.customSelect(
       '''
-      SELECT c.id, c.name, c.icon, SUM(t.amount) as total
+      SELECT c.id, c.name, c.icon,
+             SUM(COALESCE(t.native_amount, t.amount)) as total
       FROM transactions t
       LEFT JOIN categories c ON t.category_id = c.id
-      WHERE t.account_id = ?1 AND t.type = ?2
+      WHERE t.account_id = ?1 AND t.type = ?2 AND t.exclude_from_stats = 0
         AND t.$_kExcludeJoinedSharedLedgerSql
       GROUP BY c.id
       ORDER BY total DESC
@@ -938,40 +1027,34 @@ SELECT aid,
   Future<List<({DateTime date, double balance})>> getNetWorthDailyBalances({
     required DateTime startDate,
     required DateTime endDate,
+    Map<String, double>? ratesToBase,
   }) async {
-    final accounts = await getAllAccounts();
-    if (accounts.isEmpty) return [];
+    // C3/F-20:本入口历史上多币种**裸加**(Σ 各币种原币,¥1000+$100=1100),
+    // 与趋势/净资产卡(折算 + 缺汇率整条剔除)口径分裂。现在统一委托折算版:
+    // 两个"净值趋势"入口对同一数据给出同一答案。汇率由调用方(LocalRepository
+    // 包装层,与 statistics_providers 的 effectiveRatesProvider 同源)提供;
+    // 未提供时按「本位币 + 各账户币种自身 1.0」= 仅本位币口径,其余剔除。
+    final rates = ratesToBase ?? const <String, double>{'CNY': 1.0};
+    return getNetWorthDailyBalancesConverted(
+      startDate: startDate,
+      endDate: endDate,
+      ratesToBase: rates,
+    );
+  }
 
-    // 获取每个账户的每日余额
-    final allBalances = <int, List<({DateTime date, double balance})>>{};
-    for (final account in accounts) {
-      allBalances[account.id] = await getAccountDailyBalances(
-        account.id,
-        startDate: startDate,
-        endDate: endDate,
-      );
-    }
-
-    // 按日聚合
-    final result = <({DateTime date, double balance})>[];
-    var currentDate = DateTime(startDate.year, startDate.month, startDate.day);
-    final end = DateTime(endDate.year, endDate.month, endDate.day);
-    int dayIndex = 0;
-
-    while (!currentDate.isAfter(end)) {
-      double dayTotal = 0.0;
-      for (final account in accounts) {
-        final balances = allBalances[account.id]!;
-        if (dayIndex < balances.length) {
-          dayTotal += balances[dayIndex].balance;
-        }
-      }
-      result.add((date: currentDate, balance: dayTotal));
-      currentDate = currentDate.add(const Duration(days: 1));
-      dayIndex++;
-    }
-
-    return result;
+  @override
+  Future<List<({DateTime date, double balance})>>
+      getNetWorthDailyBalancesConverted({
+    required DateTime startDate,
+    required DateTime endDate,
+    required Map<String, double> ratesToBase,
+  }) async {
+    final series = await getNetWorthTrendSeries(
+      startDate: startDate,
+      endDate: endDate,
+      ratesToBase: ratesToBase,
+    );
+    return [for (final s in series) (date: s.date, balance: s.net)];
   }
 
   @override
@@ -1058,6 +1141,8 @@ SELECT aid,
 
   @override
   Future<void> updateAccountValuation(int accountId, double newValue) async {
+    // 缺陷 G:估值账户的「当前估值」直接写 initial_balance,同补守卫。
+    validateAccountAmounts(initialBalance: newValue);
     await (db.update(db.accounts)..where((a) => a.id.equals(accountId))).write(
       AccountsCompanion(
         initialBalance: d.Value(newValue),
@@ -1080,6 +1165,9 @@ SELECT aid,
     DateTime? happenedAt,
     String? note,
   }) async {
+    // 缺陷 G:account_adjustments 三列金额同补守卫(带符号,只拒非有限)。
+    validateAdjustmentAmounts(
+        amount: amount, balanceBefore: balanceBefore, balanceAfter: balanceAfter);
     final now = DateTime.now();
     return await db.into(db.accountAdjustments).insert(
           AccountAdjustmentsCompanion.insert(

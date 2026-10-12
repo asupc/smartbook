@@ -90,6 +90,7 @@ class NotificationWatcher : NotificationListenerService() {
                 postTime = postTime,
             )
             if (!enqueue(
+                    this@NotificationWatcher,
                     prefs,
                     fingerprint,
                     pkg,
@@ -165,7 +166,16 @@ class NotificationWatcher : NotificationListenerService() {
     }
 
     /**
-     * 通知指纹:sha256(pkg|title|text) 前 16 位 hex。
+     * 指纹字段编码:每个字段写成 `${长度}:${内容}`,再以 `|` 拼接。
+     * 长度前缀让字段边界自描述 —— title/body 里的 `|` 无法再与
+     * notificationKey 边界互换构造同一指纹(2026-10-11 批次 C2)。
+     * Dart 侧 `AutoBillingService.notifyFingerprint` 同口径。
+     */
+    private fun fieldEncoded(fields: List<String>): String =
+        fields.joinToString("|") { "${it.length}:$it" }
+
+    /**
+     * 通知指纹:sha256(长度前缀拼接 pkg/title/text) 前 16 位 hex。
      * 与短信指纹不共用命名空间(pkg ≠ sender 并不会冲突,但独立 key 更清晰)。
      */
     fun fingerprint(
@@ -179,9 +189,17 @@ class NotificationWatcher : NotificationListenerService() {
         val identity = if (notificationKey.isNullOrBlank() &&
             notificationId == 0 && postTime == 0L
         ) {
-            "$pkg|$title|$text"
+            fieldEncoded(listOf(pkg, title, text))
         } else {
-            "$pkg|$notificationKey|$notificationId|$postTime|$title|$text"
+            // notificationKey 为空时用空串(与 Dart 侧 `notificationKey ?? ''`
+            // 一致;Kotlin 字符串插值会把 null 写成 "null",会让缺 key 的
+            // 通知在两层算出不同指纹)。
+            fieldEncoded(
+                listOf(
+                    pkg, notificationKey ?: "", "$notificationId",
+                    "$postTime", title, text,
+                )
+            )
         }
         return MessageDigest.getInstance("SHA-256")
             .digest(identity.toByteArray())
@@ -194,9 +212,14 @@ class NotificationWatcher : NotificationListenerService() {
         const val BRIDGE_ACTION = "com.smartbook.zhi.NOTIFY_CAPTURED"
 
         const val PREFS_NAME = "notify_monitor_prefs"
+        /** 统一队列里的来源标识(B3)。 */
+        const val SOURCE = "notification"
         const val KEY_ENABLED = "enabled"
         const val KEY_FINGERPRINTS = "processed_fingerprints"
         const val KEY_QUEUE = "pending_queue"
+
+        // B1 状态卡「最近捕获时间」:入队时落盘,ACK 清空队列后仍保留。
+        const val KEY_LAST_CAPTURE_AT = "last_capture_at"
 
         const val MAX_FINGERPRINTS = 200
         const val MAX_QUEUE = 50
@@ -305,6 +328,7 @@ class NotificationWatcher : NotificationListenerService() {
 
         @Synchronized
         private fun enqueue(
+            context: Context,
             prefs: SharedPreferences,
             fingerprint: String,
             pkg: String,
@@ -314,75 +338,69 @@ class NotificationWatcher : NotificationListenerService() {
             notificationKey: String,
             notificationId: Int,
         ): Boolean {
+            NativeAutoBookQueue.migrateFromPrefs(context, SOURCE, PREFS_NAME, KEY_QUEUE)
             val processed = loadFingerprints(prefs)
             if (processed.contains(fingerprint)) return false
-            val arr = JSONArray(prefs.getString(KEY_QUEUE, null) ?: "[]")
-            for (i in 0 until arr.length()) {
-                if (arr.optJSONObject(i)?.optString("fingerprint") == fingerprint) {
-                    return false
-                }
-            }
-            arr.put(
-                JSONObject()
-                    .put("fingerprint", fingerprint)
-                    .put("package", pkg)
-                    .put("title", title)
-                    .put("body", text)
-                    .put("timestamp", ts)
-                    .put("notificationKey", notificationKey)
-                    .put("notificationId", notificationId)
+            val item = JSONObject()
+                .put("fingerprint", fingerprint)
+                .put("package", pkg)
+                .put("title", title)
+                .put("body", text)
+                .put("timestamp", ts)
+                .put("notificationKey", notificationKey)
+                .put("notificationId", notificationId)
+            val target = AutoBookTargetStore.enqueueFields(context)
+            val result = NativeAutoBookQueue.enqueue(
+                context = context,
+                source = SOURCE,
+                item = item,
+                nowMs = System.currentTimeMillis(),
+                targetRef = target["targetRef"] as? String,
+                targetVersion = target["targetVersion"] as? Int,
+                targetState = target["targetState"] as? String,
             )
-            while (arr.length() > MAX_QUEUE) arr.remove(0)
-            prefs.edit().putString(KEY_QUEUE, arr.toString()).apply()
+            if (result != NativeAutoBookQueue.EnqueueResult.added) return false
+            prefs.edit().putLong(KEY_LAST_CAPTURE_AT, ts).apply()
             return true
         }
 
+        /** 最近一次入队时间(0 = 本机从未捕获过)。只读状态查询用。 */
+        @Synchronized
+        fun lastCaptureAt(context: Context): Long {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            return prefs.getLong(KEY_LAST_CAPTURE_AT, 0L)
+        }
+
+        /** peek 不删除;处理完成由 ackQueue 逐项确认(B3 分批读取)。 */
         @Synchronized
         fun peekQueue(context: Context): ArrayList<Map<String, String>> {
-            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            val raw = prefs.getString(KEY_QUEUE, null) ?: return ArrayList()
-            val arr = JSONArray(raw)
-            val result = ArrayList<Map<String, String>>(arr.length())
-            for (i in 0 until arr.length()) {
-                val obj = arr.optJSONObject(i) ?: continue
-                result.add(
-                    mapOf(
-                        "fingerprint" to obj.optString("fingerprint"),
-                        "package" to obj.optString("package"),
-                        "title" to obj.optString("title"),
-                        "body" to obj.optString("body"),
-                        "timestamp" to obj.optString("timestamp"),
-                        "notificationKey" to obj.optString("notificationKey"),
-                        "notificationId" to obj.optString("notificationId")
-                    )
-                )
-            }
+            NativeAutoBookQueue.migrateFromPrefs(context, SOURCE, PREFS_NAME, KEY_QUEUE)
+            val items = NativeAutoBookQueue.peekBatch(
+                context, SOURCE, NativeAutoBookQueue.MAX_PER_SOURCE
+            )
+            val result = ArrayList<Map<String, String>>(items.size)
+            for (item in items) result.add(NativeAutoBookQueue.toMap(item))
             return result
         }
 
         @Synchronized
         fun ackQueue(context: Context, fingerprints: List<String>) {
             if (fingerprints.isEmpty()) return
+            NativeAutoBookQueue.migrateFromPrefs(context, SOURCE, PREFS_NAME, KEY_QUEUE)
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            val raw = prefs.getString(KEY_QUEUE, null) ?: return
-            val wanted = fingerprints.toSet()
-            val arr = JSONArray(raw)
-            val remaining = JSONArray()
+            val wanted = fingerprints.filter { it.isNotEmpty() }.toSet()
+            if (wanted.isEmpty()) return
+            // 先取回原始项:删除后就无法再补「已处理」备忘录。
             val acked = mutableSetOf<String>()
-            for (i in 0 until arr.length()) {
-                val obj = arr.optJSONObject(i) ?: continue
+            for (obj in NativeAutoBookQueue.itemsFor(context, SOURCE, wanted)) {
                 val fp = obj.optString("fingerprint")
-                if (wanted.contains(fp)) {
-                    acked.add(fp)
-                } else {
-                    remaining.put(obj)
-                }
+                if (fp.isNotEmpty()) acked.add(fp)
             }
+            NativeAutoBookQueue.ack(context, SOURCE, wanted.toList())
             if (acked.isEmpty()) return
             val processed = loadFingerprints(prefs)
             processed.addAll(acked)
             saveFingerprints(prefs, processed)
-            prefs.edit().putString(KEY_QUEUE, remaining.toString()).apply()
         }
 
         private fun log(msg: String) {

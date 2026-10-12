@@ -34,12 +34,30 @@ void main() {
       expect(DateParser.tryParse('   '), isNull);
     });
 
-    test('非空但无法解析的串:当前实现回落到 now()(非 null)', () {
-      // 已知遗留:tryParse 文档称"失败返回 null",但它委托给
-      // parse(fallback: null),而 parse 解析失败时 `return fallback ?? DateTime.now()`
-      // → 返回 now()。只有 null/空白在 tryParse 入口被拦下返回 null。
-      // 此用例锁定**当前真实行为**;若日后修正为"失败即 null",改这里。
-      expect(DateParser.tryParse('not a date'), isNotNull);
+    test('非空但无法解析的串:返回 null(不回落 now())', () {
+      // 2026-10-11(批次 C2)修正:tryParse 原先委托 `parse(fallback: null)`,
+      // 而 parse 解析失败时 `return fallback ?? DateTime.now()` → 返回 now()。
+      // 那让导入页的 1970 sentinel 几乎永不生效:垃圾日期被当成"导入那一刻"
+      // 的合法时间直接入账。现在 tryParse/parseOrNull 失败即 null。
+      // (原用例注释即写明"若日后修正为'失败即 null',改这里"。)
+      expect(DateParser.tryParse('not a date'), isNull);
+      expect(DateParser.parseOrNull('not a date'), isNull);
+    });
+
+    test('非法日历日期被拒绝(不顺延)', () {
+      expect(DateParser.tryParse('2026-02-30'), isNull);
+      expect(DateParser.tryParse('2025-02-29'), isNull);
+      expect(DateParser.tryParse('2026年13月40日'), isNull);
+      expect(DateParser.tryParse('2026-05-26 99:99:99'), isNull);
+      expect(DateParser.tryParse('2024-02-29'), DateTime(2024, 2, 29));
+    });
+
+    test('日/月歧义写法按 dd-MM 解读(默认),day>12 时按唯一合法解读', () {
+      expect(DateParser.tryParse('03-04-2026'), DateTime(2026, 4, 3));
+      expect(DateParser.tryParse('25-04-2026'), DateTime(2026, 4, 25));
+      // 第二段 >12 → 只可能是 MM/dd/yyyy
+      expect(DateParser.tryParse('04-25-2026'), DateTime(2026, 4, 25));
+      expect(DateParser.tryParse('05/03/2026'), DateTime(2026, 3, 5));
     });
   });
 

@@ -7,6 +7,17 @@ import '../../../utils/month_range.dart';
 
 const _uuid = Uuid();
 
+/// 缺陷 G:`budgets.amount` 此前无守卫。探针实测 `createBudget(amount: Infinity)`
+/// 落库 → 预算使用率/状态/剩余额全被污染(Infinity 进 UI)。
+/// 有限的大值照旧放行(只拒非有限)。负数同样放行:聚合测试 L3 锁定
+/// 「amount<0 → rate 0,不除零」是既有可辩护行为,不自本改动收紧。
+void _validateBudgetAmount(double amount) {
+  if (!amount.isFinite) {
+    throw ArgumentError.value(
+        amount, 'amount', '预算金额必须是有限数(NaN/Infinity 会污染预算使用率)');
+  }
+}
+
 /// 本地预算Repository实现
 /// 基于 Drift 数据库实现
 ///
@@ -43,6 +54,7 @@ class LocalBudgetRepository implements BudgetRepository {
     String period = 'monthly',
     int startDay = 1,
   }) async {
+    _validateBudgetAmount(amount);
     // 每条新建预算分配一个 UUID,跨设备 LWW 用。syncId 在 DB schema 上允许
     // NULL,只是为了 v22 migration 对老数据兼容;新建走这里永远填。
     return await db.into(db.budgets).insert(
@@ -65,6 +77,7 @@ class LocalBudgetRepository implements BudgetRepository {
     int? startDay,
     bool? enabled,
   }) async {
+    if (amount != null) _validateBudgetAmount(amount);
     await (db.update(db.budgets)..where((b) => b.id.equals(id))).write(
       BudgetsCompanion(
         amount: amount != null ? d.Value(amount) : const d.Value.absent(),
@@ -149,6 +162,29 @@ class LocalBudgetRepository implements BudgetRepository {
   // 预算统计
   // ============================================
 
+  /// 预算周期范围(C3/F-21)。
+  ///
+  /// `budget.period` 此前被统计层**完全忽略**(schema/UI/同步都有该列,只有
+  /// 计算不读)—— 用户设「周预算 1000」会把整月支出当作本期已用。现在:
+  ///  - `monthly`(含缺失/非法值)→ 跟随账本 monthStartDay 的月周期(设计 D5);
+  ///  - `weekly` → 包含 [date] 的自然周(周一 00:00 起,ISO 周);
+  ///  - `yearly` → 包含 [date] 的账本年周期(yearRangeFor,尊重 monthStartDay)。
+  Future<DateRange> _budgetRange(
+      Budget budget, int monthStartDay, DateTime date) async {
+    switch (budget.period) {
+      case 'weekly':
+        final dayStart = DateTime(date.year, date.month, date.day);
+        // ISO 周:周一为一周起点(weekday 1..7)
+        final monday = dayStart.subtract(Duration(days: dayStart.weekday - 1));
+        return (start: monday, end: monday.add(const Duration(days: 7)));
+      case 'yearly':
+        return yearRangeFor(date.year, monthStartDay);
+      case 'monthly':
+      default:
+        return periodContaining(date, monthStartDay);
+    }
+  }
+
   @override
   Future<BudgetUsage> getBudgetUsage(int budgetId, DateTime month) async {
     final budget = await (db.select(db.budgets)
@@ -159,11 +195,11 @@ class LocalBudgetRepository implements BudgetRepository {
       return BudgetUsage(used: 0, budget: 0);
     }
 
-    // 预算周期跟随账本 monthStartDay(设计 D5:budget.startDay 弃用,列保留
-    // 兼容历史同步数据)。month 参数语义 = 「包含该日期的周期」,调用方传 now
-    // (见 budget_providers.dart)。
+    // 预算周期跟随 period(C3/F-21);monthly 再跟随账本 monthStartDay
+    // (设计 D5:budget.startDay 弃用,列保留兼容历史同步数据)。month 参数
+    // 语义 = 「包含该日期的周期」,调用方传 now(见 budget_providers.dart)。
     final sd = await _monthStartDayOf(budget.ledgerId);
-    final range = periodContaining(month, sd);
+    final range = await _budgetRange(budget, sd, month);
     final startDate = range.start;
     final endDate = range.end;
 
@@ -231,11 +267,11 @@ class LocalBudgetRepository implements BudgetRepository {
     // 获取分类预算使用情况
     final categoryUsages = await getCategoryBudgetUsages(ledgerId, month);
 
-    // 计算剩余天数(周期跟随账本 monthStartDay,与 getBudgetUsage 同口径)
-    final now = DateTime.now();
+    // 计算剩余天数(C3/F-23:与传入 month 参数绑定;旧实现永远用 DateTime.now()
+    // 的当前周期 → 历史/未来周期的概览显示「本期剩余 N 天」,dailyAvailable 随之错)
     final sd = await _monthStartDayOf(ledgerId);
-    final endDate = periodContaining(now, sd).end;
-    final daysRemaining = endDate.difference(now).inDays;
+    final endDate = (await _rangeForOverview(ledgerId, month, sd)).end;
+    final daysRemaining = endDate.difference(month).inDays;
 
     // 计算日均可用
     final remaining = totalUsage?.remaining ?? 0;
@@ -247,6 +283,21 @@ class LocalBudgetRepository implements BudgetRepository {
       daysRemaining: daysRemaining > 0 ? daysRemaining : 0,
       dailyAvailable: dailyAvailable > 0 ? dailyAvailable : 0,
     );
+  }
+
+  /// overview 的周期范围:优先按总预算的 period(与 getBudgetUsage 同口径),
+  /// 无总预算时退化为账本月周期。
+  Future<DateRange> _rangeForOverview(
+      int ledgerId, DateTime month, int monthStartDay) async {
+    try {
+      final total = await getTotalBudget(ledgerId);
+      if (total != null) {
+        return await _budgetRange(total, monthStartDay, month);
+      }
+    } catch (_) {
+      // 读取失败 → 退化
+    }
+    return periodContaining(month, monthStartDay);
   }
 
   @override

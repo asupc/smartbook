@@ -15,119 +15,23 @@ import '../../services/ui/avatar_service.dart';
 import '../../providers/avatar_providers.dart';
 import '../../providers/sync_providers.dart' as sp;
 import '../../l10n/app_localizations.dart';
+import '../../providers/automation_providers.dart';
+import '../../services/automation/automation_health.dart';
 import '../automation/auto_billing_settings_page.dart';
+import '../automation/auto_billing_setup_page.dart';
+import '../../services/automation/automation_settings_store.dart';
 import '../automation/auto_recognition_records_page.dart';
 import '../cloud/cloud_sync_page.dart';
 import '../cloud/smartbook_cloud_sync_page.dart';
-import '../../utils/notification_factory.dart';
-import '../../utils/notification_android.dart';
 import '../settings/data_management_page.dart';
 import '../settings/appearance_settings_page.dart';
 import '../settings/smart_billing_page.dart';
 import '../settings/automation_page.dart';
 import '../report/annual_report_page.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:in_app_review/in_app_review.dart';
-import '../../ai/providers/ai_provider_config.dart' show AICapabilityType;
-import '../../ai/providers/ai_provider_manager.dart' show AIProviderManager;
-import '../../services/platform/screenshot_monitor_service.dart';
-import '../../services/platform/sms_monitor_service.dart';
-import '../../services/platform/notify_monitor_service.dart';
 import '../../pages/automation/pending_confirmation_page.dart';
 import '../automation/deleted_transactions_page.dart';
 import '../../utils/ui_scale_extensions.dart';
-
-/// 自动记账健康检查结果(截图/短信/通知监听 + AI 配置 + 电池优化的聚合)。
-class AutoBillingHealth {
-  const AutoBillingHealth({
-    required this.screenshotOn,
-    required this.smsOn,
-    required this.smsPermissionGranted,
-    required this.notifyOn,
-    required this.notifyListenerGranted,
-    required this.aiTextReady,
-    required this.aiVisionReady,
-    this.batteryOptimizationIgnored = true,
-  });
-
-  final bool screenshotOn;
-  final bool smsOn;
-  final bool smsPermissionGranted;
-  final bool notifyOn;
-  final bool notifyListenerGranted;
-  final bool aiTextReady;
-  final bool aiVisionReady;
-
-  /// 电池优化是否已被忽略(vivo 保活必查;查询失败/Future 视为通过防误报)。
-  final bool batteryOptimizationIgnored;
-
-  /// 未就绪项 key 列表(供 UI 逐项显示 l10n 文案)。
-  /// 权限缺失只在对应监听开启时才算问题(没开监听就不必给权限)。
-  List<String> get issues {
-    final list = <String>[];
-    if (!screenshotOn) list.add('screenshot');
-    if (!smsOn) list.add('sms');
-    if (smsOn && !smsPermissionGranted) list.add('smsPermission');
-    if (!notifyOn) list.add('notify');
-    if (notifyOn && !notifyListenerGranted) list.add('notifyListener');
-    if (!aiTextReady) list.add('aiText');
-    if (!aiVisionReady) list.add('aiVision');
-    if (!batteryOptimizationIgnored) list.add('battery');
-    return list;
-  }
-
-  int get issueCount => issues.length;
-
-  bool get isHealthy => issueCount == 0;
-}
-
-// 自动记账健康检测:截图/短信/通知监听未开启、监听权限被撤、
-// AI 文本或视觉未配置都会导致自动记账不可用。
-// 待确认候选数量(M2 候选制)的 pendingCandidateCountProvider 已上移到
-// providers/automation_providers.dart(P1-3 统一口径),与首页提醒条共用。
-
-final autoBillingHealthProvider = FutureProvider<AutoBillingHealth>((ref) async {
-  final container = ref.container;
-  // 截图/短信/通知监听是 Android 专属能力;iOS 走快捷指令/分享,不参与检测
-  if (!Platform.isAndroid) {
-    return AutoBillingHealth(
-      screenshotOn: true,
-      smsOn: true,
-      smsPermissionGranted: true,
-      notifyOn: true,
-      notifyListenerGranted: true,
-      aiTextReady: await AIProviderManager.isCapabilityConfigured(
-          AICapabilityType.text),
-      aiVisionReady: await AIProviderManager.isCapabilityConfigured(
-          AICapabilityType.vision),
-    );
-  }
-  final screenshot = ScreenshotMonitorService(container);
-  final sms = SmsMonitorService(container);
-  final notify = NotifyMonitorService(container);
-  final smsPerm = await Permission.sms.status;
-  bool batteryIgnored = true;
-  try {
-    final androidUtil =
-        NotificationFactory.getInstance() as AndroidNotificationUtil;
-    final info = await androidUtil.getBatteryOptimizationInfo();
-    batteryIgnored = info['isIgnoring'] == true;
-  } catch (_) {
-    // 查询失败视为通过,避免误报
-  }
-  return AutoBillingHealth(
-    screenshotOn: await screenshot.isEnabled(),
-    smsOn: await sms.isEnabled(),
-    smsPermissionGranted: smsPerm.isGranted,
-    notifyOn: await notify.isEnabled(),
-    notifyListenerGranted: await notify.isListenerGranted(),
-    aiTextReady: await AIProviderManager.isCapabilityConfigured(
-        AICapabilityType.text),
-    aiVisionReady: await AIProviderManager.isCapabilityConfigured(
-        AICapabilityType.vision),
-    batteryOptimizationIgnored: batteryIgnored,
-  );
-});
 
 class MinePage extends ConsumerWidget {
   const MinePage({super.key});
@@ -391,45 +295,35 @@ class MinePage extends ConsumerWidget {
                       // 自动记账:入口 + 健康状态检测(subtitle 动态刷新)
                       Consumer(
                         builder: (ctx, r, _) {
-                          final health = r.watch(autoBillingHealthProvider);
+                          // B1:与首页状态卡、配置页共用同一份状态源
+                          final health = r.watch(automationHealthProvider);
                           final h = health.asData?.value;
                           final pendingCount =
                               r.watch(pendingCandidateCountProvider).valueOrNull ??
                                   0;
-                          final issueCount = h?.issueCount ?? 0;
                           final l10n = AppLocalizations.of(ctx);
-                          String? issueLabel(String key) {
-                            switch (key) {
-                              case 'screenshot':
-                                return l10n.autoBillingHealthIssueScreenshot;
-                              case 'sms':
-                                return l10n.autoBillingHealthIssueSms;
-                              case 'smsPermission':
-                                return l10n.autoBillingHealthIssueSmsPermission;
-                              case 'notify':
-                                return l10n.autoBillingHealthIssueNotify;
-                              case 'notifyListener':
-                                return l10n.autoBillingHealthIssueNotifyListener;
-                              case 'aiText':
-                                return l10n.autoBillingHealthIssueAiText;
-                              case 'aiVision':
-                                return l10n.autoBillingHealthIssueAiVision;
-                              case 'battery':
-                                return l10n.autoBillingHealthIssueBattery;
-                              default:
-                                return null;
-                            }
-                          }
+                          // 队列积压/待确认数有徽标与首页状态卡负责,入口
+                          // subtitle 只列「未就绪」问题,避免同一问题重复占位。
+                          final visible = h
+                                  ?.issues()
+                                  .where((i) =>
+                                      i.dimension != AutomationDimension.queue)
+                                  .toList() ??
+                              const <AutomationIssue>[];
+                          final issueCount = visible.length;
 
                           final statusText = h == null
                               ? l10n.smartBillingChecking
-                              : (h.isHealthy
+                              : (visible.isEmpty
                                   ? l10n.autoBillingHealthy
-                                  : l10n.autoBillingPartial(issueCount,
-                                      h.issues
-                                          .map(issueLabel)
-                                          .whereType<String>()
+                                  : l10n.autoBillingPartial(
+                                      issueCount,
+                                      visible
+                                          .map((i) =>
+                                              AutomationHealth.shortLabel(
+                                                  l10n, i))
                                           .join('、')));
+                          final healthy = h != null && visible.isEmpty;
                           return AppListTile(
                             leading: Icons.auto_fix_high_rounded,
                             leadingColor: const Color(0xFFD97706),
@@ -447,10 +341,10 @@ class MinePage extends ConsumerWidget {
                                         color: BeeTokens.iconTertiary(ctx),
                                         size: 20)
                                     : Icon(
-                                        h.isHealthy
+                                        healthy
                                             ? Icons.check_circle
                                             : Icons.warning_amber_rounded,
-                                        color: h.isHealthy
+                                        color: healthy
                                             ? Colors.green
                                             : Colors.orange,
                                         size: 20),
@@ -483,13 +377,22 @@ class MinePage extends ConsumerWidget {
                               ],
                             ),
                             onTap: () async {
+                              // B1 主入口:未完成开通先走引导,已完成进配置页
+                              final setupDone = await ref
+                                  .read(automationSettingsStoreProvider)
+                                  .isSetupCompleted();
+                              if (!ctx.mounted) return;
                               await Navigator.of(ctx).push(
                                 MaterialPageRoute(
-                                    builder: (_) =>
-                                        const AutoBillingSettingsPage()),
+                                  builder: (_) => setupDone
+                                      ? const AutoBillingSettingsPage()
+                                      : const AutoBillingSetupPage(),
+                                ),
                               );
-                              // 从设置页返回后刷新健康检测与待确认计数
-                              r.invalidate(autoBillingHealthProvider);
+                              // 从设置页返回后补查状态与待确认计数
+                              r.read(automationHealthRefreshProvider.notifier)
+                                  .state++;
+                              r.invalidate(automationHealthProvider);
                               r.invalidate(pendingCandidateCountProvider);
                             },
                           );

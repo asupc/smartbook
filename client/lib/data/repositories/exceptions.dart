@@ -31,3 +31,20 @@ class DuplicateNameException implements Exception {
       'DuplicateNameException: $entityType "$name" already exists'
       '${existingId != null ? ' (id=$existingId)' : ''}';
 }
+
+/// 把分类的 parentId 改成自身的后代(或自身)会形成环(C3/F-24)。
+///
+/// 环会让整条链从 `CategoryHierarchy.buildHierarchy` 的根集合里消失 ——
+/// 「分类管理页看不到、交易挂的类目不可达」,用户无法通过 UI 修复。
+///
+/// 抛它的场景:`updateCategory(parentId: ...)` 的前置校验。
+class CategoryCycleException implements Exception {
+  const CategoryCycleException({required this.categoryId, required this.parentId});
+
+  final int categoryId;
+  final int parentId;
+
+  @override
+  String toString() =>
+      'CategoryCycleException: 把分类 $categoryId 的父级设为 $parentId 会形成环';
+}

@@ -98,8 +98,20 @@ class SyncEngine implements app.SyncService {
   ///
   /// 仅内存态:进程重启后每个实体重新获得 N 次机会(服务端可能已修好);
   /// 实体之后推送成功时计数清除。UI 暴露(同步页展示被熔断实体)可后置。
+  ///
+  /// **P-02(2026-10-11)可逆性修复**:熔断必须对新 change id 可穿透 —— 用户
+  /// 新编辑产生新代表条(rep.id 变大)时重置计数、放行一次。同时加**超时
+  /// 衰减**:熔断后 [pushRejectProbeInterval] 内不再推,之后放行**一次**
+  /// 探测(服务端可能已修好 / 数据已从别处对齐),避免"会话内永久死锁"。
   static const int maxPushRejectAttempts = 8;
-  final Map<String, ({int repChangeId, int rejects, bool tripped})>
+
+  /// 熔断后最长静默期。超过它 → 放行一次探测(probe),探测被拒则重新计时。
+  ///
+  /// 30 min 的取舍:被拒 change 的典型修复路径(服务端修数据 / 用户在 web
+  /// 改回)不是秒级操作,但"用户手动点同步 + 等半分钟"也不该永远看不到反应。
+  static const Duration pushRejectProbeInterval = Duration(minutes: 30);
+
+  final Map<String, ({int repChangeId, int rejects, bool tripped, DateTime at})>
       _pushRejectState = {};
 
   String _pushRejectKey(String entityType, String entitySyncId) =>
@@ -164,6 +176,84 @@ class SyncEngine implements app.SyncService {
   /// resolvers 路径(`sync_engine_resolvers.dart`)优先查它,消除 N+1 SELECT。
   /// 详见 [LookupCache](sync_engine_pull.dart)。
   LookupCache? activePullCache;
+
+  /// U-08(2026-10-11):本页"依赖未就绪、必须重放"的 change_id 集合。
+  ///
+  /// apply handler 只能返回 bool(true=已应用 / false=跳过),无法表达"跳过
+  /// 但**必须重放**"的第三种语义。budget / account_adjustment(以及账本解析
+  /// 不出的 transaction)在 `ledgerSyncId` 解析不到本地账本时属于这种:现在
+  /// 跳过,等 ledger change 到达后还要回来,所以它的 change_id **绝不能落到
+  /// cursor 之后**。
+  ///
+  /// 实现:handler 跳过时把 `change.changeId` 登记进这个集合,
+  /// [_applyPullPage] 看到命中即计入 deferred → [_runPullLoop] 本页不 commit
+  /// cursor。集合的生命周期 = 单个 pull(入口 clear),不给跨轮泄漏留下状态。
+  /// 用 change_id 而非 entitySyncId 做键:同页内同实体出现两次(upsert→delete)
+  /// 时不会把一个正常落地的 change 误算成 deferred。
+  final Set<int> _deferredChangeIds = {};
+
+  /// 缺陷 A(2026-10-11 复现缺陷修复):本 pull 轮"值不可用被跳过"的 change。
+  ///
+  /// `_skipPulledTxIfInvalid` / `_skipPulledMoneyIfInvalid` 命中(远端非有限
+  /// 金额等)时登记这里,**不再只写一行 warning** —— [_applyPullPage] 在页事务
+  /// commit 之后把这些条目写进 [pullErrors](`error_class = PulledValueSkipped`,
+  /// 强制 `resolved_at = NULL`),并从本页 [resolveChangeIds] 中排除,使其在
+  /// `watchUnresolved()`(UI 面)可见。
+  ///
+  /// 为什么必须持久化:值跳过的 change **cursor 照常推进**(必须如此,否则
+  /// 这条坏 change 每轮重放、整页 apply 永远卡死)。这不抛错的代价是它的
+  /// change_id 落到 cursor 之后,**下一轮 pull 再也不会返回它** —— 若没有这条
+  /// 持久记录,该远端变更就永久静默消失,只有 48h 保留的日志里一行 warning。
+  /// 登记后它是"未解决、UI 可见"的事实状态,直到真正 apply 成功
+  /// (服务端修数据 / 全量重放)才被 [SyncErrorStore.markResolved] 自愈。
+  ///
+  /// 生命周期:与 [_deferredChangeIds] 一样按 pull 轮隔离([_doPull] 入口 clear)
+  /// —— 页事务 rollback 时 [_applyPullPage] 会把本页新增的登记回滚掉,判定不会
+  /// 残留到下一轮。
+  final Map<int, ({SmartBookCloudSyncChange change, String reason})>
+      _valueSkips = {};
+
+  /// U-08 的**活性安全阀**:同一条 change 连续被推迟多少次后放弃等待。
+  ///
+  /// 推迟的前提是"依赖(=ledger change)即将到达"。同一页通常下一次 pull 就
+  /// 自愈(页内所有 change 都已 apply,只是 cursor 没走,重放即命中)。但若依赖
+  /// 永远不到(引用了一个本设备永远拿不到的账本 —— 服务端路由 / 用户已退出
+  /// 共享账本 / 脏 ledgerSyncId),无上限推迟会让**整台设备**的 pull 永久停在
+  /// 一页上:后面的所有变更都同步不下来,比原来的"静默丢一条"更糟。
+  ///
+  /// 阈值 10 的取舍:正常乱序(依赖在后一页 / 同页之后)最多 1-2 次重放就解决,
+  /// 10 次给了充足余量;真到 10 次说明依赖不会来了,此时把该 change 记入
+  /// [pullErrors](UI 可见、不静默)并放行 cursor —— 与 SyncErrorStore 的既有
+  /// 设计意图一致(脏 change 由服务端修数据后推新 change 覆盖)。
+  ///
+  /// **放弃 = 可观测的终态(2026-10-11 复现缺陷修复)**:旧实现是"在 `_applyPullPage`
+  /// 内写 [pullErrors] → 本轮 commit → `_runPullLoop` 的 markResolved 循环把同一
+  /// 个 change_id 立刻 resolve" —— 错误行落库即死,`watchUnresolved()` 永远看不到,
+  /// "recorded in pullErrors, UI-visible" 的承诺不成立。现在:
+  /// 1. 放弃判定与错误行在页事务 commit **之后**才落定(`_applyPullPage`),
+  ///    且错误行强制 `resolved_at = NULL`(`SyncErrorStore.recordDeferredGiveUp`);
+  /// 2. `_runPullLoop` 的 markResolved 循环只清 [resolveChangeIds](本轮未登记
+  ///    deferred 的 id)—— 放弃 / 仍推迟的 change_id 天然跳过,错误行存活于
+  ///    `watchUnresolved()`;
+  /// 3. 放弃的 change_id 进 [_abandonedDeferredIds],本会话内不再被当作 deferred
+  ///    (游标不再被它卡住),也不会被后续轮的 markResolved 误清 —— 直到它真正
+  ///    apply 成功(依赖终于到达)才自愈 resolve。
+  static const int maxDeferredReplays = 10;
+
+  /// 各 deferred change 已被推迟的轮次(仅内存,per SyncEngine 实例)。
+  final Map<int, int> _deferredReplays = {};
+
+  /// 已经"判定依赖不会到达、放弃重放"的 change_id(仅内存,per SyncEngine 实例)。
+  ///
+  /// 语义:
+  /// - 命中 → 该 change 不再计入 deferred(否则兄弟条目会把它继续钉在页首,
+  ///   每轮重复放弃、重复写错误);
+  /// - `_runPullLoop` 的 markResolved 循环**不会**清这个集合里的 id —— 放弃的
+  ///   change 没有落地,其错误行必须在 `watchUnresolved()` 里存活到真正 apply
+  ///   成功([_PullPageOutcome.resolveChangeIds] 只收未登记 deferred 的 id);
+  /// - 同一条 change 之后真的 apply 成功(依赖到达 / replayAllChanges)→ 从集合
+  ///   移除 → 该轮 markResolved 把错误 resolve(自愈,无需人工清理)。
+  final Set<int> _abandonedDeferredIds = {};
 
   /// push / fullPush 的 in-flight 单飞锁。**per-ledger** —— 不同 ledger
   /// 并发不互相阻塞,只阻塞同 ledger 的并发触发。
@@ -1167,6 +1257,11 @@ class SyncEngine implements app.SyncService {
   ///   无法点名 —— 此时**整批不 markPushed**(全部保留重推;同
   ///   (updated_at, device_id) 元组重推服务端按幂等接受),绝不按残缺样本
   ///   排除、把第 21 条起被拒的 change 误标已推静默丢失。
+  /// - **P-01(2026-10-11)**:判定口径改为 `rejected`(服务端总拒收数)与
+  ///   `conflict+failed` 的**较大者**。服务端存在只 `rejected += 1` 而不带
+  ///   任何 sample 的分支(push.py:305 ledger-scoped change 缺 ledger_id /
+  ///   push.py:413 非 owner 推 ledger):只看 conflict+failed 会得 0 →
+  ///   既不触发 B1 截断保护也不累计 B3 → change 被误标已推**静默丢失**。
   /// - C11(2026-09-15):`buildSyncChange` 返回 null(实体已被本地删除)的
   ///   行跳过不发送,也不 markPushed(留待 delete change / 本地重建对齐)。
   /// - 附录 B3(2026-09-15):同一代表条被服务端拒绝 [maxPushRejectAttempts]
@@ -1174,6 +1269,7 @@ class SyncEngine implements app.SyncService {
   ///   冲突写一条 AuditLog,双向放大)。熔断条保留在 local_changes,unpushed
   ///   计数可见;用户对实体产生新编辑(新 change id)或本会话内该实体推送
   ///   成功时解除。
+  /// - **P-02(2026-10-11)**:熔断可逆 —— 见 [_admitToSend]。
   Future<int> _pushChangeGroups(
     List<LocalChange> representatives,
     List<List<int>> changeIds, {
@@ -1192,39 +1288,63 @@ class SyncEngine implements app.SyncService {
       final syncChanges = <Map<String, dynamic>>[];
       for (var i = 0; i < batch.length; i++) {
         final rep = batch[i];
-        final rejectKey = _pushRejectKey(rep.entityType, rep.entitySyncId);
-        final state = _pushRejectState[rejectKey];
-        if (state != null && state.tripped) {
-          logger.warning(
-              'SyncEngine',
-              'push: ${rep.entityType}(${rep.entitySyncId}) 已被服务端拒绝 '
-              '${state.rejects} 次,本会话熔断不再重推(change 保留本地,可检查'
-              '服务端数据后重启 App 重试)');
-          continue;
-        }
+        if (!_admitToSend(rep)) continue;
         final payload = await buildSyncChange(rep);
         if (payload == null) continue; // 告警已在 buildSyncChange 内打
+        // U-04(2026-10-11):毒 payload(NaN/Infinity)在**交给 provider 之前**
+        // 拦下。真实 provider 对整批 body 一次 `jsonEncode`,一条非有限值就能
+        // 让**整批**失败(JsonUnsupportedObjectError)→ 该设备推送通道整体瘫痪。
+        // 这里跳过该条 + 告警 + 不 markPushed(保守重推,绝不静默丢),
+        // 其余正常实体照常推送 —— 与"一条远端脏数据毒化整个通道"相反。
+        if (_hasNonFiniteNumber(payload)) {
+          _skipPoisonPayload(rep.entityType, rep.entitySyncId);
+          continue;
+        }
         sentIndexes.add(start + i);
         syncChanges.add(payload);
       }
       if (syncChanges.isEmpty) continue;
       final result = await provider.pushChanges(changes: syncChanges);
       final rejectedSyncIds = result.rejectedEntitySyncIds;
-      final reportedRejections = result.conflictCount + result.failedCount;
+      // 中-1:服务端终态拒绝样本(reason ∈ 终态集合)。
+      final terminalSamples = result.terminalRejectionSamples;
+      // P-01:`rejected` 是服务端**总拒收**,conflict+failed 只是其中可分类
+      // 的部分。取较大者保证"零样本拒收"不被当成 0(否则 change 被误标已推)。
+      final classifiedRejections = result.conflictCount + result.failedCount;
+      final reportedRejections = classifiedRejections > result.rejected
+          ? classifiedRejections
+          : result.rejected;
       if (reportedRejections > 0) {
+        // 无分类样本的拒收(only-rejected 分支)也算进 conflict 计数,让
+        // sync() 的 conflicts 反馈与真实拒收量一致。
+        final unclassified = reportedRejections - classifiedRejections;
         _lastPushConflicts = (
-          conflict: result.conflictCount,
+          conflict: result.conflictCount + (unclassified > 0 ? unclassified : 0),
           failed: result.failedCount,
           at: DateTime.now(),
         );
       }
+      // 中-1(2026-10-11 三轮复查):终态拒绝(ledger_deleted / membership_
+      // revoked / unknown_ledger / sync_id_mismatch / entity_sync_id_too_long)
+      // 的 change **丢弃 + 落错误行**,不再进入下面的保守重推路径。放在
+      // B1 截断判定之前:终态样本是自含的精确记录(entityType+entitySyncId+
+      // reason),即使本批同时发生 samples 截断,已点名的终态实体也可安全
+      // 处置 —— 留着它们只会 8 次/会话 + 每 30min 探测地永久空转。
+      final terminalDropped = terminalSamples.isEmpty
+          ? const <int>{}
+          : await _dropTerminalRejectedGroups(
+              batch, start, terminalSamples, changeIds);
       if (rejectedSyncIds.length < reportedRejections) {
         logger.warning(
             'SyncEngine',
             'push: 本批 ${batch.length} 条中 $reportedRejections 条被拒但样本被截断'
-            '(conflict/failed samples 各上限 20),整批保留待重推/pull 对齐');
+            '(conflict/failed samples 各上限 20,或服务端只报 rejected 计数),'
+            '整批保留待重推/pull 对齐');
         // B3:样本截断时无法点名,全部已发代表条按被拒计数(保守,不误清)。
+        // P-02:计数在熔断判定**之前**累计 —— 本轮的拒收一定进账,下一轮才
+        // 依据累计值决定是否熔断。终态已丢弃的条除外(行已删,计数无意义)。
         for (final i in sentIndexes) {
+          if (terminalDropped.contains(i)) continue;
           _countPushReject(representatives[i]);
         }
         continue;
@@ -1243,6 +1363,11 @@ class SyncEngine implements app.SyncService {
       for (var i = 0; i < batch.length; i++) {
         if (!sentIndexes.contains(start + i)) continue;
         final rep = batch[i];
+        if (terminalDropped.contains(start + i)) {
+          // 终态丢弃:B3 状态已在 _dropTerminalRejectedGroups 清掉,
+          // 不计数(实体当前无待推 change,用户重新编辑 = 全新机会)。
+          continue;
+        }
         if (rejectedSyncIds.contains(rep.entitySyncId)) {
           _countPushReject(rep);
         } else {
@@ -1253,11 +1378,161 @@ class SyncEngine implements app.SyncService {
       if (reportedRejections > 0) {
         logger.warning(
             'SyncEngine',
-            'push: 本批 ${batch.length} 条中 ${rejectedSyncIds.length} 条被拒'
+            'push: 本批 ${batch.length} 条中 ${rejectedSyncIds.length} 条被点名被拒'
             '(LWW 判负/poison),对应合并组保留本地待 pull 对齐');
       }
     }
     return markedRows;
+  }
+
+  /// 中-1(2026-10-11 三轮复查):处置本批被服务端**终态**拒绝的合并组。
+  ///
+  /// 终态 reason(见 [SmartBookPushResult.terminalRejectionReasons],与
+  /// `server/src/routers/sync/push.py` 逐字同步)意味着重试永远不可能成功:
+  /// `ledger_deleted` / `membership_revoked` / `unknown_ledger` 是服务端状态
+  /// 回不来的账本类拒绝,`sync_id_mismatch` / `entity_sync_id_too_long` 是
+  /// 数据本身畸形。旧行为把它们与 LWW 判负同等对待(不 markPushed、留在
+  /// local_changes)→ 8 次/会话 + 每 30min 探测 + 重启计数重置地永久空转。
+  ///
+  /// 对每个能**唯一匹配**到本批代表条 (entityType, entitySyncId) 的终态
+  /// sample:
+  /// 1. 写一条持久错误行([SyncErrorStore.recordPushTerminalRejected],
+  ///    `error_class = PushTerminalRejected`,强制 `resolved_at = NULL`,
+  ///    `watchUnresolved()` / [watchUnresolvedPushTerminalRejected] 可查);
+  /// 2. 删除该合并组的全部 local_changes 行(drop-with-record:可观测、
+  ///    非静默);
+  /// 3. 清 B3 熔断状态(实体已无待推 change)。
+  ///
+  /// **匹配安全阀**:sample 无法匹配(或匹配到多个)代表条 → 跳过该 sample,
+  /// 保守落回既有重推路径 —— 绝不丢弃一条无法确认身份的 change。
+  /// 返回被丢弃组的绝对 index 集合(相对 representatives,供 caller 排除
+  /// B3 计数)。
+  Future<Set<int>> _dropTerminalRejectedGroups(
+    List<LocalChange> batch,
+    int start,
+    List<Map<String, dynamic>> terminalSamples,
+    List<List<int>> changeIds,
+  ) async {
+    final dropped = <int>{};
+    for (final sample in terminalSamples) {
+      final reason = sample['reason'] as String?;
+      final entitySyncId = sample['entitySyncId'] as String?;
+      final entityType = sample['entityType'] as String?;
+      if (reason == null || entitySyncId == null || entityType == null) {
+        logger.warning('SyncEngine',
+            'push: 终态拒绝样本缺字段($sample),跳过处置(保守重推)');
+        continue;
+      }
+      // 唯一匹配判定:同批同 (entityType, entitySyncId) 的合并组必然唯一
+      //(_mergeChangesByEntity 的分组键),多命中说明数据异常 → 放弃处置。
+      final hits = <int>[
+        for (var i = 0; i < batch.length; i++)
+          if (batch[i].entityType == entityType &&
+              batch[i].entitySyncId == entitySyncId)
+            i,
+      ];
+      if (hits.isEmpty) {
+        // sample 指向的实体不在本批(服务端状态异常 / 并发场景)→ 无法对应
+        // 本地 change 行,不处置(不误删)。
+        logger.warning('SyncEngine',
+            'push: 终态拒绝 $entityType($entitySyncId) reason=$reason '
+            '未匹配到本批代表条,跳过处置(保守重推)');
+        continue;
+      }
+      if (hits.length > 1) {
+        logger.warning('SyncEngine',
+            'push: 终态拒绝 $entityType($entitySyncId) 命中 ${hits.length} 个'
+            '合并组(数据异常),跳过处置(保守重推)');
+        continue;
+      }
+      final i = hits.first;
+      final absIndex = start + i;
+      if (dropped.contains(absIndex)) continue;
+      final rep = batch[i];
+      final groupIds = changeIds[absIndex];
+      // 1) 持久错误行(pushLedgerId:ledger-scoped change 的 push ledger_id
+      //    = ledger.syncId;样本里的 ledgerId 是 server external_id,优先用)。
+      final ledgerExternalId = (sample['ledgerId'] as String?) ?? '';
+      try {
+        await pullErrors.recordPushTerminalRejected(
+          localChangeId: rep.id,
+          entityType: rep.entityType,
+          entitySyncId: rep.entitySyncId,
+          ledgerExternalId: ledgerExternalId,
+          reason: reason,
+          droppedChangeIds: groupIds,
+        );
+      } catch (e) {
+        // 错误行是可观测性兜底,登记失败也继续 drop(下一轮 unpushed 排水
+        // 本身会暴露问题;与 _recordPulledValueSkip 的取舍一致)。
+        logger.warning('SyncEngine',
+            'push: 终态拒绝错误行登记失败 ${rep.entityType}(${rep.entitySyncId})'
+            '(仍继续丢弃 change): $e');
+      }
+      // 2) 删除合并组的全部 local_changes 行。
+      await (db.delete(db.localChanges)..where((c) => c.id.isIn(groupIds)))
+          .go();
+      // 3) 清 B3 熔断状态。
+      _pushRejectState.remove(_pushRejectKey(rep.entityType, rep.entitySyncId));
+      dropped.add(absIndex);
+      logger.error(
+          'SyncEngine',
+          'push: ${rep.entityType}(${rep.entitySyncId}) 被服务端终态拒绝'
+          '(reason=$reason),丢弃 ${groupIds.length} 条本地 change + 落错误行'
+          '(重试不可能成功;用户重新编辑产生新 change 可重试)',
+          'push_terminal_rejected');
+    }
+    return dropped;
+  }
+
+  /// P-02(2026-10-11):熔断门禁 —— 决定某条代表条本轮是否真的发送。
+  ///
+  /// 修复前:熔断判定在发送**之前** `continue`,而计数重置/清除只对**已发送**
+  /// 的条生效 —— 熔断条永远进不了这两个点,会话内不可逆(文档承诺的"新
+  /// change id 解锁"不可达,用户"改一下试试"无法自救)。
+  ///
+  /// 现在两条穿透路径,任一命中即放行:
+  /// 1. **新 change id**(用户再次编辑):`rep.id > state.repChangeId` →
+  ///    清状态、给一轮全新机会(与 [maxPushRejectAttempts] 的文档承诺一致)。
+  /// 2. **超时衰减**:距上次被拒超过 [pushRejectProbeInterval] → 计数回退到
+  ///    上限-1 并放行**一次**探测(服务端可能已修好 / 数据已被 pull 对齐)。
+  ///    探测再被拒 → 立即重新熔断并重新计时,不会退化成无限重推。
+  bool _admitToSend(LocalChange rep) {
+    final key = _pushRejectKey(rep.entityType, rep.entitySyncId);
+    final state = _pushRejectState[key];
+    if (state == null || !state.tripped) return true;
+
+    if (rep.id > state.repChangeId) {
+      _pushRejectState.remove(key);
+      logger.info(
+          'SyncEngine',
+          'push: ${rep.entityType}(${rep.entitySyncId}) 检测到新 change id'
+          '(rep=${rep.id} > 熔断时=${state.repChangeId}),重置熔断计数并重新尝试');
+      return true;
+    }
+
+    final elapsed = DateTime.now().difference(state.at);
+    if (elapsed >= pushRejectProbeInterval) {
+      _pushRejectState[key] = (
+        repChangeId: rep.id,
+        rejects: maxPushRejectAttempts - 1,
+        tripped: false,
+        at: DateTime.now(),
+      );
+      logger.info(
+          'SyncEngine',
+          'push: ${rep.entityType}(${rep.entitySyncId}) 熔断已静默 '
+          '${elapsed.inMinutes}min(≥${pushRejectProbeInterval.inMinutes}min),'
+          '放行一次探测(再被拒即重新熔断)');
+      return true;
+    }
+
+    logger.warning(
+        'SyncEngine',
+        'push: ${rep.entityType}(${rep.entitySyncId}) 已被服务端拒绝 '
+        '${state.rejects} 次,本会话熔断不再重推(change 保留本地;用户编辑出'
+        '新 change 或 ${pushRejectProbeInterval.inMinutes}min 后自动探测重试)');
+    return false;
   }
 
   /// 附录 B3:被拒代表条计数;同一代表条(同 change id)达到上限即熔断,
@@ -1270,12 +1545,13 @@ class SyncEngine implements app.SyncService {
         : 1;
     final tripped = rejects >= maxPushRejectAttempts;
     _pushRejectState[key] =
-        (repChangeId: rep.id, rejects: rejects, tripped: tripped);
+        (repChangeId: rep.id, rejects: rejects, tripped: tripped, at: DateTime.now());
     if (tripped && !(prev?.tripped ?? false)) {
       logger.error(
           'SyncEngine',
           'push: ${rep.entityType}(${rep.entitySyncId}) 被服务端拒绝 $rejects 次,'
-          '本会话熔断(停止重推;change 保留本地,unpushed 计数可见)',
+          '本会话熔断(停止重推;change 保留本地,unpushed 计数可见;'
+          '用户编辑出新 change id 或 ${pushRejectProbeInterval.inMinutes}min 后自动探测)',
           'push_reject_tripped');
     }
   }
@@ -1342,11 +1618,37 @@ class SyncEngine implements app.SyncService {
   Completer<int>? _pullInFlight;
   int? _pullInFlightSince;
 
+  /// U-03(2026-10-11):从持久化 cursor 读到的异常值自愈。
+  ///
+  /// [AppCursorStore.commit] 已拦截负数/回退的写入,但**旧版本已经落盘的**
+  /// 坏值(负数 / 接近 2^63 的天文数字)仍会存活到升级后 —— 必须在 pull 入口
+  /// 收敛,否则这些设备升级后依然同步静默死亡。收敛为 0(从头重放,幂等
+  /// upsert 不丢数据),让服务端下一页把 cursor 拉回正常轨迹。
+  ///
+  /// 这里用 [AppCursorStore.forceReset] 而非 commit:commit 是单调的,写不下
+  /// 比当前更小的值 —— 坏值本身比 0 大,只有强制写才能真正清掉它。
+  Future<int> _sanitizeSince(int since) async {
+    if (since >= 0 && since <= AppCursorStore.maxReasonableCursor) {
+      return since;
+    }
+    logger.warning(
+        'SyncEngine',
+        'pull: 持久化 cursor=$since 超出合法域(0..${AppCursorStore.maxReasonableCursor}),'
+        '强制重置为 0 重新对齐(幂等重放)');
+    await appCursor.forceReset(0);
+    return 0;
+  }
+
   Future<int> _doPull(String ledgerId, int? sinceOverride) async {
-    int? nextSince = sinceOverride ?? await appCursor.read();
+    // U-08:deferred 集合按 pull 轮次隔离,入口清一次。
+    _deferredChangeIds.clear();
+    // 缺陷 A:值跳过登记同样按轮隔离(上一轮已落错误行,内存登记不跨轮)。
+    _valueSkips.clear();
+    int? nextSince = await _sanitizeSince(
+        sinceOverride ?? await appCursor.read());
     if (nextSince == 0 && sinceOverride == null) {
       await appCursor.migrateFromProviderCursor();
-      nextSince = await appCursor.read();
+      nextSince = await _sanitizeSince(await appCursor.read());
     }
 
     // **Lazy prime**:先 HTTP 一次试探有没有数据。99% 场景(无变更)直接
@@ -1376,6 +1678,12 @@ class SyncEngine implements app.SyncService {
     }
   }
 
+  /// hasMore 循环的最大迭代页数。服务端若因 bug / 代理缓存持续返回
+  /// `has_more=true`(且 cursor 不前进),客户端必须自带上限收敛 —— 旧实现
+  /// 只看 `result.hasMore`,没有迭代上限也不检测游标是否前进 → pull 永不
+  /// 返回(同步按钮永久转圈 + 同一批 change 被反复 apply)。
+  static const int maxPullPages = 200;
+
   Future<int> _runPullLoop(
     String ledgerId,
     int? nextSince, {
@@ -1388,6 +1696,17 @@ class SyncEngine implements app.SyncService {
     SmartBookCloudPullResult? reuseResult = firstPage;
     while (hasMore) {
       pageIndex++;
+      // U-05 家族(hasMore 死循环):迭代上限。真实场景一页 500 条,200 页
+      // = 10 万条历史,足够任何正常 replay;超限说明服务端 hasMore / cursor
+      // 行为异常,停下让下一轮 pull 续拉(cursor 已推进的部分不丢)。
+      if (pageIndex > maxPullPages) {
+        logger.error(
+            'SyncEngine',
+            'pull: 达到单次最大页数 $maxPullPages,提前终止(服务端 hasMore 可能异常);'
+            '已 apply $totalApplied 条,剩余交给下一轮 pull',
+            'pull_page_cap');
+        break;
+      }
       final pageStart = DateTime.now();
       final SmartBookCloudPullResult result;
       if (reuseResult != null) {
@@ -1406,7 +1725,17 @@ class SyncEngine implements app.SyncService {
         logger.info('SyncEngine',
             'pull #$pageIndex: since=$nextSince got ${result.changes.length} hasMore=${result.hasMore} (HTTP ${httpMs}ms)');
       }
-      if (result.changes.isEmpty) break;
+      // 空页短路:即使 hasMore=true(服务端异常)也不能继续循环,否则
+      // "空页 + hasMore 恒真" 就是纯忙等死循环。
+      if (result.changes.isEmpty) {
+        if (result.hasMore) {
+          logger.error(
+              'SyncEngine',
+              'pull: 第 $pageIndex 页为空但 hasMore=true(服务端异常),停止续拉',
+              'pull_empty_page_with_more');
+        }
+        break;
+      }
 
       final applyStart = DateTime.now();
       final outcome = await _applyPullPage(result.changes);
@@ -1419,15 +1748,39 @@ class SyncEngine implements app.SyncService {
             'SyncEngine', 'pull 被错误阻塞 cursor 停在 $nextSince — UI 应显示同步异常');
         break;
       }
+      // U-08(2026-10-11,阻断-4):本页有"跳过的、必须等前序数据才能落地"的
+      // change(ledger 未就绪的 budget / account_adjustment)→ **整页不推进
+      // cursor**,也不 markResolved,留待 ledger change 到达后的下一轮 pull
+      // 重放。仅把 handler 返回值改成 false 是不够的 —— cursor 必须在
+      // 这一页真正提交之前停下,否则该 change 的 change_id 落到 cursor 之后
+      // 就永久拉不回来了。
+      if (outcome.deferred > 0) {
+        logger.warning(
+            'SyncEngine',
+            'pull: 第 $pageIndex 页有 ${outcome.deferred} 条依赖未就绪(跳过),'
+            'cursor 停在 $nextSince 待下轮重放');
+        break;
+      }
 
-      // 整页成功:推进 cursor,处理本页 enqueue 的自定义图标
-      await appCursor.commit(result.serverCursor);
-      nextSince = result.serverCursor;
+      // 整页成功:**单调**推进 cursor(负值/非法值/回退一律不落盘,见
+      // [AppCursorStore.commit]),处理本页 enqueue 的自定义图标。
+      final committed = await appCursor.commit(result.serverCursor);
+      nextSince = committed;
 
-      // 同 change_id 之前如果有未 resolved 错误(server 修了脏数据 + 推新
-      // change → apply 通过)→ markResolved 让 UI 不再显示
-      for (final ch in result.changes) {
-        await pullErrors.markResolved(ch.changeId);
+      // 顺序敏感(2026-10-11 复现缺陷修复):放弃重放的错误行已由
+      // [_applyPullPage] 在页事务 commit 后写好(`error_class =
+      // DeferredGiveUp`,强制 `resolved_at = NULL`)。这里**只**清
+      // [outcome.resolveChangeIds] —— 本轮没有登记 deferred 的 change_id
+      // (旧语义:本页处理过的 id 清掉历史错误行)。
+      //
+      // 绝不能无条件清整页所有 change_id(旧实现,缺陷根因):安全阀放弃的
+      // 条目没有落地,它的错误行会被同一轮立刻 resolve → `watchUnresolved()`
+      // (UI 查询面)永远看不到,"记录错误、UI 可见、不静默"的承诺失效。
+      // 推迟(deferred)的条目同理。放弃条目只在之后真正 apply 成功的那一轮
+      // (依赖到达 / replayAllChanges)才进 resolveChangeIds → 被清 → 自愈。
+      for (final id in outcome.resolveChangeIds) {
+        _abandonedDeferredIds.remove(id);
+        await pullErrors.markResolved(id);
       }
 
       // 主事务已 commit,fire-and-forget 并发处理图标 queue,不阻塞下一页
@@ -1449,10 +1802,54 @@ class SyncEngine implements app.SyncService {
   /// 单页 apply。整页事务 try/catch:
   /// - 不可恢复异常 → rollback + 错误入 [pullErrors] + return blocked
   /// - SQLite busy/locked → 单条 retry 2 次
+  ///
+  /// 2026-10-11 缺陷修复(安全阀放弃必须可观测)的三条不变量:
+  /// 1. **放弃判定与错误行只在页事务 commit 之后生效** —— 事务中途抛错时
+  ///    整页 rollback、cursor 不动、下一轮重放,放弃判定不能残留(残留会让
+  ///    下一轮不再计入 deferred,在没有任何错误记录的情况下越过该 change)。
+  /// 2. **放弃的错误行在此处写**(而不是 `_runPullLoop` 的 markResolved 区域),
+  ///    因为"本页还有别的条目在 deferred → `_runPullLoop` 提前 break"时,
+  ///    markResolved 区域根本不会执行 —— 错误行会漏写。
+  /// 3. [resolveChangeIds] 只装**本轮未登记 deferred** 的 change_id,旧的
+  ///    markResolved 循环据此清错误 —— 放弃/仍 deferred 的条目绝不被清。
   Future<_PullPageOutcome> _applyPullPage(
       List<SmartBookCloudSyncChange> changes) async {
     int applied = 0;
     int skipped = 0;
+    int deferred = 0;
+
+    /// 本页安全阀判定"放弃重放"的 change(第一次触发)。按 change_id 去重:
+    /// 页内同 change_id 出现两次(服务端异常)时只记一次,避免重复落错误行。
+    final abandoned = <int, SmartBookCloudSyncChange>{};
+
+    /// 之前已放弃、本轮(全量重放)依旧落不了地的 change —— 只刷新既有错误行
+    /// (attempt_count++ / 保持未解决),不重复计入 deferred(否则重放会被它
+    /// 再次钉住)。
+    final reassertAbandoned = <int, SmartBookCloudSyncChange>{};
+
+    /// 本页可以 markResolved 的 change_id —— 保持旧语义("本页处理过的
+    /// change_id 清掉历史错误"),但**排除**推迟(deferred、放弃)的条目:
+    /// 它们没有落地,错误行必须在 `watchUnresolved()`(UI 面)存活到真正
+    /// apply 成功的那一轮。旧实现无条件清整页所有 id,正是本次缺陷根因
+    /// (安全阀同轮 record+resolve → UI 永远看不到)。
+    ///
+    /// 含 skipped-by-design(自己设备的 change / 未知 entityType):这类
+    /// change_id 已落到 cursor 之后,永远不会再被拉取,历史错误行若不清会
+    /// 在 UI 里永久悬挂 —— 旧行为就是清掉,这里保持一致。
+    final resolveChangeIds = <int>{};
+
+    /// 本页"重放计数"的增量,事务 commit 后才写回内存 —— rollback 时计数
+    /// 不能凭空 +1(否则阀门会比真实重放次数更早跳闸)。
+    final replayCountUpdates = <int, int>{};
+
+    /// 本页新增的"值跳过"(缺陷 A):apply handler 调 [_markPulledValueSkip]
+    /// 登记,这里把本页开始前的 change_id 快照下来 —— 事务 commit 后才落错误
+    /// 行,rollback 时新登记的条目从 [_valueSkips] 撤回(判定不得残留到下一轮)。
+    final valueSkipIdsBefore = Set<int>.of(_valueSkips.keys);
+
+    /// 本页内被登记"值跳过"的 change —— 事务 commit 后据此写/刷新错误行。
+    final valueSkipped = <int, SmartBookCloudSyncChange>{};
+
     SmartBookCloudSyncChange? failingChange;
 
     try {
@@ -1460,19 +1857,122 @@ class SyncEngine implements app.SyncService {
         for (final ch in changes) {
           failingChange = ch;
           final ok = await _applyOneWithBusyRetry(ch);
+          final registeredDeferred = _deferredChangeIds.contains(ch.changeId);
+          // U-08:handler 通过 [_deferChange] 声明"依赖未就绪、必须重放"。
+          // 无论它的返回值是什么(false=跳过 / true=不计入 skipped 的历史
+          // 语义),只要登记了 deferred,本页就不能推进 cursor —— 除非该
+          // change 已被推迟超过 [maxDeferredReplays] 轮(依赖显然不会到了,
+          // 见安全阀注释)。
+          var wasDeferred = registeredDeferred &&
+              !_abandonedDeferredIds.contains(ch.changeId);
+          if (wasDeferred) {
+            final replays = (_deferredReplays[ch.changeId] ?? 0) + 1;
+            if (replays > maxDeferredReplays) {
+              logger.error(
+                  'SyncEngine',
+                  'pull: change_id=${ch.changeId} ${ch.entityType}(${ch.entitySyncId}) '
+                  '已推迟 $maxDeferredReplays 轮仍依赖未就绪,判定依赖不会到达 → '
+                  '记录错误(UI 可见)并放行 cursor(避免整机同步永久停在页首)',
+                  'pull_deferred_giveup');
+              // 放弃判定只在事务 commit 后生效(见方法注释不变量 1)。
+              abandoned[ch.changeId] = ch;
+              wasDeferred = false;
+            } else {
+              replayCountUpdates[ch.changeId] = replays;
+            }
+          } else if (registeredDeferred) {
+            // 已放弃过的 change 在全量重放里再次出现且仍未落地 → 刷新错误行,
+            // 让 lastAttemptAt / attempt_count 反映"仍在失败",UI 持续可见。
+            reassertAbandoned[ch.changeId] = ch;
+          }
+          if (wasDeferred) {
+            deferred++;
+          }
           if (ok) {
             applied++;
-          } else {
+          } else if (!wasDeferred) {
             skipped++;
+          }
+          // 本页可 resolve 的 id:凡是本轮**没有**登记 deferred 的条目
+          // (真正落地成功、或按设计跳过)都与旧语义一致地清历史错误。
+          // 登记过 deferred 的条目(推迟中 / 本轮放弃 / 放弃后重放仍失败)
+          // 绝不清 —— 它们没有落地,错误行必须在 UI 面存活。
+          //
+          // 缺陷 A 补充:本轮被登记"值跳过"的条目同样不清 —— 它没有落地
+          // (cursor 只是必须前进,否则整页卡死),错误行必须在 UI 面存活到
+          // 真正 apply 成功。
+          if (!registeredDeferred && !_valueSkips.containsKey(ch.changeId)) {
+            resolveChangeIds.add(ch.changeId);
           }
         }
       });
-      if (skipped > 0) {
-        logger.info('SyncEngine', 'pull: 应用 $applied / 跳过 $skipped (本页)');
+
+      // ---------- 事务已成功 commit,以下副作用此刻才落定 ----------
+      replayCountUpdates.forEach((id, n) => _deferredReplays[id] = n);
+      for (final id in abandoned.keys) {
+        _abandonedDeferredIds.add(id);
+        _deferredReplays.remove(id);
       }
-      return _PullPageOutcome(applied: applied, blocked: false);
+      for (final id in resolveChangeIds) {
+        // 曾放弃的 change 这次真正落地 → 放弃状态自愈解除,错误行由
+        // [_runPullLoop] 的 markResolved 清掉(依赖到达后的正常收敛路径)。
+        _abandonedDeferredIds.remove(id);
+        _deferredReplays.remove(id);
+      }
+      // 写放弃错误行:recordDeferredGiveUp 强制 resolved_at=NULL(旧行复活)
+      // 且 error_class=DeferredGiveUp —— UI 用 [SyncErrorStore.watchUnresolved]
+      // 或 watchUnresolvedDeferredGiveUps 都能查到,不被本轮 cursor 推进吞掉。
+      for (final ch in abandoned.values) {
+        await _recordDeferredGiveUp(ch,
+            reason: '依赖未就绪: 重放 $maxDeferredReplays 轮仍未解析出 '
+                '${ch.entityType}(${ch.entitySyncId}) 的所属实体'
+                '(可能引用了本设备拿不到的 ledger="${ch.ledgerId}")。'
+                '已放弃重放并放行 cursor,该 change 不再自动重试;'
+                '需服务端修数据或让依赖实体可达后全量重放');
+      }
+      for (final ch in reassertAbandoned.values) {
+        await _recordDeferredGiveUp(ch,
+            reason: '该 change(change_id=${ch.changeId}, '
+                '${ch.entityType}/${ch.entitySyncId})此前已被判定放弃重放,'
+                '本次全量重放依旧无法落地(依赖实体仍不可解析)');
+      }
+
+      // 写值跳过错误行(缺陷 A):本轮新增登记的条目落 [pullErrors],
+      // 强制 resolved_at=NULL 且 error_class=PulledValueSkipped —— UI 用
+      // [SyncErrorStore.watchUnresolved] 能查到,不被本轮 cursor 推进吞掉。
+      for (final entry in _valueSkips.entries) {
+        if (valueSkipIdsBefore.contains(entry.key)) continue; // 本轮之前已有
+        valueSkipped[entry.key] = entry.value.change;
+      }
+      for (final entry in valueSkipped.entries) {
+        await _recordPulledValueSkip(entry.value,
+            reason: _valueSkips[entry.key]?.reason ?? '远端值不可用(已跳过)');
+      }
+
+      // 事务已成功 commit(部分 apply 已落库),但 deferred 要求 cursor 不推进
+      // —— 重放整页时幂等 upsert 不会重复插入,所以是安全的。
+      if (skipped > 0 ||
+          deferred > 0 ||
+          abandoned.isNotEmpty ||
+          valueSkipped.isNotEmpty) {
+        logger.info('SyncEngine',
+            'pull: 应用 $applied / 跳过 $skipped / 推迟 $deferred / '
+            '放弃 ${abandoned.length} / 重新确认放弃 ${reassertAbandoned.length} / '
+            '值跳过 ${valueSkipped.length} (本页)');
+      }
+      return _PullPageOutcome(
+          applied: applied,
+          blocked: false,
+          deferred: deferred,
+          resolveChangeIds: resolveChangeIds,
+          abandoned: abandoned.values.toList(growable: false));
     } catch (e, st) {
-      // 整页 rollback 已自动完成(Drift transaction 抛错回滚)
+      // 整页 rollback 已自动完成(Drift transaction 抛错回滚)。本页新登记的
+      // 值跳过判定一并撤回 —— 该 change 没被处理过,cursor 也不动,下一轮
+      // 重放时会重新判定(残留会让下一轮跳过判定提前"已登记"而漏写错误行)。
+      for (final id in _valueSkips.keys.toList()) {
+        if (!valueSkipIdsBefore.contains(id)) _valueSkips.remove(id);
+      }
       logger.error(
           'SyncEngine',
           '本页 apply 抛错 change_id=${failingChange?.changeId} '
@@ -1486,6 +1986,52 @@ class SyncEngine implements app.SyncService {
       return const _PullPageOutcome(applied: 0, blocked: true);
     }
   }
+
+  /// 把一条"安全阀放弃重放"的错误写进 [pullErrors](带可执行上下文)。
+  /// 登记失败不阻塞放行 —— 放弃的核心目的是让 cursor 恢复推进,错误行只是
+  /// 尽力保证可观测性(与旧实现一致)。
+  Future<void> _recordDeferredGiveUp(SmartBookCloudSyncChange ch,
+      {required String reason}) async {
+    try {
+      await pullErrors.recordDeferredGiveUp(
+        change: ch,
+        error: StateError(reason),
+        stackTrace: StackTrace.current,
+      );
+    } catch (e) {
+      logger.warning('SyncEngine',
+          'pull: 放弃重放的错误登记失败 change_id=${ch.changeId}(不阻塞 cursor 放行): $e');
+    }
+  }
+
+  /// 缺陷 A(2026-10-11 复现缺陷修复):apply handler 判定"远端值不可用、跳过
+  /// 该条"时登记(内存),由 [_applyPullPage] 在页事务 commit 后写 [pullErrors]。
+  ///
+  /// 为什么不直接在 handler 里写库:handler 跑在页事务内,错误行必须与"整页
+  /// apply 是否真的成功"同生共死(rollback 时不能残留 —— [_applyPullPage] 的
+  /// catch 会撤回本页新增登记)。这与 [_deferChange] 的"只登记、由页级提交"
+  /// 同款设计。
+  ///
+  /// **cursor 照常推进**:值跳过是"这条 change 永远落不了地"(重放不会变好),
+  /// 不 defer —— defer 会让整页 apply 每轮卡在同一条坏 change 上,整机同步
+  /// 永久停摆。代价是 change_id 落到 cursor 之后不再重拉,所以持久登记是这条
+  /// change **唯一**的可观测面(除 48h 日志外)。
+  void _markPulledValueSkip(SmartBookCloudSyncChange change, String reason) {
+    _valueSkips[change.changeId] = (change: change, reason: reason);
+  }
+
+  /// 把一条"值跳过"写进 [pullErrors]。登记失败不阻塞 cursor 推进 —— 值跳过的
+  /// 核心目的是让整页继续 apply,错误行只是尽力保证可观测性。
+  Future<void> _recordPulledValueSkip(SmartBookCloudSyncChange ch,
+      {required String reason}) async {
+    try {
+      await pullErrors.recordPulledValueSkipped(change: ch, reason: reason);
+    } catch (e) {
+      logger.warning('SyncEngine',
+          'pull: 值跳过的错误登记失败 change_id=${ch.changeId}(不阻塞 cursor 推进): $e');
+    }
+  }
+
 
   /// 单条 apply 带 SQLite busy/locked retry。其它异常直接抛,让外层整页 rollback。
   ///
@@ -1605,8 +2151,15 @@ class SyncEngine implements app.SyncService {
   ///   seed 残留）会被删除 —— 这是「本地分类 53 vs 云端 96」这类差异的收敛
   ///   手段。删除语义与 pull delete 一致（tag 关联清除、分类图标文件清理）。
   /// - 推进 cursor 到 latest_cursor，跳过导致卡住的历史坏 change。
+  ///
+  /// 缺陷 B(2026-10-11):所有恢复路径的金额列(账户 initial_balance/credit_limit、
+  /// 预算 amount、调整 amount/balance_before/balance_after)都过非有限守卫 ——
+  /// 非有限的快照行**跳过 + 告警 + 计数**,其余实体照常恢复(策略见
+  /// [_snapshotMoneyOk])。跳过的行数汇总在 [skippedBadAmounts] 里返回,调用方
+  /// 可据此提示"快照部分损坏"。
   Future<({int inserted, int restoredBudgets, int restoredAccounts,
-          int restoredCategories, int restoredTags})> forceRestoreFromServer({
+          int restoredCategories, int restoredTags, int skippedBadAmounts})>
+      forceRestoreFromServer({
     required int ledgerId,
   }) async {
     logger.info('SyncEngine', 'forceRestoreFromServer: 以服务端为准恢复 ledger=$ledgerId');
@@ -1624,7 +2177,8 @@ class SyncEngine implements app.SyncService {
         restoredBudgets: 0,
         restoredAccounts: 0,
         restoredCategories: 0,
-        restoredTags: 0
+        restoredTags: 0,
+        skippedBadAmounts: 0,
       );
     }
 
@@ -1700,13 +2254,16 @@ class SyncEngine implements app.SyncService {
 
     // 5. 从权威快照重建预算（轻量解析，db 直写保留 syncId，不记 change）。
     //    在分类重建之后执行，分类预算的 syncId 才解析得到。
-    final restoredBudgets = await _restoreBudgetsFromSnapshot(ledgerId, content);
+    final budgetsResult = await _restoreBudgetsFromSnapshot(ledgerId, content);
+    final restoredBudgets = budgetsResult.restored;
+    final restoredBudgetSkips = budgetsResult.skipped;
 
     // 5b. 从权威快照重建余额调整记录(v42,db 直写不记 change)。在账户重建
     //     之后执行,accountId 的 syncId 才解析得到。
-    final restoredAdjustments =
+    final adjustmentsResult =
         await _restoreAccountAdjustmentsFromSnapshot(ledgerId, content);
-
+    final restoredAdjustments = adjustmentsResult.restored;
+    final restoredAdjustmentSkips = adjustmentsResult.skipped;
     // 6. 推进 cursor 到服务端 latest_cursor，跳过卡住的历史坏 change。
     if (snap.latestCursor > 0) {
       await appCursor.commit(snap.latestCursor);
@@ -1726,13 +2283,17 @@ class SyncEngine implements app.SyncService {
         '余额调整 $restoredAdjustments 条, '
         '账户 ${restored.accounts}(删${restored.deletedAccounts}) '
         '分类 ${restored.categories}(删${restored.deletedCategories}) '
-        '标签 ${restored.tags}(删${restored.deletedTags})');
+        '标签 ${restored.tags}(删${restored.deletedTags}), '
+        '金额非有限跳过 ${restored.skippedAccounts + restoredBudgetSkips + restoredAdjustmentSkips} 条');
     return (
       inserted: result.inserted,
       restoredBudgets: restoredBudgets,
       restoredAccounts: restored.accounts,
       restoredCategories: restored.categories,
       restoredTags: restored.tags,
+      skippedBadAmounts: restored.skippedAccounts +
+          restoredBudgetSkips +
+          restoredAdjustmentSkips,
     );
   }
 
@@ -1749,8 +2310,10 @@ class SyncEngine implements app.SyncService {
   ///
   /// 快照缺某个数组的 key（老服务端）时**跳过**该类型（不删不建）；key 存在
   /// 但为空列表则按服务端权威清空。分类重建先一级后二级，预算重建依赖此顺序。
+  ///
+  /// [skippedAccounts] 是金额非有限被跳过的账户数(缺陷 B),由 caller 汇总。
   Future<({int accounts, int categories, int tags, int deletedAccounts,
-          int deletedCategories, int deletedTags})>
+          int deletedCategories, int deletedTags, int skippedAccounts})>
       _restoreUserGlobalFromSnapshot(String content) async {
     const zeros = (
       accounts: 0,
@@ -1759,6 +2322,7 @@ class SyncEngine implements app.SyncService {
       deletedAccounts: 0,
       deletedCategories: 0,
       deletedTags: 0,
+      skippedAccounts: 0,
     );
     final decoded = jsonDecode(content);
     if (decoded is! Map<String, dynamic>) return zeros;
@@ -1774,6 +2338,7 @@ class SyncEngine implements app.SyncService {
 
     var restoredAccounts = 0, restoredCategories = 0, restoredTags = 0;
     var deletedAccounts = 0, deletedCategories = 0, deletedTags = 0;
+    var skippedAccounts = 0;
 
     await db.transaction(() async {
       // 0) 作废本地 user-global 未推送意图：以服务端为准后，本地旧改名/新建
@@ -1797,9 +2362,25 @@ class SyncEngine implements app.SyncService {
           final currency = raw['currency'] as String? ?? 'CNY';
           final initialBalance =
               (raw['initialBalance'] as num?)?.toDouble() ?? 0.0;
+          final creditLimit = (raw['creditLimit'] as num?)?.toDouble();
           final sortOrder = (raw['sortOrder'] as num?)?.toInt() ?? 0;
           final hidden =
               raw.containsKey('hidden') ? (raw['hidden'] as bool? ?? false) : null;
+
+          // 缺陷 B(2026-10-11):快照金额列守卫。账户金额列(initial_balance /
+          // credit_limit)非有限会污染余额/净资产聚合 —— 与 repo 层
+          // `validateAccountAmounts` 同口径,但**不抛**:快照里一条坏值不能让
+          // 整个 forceRestore 失败(其它账户/分类/交易仍要恢复)。
+          // 策略:跳过该条 + 告警 + 计数(返回值里可见),而不是抛错。
+          // 注意 syncId 已进 snapSyncIds(见上)—— 跳过只意味着"不写这一条",
+          // 本地同名/同 syncId 行不因此被删(不丢本地已有数据)。
+          if (!_snapshotMoneyOk('account', syncId, {
+            'initialBalance': initialBalance,
+            'creditLimit': creditLimit,
+          })) {
+            skippedAccounts++;
+            continue;
+          }
 
           // syncId 命中 → 更新；miss → 按 name 收编 NULL-syncId seed 行
           // （与 _applyAccountChange 一致，避免同名重复并保住本地 int id）。
@@ -1825,7 +2406,7 @@ class SyncEngine implements app.SyncService {
               currency: d.Value(currency),
               initialBalance: d.Value(initialBalance),
               sortOrder: d.Value(sortOrder),
-              creditLimit: d.Value((raw['creditLimit'] as num?)?.toDouble()),
+              creditLimit: d.Value(creditLimit),
               billingDay: d.Value((raw['billingDay'] as num?)?.toInt()),
               paymentDueDay: d.Value((raw['paymentDueDay'] as num?)?.toInt()),
               bankName: d.Value(raw['bankName'] as String?),
@@ -1844,8 +2425,7 @@ class SyncEngine implements app.SyncService {
                     currency: d.Value(currency),
                     initialBalance: d.Value(initialBalance),
                     sortOrder: d.Value(sortOrder),
-                    creditLimit:
-                        d.Value((raw['creditLimit'] as num?)?.toDouble()),
+                    creditLimit: d.Value(creditLimit),
                     billingDay: d.Value((raw['billingDay'] as num?)?.toInt()),
                     paymentDueDay:
                         d.Value((raw['paymentDueDay'] as num?)?.toInt()),
@@ -2195,7 +2775,8 @@ class SyncEngine implements app.SyncService {
     logger.info('SyncEngine',
         'forceRestore user-global: 账户 $restoredAccounts(删$deletedAccounts) '
         '分类 $restoredCategories(删$deletedCategories) '
-        '标签 $restoredTags(删$deletedTags)');
+        '标签 $restoredTags(删$deletedTags)'
+        '${skippedAccounts > 0 ? ' 金额非有限跳过 $skippedAccounts 个账户' : ''}');
     return (
       accounts: restoredAccounts,
       categories: restoredCategories,
@@ -2203,6 +2784,7 @@ class SyncEngine implements app.SyncService {
       deletedAccounts: deletedAccounts,
       deletedCategories: deletedCategories,
       deletedTags: deletedTags,
+      skippedAccounts: skippedAccounts,
     );
   }
 
@@ -2212,19 +2794,33 @@ class SyncEngine implements app.SyncService {
   ///   syncId / ledgerSyncId / type / categoryId(syncId) / amount / period /
   ///   startDay / enabled。分类预算的 categoryId 是 syncId，需换成本地 int id；
   /// 换不到则本预算跳过（等后续 pull 补）。
-  Future<int> _restoreBudgetsFromSnapshot(int ledgerId, String content) async {
+  ///
+  /// 返回 (restored, skipped):skipped = 金额非有限被跳过的条数(缺陷 B)。
+  Future<({int restored, int skipped})> _restoreBudgetsFromSnapshot(
+      int ledgerId, String content) async {
     int restored = 0;
+    int skipped = 0;
     try {
       final decoded = jsonDecode(content);
-      if (decoded is! Map<String, dynamic>) return 0;
+      if (decoded is! Map<String, dynamic>) {
+        return (restored: 0, skipped: 0);
+      }
       final budgetsRaw = decoded['budgets'];
-      if (budgetsRaw is! List) return 0;
+      if (budgetsRaw is! List) return (restored: 0, skipped: 0);
 
       for (final raw in budgetsRaw) {
         if (raw is! Map<String, dynamic>) continue;
         final syncId = (raw['syncId'] as String?)?.trim();
         final amount = (raw['amount'] as num?)?.toDouble();
         if (syncId == null || syncId.isEmpty || amount == null) continue;
+
+        // 缺陷 B(2026-10-11):预算金额守卫。与 repo 层 `_validateBudgetAmount`
+        // 同口径,但**不抛** —— 跳过该条 + 告警 + 计数,快照里一条坏值不能让
+        // 整次恢复失败(其它预算/交易/账户仍要恢复)。
+        if (!_snapshotMoneyOk('budget', syncId, {'amount': amount})) {
+          skipped++;
+          continue;
+        }
 
         final type = (raw['type'] as String?) ?? 'total';
         final period = (raw['period'] as String?) ?? 'monthly';
@@ -2258,7 +2854,50 @@ class SyncEngine implements app.SyncService {
     } catch (e, st) {
       logger.error('SyncEngine', 'forceRestoreFromServer: 预算重建失败', e, st);
     }
-    return restored;
+    if (skipped > 0) {
+      logger.warning('SyncEngine',
+          'forceRestoreFromServer: 预算跳过 $skipped 条(金额非有限,已不入库)');
+    }
+    return (restored: restored, skipped: skipped);
+  }
+
+  /// 缺陷 B(2026-10-11):快照恢复路径的金额守卫判据(非有限值)。
+  ///
+  /// forceRestoreFromServer 由用户手动触发(「以服务端为准」),此前直接
+  /// `db.into(...).insert(...)` —— 快照 JSON 里 `{"amount": 1e999}` 语法合法
+  /// 但解码为 Infinity,会原样落库(SQLite REAL 接受 Inf),随后
+  /// `getBudgetUsage` 返回 budget=Infinity / remaining=Infinity / status=normal,
+  /// 余额与净资产聚合全部污染。
+  ///
+  /// 策略与 repo 层 `LocalTransactionRepository.validateMonetaryFinite` /
+  /// `validateAccountAmounts` / `validateAdjustmentAmounts` 同口径(非有限即
+  /// 违规),但**处理方式不同**:恢复路径选择**跳过该条 + 告警 + 计数**
+  /// (返回的 restored* 计数里自然反映),而不是抛错 —— 一份部分损坏的快照
+  /// 仍应恢复其余实体,不能因一条坏值整次恢复失败。
+  ///
+  /// 与 pull-apply 的 `_skipPulledMoneyIfInvalid` 同样"跳过不抛",区别是
+  /// 这里没有 change 可登记([pullErrors] 是 change_id 维度的),故用日志 +
+  /// 计数作为可观测面。
+  ///
+  /// 判据与 repo 层同口径(**只拒非有限值**):`local_account_repository.dart`
+  /// 的 `validateAccountAmounts` / `validateAdjustmentAmounts`、
+  /// `local_budget_repository.dart` 的 `_validateBudgetAmount` 都只拦
+  /// NaN/±Infinity,不设量级上限、不拒负数(调整/预算的负值是合法语义)。
+  /// 这里刻意不调它们:那些是各自类的静态入口(且本文件与它们是 part/独立类
+  /// 关系),按 entity 拆三份反而更容易漂移;同一「只拒非有限」判据在本文件
+  /// 内聚成一处。
+  bool _snapshotMoneyOk(String entity, String syncId,
+      Map<String, double?> fields) {
+    for (final e in fields.entries) {
+      final v = e.value;
+      if (v != null && !v.isFinite) {
+        logger.warning('SyncEngine',
+            'forceRestoreFromServer: 跳过 $entity $syncId —— 快照 ${e.key}=$v '
+            '非有限(NaN/Infinity 会污染余额/预算聚合);其余实体照常恢复');
+        return false;
+      }
+    }
+    return true;
   }
 
   /// 从 /sync/full 快照 JSON 的 `accountAdjustments` 数组重建余额调整记录
@@ -2267,14 +2906,19 @@ class SyncEngine implements app.SyncService {
   /// balanceAfter / happenedAt / createdAt / note。
   /// 账户 syncId 解析不到本地 int id 时落 accountSyncIdOverride(与增量
   /// apply 同语义),不跳过 —— 调整记录丢一条余额就永久错位。
-  Future<int> _restoreAccountAdjustmentsFromSnapshot(
+  ///
+  /// 返回 (restored, skipped):skipped = 金额非有限被跳过的条数(缺陷 B)。
+  Future<({int restored, int skipped})> _restoreAccountAdjustmentsFromSnapshot(
       int ledgerId, String content) async {
     int restored = 0;
+    int skipped = 0;
     try {
       final decoded = jsonDecode(content);
-      if (decoded is! Map<String, dynamic>) return 0;
+      if (decoded is! Map<String, dynamic>) {
+        return (restored: 0, skipped: 0);
+      }
       final adjRaw = decoded['accountAdjustments'];
-      if (adjRaw is! List) return 0;
+      if (adjRaw is! List) return (restored: 0, skipped: 0);
 
       for (final raw in adjRaw) {
         if (raw is! Map<String, dynamic>) continue;
@@ -2283,6 +2927,19 @@ class SyncEngine implements app.SyncService {
         if (syncId == null || syncId.isEmpty || amount == null) continue;
 
         final accountSyncId = (raw['accountId'] as String?)?.trim();
+        final balanceBefore = (raw['balanceBefore'] as num?)?.toDouble();
+        final balanceAfter = (raw['balanceAfter'] as num?)?.toDouble();
+        // 缺陷 B(2026-10-11):调整三列金额守卫(带符号,只拦非有限)。
+        // 与 repo 层 `validateAdjustmentAmounts` 同口径,但**不抛** —— 跳过该条
+        // + 告警 + 计数(快照里一条坏值不能让整次恢复失败)。
+        if (!_snapshotMoneyOk('account_adjustment', syncId, {
+          'amount': amount,
+          'balanceBefore': balanceBefore,
+          'balanceAfter': balanceAfter,
+        })) {
+          skipped++;
+          continue;
+        }
         final localAccountId =
             await _resolveAccountIdBySyncId(accountSyncId);
         final happenedAt =
@@ -2298,10 +2955,8 @@ class SyncEngine implements app.SyncService {
                 accountSyncIdOverride:
                     d.Value(localAccountId == null ? accountSyncId : null),
                 amount: amount,
-                balanceBefore:
-                    d.Value((raw['balanceBefore'] as num?)?.toDouble()),
-                balanceAfter:
-                    d.Value((raw['balanceAfter'] as num?)?.toDouble()),
+                balanceBefore: d.Value(balanceBefore),
+                balanceAfter: d.Value(balanceAfter),
                 happenedAt:
                     d.Value(happenedAt ?? DateTime.now()),
                 recordedAt: d.Value(recordedAt),
@@ -2313,7 +2968,11 @@ class SyncEngine implements app.SyncService {
     } catch (e, st) {
       logger.error('SyncEngine', 'forceRestoreFromServer: 余额调整重建失败', e, st);
     }
-    return restored;
+    if (skipped > 0) {
+      logger.warning('SyncEngine',
+          'forceRestoreFromServer: 余额调整跳过 $skipped 条(金额非有限,已不入库)');
+    }
+    return (restored: restored, skipped: skipped);
   }
 
   // ==================== 附件云端同步 ====================
@@ -2434,11 +3093,40 @@ class SyncHealthReport {
 
 /// pull 单页处理结果。详见 [SyncEngine._applyPullPage]。
 class _PullPageOutcome {
-  const _PullPageOutcome({required this.applied, required this.blocked});
+  const _PullPageOutcome({
+    required this.applied,
+    required this.blocked,
+    this.deferred = 0,
+    this.resolveChangeIds = const {},
+    this.abandoned = const [],
+  });
 
   /// 本页成功 apply 的条数。整页 rollback 时为 0。
   final int applied;
 
   /// 是否被错误阻塞(整页 rollback,cursor 不推进)。
   final bool blocked;
+
+  /// U-08(2026-10-11):本页"依赖未就绪被推迟"的条数(apply 返 false 且
+  /// 落入 [SyncEngine._deferredChangeIds])。>0 时 cursor 必须**停在页首**,
+  /// 留待下一轮 pull 重放 —— 这是"budget / account_adjustment 因 ledger
+  /// 未就绪被跳过却推进 cursor → 永久丢失"的解法(阻断-4)。
+  final int deferred;
+
+  /// 本页可与旧语义一致地 markResolved 的 change_id:本轮**没有登记 deferred**
+  /// 的条目(真正落地成功,或按设计跳过 —— 自己设备的 change / 未知
+  /// entityType)。
+  ///
+  /// `_runPullLoop` 的 markResolved 循环只清这个集合里的 id —— 推迟 / 放弃
+  /// 的 change 没有落地,它们的错误行必须在 `watchUnresolved()`(UI 面)存活。
+  /// 2026-10-11 复现缺陷:旧实现无条件清本页**所有** change_id,导致安全阀
+  /// 同轮 record+resolve,UI 永远看不到放弃记录。
+  final Set<int> resolveChangeIds;
+
+  /// 本页安全阀判定"依赖不会到达、放弃重放"的 change。
+  ///
+  /// 错误行已由 [_applyPullPage] 在页事务 commit 后写好(`error_class =
+  /// DeferredGiveUp`、`resolved_at IS NULL`);这里保留列表只为日志/返回口径。
+  /// 调用方的 markResolved 循环靠 [resolveChangeIds] 天然跳过它们。
+  final List<SmartBookCloudSyncChange> abandoned;
 }

@@ -52,6 +52,19 @@ extension _SyncEngineResolvers on SyncEngine {
   }
 
   /// 根据分类名和类型查找 categoryId
+  ///
+  /// U-05(2026-10-11):改用 `limit(1)` + `.get()` 取第一条 —— `categories`
+  /// 表**没有 name 唯一约束**(仅 app 层 createCategory 查重),两台设备各自
+  /// seed 同名一级分类(syncId 各是不同 UUID)即可产生两行同名。
+  ///
+  /// 旧实现用 `getSingleOrNull()`:查不到返 null,查到**多行抛
+  /// `Bad state: Too many elements`** → 整页事务回滚 → cursor 不推进 →
+  /// 下次 pull 拉到同一条 → 再抛 = 该设备云同步**永久卡死**。与账户侧
+  /// [\_resolveAccountId] 的 `take(1)` 保守口径对齐(那里已修,这里是对称补漏)。
+  ///
+  /// 排序用 `id ASC`(历史最早一条)—— 确定性选取,避免 SQLite 无 ORDER BY
+  /// 时返回顺序不稳定导致同一 tx 在不同轮次挂到不同分类。同名多行会打日志,
+  /// 留出"两行 seed 分类需要人工对齐"的可观测线索(不静默)。
   Future<int?> _resolveCategoryId({
     String? categoryName,
     String? categoryKind,
@@ -62,8 +75,17 @@ extension _SyncEngineResolvers on SyncEngine {
     if (categoryKind != null) {
       query.where((c) => c.kind.equals(categoryKind));
     }
-    final cat = await query.getSingleOrNull();
-    return cat?.id;
+    query.orderBy([(c) => d.OrderingTerm.asc(c.id)]);
+    query.limit(2); // 取 2 条即可判定"是否重名",不需要全量
+    final rows = await query.get();
+    if (rows.length > 1) {
+      logger.warning(
+          'SyncEngine',
+          'pull: 分类重名 name="$categoryName" kind=$categoryKind 命中 '
+          '${rows.length}+ 行,取历史最早一条(id=${rows.first.id});'
+          '这是跨设备 seed 未对齐的痕迹,建议在分类管理页合并同名项');
+    }
+    return rows.isEmpty ? null : rows.first.id;
   }
 
   /// 根据账户名查找 accountId

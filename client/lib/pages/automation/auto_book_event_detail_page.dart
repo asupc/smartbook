@@ -1,10 +1,14 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../ai/core/bill_info.dart';
 import '../../data/db.dart' as schema;
 import '../../l10n/app_localizations.dart';
 import '../../providers/ai_chat_providers.dart';
 import '../../providers/automation_providers.dart';
+import '../../services/automation/auto_book_reason_presenter.dart';
 import '../../widgets/ui/primary_header.dart';
 import '../../widgets/ui/toast.dart';
 import '../transaction/transaction_editor_page.dart';
@@ -33,6 +37,8 @@ class _AutoBookEventDetailPageState
     final theme = Theme.of(context);
     final event = widget.event;
     final color = _stateColor(context, event.state);
+    final reasonView = AutoBookReasonPresenter.present(l10n,
+        reason: event.reason, state: event.state, lastError: event.lastError);
 
     return Scaffold(
       body: Column(
@@ -80,16 +86,40 @@ class _AutoBookEventDetailPageState
                         _formatTime(event.nextRetryAt!)),
                 ]),
 
-                // 原因 / 错误卡
+                // 原因卡:面向用户的可读原因;内部原因码与错误只进可展开诊断区
                 if ((event.reason ?? '').isNotEmpty ||
                     (event.lastError ?? '').isNotEmpty)
                   _card(theme, children: [
-                    if ((event.reason ?? '').isNotEmpty)
-                      _kv(l10n.autoBookDetailReason, event.reason!),
-                    if ((event.lastError ?? '').isNotEmpty) ...[
-                      if ((event.reason ?? '').isNotEmpty)
-                        const SizedBox(height: 8),
-                      _kv(l10n.autoBookDetailError, event.lastError!),
+                    _kv(
+                      l10n.autoBookDetailReason,
+                      AutoBookReasonPresenter.present(l10n,
+                              reason: event.reason, state: event.state)
+                          .title,
+                    ),
+                    if (_reasonDiagnostic(event) != null) ...[
+                      const SizedBox(height: 4),
+                      Theme(
+                        data: theme.copyWith(
+                            dividerColor: Colors.transparent),
+                        child: ExpansionTile(
+                          tilePadding: EdgeInsets.zero,
+                          childrenPadding: const EdgeInsets.only(bottom: 8),
+                          leading: Icon(Icons.bug_report_outlined,
+                              size: 18, color: theme.hintColor),
+                          title: Text(
+                            l10n.autoBookDetailDiagnostics,
+                            style: theme.textTheme.bodySmall
+                                ?.copyWith(color: theme.hintColor),
+                          ),
+                          children: [
+                            SelectableText(
+                              _reasonDiagnostic(event)!,
+                              style: theme.textTheme.bodySmall
+                                  ?.copyWith(fontFamily: 'monospace'),
+                            ),
+                          ],
+                        ),
+                      ),
                     ],
                   ]),
 
@@ -178,7 +208,11 @@ class _AutoBookEventDetailPageState
                                         if ((item.reason ?? '')
                                             .trim()
                                             .isNotEmpty)
-                                          item.reason!,
+                                          AutoBookReasonPresenter.present(
+                                                  l10n,
+                                                  reason: item.reason,
+                                                  state: item.state)
+                                              .title,
                                       ].join(' · '),
                                       maxLines: 2,
                                       overflow: TextOverflow.ellipsis,
@@ -226,6 +260,31 @@ class _AutoBookEventDetailPageState
                       ),
                   ]),
 
+                // 手动补记(B1 任务 4):硬过滤事件(缺时间/推测时间等)未入账,
+                // 用户主动补记时带入**仍可用的可信字段**;时间缺失或为模型
+                // 推测时绝不带入,由用户在编辑器里确认。
+                if (reasonView.canManualAdd)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        FilledButton.tonalIcon(
+                          onPressed: _manualAdd,
+                          icon: const Icon(Icons.edit_note),
+                          label: Text(l10n.autoBookManualAdd),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          l10n.autoBookManualAddTimeHint,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.hintColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
                 // 手动重试(P1-2):retry/failed 事件清退避闸门重跑原通道
                 if (event.state == 'retry' || event.state == 'failed')
                   Padding(
@@ -260,6 +319,110 @@ class _AutoBookEventDetailPageState
         (event.rawText?.isNotEmpty ?? false) ||
         (event.rawActor?.isNotEmpty ?? false) ||
         (event.rawMetadataJson?.isNotEmpty ?? false);
+  }
+
+  /// 内部原因码 + 错误信息,仅诊断区展示。
+  String? _reasonDiagnostic(schema.AutoBookEvent event) {
+    final code = (event.reason ?? '').trim();
+    final err = (event.lastError ?? '').trim();
+    if (code.isEmpty && err.isEmpty) return null;
+    if (code.isEmpty) return err;
+    if (err.isEmpty) return code;
+    return '$code\n$err';
+  }
+
+  /// 手动补记:从事件子项里挑仍可用的结构化摘要,带入可信字段打开编辑器。
+  /// 多笔时先让用户选;没有任何可用摘要时明示不可恢复,不虚构数据。
+  Future<void> _manualAdd() async {
+    final l10n = AppLocalizations.of(context);
+    final store = ref.read(autoBookCoordinatorProvider).store;
+    List<schema.AutoBookEventItem> items;
+    try {
+      items = await store.itemsForEvent(widget.event.id);
+    } catch (_) {
+      items = const [];
+    }
+    final usable = items
+        .where((i) =>
+            (i.billJson ?? '').isNotEmpty && i.transactionId == null)
+        .toList();
+    if (usable.isEmpty) {
+      if (mounted) showToast(context, l10n.autoBookManualAddUnavailable);
+      return;
+    }
+    if (usable.length == 1) {
+      await _openManualEditor(usable.first);
+      return;
+    }
+    if (!mounted) return;
+    final picked = await showModalBottomSheet<schema.AutoBookEventItem>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: Text(l10n.autoBookManualAddPickItem,
+                  style: Theme.of(ctx).textTheme.titleSmall),
+            ),
+            for (final item in usable)
+              ListTile(
+                title: Text([
+                  if (item.amount != null) '¥${item.amount!.toStringAsFixed(2)}',
+                  if ((item.merchant ?? '').trim().isNotEmpty) item.merchant!,
+                ].join(' · ')),
+                subtitle: Text(AutoBookReasonPresenter.present(l10n,
+                        reason: item.reason, state: item.state)
+                    .title),
+                onTap: () => Navigator.pop(ctx, item),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked != null) await _openManualEditor(picked);
+  }
+
+  Future<void> _openManualEditor(schema.AutoBookEventItem item) async {
+    final l10n = AppLocalizations.of(context);
+    BillInfo? bill;
+    try {
+      final raw = jsonDecode(item.billJson!);
+      if (raw is Map<String, dynamic>) bill = BillInfo.fromJson(raw);
+    } catch (_) {
+      bill = null;
+    }
+    if (bill == null) {
+      if (mounted) showToast(context, l10n.autoBookManualAddUnavailable);
+      return;
+    }
+    // 可信时间:非模型推测且精度到分钟以上。缺时间/推测时间一律不带入,
+    // 由用户在编辑器里确认(计划 §3.3)。
+    final trustedTime = bill.time != null &&
+        !bill.timeInferred &&
+        (bill.timePrecision == BillTimePrecision.exact ||
+            bill.timePrecision == BillTimePrecision.minute);
+    if (!trustedTime && mounted) {
+      showToast(context, l10n.autoBookManualAddTimeHint);
+    }
+    final billInfo = bill;
+    final kind = switch (billInfo.type) {
+      BillType.income => 'income',
+      BillType.transfer => 'transfer',
+      _ => 'expense',
+    };
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => TransactionEditorPage(
+          initialKind: kind,
+          initialAmount: billInfo.amount?.abs(),
+          initialNote: billInfo.merchant ?? billInfo.note,
+          initialDate: trustedTime ? billInfo.time : null,
+        ),
+      ),
+    );
   }
 
   Future<void> _retry() async {
@@ -342,19 +505,9 @@ class _AutoBookEventDetailPageState
         '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}:${local.second.toString().padLeft(2, '0')}';
   }
 
-  // 与历史页同口径的状态/来源标签(两页各自私有,避免跨页面耦合)
-  String _stateLabel(String state) => switch (state) {
-        'captured' => '已捕获',
-        'processing' => '处理中',
-        'pending' => '待确认',
-        'booked' => '已入账',
-        'duplicate' => '已去重',
-        'ignored' => '已忽略',
-        'retry' => '待重试',
-        'failed' => '失败',
-        'expired' => '已过期',
-        _ => state,
-      };
+  // 与历史页同口径的状态/来源标签(统一在 AutoBookReasonPresenter)
+  String _stateLabel(String state) =>
+      AutoBookReasonPresenter.stateLabel(state);
 
   Color _stateColor(BuildContext context, String state) {
     final scheme = Theme.of(context).colorScheme;
@@ -368,15 +521,6 @@ class _AutoBookEventDetailPageState
     };
   }
 
-  String _sourceLabel(String source) => switch (source) {
-        'sms' => '短信',
-        'notification' => '通知',
-        'screenText' => '详情页',
-        'screenshot' => '截图',
-        'sharedImage' => '分享图片',
-        'import' => '导入',
-        'recurring' => '周期交易',
-        'deepLinkText' || 'deepLinkDirect' => 'Deep Link',
-        _ => source,
-      };
+  String _sourceLabel(String source) =>
+      AutoBookReasonPresenter.sourceLabel(source);
 }

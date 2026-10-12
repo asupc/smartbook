@@ -206,16 +206,22 @@ class LocalAttachmentRepository implements AttachmentRepository {
       List<int> transactionIds) async {
     if (transactionIds.isEmpty) return {};
 
-    final attachments = await (db.select(db.transactionAttachments)
-          ..where((t) => t.transactionId.isIn(transactionIds))
-          ..orderBy([(t) => d.OrderingTerm(expression: t.sortOrder)]))
-        .get();
-
+    // C3/阻塞-6(F-38):按 sqliteBindChunkSize(400)分块 —— 与同文件
+    // getAttachmentCountsForTransactions 口径一致。不分块时 export_page.dart
+    // 用导出范围的**全部交易 id** 调用,>3.2 万笔即抛
+    // "too many SQL variables"。
     final Map<int, List<TransactionAttachment>> result = {};
-    for (final attachment in attachments) {
-      result.putIfAbsent(attachment.transactionId, () => []).add(attachment);
+    for (final chunk in chunkIds(transactionIds)) {
+      final attachments = await (db.select(db.transactionAttachments)
+            ..where((t) => t.transactionId.isIn(chunk))
+            ..orderBy([(t) => d.OrderingTerm(expression: t.sortOrder)]))
+          .get();
+      for (final attachment in attachments) {
+        result
+            .putIfAbsent(attachment.transactionId, () => [])
+            .add(attachment);
+      }
     }
-
     return result;
   }
 

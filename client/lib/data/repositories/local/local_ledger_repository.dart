@@ -260,29 +260,38 @@ class LocalLedgerRepository implements LedgerRepository {
 
   @override
   Future<int> clearLedgerTransactions(int ledgerId) async {
-    // 先查询该账本所有交易ID
-    final txIds = await (db.select(db.transactions)
-          ..where((t) => t.ledgerId.equals(ledgerId)))
-        .map((t) => t.id)
-        .get();
+    // C3/F-30:清空账本交易时同步清 account_adjustments —— 调整记录只参与
+    // 余额/净值口径(不进收支),用户"清空账本"后余额仍带调整残留
+    // (110 而非回到 initial 100)。整段包事务保证原子。
+    return db.transaction(() async {
+      // 先查询该账本所有交易ID
+      final txIds = await (db.select(db.transactions)
+            ..where((t) => t.ledgerId.equals(ledgerId)))
+          .map((t) => t.id)
+          .get();
 
-    if (txIds.isNotEmpty) {
-      // 删除关联的 transaction_tags
-      await (db.delete(db.transactionTags)
-            ..where((tt) => tt.transactionId.isIn(txIds)))
+      if (txIds.isNotEmpty) {
+        // 删除关联的 transaction_tags
+        await (db.delete(db.transactionTags)
+              ..where((tt) => tt.transactionId.isIn(txIds)))
+            .go();
+
+        // 删除关联的 transaction_attachments
+        await (db.delete(db.transactionAttachments)
+              ..where((a) => a.transactionId.isIn(txIds)))
+            .go();
+      }
+
+      // 删除 transactions
+      final count = await (db.delete(db.transactions)
+            ..where((t) => t.ledgerId.equals(ledgerId)))
           .go();
-
-      // 删除关联的 transaction_attachments
-      await (db.delete(db.transactionAttachments)
-            ..where((a) => a.transactionId.isIn(txIds)))
+      // 清账户余额调整记录(否则余额残留调整差额)
+      await (db.delete(db.accountAdjustments)
+            ..where((a) => a.ledgerId.equals(ledgerId)))
           .go();
-    }
-
-    // 删除 transactions
-    final count = await (db.delete(db.transactions)
-          ..where((t) => t.ledgerId.equals(ledgerId)))
-        .go();
-    return count;
+      return count;
+    });
   }
 
   @override

@@ -30,10 +30,15 @@ abstract class BillParser {
       raw?.trim().isEmpty == true ? null : raw?.trim();
 
   /// 将平台退款金额归一为正数；空值/非法值返回 null。
+  ///
+  /// 删除集包含半/全角货币符号、千分位、正负号,以及 **Unicode 负号变体**:
+  /// `−`(U+2212 数学减号)、`－`(U+FF0D 全角减号)、`–`(U+2013 en dash)、
+  /// `—`(U+2014 em dash)。这些是 `double.tryParse` 不认的字符,不删掉会让
+  /// 整笔退款金额归一成 null(下游按"无退款"处理,静默丢数据)。
   double? normalizeRefundAmount(String? raw) {
     if (raw == null || raw.trim().isEmpty) return null;
     return double.tryParse(
-      raw.replaceAll(RegExp(r'[¥￥$,+，]'), '').trim(),
+      raw.replaceAll(RegExp(r'[¥￥$,+，\u2212\uFF0D\u2013\u2014]'), '').trim(),
     )?.abs();
   }
 }

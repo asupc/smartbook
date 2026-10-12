@@ -41,6 +41,8 @@ class MainActivity: FlutterFragmentActivity() {
     private val SCREEN_TEXT_CHANNEL = "com.smartbook.zhi/screen_text"
     private val LOGGER_CHANNEL = "com.smartbook.logger"
     private val SHARE_CHANNEL = "com.smartbook.zhi/share"
+    private val STATUS_CHANNEL = "com.smartbook.zhi/automation_status"
+    private val TARGET_CHANNEL = "com.smartbook.zhi/auto_book_target"
 
     companion object {
         private const val ENGINE_ID = "smartbook_main_engine"
@@ -504,6 +506,69 @@ class MainActivity: FlutterFragmentActivity() {
                     } else {
                         result.success(null)
                     }
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        // B1:自动记账状态卡的**只读**状态查询。只返回可观测事实(队列积压、
+        // 最近捕获时间、桥接/观察器是否注册),不改任何开关与队列;Dart 侧
+        // 查询失败时显示「待验证」,不把「查不到」当成「正常」。
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, STATUS_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getCaptureStats" -> {
+                    result.success(
+                        mapOf(
+                            "sms" to mapOf(
+                                "queueSize" to SmsReceiver.queueSize(this),
+                                "lastCaptureAt" to SmsReceiver.lastCaptureAt(this),
+                                "bridgeRegistered" to (smsBridgeReceiver != null)
+                            ),
+                            "notify" to mapOf(
+                                "queueSize" to NotificationWatcher.peekQueue(this).size,
+                                "lastCaptureAt" to NotificationWatcher.lastCaptureAt(this),
+                                "bridgeRegistered" to (notifyBridgeReceiver != null)
+                            ),
+                            "screenText" to mapOf(
+                                "queueSize" to ScreenTextWatcher.peekQueue(this).size,
+                                "lastCaptureAt" to ScreenTextWatcher.lastCaptureAt(this),
+                                "bridgeRegistered" to (screenTextBridgeReceiver != null)
+                            ),
+                            "screenshot" to mapOf(
+                                "queueSize" to ScreenshotObserver.peekQueue(this).size,
+                                "lastCaptureAt" to ScreenshotObserver.lastCaptureAt(this),
+                                // 观察器注册状态 = ContentObserver 是否仍在监听
+                                "bridgeRegistered" to (screenshotObserver != null)
+                            ),
+                            // B3 任务 5:容量拒收/过期清理的最小损失摘要(可见,不静默)
+                            "lossSummary" to NativeAutoBookQueue.lossSummary(this)
+                        )
+                    )
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        // B2:自动记账目标缓存的写入/读取。Dart 在配置保存成功后调用写入;
+        // 捕获入队只读它,不读 Flutter 侧任何状态。
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, TARGET_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "setCachedTarget" -> {
+                    val ref = call.argument<String>("targetRef")
+                    val state = call.argument<String>("targetState") ?: "resolved"
+                    val version = call.argument<Int>("configVersion") ?: -1
+                    AutoBookTargetStore.write(this, ref, state, version)
+                    result.success(true)
+                }
+                "getCachedTarget" -> {
+                    val snapshot = AutoBookTargetStore.read(this)
+                    result.success(
+                        mapOf(
+                            "targetRef" to (snapshot.ref ?: ""),
+                            "targetState" to (snapshot.state ?: ""),
+                            "configVersion" to snapshot.version
+                        )
+                    )
                 }
                 else -> result.notImplemented()
             }

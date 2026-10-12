@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/db.dart' as schema;
+import '../../l10n/app_localizations.dart';
 import '../../providers.dart';
+import '../../services/automation/auto_book_reason_presenter.dart';
 import '../../widgets/ui/primary_header.dart';
 import 'auto_book_event_detail_page.dart';
 
@@ -38,18 +40,8 @@ class _AutoBookHistoryPageState extends ConsumerState<AutoBookHistoryPage> {
     });
   }
 
-  String _stateLabel(String state) => switch (state) {
-        'captured' => '已捕获',
-        'processing' => '处理中',
-        'pending' => '待确认',
-        'booked' => '已入账',
-        'duplicate' => '已去重',
-        'ignored' => '已忽略',
-        'retry' => '待重试',
-        'failed' => '失败',
-        'expired' => '已过期',
-        _ => state,
-      };
+  String _stateLabel(String state) =>
+      AutoBookReasonPresenter.stateLabel(state);
 
   Color _stateColor(BuildContext context, String state) {
     final scheme = Theme.of(context).colorScheme;
@@ -63,17 +55,8 @@ class _AutoBookHistoryPageState extends ConsumerState<AutoBookHistoryPage> {
     };
   }
 
-  String _sourceLabel(String source) => switch (source) {
-        'sms' => '短信',
-        'notification' => '通知',
-        'screenText' => '详情页',
-        'screenshot' => '截图',
-        'sharedImage' => '分享图片',
-        'import' => '导入',
-        'recurring' => '周期交易',
-        'deepLinkText' || 'deepLinkDirect' => 'Deep Link',
-        _ => source,
-      };
+  String _sourceLabel(String source) =>
+      AutoBookReasonPresenter.sourceLabel(source);
 
   @override
   Widget build(BuildContext context) {
@@ -138,6 +121,7 @@ class _AutoBookHistoryPageState extends ConsumerState<AutoBookHistoryPage> {
                               const SizedBox(height: 8),
                           itemBuilder: (context, index) {
                             final event = _events[index];
+                            final l10n = AppLocalizations.of(context);
                             final color = _stateColor(context, event.state);
                             return Card(
                               child: ListTile(
@@ -161,11 +145,13 @@ class _AutoBookHistoryPageState extends ConsumerState<AutoBookHistoryPage> {
                                   ],
                                 ),
                                 subtitle: Text(
+                                  // B1:普通列表只展示可读原因;内部原因码与
+                                  // 错误信息只在详情页的可展开诊断区出现,
+                                  // 不把堆栈/凭据铺进列表。
                                   '${event.updatedAt.toLocal()}\n'
-                                  '${event.reason ?? '无附加原因'}'
-                                  '${event.transactionId == null ? '' : ' · 交易 #${event.transactionId}'}'
-                                  '${event.lastError == null ? '' : '\n错误: ${event.lastError}'}',
-                                  maxLines: 4,
+                                  '${AutoBookReasonPresenter.present(l10n, reason: event.reason, state: event.state).title}'
+                                  '${event.transactionId == null ? '' : ' · 交易 #${event.transactionId}'}',
+                                  maxLines: 3,
                                   overflow: TextOverflow.ellipsis,
                                 ),
                                 isThreeLine: true,

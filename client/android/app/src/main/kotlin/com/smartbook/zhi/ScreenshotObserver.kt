@@ -52,7 +52,12 @@ class ScreenshotObserver(
         private const val KEY_PROCESSED_PATHS = "processed_paths"
         private const val MAX_STORED_PATHS = 200 // 最多存储200条记录
         private const val KEY_PENDING_QUEUE = "pending_queue"
+        /** 统一队列里的来源标识(B3)。 */
+        private const val SOURCE = "screenshot"
         private const val MAX_PENDING_QUEUE = 30
+
+        // B1 状态卡「最近捕获时间」:入队时落盘,ACK 清空队列后仍保留。
+        private const val KEY_LAST_CAPTURE_AT = "last_capture_at"
 
         // ---- 截图来源 App 门禁(2026-09-18 策略调整) ----
         /** 门禁开关(默认开;Dart 设置页经 setSourceAppFilter 同步到本 pref)。 */
@@ -65,21 +70,22 @@ class ScreenshotObserver(
          */
         private const val FOREGROUND_FRESH_MS = 10 * 60_000L
 
+        /** 最近一次入队时间(0 = 本机从未捕获过)。只读状态查询用。 */
+        @Synchronized
+        fun lastCaptureAt(context: Context): Long {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            return prefs.getLong(KEY_LAST_CAPTURE_AT, 0L)
+        }
+
         /** 读取待处理截图，读取不删除，处理完成由 Flutter ACK。 */
         @Synchronized
         fun peekQueue(context: Context): ArrayList<Map<String, String>> {
-            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            val arr = JSONArray(prefs.getString(KEY_PENDING_QUEUE, null) ?: "[]")
-            val result = ArrayList<Map<String, String>>(arr.length())
-            for (i in 0 until arr.length()) {
-                val obj = arr.optJSONObject(i) ?: continue
-                result.add(
-                    mapOf(
-                        "path" to obj.optString("path"),
-                        "timestamp" to obj.optString("timestamp"),
-                    )
-                )
-            }
+            NativeAutoBookQueue.migrateFromPrefs(context, SOURCE, PREFS_NAME, KEY_PENDING_QUEUE)
+            val items = NativeAutoBookQueue.peekBatch(
+                context, SOURCE, NativeAutoBookQueue.MAX_PER_SOURCE
+            )
+            val result = ArrayList<Map<String, String>>(items.size)
+            for (item in items) result.add(NativeAutoBookQueue.toMap(item))
             return result
         }
 
@@ -88,25 +94,21 @@ class ScreenshotObserver(
         fun ackQueue(context: Context, paths: List<String>) {
             if (paths.isEmpty()) return
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            val wanted = paths.toSet()
-            val arr = JSONArray(prefs.getString(KEY_PENDING_QUEUE, null) ?: "[]")
-            val remaining = JSONArray()
-            val acked = mutableSetOf<String>()
-            for (i in 0 until arr.length()) {
-                val obj = arr.optJSONObject(i) ?: continue
-                val path = obj.optString("path")
-                if (wanted.contains(path)) acked.add(path) else remaining.put(obj)
-            }
-            if (acked.isEmpty()) return
+            NativeAutoBookQueue.migrateFromPrefs(context, SOURCE, PREFS_NAME, KEY_PENDING_QUEUE)
+            val wanted = paths.filter { it.isNotEmpty() }.toSet()
+            if (wanted.isEmpty()) return
+            // 「已处理路径」备忘录照旧写;队列删除走统一队列(B3)。
             val processed = prefs.getString(KEY_PROCESSED_PATHS, null)
                 ?.split("|")?.filter { it.isNotEmpty() }?.toMutableList()
                 ?: mutableListOf()
-            processed.addAll(acked)
-            val trimmed = processed.takeLast(MAX_STORED_PATHS)
+            processed.addAll(wanted)
             prefs.edit()
-                .putString(KEY_PENDING_QUEUE, remaining.toString())
-                .putString(KEY_PROCESSED_PATHS, trimmed.joinToString("|"))
+                .putString(
+                    KEY_PROCESSED_PATHS,
+                    processed.takeLast(MAX_STORED_PATHS).joinToString("|"),
+                )
                 .apply()
+            NativeAutoBookQueue.ack(context, SOURCE, wanted.toList())
         }
     }
 
@@ -593,13 +595,21 @@ class ScreenshotObserver(
         val processed = prefs.getString(KEY_PROCESSED_PATHS, null)
             ?.split("|")?.filter { it.isNotEmpty() }?.toSet() ?: emptySet()
         if (processed.contains(path)) return false
-        val arr = JSONArray(prefs.getString(KEY_PENDING_QUEUE, null) ?: "[]")
-        for (i in 0 until arr.length()) {
-            if (arr.optJSONObject(i)?.optString("path") == path) return false
-        }
-        arr.put(JSONObject().put("path", path).put("timestamp", ts))
-        while (arr.length() > MAX_PENDING_QUEUE) arr.remove(0)
-        prefs.edit().putString(KEY_PENDING_QUEUE, arr.toString()).apply()
+        // 队列内去重交给统一队列(同 source + event_key 主键冲突即重复)。
+        NativeAutoBookQueue.migrateFromPrefs(context, SOURCE, PREFS_NAME, KEY_PENDING_QUEUE)
+        val item = JSONObject().put("path", path).put("timestamp", ts)
+        val target = AutoBookTargetStore.enqueueFields(context)
+        val result = NativeAutoBookQueue.enqueue(
+            context = context,
+            source = SOURCE,
+            item = item,
+            nowMs = System.currentTimeMillis(),
+            targetRef = target["targetRef"] as? String,
+            targetVersion = target["targetVersion"] as? Int,
+            targetState = target["targetState"] as? String,
+        )
+        if (result != NativeAutoBookQueue.EnqueueResult.added) return false
+        prefs.edit().putLong(KEY_LAST_CAPTURE_AT, ts).apply()
         return true
     }
 

@@ -78,7 +78,7 @@ class SmsReceiver : BroadcastReceiver() {
             .filter { it > 0L }
             .minOrNull() ?: System.currentTimeMillis()
         val eventKey = eventKey(sender, fingerprint, sourceTimestamp)
-        if (!enqueue(prefs, eventKey, fingerprint, sender, body, sourceTimestamp)) {
+        if (!enqueue(context, prefs, eventKey, fingerprint, sender, body, sourceTimestamp)) {
             log("短信已在已处理记录或待处理队列中,丢弃")
             return
         }
@@ -135,10 +135,19 @@ class SmsReceiver : BroadcastReceiver() {
         return NON_BOOKABLE_KEYWORDS.any { body.contains(it) }
     }
 
-    /** sha256(sender|body) 前 16 位 hex,作为兼容用内容指纹。 */
+    /**
+     * 指纹字段编码:每个字段写成 `${长度}:${内容}`,再以 `|` 拼接。
+     * 长度前缀让字段边界自描述 —— 内容里的 `|` 无法再与相邻字段互换
+     * 构造同一指纹(2026-10-11 批次 C2)。Dart 侧
+     * `AutoBillingService.smsFingerprint` 同口径(两侧都是 UTF-16 计数)。
+     */
+    private fun fieldEncoded(fields: List<String>): String =
+        fields.joinToString("|") { "${it.length}:$it" }
+
+    /** sha256(长度前缀拼接 sender/body) 前 16 位 hex,作为兼容用内容指纹。 */
     fun fingerprint(sender: String, body: String): String {
         return MessageDigest.getInstance("SHA-256")
-            .digest("$sender|$body".toByteArray())
+            .digest(fieldEncoded(listOf(sender, body)).toByteArray())
             .take(8)
             .joinToString("") { "%02x".format(it.toInt() and 0xff) }
     }
@@ -156,9 +165,15 @@ class SmsReceiver : BroadcastReceiver() {
         const val BRIDGE_ACTION = "com.smartbook.zhi.SMS_CAPTURED"
 
         const val PREFS_NAME = "sms_monitor_prefs"
+        /** 统一队列里的来源标识(B3)。 */
+        const val SOURCE = "sms"
         const val KEY_ENABLED = "enabled"
         const val KEY_FINGERPRINTS = "processed_fingerprints"
         const val KEY_QUEUE = "pending_queue"
+
+        // B1 状态卡「最近捕获时间」:入队时落盘,ACK 清空队列后仍保留 ——
+        // 否则长期无新事件时无法区分「没消息」与「监听断了」。
+        const val KEY_LAST_CAPTURE_AT = "last_capture_at"
 
         const val MAX_FINGERPRINTS = 200
         const val MAX_QUEUE = 50
@@ -252,24 +267,15 @@ class SmsReceiver : BroadcastReceiver() {
          * 未处理的短信;peek-then-ack 只会丢"正在处理的那一条"(ack 语义
          * 与处理完成原子写入),未开始的项下次启动继续处理。
          */
+        /** peek 不删除;处理完成由 [ackSms] 逐项确认(B3 分批读取)。 */
         @Synchronized
         fun peekQueue(context: Context): ArrayList<Map<String, String>> {
-            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            val raw = prefs.getString(KEY_QUEUE, null) ?: return ArrayList()
-            val arr = JSONArray(raw)
-            val result = ArrayList<Map<String, String>>(arr.length())
-            for (i in 0 until arr.length()) {
-                val obj = arr.optJSONObject(i) ?: continue
-                result.add(
-                    mapOf(
-                        "eventKey" to obj.optString("eventKey"),
-                        "fingerprint" to obj.optString("fingerprint"),
-                        "sender" to obj.optString("sender"),
-                        "body" to obj.optString("body"),
-                        "timestamp" to obj.optString("timestamp")
-                    )
-                )
-            }
+            migrate(context)
+            val items = NativeAutoBookQueue.peekBatch(
+                context, SOURCE, NativeAutoBookQueue.MAX_PER_SOURCE
+            )
+            val result = ArrayList<Map<String, String>>(items.size)
+            for (item in items) result.add(NativeAutoBookQueue.toMap(item))
             return result
         }
 
@@ -281,43 +287,45 @@ class SmsReceiver : BroadcastReceiver() {
             eventKeys: List<String> = emptyList(),
         ) {
             if (fingerprints.isEmpty() && eventKeys.isEmpty()) return
+            migrate(context)
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            val raw = prefs.getString(KEY_QUEUE, null) ?: return
-            val wanted = (fingerprints + eventKeys).toSet()
-            val arr = JSONArray(raw)
-            val remaining = JSONArray()
+            val wanted = (fingerprints + eventKeys).filter { it.isNotEmpty() }.toSet()
+            if (wanted.isEmpty()) return
+
+            // 先取回原始项:删除后就无法再补「已处理」备忘录。
             val acked = mutableSetOf<String>()
-            for (i in 0 until arr.length()) {
-                val obj = arr.optJSONObject(i) ?: continue
+            for (obj in NativeAutoBookQueue.itemsFor(context, SOURCE, wanted)) {
                 val fp = obj.optString("fingerprint")
                 val key = obj.optString("eventKey")
-                if (wanted.contains(fp) || (key.isNotEmpty() && wanted.contains(key))) {
-                    // 新格式只持久化带前缀的 eventKey；没有 eventKey 的旧队列
-                    // 才回退到内容 fingerprint。
-                    if (key.isNotEmpty()) {
-                        acked.add(PROCESSED_EVENT_PREFIX + key)
-                    } else if (fp.isNotEmpty()) {
-                        acked.add(fp)
-                    }
-                } else {
-                    remaining.put(obj)
+                // 新格式持久化带前缀的 eventKey;没有 eventKey 的旧项回退指纹。
+                if (key.isNotEmpty()) {
+                    acked.add(PROCESSED_EVENT_PREFIX + key)
+                } else if (fp.isNotEmpty()) {
+                    acked.add(fp)
                 }
             }
+            NativeAutoBookQueue.ack(context, SOURCE, wanted.toList())
             if (acked.isEmpty()) return
             val processed = loadFingerprints(prefs)
             processed.addAll(acked)
             saveFingerprints(prefs, processed)
-            prefs.edit().putString(KEY_QUEUE, remaining.toString()).apply()
         }
 
         @Synchronized
         fun queueSize(context: Context): Int {
+            migrate(context)
+            return NativeAutoBookQueue.stats(context, SOURCE).count
+        }
+
+        /** 最近一次入队时间(0 = 本机从未捕获过)。只读状态查询用。 */
+        fun lastCaptureAt(context: Context): Long {
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            return JSONArray(prefs.getString(KEY_QUEUE, null) ?: "[]").length()
+            return prefs.getLong(KEY_LAST_CAPTURE_AT, 0L)
         }
 
         @Synchronized
         private fun enqueue(
+            context: Context,
             prefs: SharedPreferences,
             eventKey: String,
             fingerprint: String,
@@ -325,33 +333,36 @@ class SmsReceiver : BroadcastReceiver() {
             body: String,
             ts: Long,
         ): Boolean {
+            migrate(context)
             val processed = loadFingerprints(prefs)
             // 新事件按 eventKey 去重，不能把内容 fingerprint 当永久幂等键，
             // 否则两条正文完全相同但时间不同的真实短信会互相覆盖。
             if (processed.contains(PROCESSED_EVENT_PREFIX + eventKey)) return false
-            val arr = JSONArray(prefs.getString(KEY_QUEUE, null) ?: "[]")
-            for (i in 0 until arr.length()) {
-                val obj = arr.optJSONObject(i) ?: continue
-                if (obj.optString("eventKey") == eventKey ||
-                    (obj.optString("eventKey").isEmpty() &&
-                        obj.optString("fingerprint") == fingerprint)
-                ) {
-                    return false
-                }
-            }
-            arr.put(
-                JSONObject()
-                    .put("eventKey", eventKey)
-                    .put("fingerprint", fingerprint)
-                    .put("sender", sender)
-                    .put("body", body)
-                    .put("timestamp", ts)
+            // 队列内去重交给统一队列(同 source + event_key 主键冲突即重复)。
+            val item = JSONObject()
+                .put("eventKey", eventKey)
+                .put("fingerprint", fingerprint)
+                .put("sender", sender)
+                .put("body", body)
+                .put("timestamp", ts)
+            val target = AutoBookTargetStore.enqueueFields(context)
+            val result = NativeAutoBookQueue.enqueue(
+                context = context,
+                source = SOURCE,
+                item = item,
+                nowMs = System.currentTimeMillis(),
+                targetRef = target["targetRef"] as? String,
+                targetVersion = target["targetVersion"] as? Int,
+                targetState = target["targetState"] as? String,
             )
-            // 超出容量:删最旧(0 是队头,最先入队)。未 ACK 的项不写入 processed,
-            // 避免容量淘汰造成静默丢失后永久阻断重放。
-            while (arr.length() > MAX_QUEUE) arr.remove(0)
-            prefs.edit().putString(KEY_QUEUE, arr.toString()).apply()
+            if (result != NativeAutoBookQueue.EnqueueResult.added) return false
+            prefs.edit().putLong(KEY_LAST_CAPTURE_AT, ts).apply()
             return true
+        }
+
+        /** 首次访问时把旧 SharedPreferences 队列迁进统一队列(幂等)。 */
+        private fun migrate(context: Context) {
+            NativeAutoBookQueue.migrateFromPrefs(context, SOURCE, PREFS_NAME, KEY_QUEUE)
         }
 
         fun loadFingerprints(prefs: SharedPreferences): MutableSet<String> {

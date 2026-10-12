@@ -16,7 +16,7 @@ class GenericBillParser implements BillParser {
   double? normalizeRefundAmount(String? raw) {
     if (raw == null || raw.trim().isEmpty) return null;
     return double.tryParse(
-      raw.replaceAll(RegExp(r'[¥￥$,+，]'), '').trim(),
+      raw.replaceAll(RegExp(r'[¥￥$,+，\u2212\uFF0D\u2013\u2014]'), '').trim(),
     )?.abs();
   }
 
@@ -35,9 +35,13 @@ class GenericBillParser implements BillParser {
   }
 
   /// 通过列数一致性查找表头行
-  /// 策略：在前30行中，找到第一个列数>=3且后续至少有5行数据列数相同的行
+  /// 策略：在前30行中，找到第一个列数>=3且后续至少 N 行数据列数与之一致的行。
+  /// N 自适应：常规文件为 5；**短文件(总行数 < 6)降到 2** ——
+  /// 否则带描述行的短账单永远不满足阈值，会把描述行当表头（列映射全空、整份导入失败）。
   int _findHeaderByColumnConsistency(List<List<String>> rows) {
     final maxRows = rows.length < 30 ? rows.length : 30;
+    // 短文件:表头之后不可能有 5 行数据,阈值降到"至少 2 行同列数"
+    final requiredConsistent = rows.length < 6 ? 2 : 5;
 
     for (int i = 0; i < maxRows; i++) {
       final headerCandidateColCount = rows[i].length;
@@ -51,7 +55,7 @@ class GenericBillParser implements BillParser {
       final nonEmptyCount = rows[i].where((c) => c.trim().isNotEmpty).length;
       if (nonEmptyCount < 3) continue;
 
-      // 检查后续至少5行的列数是否一致
+      // 检查后续至少 requiredConsistent 行的列数是否一致
       int consistentCount = 0;
       final checkRange = rows.length < i + 10 ? rows.length : i + 10;
 
@@ -61,8 +65,8 @@ class GenericBillParser implements BillParser {
         }
       }
 
-      // 如果至少有5行数据列数一致，认为找到了表头
-      if (consistentCount >= 5) {
+      // 达到阈值即认为找到了表头
+      if (consistentCount >= requiredConsistent) {
         return i;
       }
     }

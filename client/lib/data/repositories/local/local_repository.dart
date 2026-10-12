@@ -11,7 +11,7 @@ import '../base_repository.dart';
 import '../budget_repository.dart';
 import '../transaction_repository.dart'
     show BatchAttachmentData, TransactionUpdateBySyncIdData, TransactionPage,
-        TransactionPageCursor, TransactionWithRefs;
+        TransactionPageCursor, TransactionWithRefs, unsetTransactionField;
 import 'local_ledger_repository.dart';
 import 'local_transaction_repository.dart';
 import 'local_category_repository.dart';
@@ -143,7 +143,16 @@ class LocalRepository extends BaseRepository {
   @override
   Future<void> deleteLedger(int id) async {
     if (changeTracker == null) {
-      await _ledgerRepo.deleteLedger(id);
+      // C3/F-30:无 changeTracker 时也必须清 budgets/adjustments —— 旧实现直接
+      // 早退,子仓 deleteLedger 只 cascade tx,预算成 ledgerId 悬空的孤儿
+      // ("有/无 tracker 行为不同"是隐性契约)。补一变体:同一事务里清干净。
+      await db.transaction(() async {
+        await _ledgerRepo.deleteLedger(id);
+        await (db.delete(db.budgets)..where((b) => b.ledgerId.equals(id))).go();
+        await (db.delete(db.accountAdjustments)
+              ..where((a) => a.ledgerId.equals(id)))
+            .go();
+      });
       return;
     }
     // 删除前预查级联会消失的 transactions 和 budgets,删完后逐条登记 delete
@@ -178,6 +187,10 @@ class LocalRepository extends BaseRepository {
       if (budgets.isNotEmpty) {
         await (db.delete(db.budgets)..where((b) => b.ledgerId.equals(id))).go();
       }
+      // C3/F-30:调整记录同样不能留(只进余额/净值口径,悬挂会污染余额)。
+      await (db.delete(db.accountAdjustments)
+            ..where((a) => a.ledgerId.equals(id)))
+          .go();
 
       for (final tx in txs) {
         if (tx.syncId == null) continue;
@@ -393,6 +406,18 @@ class LocalRepository extends BaseRepository {
     String? currencyCode,
     double? nativeAmount,
   }) async {
+    // C1 A6–A8 同源守卫(2026-10-11 批次 C2):金额必须有限。
+    // AI 响应 `{"amount":"Infinity"}` / JSON 字面量 1e400 / 汇率异常折算
+    // 都能产出 Infinity 或 NaN —— SQLite REAL 接受 Inf,落库后
+    // `getLedgerStats` 的 SUM 变 Infinity,账本卡余额渲染崩溃
+    // (RangeError)。NaN 只是"侥幸"被 NOT NULL 挡住,不能依赖。
+    // 这里在提交侧统一关闭数据层 F-13 /解析器 P-1 / UI U-1。
+    //
+    // 缺陷 F(2026-10-11 追加):判据下沉为 `LocalTransactionRepository` 的
+    // 静态 `txAmountViolation`(单条/批量/companion/按 syncId 全部入口共用),
+    // wrapper 与子仓不再各写一份。数量上限(U-1 的 12 位整数)同步生效。
+    LocalTransactionRepository.validateTransactionAmount(type, amount);
+    LocalTransactionRepository.validateTxNativeAmount(nativeAmount);
     // v30 带折算兜底(02 §六):任何调用方(单币种记账/AI/周期模板)未传两字段
     // 时在此补齐 —— 外币先查有效汇率,取不到才 =amount(命中 L11 检测可捞回)。
     final (cc, na) = await _resolveTxCurrency(
@@ -482,13 +507,13 @@ class LocalRepository extends BaseRepository {
     required int id,
     required String type,
     required double amount,
-    int? categoryId,
-    String? note,
+    Object? categoryId = unsetTransactionField,
+    Object? note = unsetTransactionField,
     DateTime? happenedAt,
     dynamic accountId,
-    String? categorySyncIdOverride,
-    String? accountSyncIdOverride,
-    String? toAccountSyncIdOverride,
+    Object? categorySyncIdOverride = unsetTransactionField,
+    Object? accountSyncIdOverride = unsetTransactionField,
+    Object? toAccountSyncIdOverride = unsetTransactionField,
     bool? excludeFromStats,
     bool? excludeFromBudget,
     String? currencyCode,
@@ -2194,9 +2219,54 @@ class LocalRepository extends BaseRepository {
   Future<List<({DateTime date, double balance})>> getNetWorthDailyBalances({
     required DateTime startDate,
     required DateTime endDate,
+    Map<String, double>? ratesToBase,
+  }) async {
+    // C3/F-20:包装层补上 provider 层的有效汇率(与 netWorthTrendSeriesProvider
+    // / netWorthTrendProvider 同源),让旧入口与净值卡/趋势同口径。
+    var rates = ratesToBase;
+    if (rates == null || rates.isEmpty) {
+      try {
+        final ledgerId = await _currentOrFirstLedgerId();
+        final ledger = ledgerId == null ? null : await getLedgerById(ledgerId);
+        final base =
+            ((ledger?.currency.isNotEmpty ?? false) ? ledger!.currency : 'CNY')
+                .toUpperCase();
+        final effective = await _effectiveRatesFor(base);
+        rates = <String, double>{base: 1.0};
+        for (final e in effective.entries) {
+          final r = double.tryParse(e.value.rate);
+          if (r != null && r > 0 && r.isFinite) {
+            rates[e.key.toUpperCase()] = r;
+          }
+        }
+      } catch (_) {
+        rates = const {'CNY': 1.0};
+      }
+    }
+    return _accountRepo.getNetWorthDailyBalances(
+        startDate: startDate, endDate: endDate, ratesToBase: rates);
+  }
+
+  Future<int?> _currentOrFirstLedgerId() async {
+    final row = await db.customSelect(
+      'SELECT id FROM ledgers ORDER BY id LIMIT 1',
+      readsFrom: {db.ledgers},
+    ).getSingleOrNull();
+    final v = row?.data['id'];
+    return v is int ? v : null;
+  }
+
+  @override
+  Future<List<({DateTime date, double balance})>>
+      getNetWorthDailyBalancesConverted({
+    required DateTime startDate,
+    required DateTime endDate,
+    required Map<String, double> ratesToBase,
   }) =>
-      _accountRepo.getNetWorthDailyBalances(
-          startDate: startDate, endDate: endDate);
+          _accountRepo.getNetWorthDailyBalancesConverted(
+              startDate: startDate,
+              endDate: endDate,
+              ratesToBase: ratesToBase);
 
   @override
   Future<List<({DateTime date, double assets, double liabilities, double net})>>

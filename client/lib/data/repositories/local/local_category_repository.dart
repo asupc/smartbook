@@ -31,31 +31,35 @@ class LocalCategoryRepository implements CategoryRepository {
     int? parentId,
     String? syncId,
   }) async {
-    // 撞同名抛 DuplicateNameException((name,kind) 联合唯一,跨 kind 可同名)。caller 显式 handle:
-    //   - UI 主动建 → 先过 isCategoryNameDuplicate 警告;真冲突 try/catch 弹 toast
-    //   - import / 自动记账等静默路径 → 改用 upsertCategory(get-or-create)
-    // 静默复用会把收入 tx 错挂到 expense 分类或吞掉 caller 传的 icon/sortOrder。
-    final existing = await (db.select(db.categories)
-          ..where((c) => c.name.equals(name) & c.kind.equals(kind)))
-        .get();
-    if (existing.isNotEmpty) {
-      throw DuplicateNameException(
-        entityType: 'category',
-        name: name,
-        existingId: existing.first.id,
+    // C3/F-35:查重 + 插入包在同一事务(旧实现 select-then-insert 中间有
+    // await 让步点,并发调用可绕过 —— 落 2 行同名分类,DB 层无 UNIQUE 兜底)。
+    return db.transaction(() async {
+      final parentCond = parentId == null
+          ? db.categories.parentId.isNull()
+          : db.categories.parentId.equals(parentId);
+      final existing = await (db.select(db.categories)
+            ..where(
+                (c) => c.name.equals(name) & c.kind.equals(kind) & parentCond))
+          .get();
+      if (existing.isNotEmpty) {
+        throw DuplicateNameException(
+          entityType: 'category',
+          name: name,
+          existingId: existing.first.id,
+        );
+      }
+      return await db.into(db.categories).insert(
+        CategoriesCompanion.insert(
+          name: name,
+          kind: kind,
+          icon: d.Value(icon),
+          sortOrder: d.Value(sortOrder ?? 0),
+          level: d.Value(level),
+          parentId: d.Value(parentId),
+          syncId: d.Value(syncId ?? _uuid.v4()),
+        ),
       );
-    }
-    return await db.into(db.categories).insert(
-      CategoriesCompanion.insert(
-        name: name,
-        kind: kind,
-        icon: d.Value(icon),
-        sortOrder: d.Value(sortOrder ?? 0),
-        level: d.Value(level),
-        parentId: d.Value(parentId),
-        syncId: d.Value(syncId ?? _uuid.v4()),
-      ),
-    );
+    });
   }
 
   @override
@@ -67,8 +71,14 @@ class LocalCategoryRepository implements CategoryRepository {
     int? sortOrder,
     String? syncId,
   }) async {
+    // C3/F-26:查重键含 parentId —— 「餐饮/外卖」与「交通/外卖」是两个不同的
+    // 层级命名空间。旧实现按 (name,kind) 全局查重,把层级压平,第二层同名
+    // 子类无法创建。
     final existing = await (db.select(db.categories)
-          ..where((c) => c.name.equals(name) & c.kind.equals(kind)))
+          ..where((c) =>
+              c.name.equals(name) &
+              c.kind.equals(kind) &
+              c.parentId.equals(parentId)))
         .get();
     if (existing.isNotEmpty) {
       throw DuplicateNameException(
@@ -77,17 +87,39 @@ class LocalCategoryRepository implements CategoryRepository {
         existingId: existing.first.id,
       );
     }
+    // C3/F-25:level 与 parentId 联动。产品只支持两级树
+    // (buildHierarchy 只挂一层;getSubCategories 过滤 level==2),所以子类
+    // 恒为 level=2。不再让调用方手工同步,也不会出现"level=1 却挂在别人脚下"
+    // 的自相矛盾行。
     return await db.into(db.categories).insert(
       CategoriesCompanion.insert(
         name: name,
         kind: kind,
         icon: d.Value(icon),
         parentId: d.Value(parentId),
-        level: d.Value(2),
+        level: const d.Value(2),
         sortOrder: d.Value(sortOrder ?? 0),
         syncId: d.Value(syncId ?? _uuid.v4()),
       ),
     );
+  }
+
+  /// C3/F-24:沿 parent 链走到根,检测把 [candidateParentId] 设为 [id] 的父
+  /// 是否会形成环(含自环)。返回 true = 会成环。
+  Future<bool> _wouldCreateCycle(int id, int candidateParentId) async {
+    if (id == candidateParentId) return true;
+    var cursor = candidateParentId;
+    final visited = <int>{id};
+    // 深度上限防脏数据的环导致死循环
+    for (var depth = 0; depth < 64; depth++) {
+      if (!visited.add(cursor)) return true; // 链上遇到自身/重复 → 已是环
+      final parent = await getCategoryById(cursor);
+      final next = parent?.parentId;
+      if (next == null) return false; // 走到根
+      if (next == id) return true; // 根会把 id 当父 → 成环
+      cursor = next;
+    }
+    return true; // 超深 → 保守拒绝
   }
 
   @override
@@ -98,43 +130,96 @@ class LocalCategoryRepository implements CategoryRepository {
     int? parentId,
     int? level,
   }) async {
+    // C3/F-24:环检测(自环 / 祖先链回环)。旧实现允许 A.parent=B 且
+    // B.parent=A,两者都进不了 buildHierarchy 的根集合 → 分类管理页彻底
+    // 不可见,用户无法补救。
+    if (parentId != null && parentId != -1) {
+      if (await _wouldCreateCycle(id, parentId)) {
+        throw CategoryCycleException(categoryId: id, parentId: parentId);
+      }
+    }
+    // C3/F-25:parentId 与 level 联动。两级树模型(parentId 非空 → level 2;
+    // 清空 → level 1)。调用方显式传 level 时以显式值优先(仍受环检测保护)。
+    final d.Value<int>? levelValue;
+    final d.Value<int?> parentValue;
+    if (parentId == null) {
+      parentValue = const d.Value.absent();
+      levelValue = level != null ? d.Value(level) : null;
+    } else if (parentId == -1) {
+      parentValue = const d.Value(null);
+      levelValue = level != null ? d.Value(level) : const d.Value(1);
+    } else {
+      parentValue = d.Value(parentId);
+      levelValue = level != null ? d.Value(level) : const d.Value(2);
+    }
     await (db.update(db.categories)..where((c) => c.id.equals(id))).write(
       CategoriesCompanion(
         name: name != null ? d.Value(name) : const d.Value.absent(),
         icon: icon != null ? d.Value(icon) : const d.Value.absent(),
-        // parentId: -1 表示清空父分类，其他值表示设置父分类
-        parentId: parentId != null
-            ? (parentId == -1 ? const d.Value(null) : d.Value(parentId))
-            : const d.Value.absent(),
-        level: level != null ? d.Value(level) : const d.Value.absent(),
+        parentId: parentValue,
+        level: levelValue ?? const d.Value.absent(),
       ),
     );
   }
 
   @override
   Future<void> deleteCategory(int id) async {
-    // 先收集要删的分类(自身 + 直接子分类)的自定义图标路径,删完后清理
-    // 本地磁盘文件 —— 以前 deleteCategory 只删 categories 行,
-    // customIconPath 指向的本地 PNG 留在 Application Documents/custom_icons/
-    // 里,长期使用会堆积孤立图标文件。云端 attachment_files 的清理由服务端
-    // sync push handler 兜底(见 src/projection.py gc_orphan_attachments)。
-    final iconPaths = await _collectIconPathsForIds([id], includeChildren: true);
+    // C3/F-27:递归删**整棵子树**(旧实现只删一层,孙级残留且 parentId 悬空,
+    // 树上不可见但交易仍计入统计)。BFS 收集全部后代 → 一并删。
+    final ids = await _collectSubtreeIds([id]);
+    final iconPaths = await _collectIconPathsForIds(ids, includeChildren: false);
 
-    await (db.delete(db.categories)..where((c) => c.parentId.equals(id))).go();
-    await (db.delete(db.categories)..where((c) => c.id.equals(id))).go();
+    await db.transaction(() async {
+      // 断开关联:交易的分类引用清空 + 分类预算删除,避免悬挂
+      for (final cid in ids) {
+        await (db.update(db.transactions)
+              ..where((t) => t.categoryId.equals(cid)))
+            .write(const TransactionsCompanion(categoryId: d.Value(null)));
+        await (db.delete(db.budgets)..where((b) => b.categoryId.equals(cid)))
+            .go();
+      }
+      await (db.delete(db.categories)..where((c) => c.id.isIn(ids))).go();
+    });
 
     if (iconPaths.isNotEmpty) {
       await _deleteLocalIconFiles(iconPaths);
     }
   }
 
+  /// BFS 收集 [roots] 及其全部后代(含自身),按层级顺序返回。
+  Future<List<int>> _collectSubtreeIds(List<int> roots) async {
+    final all = <int>{...roots};
+    var frontier = List<int>.from(roots);
+    for (var depth = 0; depth < 64 && frontier.isNotEmpty; depth++) {
+      final children = await (db.select(db.categories)
+            ..where((c) => c.parentId.isIn(frontier)))
+          .get();
+      final next = <int>[];
+      for (final c in children) {
+        if (all.add(c.id)) next.add(c.id);
+      }
+      frontier = next;
+    }
+    return all.toList();
+  }
+
   @override
   Future<void> deleteCategoriesByIds(List<int> ids) async {
     if (ids.isEmpty) return;
-    final iconPaths = await _collectIconPathsForIds(ids, includeChildren: true);
+    // C3/F-27:同 deleteCategory —— 递归删整棵子树。
+    final all = await _collectSubtreeIds(ids);
+    final iconPaths = await _collectIconPathsForIds(all, includeChildren: false);
 
-    await (db.delete(db.categories)..where((c) => c.parentId.isIn(ids))).go();
-    await (db.delete(db.categories)..where((c) => c.id.isIn(ids))).go();
+    await db.transaction(() async {
+      for (final cid in all) {
+        await (db.update(db.transactions)
+              ..where((t) => t.categoryId.equals(cid)))
+            .write(const TransactionsCompanion(categoryId: d.Value(null)));
+        await (db.delete(db.budgets)..where((b) => b.categoryId.equals(cid)))
+            .go();
+      }
+      await (db.delete(db.categories)..where((c) => c.id.isIn(all))).go();
+    });
 
     if (iconPaths.isNotEmpty) {
       await _deleteLocalIconFiles(iconPaths);

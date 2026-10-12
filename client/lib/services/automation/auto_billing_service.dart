@@ -24,6 +24,8 @@ import '../data/tag_seed_service.dart';
 import '../platform/screen_text_monitor_service.dart';
 import '../system/logger_service.dart';
 import 'auto_billing_config.dart';
+
+import 'automation_settings_store.dart';
 import 'auto_book_event.dart';
 import 'auto_book_event_store.dart';
 
@@ -54,6 +56,14 @@ enum SmsProcessOutcome {
 
   /// 短信已接收但 AI text 未配置 —— 保留队列,配置后下次启动补记
   noAiConfigured,
+
+  /// B2:自动目标失效(账本被删/共享权限撤销/账号作用域不匹配)——
+  /// **停止自动写入**,事件与原生队列都保留,等用户修复目标后重跑。
+  targetInvalid,
+
+  /// B2:目标待确定(配置未就绪/无可用账本)——不回退到当时浏览的账本,
+  /// 等用户确定目标后绑定一次再处理。
+  targetUndetermined,
 }
 
 /// 处理走向 → 事件生命周期状态的**唯一**映射(M1-3)。
@@ -70,6 +80,10 @@ extension SmsProcessOutcomeEvent on SmsProcessOutcome {
         SmsProcessOutcome.noTransaction => AutoBookState.ignored,
         // 未配置 AI:保持 captured,配置好后由下次 drain 重跑,不占退避窗口。
         SmsProcessOutcome.noAiConfigured => AutoBookState.captured,
+        // B2 目标不可写:保持 captured,既不 ACK 也不进失败终态 —— 目标
+        // 修好/确定后由下次 drain 正常处理。
+        SmsProcessOutcome.targetInvalid => AutoBookState.captured,
+        SmsProcessOutcome.targetUndetermined => AutoBookState.captured,
         SmsProcessOutcome.failed => AutoBookState.retry,
         SmsProcessOutcome.permanentFailure => AutoBookState.failed,
       };
@@ -81,6 +95,8 @@ extension SmsProcessOutcomeEvent on SmsProcessOutcome {
         SmsProcessOutcome.noTransaction => 'no_bill',
         SmsProcessOutcome.failed => 'ai_retryable',
         SmsProcessOutcome.permanentFailure => 'ai_permanent_failure',
+        SmsProcessOutcome.targetInvalid => 'target_invalid',
+        SmsProcessOutcome.targetUndetermined => 'target_undetermined',
         _ => null,
       };
 
@@ -90,7 +106,12 @@ extension SmsProcessOutcomeEvent on SmsProcessOutcome {
   /// 原生队列项是否可以 ACK(删除持久化的原始短信/通知)。
   /// 只有到达终态才允许 —— retryable 失败与未配置都必须保留证据。
   bool get canAckNativeQueue => switch (this) {
-        SmsProcessOutcome.failed || SmsProcessOutcome.noAiConfigured => false,
+        // 可重试失败/未配置/目标不可写:证据与原始队列项必须保留。
+        SmsProcessOutcome.failed ||
+        SmsProcessOutcome.noAiConfigured ||
+        SmsProcessOutcome.targetInvalid ||
+        SmsProcessOutcome.targetUndetermined =>
+          false,
         _ => true,
       };
 }
@@ -133,6 +154,29 @@ extension BookkeepingResultEvent on BookkeepingResult {
         duplicateOfTransactionId: firstDuplicateTransactionId,
         reason: eventReason,
       );
+}
+
+/// 解析链路测试写入的独立测试账本名。
+/// 固定字符串(不本地化):便于跨语言稳定匹配与提示中直接显示账本名,
+/// 不把它当 UI 文案翻译。
+const String autoBookTestLedgerName = '自动记账测试';
+
+/// 解析链路测试(B1 任务 5)的运行参数。
+///
+/// 模拟注入**默认只解析不入账**([previewOnly] = true → 影子模式,只记录
+/// 摘要,不创建交易与候选);用户显式允许写入时,结果只进**独立测试账本**
+/// ([testLedgerId]),不污染正式账本。任何情况下模拟成功都不代表真实监听
+/// 通过。
+class AutoBookTestOptions {
+  const AutoBookTestOptions({this.previewOnly = true, this.testLedgerId});
+
+  /// true = 只解析预览,不产生交易/候选。
+  final bool previewOnly;
+
+  /// previewOnly=false 时的写入目标账本(测试账本)。
+  final int? testLedgerId;
+
+  bool get writes => !previewOnly && testLedgerId != null;
 }
 
 /// 自动记账服务 - 通用核心逻辑
@@ -182,14 +226,18 @@ class AutoBillingService {
   /// 关闭硬闸门或 event 幂等，否则一次误触发就可能把账单汇总写成消费；
   /// 语义硬闸门恒开。开关现在接回为「自动入账总闸」(P0-2):关=所有识别
   /// 结果一律先进待确认队列，开=仅低置信/疑似重复进待确认(原候选制行为)。
-  Future<AutoBookFlow> _autoBookFlow({String? eventKey}) async {
+  Future<AutoBookFlow> _autoBookFlow({
+    String? eventKey,
+    bool forceShadow = false,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
     return AutoBookFlow(
       store: PendingCandidateStore(),
       eventKey: eventKey,
       eventStore: _eventStore,
       strictSemantic: true,
-      shadowMode: prefs.getBool(_shadowModeKey) ?? false,
+      // forceShadow:解析链路测试的预览模式,单次生效,不改用户设置。
+      shadowMode: forceShadow || (prefs.getBool(_shadowModeKey) ?? false),
       requireConfirmationForAll: !(prefs.getBool('auto_book_enabled') ?? true),
     );
   }
@@ -399,6 +447,11 @@ class AutoBillingService {
     bool showNotification = true,
     bool notifyOnlyOnSuccess = false,
     String? eventKey,
+
+    /// B2:自动路径解析出的目标账本。非空时**不回退**到浏览账本;
+    /// 为 null 且调用方是自动入口时,应在调用前先拦截(见四路监控)。
+    int? targetLedgerId,
+    AutoBookTestOptions? testOptions,
   }) async {
     final totalStartTime = DateTime.now().millisecondsSinceEpoch;
     // 隐私:控制台日志只留文件名,完整路径不打印(结构化日志走 pathHash)。
@@ -523,7 +576,7 @@ class AutoBillingService {
       }
 
       // AI 视觉识别 + 多笔保存(全部委托 AiBookkeeper)
-      final ledgerId = await _resolveLedgerId();
+      final ledgerId = targetLedgerId ?? await _resolveLedgerId();
       if (ledgerId == null) {
         logger.error('AutoBilling', '无可用账本');
         if (showNotification && !notifyOnlyOnSuccess) {
@@ -644,8 +697,7 @@ class AutoBillingService {
 
       if (result.success && showNotification) {
         final l10n = lookupAppLocalizations(PlatformDispatcher.instance.locale);
-        await _showFinalNotification(
-          progressId: notificationId,
+        await _notifySuccess(
           finalId: resultNotificationId,
           title: _successTitle(result, l10n),
           body: _successBody(result, l10n),
@@ -700,11 +752,13 @@ class AutoBillingService {
     String text, {
     bool showNotification = true,
     String? eventKey,
+    int? targetLedgerId,
   }) async {
     final result = await processTextResult(
       text,
       showNotification: showNotification,
       eventKey: eventKey,
+      targetLedgerId: targetLedgerId,
     );
     return result.firstTransactionId;
   }
@@ -714,6 +768,8 @@ class AutoBillingService {
     String text, {
     bool showNotification = true,
     String? eventKey,
+    int? targetLedgerId,
+    AutoBookTestOptions? testOptions,
   }) async {
     final totalStartTime = DateTime.now().millisecondsSinceEpoch;
     final textHash =
@@ -749,7 +805,7 @@ class AutoBillingService {
         );
       }
 
-      final ledgerId = await _resolveLedgerId();
+      final ledgerId = targetLedgerId ?? await _resolveLedgerId();
       if (ledgerId == null) {
         if (showNotification) {
           await _showFinalNotification(
@@ -807,12 +863,11 @@ class AutoBillingService {
         await PostProcessor.runC(_container, ledgerId: ledgerId, tags: true);
         await _syncBillingToAiChat(result);
         if (showNotification) {
-          await _showFinalNotification(
-            progressId: notificationId,
-            finalId: resultNotificationId,
-            title: _successTitle(result, l10n),
-            body: _successBody(result, l10n),
-          );
+          await _notifySuccess(
+          finalId: resultNotificationId,
+          title: _successTitle(result, l10n),
+          body: _successBody(result, l10n),
+        );
         }
       }
       return result;
@@ -856,6 +911,8 @@ class AutoBillingService {
     bool showNotification = true,
     bool skipDedup = false,
     String? eventKey,
+    int? targetLedgerId,
+    AutoBookTestOptions? testOptions,
   }) async {
     final fingerprint = smsFingerprint(sender, body);
 
@@ -897,7 +954,9 @@ class AutoBillingService {
         );
       }
 
-      final ledgerId = await _resolveLedgerId();
+      final ledgerId = testOptions?.testLedgerId ??
+          targetLedgerId ??
+          await _resolveLedgerId();
       if (ledgerId == null) {
         if (showNotification) {
           await _showFinalNotification(
@@ -922,7 +981,10 @@ class AutoBillingService {
             ],
             billGuard: PromptBuilder.billGuardForSms,
             l10n: l10n,
-            autoBookFlow: await _autoBookFlow(eventKey: eventKey),
+            autoBookFlow: await _autoBookFlow(
+              eventKey: eventKey,
+              forceShadow: testOptions?.previewOnly ?? false,
+            ),
             source: 'sms',
             sourceChannel: channel,
             evidenceText: body,
@@ -982,8 +1044,7 @@ class AutoBillingService {
 
       await _markSmsProcessed(fingerprint);
       if (showNotification) {
-        await _showFinalNotification(
-          progressId: notificationId,
+        await _notifySuccess(
           finalId: resultNotificationId,
           title: _successTitle(result, l10n),
           body: _successBody(result, l10n),
@@ -1010,23 +1071,38 @@ class AutoBillingService {
     }
   }
 
-  /// 短信指纹:sha256(sender|body) 前 16 位 hex。
+  /// 指纹字段编码:每个字段写成 `${长度}:${内容}`,再以 `|` 拼接。
+  ///
+  /// 长度前缀让字段边界自描述 —— 裸拼接下 `('ab', 'c')` 与 `('a', 'bc')`
+  /// 都编码成 `ab|c`,内容里的分隔符可与相邻字段互换构造同一指纹;
+  /// 加前缀后 `2:ab|1:c` 与 `1:a|2:bc` 不再碰撞(2026-10-11 批次 C2)。
+  /// native 同口径:Kotlin 侧同样用 `String.length`(两侧都是 UTF-16
+  /// code unit 计数)+ `|` 拼接。
+  static String _fingerprintIdentity(Iterable<String> fields) =>
+      fields.map((field) => '${field.length}:$field').join('|');
+
+  /// 短信指纹:sha256(长度前缀拼接 sender/body) 前 16 位 hex。
   /// 与 native [com.smartbook.zhi.SmsReceiver] 同口径(取前 8 字节),
   /// 保证两层去重共用同一指纹。
+  /// 2026-10-11 加长度前缀后指纹取值变化:旧持久化缓存 miss 一次,
+  /// 由语义判重兜底(不会重复入账,至多多识别一次)。
   static String smsFingerprint(String sender, String body) {
     return sha256
-        .convert(utf8.encode('$sender|$body'))
+        .convert(utf8.encode(_fingerprintIdentity([sender, body])))
         .toString()
         .substring(0, 16);
   }
 
-  /// 通知指纹:sha256(pkg|notificationKey|notificationId|postTime|title|body)
+  /// 通知指纹:sha256(长度前缀拼接
+  /// pkg/notificationKey/notificationId/postTime/title/body)
   /// 前 16 位 hex。与 native [NotificationWatcher.fingerprint] **完全同口径**
   /// (C6,2026-09-15 统一):旧口径只有 pkg|title|body,同一通知被 App 更新
   /// (postTime 变化)后 native 会重新入队,而 Dart 侧指纹不变,两侧判重
   /// 口径脱节。旧队列缺 notificationKey/id/postTime 时退回内容指纹
   /// (与旧口径兼容)。兼容影响:格式变化使旧 Dart 缓存 miss 一次,由
   /// 语义判重兜底。
+  /// 2026-10-11(C2)字段加长度前缀:title/body 里的 `|` 不再能与
+  /// notificationKey 边界互换构造同一指纹。native 侧同口径。
   static String notifyFingerprint(
     String pkg,
     String title,
@@ -1038,16 +1114,25 @@ class AutoBillingService {
     final hasIdentity =
         (notificationKey ?? '').trim().isNotEmpty || notificationId != 0 || postTime != 0;
     final identity = hasIdentity
-        ? '$pkg|${notificationKey ?? ''}|$notificationId|$postTime|$title|$body'
-        : '$pkg|$title|$body';
+        ? _fingerprintIdentity([
+            pkg,
+            notificationKey ?? '',
+            '$notificationId',
+            '$postTime',
+            title,
+            body,
+          ])
+        : _fingerprintIdentity([pkg, title, body]);
     return sha256.convert(utf8.encode(identity)).toString().substring(0, 16);
   }
 
-  /// 屏幕文本指纹:sha256(pkg|text) 前 16 位 hex。
+  /// 屏幕文本指纹:sha256(长度前缀拼接 pkg/text) 前 16 位 hex。
   /// 与 native [com.smartbook.zhi.ScreenTextWatcher] 同口径。
+  /// 2026-10-11(C2)加长度前缀:屏幕文本含大量用户内容与 `|`,
+  /// 裸拼接时 pkg/text 边界可互换。
   static String screenTextFingerprint(String pkg, String text) {
     return sha256
-        .convert(utf8.encode('$pkg|$text'))
+        .convert(utf8.encode(_fingerprintIdentity([pkg, text])))
         .toString()
         .substring(0, 16);
   }
@@ -1179,6 +1264,26 @@ class AutoBillingService {
     final actor = payload.actor ?? event.rawActor ?? '';
     final text = payload.text ?? event.rawText ?? '';
 
+    // B2:重放用**事件行上的冻结快照**解析目标,不看当前设置 —— 重放不得
+    // 把已捕获事件改投到用户后来切换的账本;目标失效/待确定则标原因停下,
+    // 不调 AI、不改账本。
+    AutoBookTargetResolution? target;
+    try {
+      target = await resolveAutoBookTarget(
+        _container,
+        frozenRef: event.targetRef,
+        frozenState: event.targetState,
+        frozenConfigVersion: event.targetConfigVersion,
+      );
+    } catch (_) {
+      target = null;
+    }
+    if (target != null && target.ledgerId == null) {
+      await _markReplayTargetUnavailable(event, target);
+      return false;
+    }
+    final targetLedgerId = target?.ledgerId;
+
     // 被幂等跳过(终态 / 租约未过期 / 退避未到)时返回 false,调用方据此决定
     // 提示文案,不会把「跳过」当成「已重新执行」。
     Future<bool> run<T>(
@@ -1202,7 +1307,10 @@ class AutoBillingService {
           return false;
         }
         return run<BookkeepingResult>(
-          () => processScreenshot(path, showNotification: true, eventKey: key),
+          () => processScreenshot(path,
+              showNotification: true,
+              eventKey: key,
+              targetLedgerId: targetLedgerId),
           (result) => result.eventUpdate,
         );
       case AutoBookSource.sms:
@@ -1213,6 +1321,7 @@ class AutoBillingService {
             showNotification: true,
             skipDedup: true,
             eventKey: key,
+            targetLedgerId: targetLedgerId,
           ),
           (outcome) => outcome.eventUpdate,
         );
@@ -1225,6 +1334,7 @@ class AutoBillingService {
             showNotification: true,
             skipDedup: true,
             eventKey: key,
+            targetLedgerId: targetLedgerId,
           ),
           (outcome) => outcome.eventUpdate,
         );
@@ -1236,6 +1346,7 @@ class AutoBillingService {
             showNotification: true,
             skipDedup: true,
             eventKey: key,
+            targetLedgerId: targetLedgerId,
           ),
           (outcome) => outcome.eventUpdate,
         );
@@ -1246,7 +1357,10 @@ class AutoBillingService {
           return false;
         }
         return run<BookkeepingResult>(
-          () => processTextResult(text, showNotification: true, eventKey: key),
+          () => processTextResult(text,
+              showNotification: true,
+              eventKey: key,
+              targetLedgerId: targetLedgerId),
           (result) => result.eventUpdate,
         );
     }
@@ -1264,6 +1378,10 @@ class AutoBillingService {
       source: AutoBookSourceValue.parse(event.source),
       captureIntent: AutoBookCaptureIntentValue.parse(event.captureIntent),
       ledgerId: event.ledgerId,
+      // B2:重放沿用原行冻结的目标快照,不重新取当前配置。
+      targetRef: event.targetRef,
+      targetConfigVersion: event.targetConfigVersion,
+      targetState: event.targetState,
       capturedAt: event.capturedAt,
       sourceOccurredAt: event.sourceOccurredAt,
       sourceChannel: event.sourceChannel,
@@ -1291,6 +1409,26 @@ class AutoBillingService {
     );
     logger.info('AutoBilling', '草稿原始证据已消失,事件置为 expired',
         'key=${autoBookHash(event.eventKey, length: 12)} source=${event.source}');
+  }
+
+  /// B2:重放时目标不可写(失效/待确定)。事件停在 captured 并写原因码,
+  /// 原始证据与草稿都保留,等用户修复目标后下一次 drain/重试再跑。
+  Future<void> _markReplayTargetUnavailable(
+    AutoBookEvent event,
+    AutoBookTargetResolution target,
+  ) async {
+    final store = _eventStore;
+    if (store == null) return;
+    await store.mark(
+      AutoBookEventUpdate(
+        state: AutoBookState.captured,
+        reason: target.reason ?? 'target_undetermined',
+      ),
+      eventId: event.id,
+    );
+    logger.info('AutoBilling', '重放暂停:自动目标不可写',
+        'key=${autoBookHash(event.eventKey, length: 12)} '
+        'state=${target.stateName} reason=${target.reason}');
   }
 
   /// 将统一结果映射为队列可理解的状态。失败优先于 pending，避免部分
@@ -1347,6 +1485,8 @@ class AutoBillingService {
     String? notificationKey,
     int notificationId = 0,
     int postTime = 0,
+    int? targetLedgerId,
+    AutoBookTestOptions? testOptions,
   }) async {
     final fingerprint = notifyFingerprint(
       pkg,
@@ -1390,7 +1530,9 @@ class AutoBillingService {
         );
       }
 
-      final ledgerId = await _resolveLedgerId();
+      final ledgerId = testOptions?.testLedgerId ??
+          targetLedgerId ??
+          await _resolveLedgerId();
       if (ledgerId == null) {
         if (showNotification) {
           await _showFinalNotification(
@@ -1416,7 +1558,10 @@ class AutoBillingService {
             ],
             billGuard: PromptBuilder.billGuardForNotification,
             l10n: l10n,
-            autoBookFlow: await _autoBookFlow(eventKey: eventKey),
+            autoBookFlow: await _autoBookFlow(
+              eventKey: eventKey,
+              forceShadow: testOptions?.previewOnly ?? false,
+            ),
             source: 'notification',
             sourceChannel: channel,
             evidenceText: rawText,
@@ -1487,8 +1632,7 @@ class AutoBillingService {
 
       await _markNotifyProcessed(fingerprint);
       if (showNotification) {
-        await _showFinalNotification(
-          progressId: progressNotificationId,
+        await _notifySuccess(
           finalId: resultNotificationId,
           title: _successTitle(result, l10n),
           body: _successBody(result, l10n),
@@ -1542,6 +1686,8 @@ class AutoBillingService {
     bool notifyAiUnconfigured = true,
     bool skipDedup = false,
     String? eventKey,
+    int? targetLedgerId,
+    AutoBookTestOptions? testOptions,
   }) async {
     final fingerprint = screenTextFingerprint(pkg, text);
 
@@ -1581,7 +1727,9 @@ class AutoBillingService {
         );
       }
 
-      final ledgerId = await _resolveLedgerId();
+      final ledgerId = testOptions?.testLedgerId ??
+          targetLedgerId ??
+          await _resolveLedgerId();
       if (ledgerId == null) {
         if (showNotification) {
           await _showFinalNotification(
@@ -1610,7 +1758,10 @@ class AutoBillingService {
             ],
             billGuard: PromptBuilder.billGuardForScreen,
             l10n: l10n,
-            autoBookFlow: await _autoBookFlow(eventKey: eventKey),
+            autoBookFlow: await _autoBookFlow(
+              eventKey: eventKey,
+              forceShadow: testOptions?.previewOnly ?? false,
+            ),
             source: 'screen',
             sourceChannel: channel,
             evidenceText: text,
@@ -1709,8 +1860,7 @@ class AutoBillingService {
 
       await _markScreenTextProcessed(fingerprint);
       if (showNotification) {
-        await _showFinalNotification(
-          progressId: notificationId,
+        await _notifySuccess(
           finalId: resultNotificationId,
           title: _successTitle(result, l10n),
           body: _successBody(result, l10n),
@@ -1784,9 +1934,16 @@ class AutoBillingService {
   ///
   /// C2(2026-09-15)指纹加入 `type`(收支方向):旧口径 abs(金额) 且不含
   /// 方向,「同渠道同金额的支付与退款」指纹相同,退款被 already_processed
-  /// 静默跳过(微信退款漏记的机制层根因之一)。**兼容影响**:指纹格式变化
-  /// 使旧缓存全部 miss —— 已记账的账单再次进入详情页时会重新走一次识别,
-  /// 由语义判重/待确认队列兜底(用户至多看到一次判重合并轻通知或重复候选)。
+  /// 静默跳过(微信退款漏记的机制层根因之一)。
+  ///
+  /// A9(2026-10-11)口径归一:`note` 不再只 trim,改走
+  /// [normalizeAutoBookText](压缩空白/去标点/lowercase)—— 与语义判重、
+  /// 豁免表同一套口径;`channel` 也归一到 trim+lower(内部空白压缩)。
+  /// 旧口径下「商户 X」与「商户  X 」是两个指纹,短信侧与详情页侧对同一笔
+  /// 消费的写法差异会让两层去重脱节,重复入账只能靠语义判重兜底。
+  /// **兼容影响**:指纹格式变化使旧缓存全部 miss —— 已记账的账单再次进入
+  /// 详情页时会重新走一次识别,由语义判重/待确认队列兜底(用户至多看到
+  /// 一次判重合并轻通知或重复候选)。
   static String billFingerprint({
     required String channel,
     required double amount,
@@ -1799,11 +1956,15 @@ class AutoBillingService {
         : '${time.year}-${time.month.toString().padLeft(2, '0')}-'
             '${time.day.toString().padLeft(2, '0')}T'
             '${time.hour.toString().padLeft(2, '0')}';
-    final normalizedNote = (note ?? '').trim();
+    final normalizedNote = normalizeAutoBookText(note ?? '');
+    // 渠道名是品牌词(「微信支付」),normalizeAutoBookText 的标点清洗对它
+    // 不适用;只做 trim + lower + 压缩内部空白。
+    final normalizedChannel =
+        channel.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
     final normalizedType = (type ?? '').trim();
     return sha256
         .convert(utf8.encode(
-            '$channel|$normalizedType|${amount.abs().toStringAsFixed(2)}|$normalizedNote|$date'))
+            '$normalizedChannel|$normalizedType|${amount.abs().toStringAsFixed(2)}|$normalizedNote|$date'))
         .toString()
         .substring(0, 16);
   }
@@ -1902,17 +2063,16 @@ class AutoBillingService {
   // 自身通知已由 native NotificationWatcher 按包名过滤,无自反馈循环。
   // ------------------------------------------------------------
 
-  /// 每来源的聚合状态(内存态;进程重启最多导致多弹一条,可接受)
-  static final Map<String, ({DateTime firstAt, int count, double amount})>
-      _pendingNotifyState = {};
+  /// B5 任务 2:四路共用**同一条**待确认通知(固定 ID),新消息只更新同一条
+  /// (`onlyAlertOnce`,不重复响铃/振动);数量取**当前实际待处理总数**,
+  /// 不是短窗口累计笔数;处理完按剩余量更新,清零时移除。
+  static const _pendingNotifyId = 1209;
 
-  static const _pendingNotifyIds = {
-    'screenshot': 1201,
-    'image': 1201,
-    'sms': 1202,
-    'notification': 1203,
-    'screenText': 1204,
-  };
+  /// B5 任务 1:当前通知偏好。配置缺失 = 升级用户的旧行为(每笔成功都提醒)。
+  static Future<AutoBookNotifyMode> notifyMode() async {
+    final settings = await AutomationSettingsStore().load();
+    return AutoBookNotifyMode.parse(settings.notifyMode);
+  }
 
   /// 四路产生 pending 候选时调用;awaitingCount=0 时为 no-op。
   Future<void> _notifyPendingCandidates(
@@ -1921,16 +2081,28 @@ class AutoBillingService {
   ) async {
     final n = result.awaitingCount;
     if (n <= 0) return;
-    final now = DateTime.now();
-    final prev = _pendingNotifyState[source];
-    final state = (prev != null && now.difference(prev.firstAt).inMinutes < 10)
-        ? (
-            firstAt: prev.firstAt,
-            count: prev.count + n,
-            amount: prev.amount + result.pendingAbsAmount,
-          )
-        : (firstAt: now, count: n, amount: result.pendingAbsAmount);
-    _pendingNotifyState[source] = state;
+
+    // B5 任务 1:每日汇总档不发逐笔待确认提醒(计入当日汇总)。
+    if (await notifyMode() == AutoBookNotifyMode.dailyDigest) return;
+
+    // B5 任务 2:数量取**当前实际待处理总数**,不是短窗口累计笔数。
+    var count = n;
+    var amount = result.pendingAbsAmount;
+    final store = _eventStore;
+    if (store != null) {
+      try {
+        final all = await PendingCandidateStore().loadForReview(store);
+        count = all.length;
+        amount = all.fold<double>(
+            0, (sum, c) => sum + (c.bill.amount?.abs() ?? 0));
+      } catch (_) {
+        // 读失败退回本次增量:宁可少显示也不发空通知。
+      }
+    }
+    if (count <= 0) {
+      await _notificationsPlugin.cancel(_pendingNotifyId);
+      return;
+    }
 
     final l10n = lookupAppLocalizations(PlatformDispatcher.instance.locale);
     const androidDetails = AndroidNotificationDetails(
@@ -1939,6 +2111,8 @@ class AutoBillingService {
       channelDescription: '自动记账进入待确认队列时的提醒(只含金额与笔数)',
       importance: Importance.defaultImportance,
       priority: Priority.defaultPriority,
+      // B5 任务 2:同一条通知只更新,不重复响铃/振动。
+      onlyAlertOnce: true,
     );
     const details = NotificationDetails(
       android: androidDetails,
@@ -1946,10 +2120,10 @@ class AutoBillingService {
     );
     try {
       await _notificationsPlugin.show(
-        _pendingNotifyIds[source] ?? 1209,
+        _pendingNotifyId,
         l10n.autoBillingNotifyPendingTitle,
         l10n.autoBillingNotifyPendingBody(
-            state.count, state.amount.toStringAsFixed(2)),
+            count, amount.toStringAsFixed(2)),
         details,
         // 批次5(深链):待确认通知点击直达待确认页。
         payload: 'smartbook://open?page=pending',
@@ -1968,6 +2142,11 @@ class AutoBillingService {
     final ids = result.duplicateTransactionIds;
     final hasAny = result.duplicateCount > 0 && (ids.isNotEmpty || result.duplicateBills.isNotEmpty);
     if (!hasAny) return;
+    // B5 任务 1:判重合并轻通知既非「需确认」也非故障,只在「每笔成功」档发。
+    if (!await _notifyAllowed(
+        (mode) => mode == AutoBookNotifyMode.everySuccess)) {
+      return;
+    }
     String dateLabel = '';
     String amountLabel = '';
     if (ids.isNotEmpty) {
@@ -2072,6 +2251,95 @@ class AutoBillingService {
     String? payload,
   }) async {
     await _showNotification(id: finalId, title: title, body: body, payload: payload);
+  }
+
+  /// B5 任务 3:每日汇总的发送日标记(防止同一天重复发)。
+  static const _digestDayKey = 'auto_book_digest_day';
+  static const _digestNotifyId = 1219;
+
+  /// 每日汇总:只汇总**已有本地记录**,晚 8 点后在「下一次可运行时」送达。
+  ///
+  /// 不申请精确闹钟权限、不承诺被强制停止后准时(计划 B5 任务 3);没有当天
+  /// 记录就不打扰。
+  Future<void> maybeSendDailyDigest({DateTime? now}) async {
+    try {
+      if (await notifyMode() != AutoBookNotifyMode.dailyDigest) return;
+      final clock = now ?? DateTime.now();
+      if (clock.hour < 20) return;
+      final prefs = await SharedPreferences.getInstance();
+      final dayKey = '${clock.year}-${clock.month}-${clock.day}';
+      if (prefs.getString(_digestDayKey) == dayKey) return;
+
+      final store = _eventStore;
+      if (store == null) return;
+      final events = await store.listHistory(limit: 500);
+      var booked = 0;
+      var pending = 0;
+      var failed = 0;
+      for (final e in events) {
+        final t = e.capturedAt.toLocal();
+        if (t.year != clock.year ||
+            t.month != clock.month ||
+            t.day != clock.day) {
+          continue;
+        }
+        switch (e.state) {
+          case 'booked':
+            booked++;
+          case 'pending':
+            pending++;
+          case 'retry' || 'failed':
+            failed++;
+        }
+      }
+      if (booked == 0 && pending == 0 && failed == 0) return;
+
+      final l10n = lookupAppLocalizations(PlatformDispatcher.instance.locale);
+      const androidDetails = AndroidNotificationDetails(
+        'auto_book_digest',
+        '每日汇总',
+        channelDescription: '自动记账每日汇总(只统计本机已有记录)',
+        importance: Importance.defaultImportance,
+        priority: Priority.defaultPriority,
+        onlyAlertOnce: true,
+      );
+      await _notificationsPlugin.show(
+        _digestNotifyId,
+        l10n.autoBillingDigestTitle,
+        l10n.autoBillingDigestBody(booked, pending, failed),
+        const NotificationDetails(
+          android: androidDetails,
+          iOS: DarwinNotificationDetails(),
+        ),
+        payload: 'smartbook://open?page=detail',
+      );
+      await prefs.setString(_digestDayKey, dayKey);
+    } catch (e) {
+      logger.warning('AutoBilling', '每日汇总发送失败(不影响记账): $e');
+    }
+  }
+
+  /// B5 任务 1:成功 / 待确认 / 合并这三类按通知偏好放行。
+  ///
+  /// **故障类不走这里** —— 登录失效、权限撤销、识别失败在任何偏好下都即时
+  /// 提醒,不能被静默。
+  Future<bool> _notifyAllowed(
+      bool Function(AutoBookNotifyMode mode) allow) async {
+    return allow(await notifyMode());
+  }
+
+  /// 成功入账通知的统一出口(B5:按偏好放行)。
+  Future<void> _notifySuccess({
+    required int finalId,
+    required String title,
+    required String body,
+    String? payload,
+  }) async {
+    final allowed = await _notifyAllowed((mode) =>
+        mode == AutoBookNotifyMode.everySuccess);
+    if (!allowed) return;
+    await _showNotification(
+        id: finalId, title: title, body: body, payload: payload);
   }
 
   /// 释放资源(AI 服务无 native handle,不需要 dispose,保留方法以备后续添加)

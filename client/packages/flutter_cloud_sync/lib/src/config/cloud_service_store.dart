@@ -13,15 +13,34 @@ class CloudServiceStore {
   static const _kLegacyActiveBeecount = 'beecount_cloud';
 
   /// 读新 key,缺失时回退旧 key 并迁移到新 key。
+  ///
+  /// 读取后会尝试就地重写配置体:品牌更名时只迁移了 key 前缀与 activeType 值,
+  /// 配置 JSON 内的 `type` 枚举名与展示名仍是旧品牌,靠 [decodeCloudConfig]
+  /// 的旧名映射兼容。这里在读到旧值时把整份配置重新编码写回新形态,
+  /// 与 key/activeType 迁移同口径(迁移失败不影响本次返回)。
   Future<String?> _readSmartBookCloudCfg(SharedPreferences sp) async {
     var raw = sp.getString(_kSmartBookCloudCfg);
     if (raw != null) return raw;
     raw = sp.getString(_kLegacySmartBookCloudCfg);
     if (raw != null) {
-      await sp.setString(_kSmartBookCloudCfg, raw);
+      final migrated = _migrateConfigBody(raw);
+      await sp.setString(_kSmartBookCloudCfg, migrated);
       await sp.remove(_kLegacySmartBookCloudCfg);
     }
     return raw;
+  }
+
+  /// 把配置体里可识别的旧枚举名/旧展示名重写为当前值。
+  ///
+  /// 解析失败(损坏 JSON)时原样返回,由调用方的 catch 处理回退。
+  static String _migrateConfigBody(String raw) {
+    try {
+      final cfg = decodeCloudConfig(raw);
+      final reEncoded = encodeCloudConfig(cfg);
+      return reEncoded;
+    } catch (_) {
+      return raw;
+    }
   }
   static const _kSupabaseCfg = 'cloud_supabase_cfg';
   static const _kWebdavCfg = 'cloud_webdav_cfg';
@@ -149,7 +168,19 @@ class CloudServiceStore {
   }
 
   /// 保存并激活配置
-  Future<void> saveAndActivate(CloudServiceConfig cfg) async {
+  ///
+  /// 非法配置(`cfg.valid == false`)会被拒绝:不写 key、不改 activeType,
+  /// 并返回 false。此前该入口不校验,激活一个 valid=false 的配置后
+  /// `loadActive` 会返回它、provider 初始化才失败,用户看到的是
+  /// "切换云服务失败"而不是"请输入地址";与 [activate] 的校验口径也不一致。
+  Future<bool> saveAndActivate(CloudServiceConfig cfg) async {
+    // local / iCloud 无需外部配置,始终可激活(与 activate() 同口径)。
+    final requiresValidation = cfg.type != CloudBackendType.local &&
+        cfg.type != CloudBackendType.icloud;
+    if (requiresValidation && !cfg.valid) {
+      return false;
+    }
+
     final sp = await SharedPreferences.getInstance();
 
     switch (cfg.type) {
@@ -186,6 +217,7 @@ class CloudServiceStore {
         // Provider 会在下次使用时自动初始化
         break;
     }
+    return true;
   }
 
   /// 仅保存配置,不激活

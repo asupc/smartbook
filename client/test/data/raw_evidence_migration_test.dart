@@ -35,7 +35,8 @@ void main() {
         await db.customSelect('PRAGMA table_info(auto_book_events)').get();
     final names = columns.map((row) => row.read<String>('name')).toSet();
 
-    expect(version.read<int>('user_version'), 43); // v43 回收站 tombstone 表
+    // 跑到代码声明的最新版本(v44 起含自动目标快照列)。
+    expect(version.read<int>('user_version'), db.schemaVersion);
     expect(
       names,
       containsAll(const [

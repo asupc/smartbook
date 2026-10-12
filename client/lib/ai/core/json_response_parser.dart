@@ -34,32 +34,18 @@ class JsonResponseParser {
     logger.debug(
         _tag, '解析 AI 响应', 'length=${response.length}, hash=$responseHash');
 
+    // 结构位上的 BOM / 零宽字符先剥掉(逐段加 BOM 的网关/代理会让
+    // `[<BOM>{...}]` 直接过不了 jsonDecode;`{` 前逐个带 BOM 时更会
+    // 只救回第一笔)。只剥**字符串字面量之外**的字符 —— 文本内容不动。
+    final structural = _stripStructuralInvisibles(response);
+
     // 数组路径优先 —— 新默认 prompt 期望此格式
-    final arrayBlock = _extractBalancedBlock(response, '[', ']');
+    final arrayBlock = _extractBalancedBlock(structural, '[', ']');
     if (arrayBlock != null) {
       try {
         final decoded = jsonDecode(_cleanupJson(arrayBlock));
         if (decoded is List) {
-          final bills = <BillInfo>[];
-          for (var i = 0; i < decoded.length; i++) {
-            final item = decoded[i];
-            if (item is! Map<String, dynamic>) {
-              logger.warning(_tag, '数组第 ${i + 1} 项不是对象,跳过');
-              continue;
-            }
-            try {
-              final raw = BillInfo.fromJson(item);
-              _warnIfCurrencyDropped(item, raw);
-              final sanitized = _sanitize(raw, captureTime);
-              if (sanitized == null) {
-                logger.warning(_tag, '数组第 ${i + 1} 项金额无效,跳过');
-                continue;
-              }
-              bills.add(sanitized);
-            } catch (e) {
-              logger.warning(_tag, '数组第 ${i + 1} 项解析失败,跳过: $e');
-            }
-          }
+          final bills = _billsFromDecodedList(decoded, captureTime);
           if (bills.isNotEmpty) {
             logger.info(_tag, '账单提取成功(数组): ${bills.length} 笔');
             return bills;
@@ -68,12 +54,21 @@ class JsonResponseParser {
           // 不直接 return,fallback 到单对象路径(防 AI 把单笔写成 `[]` 又附 `{...}`)
         }
       } catch (e) {
-        logger.warning(_tag, '数组 JSON 解析失败,尝试单对象 fallback: $e');
+        logger.warning(_tag, '数组 JSON 解析失败,尝试逐对象抢救: $e');
+        // 数组整体解析失败时先**逐对象重试**:块内每个完整 `{...}` 单独
+        // jsonDecode —— 比直接退化到单对象路径只救回第一笔强得多
+        // (缺失逗号 / 混入注释 / 局部脏字符的批次都能救回多笔)。
+        final salvaged = _salvageObjectsInBlock(arrayBlock, captureTime);
+        if (salvaged.isNotEmpty) {
+          logger.info(_tag, '账单提取成功(数组逐对象抢救): ${salvaged.length} 笔');
+          return salvaged;
+        }
+        logger.warning(_tag, '逐对象抢救无结果,尝试单对象 fallback');
       }
     }
 
     // Fallback: 单对象(旧格式 / 用户自定义老 prompt)
-    final objectBlock = _extractBalancedBlock(response, '{', '}');
+    final objectBlock = _extractBalancedBlock(structural, '{', '}');
     if (objectBlock == null) {
       logger.warning(_tag, '响应中没有找到 JSON');
       return const [];
@@ -96,6 +91,60 @@ class JsonResponseParser {
     }
   }
 
+  /// 把 jsonDecode 出来的数组逐项转成有效账单(单笔异常不拖累整批)。
+  List<BillInfo> _billsFromDecodedList(
+      List<dynamic> decoded, DateTime? captureTime) {
+    final bills = <BillInfo>[];
+    for (var i = 0; i < decoded.length; i++) {
+      final item = decoded[i];
+      if (item is! Map<String, dynamic>) {
+        logger.warning(_tag, '数组第 ${i + 1} 项不是对象,跳过');
+        continue;
+      }
+      try {
+        final raw = BillInfo.fromJson(item);
+        _warnIfCurrencyDropped(item, raw);
+        final sanitized = _sanitize(raw, captureTime);
+        if (sanitized == null) {
+          logger.warning(_tag, '数组第 ${i + 1} 项金额无效,跳过');
+          continue;
+        }
+        bills.add(sanitized);
+      } catch (e) {
+        logger.warning(_tag, '数组第 ${i + 1} 项解析失败,跳过: $e');
+      }
+    }
+    return bills;
+  }
+
+  /// 数组块整体解析失败时,逐个提取块内的**顶层完整对象**并单独解析。
+  ///
+  /// 用于 `[{...},{...}]` 因局部脏字符(注释、缺逗号、BOM 残留)整体不可解析
+  /// 但每个对象自身完好的场景 —— 逐对象抢救能保住多笔,而不是退化到
+  /// 单对象路径只救回第一笔。
+  List<BillInfo> _salvageObjectsInBlock(
+      String block, DateTime? captureTime) {
+    final bills = <BillInfo>[];
+    final objects = _extractAllTopLevelBlocks(block, '{', '}');
+    for (final objectText in objects) {
+      try {
+        final json =
+            jsonDecode(_cleanupJson(objectText)) as Map<String, dynamic>;
+        final raw = BillInfo.fromJson(json);
+        _warnIfCurrencyDropped(json, raw);
+        final sanitized = _sanitize(raw, captureTime);
+        if (sanitized == null) {
+          logger.warning(_tag, '抢救对象金额无效,跳过');
+          continue;
+        }
+        bills.add(sanitized);
+      } catch (e) {
+        logger.warning(_tag, '抢救对象解析失败,跳过: $e');
+      }
+    }
+    return bills;
+  }
+
   /// AI 给了币种但解析不出来时留一条 warning。
   ///
   /// 这条日志的价值:币种解析失败是**静默降级**成账本本位币的(A5 不阻断),
@@ -112,7 +161,7 @@ class JsonResponseParser {
 
   /// 单笔统一校验 + 兜底。
   ///
-  /// 返回 null = 该笔应丢弃(amount 缺失或为 0);
+  /// 返回 null = 该笔应丢弃(amount 缺失/为 0/非有限);
   /// 返回非 null = 已修正,可直接入库。
   ///
   /// 时间规则(2026-10-09 用户裁决):
@@ -122,7 +171,12 @@ class JsonResponseParser {
   ///   交给策略层丢弃/分流。
   BillInfo? _sanitize(BillInfo bill, DateTime? captureTime) {
     final amt = bill.amount;
-    if (amt == null || amt.abs() <= 0) return null;
+    // A6/A11(2026-10-11):非有限金额(JSON `1e999` 溢出为 Infinity,
+    // 或字符串 "NaN"/"Infinity" 被 double.tryParse 接受)必须在解析入口
+    // 丢弃。`NaN.abs() <= 0` 与 `Infinity.abs() <= 0` 恒为 false,旧判定挡
+    // 不住,非有限值会一路落库污染统计/判重索引。本类是下游信任的
+    // 「统一 sanitize」关口(见类注释),守卫必须在此生效。
+    if (amt == null || !amt.isFinite || amt.abs() <= 0) return null;
     if (captureTime != null) {
       if (bill.time == null || bill.timeInferred) {
         return bill.copyWith(
@@ -221,5 +275,82 @@ class JsonResponseParser {
       }
     }
     return null;
+  }
+
+  /// 剥离**字符串字面量之外**的 BOM / 零宽字符。
+  ///
+  /// 诱因:部分 AI 网关/代理会逐段加 BOM,于是响应长成
+  /// `[<BOM>{"amount":-30},<BOM>{"amount":-88}]` —— 这些字符在结构位上
+  /// 会让 `jsonDecode` 直接抛 FormatException,数组路径整体失败后只剩
+  /// 单对象 fallback(只救回第一笔)。字符串内容里的同类字符**保留**
+  /// (那是用户数据,不能改)。
+  String _stripStructuralInvisibles(String text) {
+    final invisibles = RegExp('[\uFEFF\u200B\u200C\u200D\u2060]');
+    if (!invisibles.hasMatch(text)) return text;
+
+    final out = StringBuffer();
+    var inString = false;
+    var escaped = false;
+    for (var i = 0; i < text.length; i++) {
+      final c = text[i];
+      if (inString) {
+        out.write(c);
+        if (escaped) {
+          escaped = false;
+        } else if (c == '\\') {
+          escaped = true;
+        } else if (c == '"') {
+          inString = false;
+        }
+        continue;
+      }
+      if (c == '"') {
+        inString = true;
+        out.write(c);
+        continue;
+      }
+      if (invisibles.hasMatch(c)) continue;
+      out.write(c);
+    }
+    return out.toString();
+  }
+
+  /// 提取 [text] 内**全部顶层** `{...}` 块(嵌套对象不单列)。
+  ///
+  /// 供数组路径整体解析失败时的"逐对象抢救"用:每个块单独 jsonDecode,
+  /// 脏字符只毁掉它所在的那一笔,不会像整体 parse 那样一笔连坐整批。
+  List<String> _extractAllTopLevelBlocks(String text, String open, String close) {
+    final blocks = <String>[];
+    var depth = 0;
+    var start = -1;
+    var inString = false;
+    var escaped = false;
+    for (var i = 0; i < text.length; i++) {
+      final c = text[i];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (c == '\\') {
+        escaped = true;
+        continue;
+      }
+      if (c == '"') {
+        inString = !inString;
+        continue;
+      }
+      if (inString) continue;
+      if (c == open) {
+        if (depth == 0) start = i;
+        depth++;
+      } else if (c == close) {
+        depth--;
+        if (depth == 0 && start >= 0) {
+          blocks.add(text.substring(start, i + 1));
+          start = -1;
+        }
+      }
+    }
+    return blocks;
   }
 }

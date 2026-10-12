@@ -308,20 +308,30 @@ class BillInfo {
     return BillInfo(
       amount: _parseDouble(json['amount']),
       time: _parseTime(json['time']),
-      note: json['note'] as String? ?? json['merchant'] as String?,
-      merchant: json['merchant'] as String? ??
-          json['merchant_name'] as String? ??
-          json['merchantName'] as String?,
-      category: json['category'] as String?,
+      // 文本字段一律走容错范式:AI 把 note/category/account 写成数字
+      // (如 `"note":88` / `"category":1`)时,裸 `as String?` 会抛 TypeError
+      // 被 parse 的 catch 吞掉 → **整笔账单静默丢失**。转成字符串后仍保留
+      // 信息,比丢整笔好;`null` 仍按缺失处理(语义与改动前一致)。
+      //
+      // note 的回退顺序保持逐字等价:`note` 非 null 就用它,否则用
+      // `merchant` —— 只是两者都做了非字符串容错(空串仍被视为"已提供")。
+      note: _asString(json['note']) ?? _asString(json['merchant']),
+      merchant: _firstString([
+        json['merchant'],
+        json['merchant_name'],
+        json['merchantName'],
+      ]),
+      category: _asString(json['category']),
       type: _parseBillType(json['type']),
-      account: json['account'] as String?,
+      account: _asString(json['account']),
       fromAccount:
-          json['from_account'] as String? ?? json['fromAccount'] as String?,
-      toAccount: json['to_account'] as String? ?? json['toAccount'] as String?,
+          _asString(json['from_account']) ?? _asString(json['fromAccount']),
+      toAccount: _asString(json['to_account']) ?? _asString(json['toAccount']),
       tags: _parseTags(json['tags'] ?? json['tag']),
       currency: _parseCurrency(
           json['currency'] ?? json['currency_code'] ?? json['currencyCode']),
-      ledgerId: json['ledgerId'] as int?,
+      // ledgerId 是应用层注入的整数;AI 若给字符串 "3" 也接受(容错,不丢整笔)
+      ledgerId: _asInt(json['ledgerId']),
       // confidence 缺失(旧模型)视同高置信,避免全量进待确认
       confidence: _parseDouble(json['confidence']) ?? 1.0,
       eventKind: billEventKindFromValue(
@@ -401,10 +411,24 @@ class BillInfo {
     final raw = value.trim();
     if (raw.isEmpty) return null;
     final direct = DateTime.tryParse(raw);
-    if (direct != null) return direct;
+    if (direct != null) {
+      // 裸墙钟字符串(无时区标记)必须逐分量回写一致:DateTime.parse 会把
+      // `2026-02-30` 顺延成 `2026-03-02`、把 `99:99:99` 进位成次日 04:40:39,
+      // 且 `timeInferred` 仍为 false —— 这笔"时间可信"的假时间会绕过策略层
+      // 的 time_precision_weak 闸门。带 Z / ±HH:MM 的串不做此校验(合法偏移)。
+      if (!_isNakedWallClock(raw)) return direct;
+      if (_componentsMatch(raw, direct)) return direct;
+      return null;
+    }
     // AI 偶发会在 ISO8601 里夹空格(如 `"2222 2-1-26T18:08:00"`),strip 重试
-    final stripped = DateTime.tryParse(raw.replaceAll(RegExp(r'\s+'), ''));
-    if (stripped != null) return stripped;
+    final stripped = raw.replaceAll(RegExp(r'\s+'), '');
+    final strippedParsed = DateTime.tryParse(stripped);
+    if (strippedParsed != null) {
+      if (_isNakedWallClock(stripped) && !_componentsMatch(stripped, strippedParsed)) {
+        return null;
+      }
+      return strippedParsed;
+    }
     // 本地化 / 中文格式(如 `"2026年5月29日 23:35:16"`):正则提取年月日时分秒。
     final m = RegExp(
       r'(\d{4})\s*[年./-]\s*(\d{1,2})\s*[月./-]\s*(\d{1,2})\s*日?'
@@ -412,10 +436,66 @@ class BillInfo {
     ).firstMatch(raw);
     if (m == null) return null;
     int g(int i) => int.tryParse(m.group(i) ?? '') ?? 0;
+    final year = g(1);
     final month = g(2);
     final day = g(3);
     if (month < 1 || month > 12 || day < 1 || day > 31) return null;
-    return DateTime(g(1), month, day, g(4), g(5), g(6));
+    final hour = g(4);
+    final minute = g(5);
+    final second = g(6);
+    if (hour < 0 || hour > 23) return null;
+    if (minute < 0 || minute > 59) return null;
+    if (second < 0 || second > 59) return null;
+    final built = DateTime(year, month, day, hour, minute, second);
+    // 回写校验:不存在的日历日(2026年2月30日)一律拒绝,不顺延
+    if (built.year != year || built.month != month || built.day != day) {
+      return null;
+    }
+    return built;
+  }
+
+  /// 该串是否是"裸墙钟"时间(没有任何时区/偏移标记)。
+  ///
+  /// 只有裸串才做分量回写校验 —— 带 `Z` 或 `±HH:MM` 的串经 DateTime.parse
+  /// 会折算到另一时刻,逐分量比对必然不相等,那不是缺陷。
+  static bool _isNakedWallClock(String raw) {
+    if (raw.isEmpty) return false;
+    if (RegExp(r'[Zz]$').hasMatch(raw)) return false;
+    // 日期段之后的 ±HH:MM / ±HHMM 偏移(日期段的 `-` 不算)
+    if (RegExp(r'[T ]\d{1,2}:\d{1,2}(?::\d{1,2}(?:\.\d+)?)?[+-]\d{2}:?\d{2}$')
+        .hasMatch(raw)) {
+      return false;
+    }
+    // 纯日期里的 `+` 偏移(极少见,如 2026-05-26+08:00)
+    if (RegExp(r'[+-]\d{2}:?\d{2}$').hasMatch(raw)) return false;
+    return true;
+  }
+
+  /// 把 [raw] 里显式写出的 年/月/日/时/分/秒 与解析结果逐项比对。
+  ///
+  /// 只要串里显式写了这些分量,结果就必须一致;串里没写的分量(如只有日期)
+  /// 不参与比较。无法从串里提取出完整日期时返回 true(无从校验,放行)。
+  static bool _componentsMatch(String raw, DateTime parsed) {
+    final m = RegExp(
+      r'^(\d{4})-(\d{1,2})-(\d{1,2})'
+      r'(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2})(?:\.\d+)?)?)?$',
+    ).firstMatch(raw);
+    if (m == null) return true;
+    int? g(int i) => m.group(i) == null ? null : int.tryParse(m.group(i)!);
+    final year = g(1);
+    final month = g(2);
+    final day = g(3);
+    if (year == null || month == null || day == null) return true;
+    if (parsed.year != year || parsed.month != month || parsed.day != day) {
+      return false;
+    }
+    final hour = g(4);
+    if (hour != null && parsed.hour != hour) return false;
+    final minute = g(5);
+    if (minute != null && parsed.minute != minute) return false;
+    final second = g(6);
+    if (second != null && parsed.second != second) return false;
+    return true;
   }
 
   /// 币种解析(.docs/multi-currency-ai A4):ISO 码直通 → 口语/符号别名兜底。
@@ -435,6 +515,26 @@ class BillInfo {
       final text = value.toString().trim();
       if (text.isNotEmpty) return text;
     }
+    return null;
+  }
+
+  /// 单值容错转字符串:非字符串(数字/布尔)走 `toString()`,不抛 TypeError。
+  ///
+  /// 与 [_firstString] 的区别:不 trim、不把空串当缺失 —— 用于需要**保留
+  /// 原值语义**的字段(note 的空串与"未提供"在备份/展示上是两回事)。
+  static String? _asString(dynamic value) {
+    if (value == null) return null;
+    return value is String ? value : value.toString();
+  }
+
+  /// 容错转 int:数字直接取整;字符串尝试 `int.tryParse`;其它类型返回 null。
+  ///
+  /// 存在的意义同 [_asString] —— AI 把 `ledgerId` 写成 `"3"` 时不让整笔账单崩掉。
+  static int? _asInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value.trim());
     return null;
   }
 

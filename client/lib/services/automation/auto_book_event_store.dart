@@ -64,6 +64,9 @@ class AutoBookEventStore {
       source: input.sourceValue,
       captureIntent: d.Value(input.captureIntentValue),
       ledgerId: d.Value(input.ledgerId),
+      targetRef: d.Value(input.targetRef),
+      targetConfigVersion: d.Value(input.targetConfigVersion),
+      targetState: d.Value(input.targetState),
       sourceChannel: d.Value(input.sourceChannel),
       externalId: d.Value(input.externalId),
       contentHash: d.Value(input.contentHash),
@@ -139,40 +142,56 @@ class AutoBookEventStore {
   /// 尝试取得事件处理租约。
   ///
   /// terminal 事件不再执行；processing 且租约未过期的事件也不重复执行；
-  /// retry 事件在 nextRetryAt 之前不执行。所有状态判断都在 Coordinator 的
-  /// 全局串行链中运行，避免同一进程内双执行。
+  /// retry 事件在 nextRetryAt 之前不执行。
+  ///
+  /// A1(2026-10-11)原子化:旧实现是「SELECT 读状态 → 判断租约 → UPDATE
+  /// state='processing'」的读-改-写,两个并发调用(或两个 Coordinator 实例)
+  /// 都看到旧状态就都授予租约,同一事件被执行两次。现在改成**单条条件
+  /// UPDATE**:所有状态/租约/退避判定都在 WHERE 里,`affectedRows == 1` 是
+  /// 取得租约的唯一信号。SELECT 只用于回读展示 —— 拿不到行时按「已被别的
+  /// 调用方处理」处理,绝不二次授予。
   Future<AutoBookClaim> claim(AutoBookInput input) async {
     final event = await ensure(input);
     final now = DateTime.now();
-    final state = AutoBookStateValue.parse(event.state);
+    final excluded = [
+      AutoBookState.booked.value,
+      AutoBookState.duplicate.value,
+      AutoBookState.ignored.value,
+      AutoBookState.pending.value,
+      AutoBookState.failed.value,
+      AutoBookState.expired.value,
+    ];
+    final leaseDeadline = now.subtract(processingLease);
 
-    if (_isTerminal(state)) {
-      return AutoBookClaim(event: event, acquired: false);
-    }
-    if (state == AutoBookState.retry &&
-        event.nextRetryAt != null &&
-        event.nextRetryAt!.isAfter(now)) {
-      return AutoBookClaim(event: event, acquired: false);
-    }
-    if (state == AutoBookState.processing &&
-        now.isBefore(event.updatedAt.add(processingLease))) {
-      return AutoBookClaim(event: event, acquired: false);
-    }
-
-    await (db.update(db.autoBookEvents)..where((t) => t.id.equals(event.id)))
-        .write(
-      schema.AutoBookEventsCompanion(
-        state: const d.Value('processing'),
-        attemptCount: d.Value(event.attemptCount + 1),
-        nextRetryAt: const d.Value(null),
-        updatedAt: d.Value(now),
-      ),
+    // 条件 UPDATE:非终态 + (非 processing 或租约已到期) +
+    // (非 retry 或退避闸门已放开)。变量顺序必须与 SQL 中的 ? 一一对应。
+    final acquired = await db.customUpdate(
+      'UPDATE auto_book_events '
+      "SET state = 'processing', "
+      '    attempt_count = attempt_count + 1, '
+      '    next_retry_at = NULL, '
+      '    updated_at = ? '
+      'WHERE id = ? '
+      '  AND state NOT IN (${List.filled(excluded.length, '?').join(', ')}) '
+      "  AND (state <> 'processing' OR updated_at <= ?) "
+      "  AND (state <> 'retry' "
+      '       OR next_retry_at IS NULL '
+      '       OR next_retry_at <= ?)',
+      variables: [
+        d.Variable<DateTime>(now),
+        d.Variable<int>(event.id),
+        for (final value in excluded) d.Variable<String>(value),
+        d.Variable<DateTime>(leaseDeadline),
+        d.Variable<DateTime>(now),
+      ],
+      updates: {db.autoBookEvents},
     );
-    final claimed = await findById(event.id);
-    if (claimed == null) {
+
+    final row = await findById(event.id);
+    if (row == null) {
       throw StateError('自动记账事件 claim 后无法读取: ${event.id}');
     }
-    return AutoBookClaim(event: claimed, acquired: true);
+    return AutoBookClaim(event: row, acquired: acquired == 1);
   }
 
   Future<void> mark(AutoBookEventUpdate update, {required int eventId}) async {
@@ -199,9 +218,16 @@ class AutoBookEventStore {
         transactionId: update.transactionId == null
             ? const d.Value.absent()
             : d.Value(update.transactionId),
-        duplicateOfTransactionId: update.duplicateOfTransactionId == null
-            ? const d.Value.absent()
-            : d.Value(update.duplicateOfTransactionId),
+        // A5(2026-10-11):`duplicateOfTransactionId` **始终写入**(null 也写)。
+        // 旧实现把 null 当 `Value.absent()`(不改动),而 resolvePendingItem
+        // 传 null 的本意是「父事件不再是 duplicate,清掉这一列」—— 两处对
+        // null 的理解相反,导致父事件从 duplicate 回退后仍残留旧的
+        // duplicateOfTransactionId(sourceKeysForTransaction 的跨渠道反查源
+        // 继续被污染)。已审计全部 mark() 调用点(ai_bookkeeper ×2 /
+        // data_import_service / coordinator / auto_billing_service ×2 /
+        // recurring_transaction_service ×2):每次 mark 都是一次状态转移,
+        // 陈旧判重关系应当随新状态作废,没有调用点依赖「null = 不改动」。
+        duplicateOfTransactionId: d.Value(update.duplicateOfTransactionId),
         billJson: update.billJson == null
             ? const d.Value.absent()
             : d.Value(update.billJson),
@@ -281,6 +307,15 @@ class AutoBookEventStore {
         .get();
   }
 
+  /// 自动升级/确认会同时改变子项和父事件,供打开的确认页刷新列表。
+  /// 只订阅表更新信号,不为每次变化额外拉取完整事件历史。
+  Stream<void> watchChanges() => db
+      .tableUpdates(d.TableUpdateQuery.onAllTables([
+        db.autoBookEvents,
+        db.autoBookEventItems,
+      ]))
+      .map((_) {});
+
   Future<int> countPending() async {
     final query = db.selectOnly(db.autoBookEvents)
       ..addColumns([db.autoBookEvents.id.count()])
@@ -291,13 +326,30 @@ class AutoBookEventStore {
 
   /// 查询本地自动入口处理历史。只返回状态/来源/时间/交易关联等摘要，
   /// 不把原始短信、通知或页面文本暴露给历史页。
+  ///
+  /// A4(2026-10-11):state/source 过滤**下推到 SQL**,`limit` 只作用于
+  /// 已过滤集合。旧实现先 `ORDER BY updatedAt DESC LIMIT n` 再在 Dart 里
+  /// 过滤 —— 库里有大量不匹配的新事件时,匹配的旧记录被截断窗口吃掉,
+  /// 历史页/每日汇总出现「筛选后空列表」的假丢记录。
   Future<List<schema.AutoBookEvent>> listHistory({
     String? state,
     String? source,
     int limit = 200,
   }) async {
     final safeLimit = limit.clamp(1, maxPendingEvents).toInt();
-    final rows = await (db.select(db.autoBookEvents)
+    return (db.select(db.autoBookEvents)
+          ..where((t) {
+            d.Expression<bool> predicate = const d.Constant(true);
+            final normalizedState = state?.trim();
+            if (normalizedState != null && normalizedState.isNotEmpty) {
+              predicate = predicate & t.state.equals(normalizedState);
+            }
+            final normalizedSource = source?.trim();
+            if (normalizedSource != null && normalizedSource.isNotEmpty) {
+              predicate = predicate & t.source.equals(normalizedSource);
+            }
+            return predicate;
+          })
           ..orderBy([
             (t) => d.OrderingTerm(
                   expression: t.updatedAt,
@@ -306,11 +358,6 @@ class AutoBookEventStore {
           ])
           ..limit(safeLimit))
         .get();
-    return rows
-        .where((row) =>
-            (state == null || row.state == state) &&
-            (source == null || row.source == source))
-        .toList();
   }
 
   Future<Map<String, int>> countByState() async {
@@ -385,51 +432,57 @@ class AutoBookEventStore {
   /// `semantic_key` 索引点查(写入侧 semanticKey() 对 externalId 生成的就是
   /// `external:v1:<hash>`),不再全表拉回 + 逐行 jsonDecode。hash 公式对不上
   /// (更老版本写入)或行缺失时回退旧扫描路径,行为不变。
+  ///
+  /// A10(2026-10-11)公式漂移修复:写入侧 `semanticKey()` 用
+  /// `externalKey(id, currency: bill.currency)`(币种进 hash),查询侧旧实现
+  /// 只算**不带币种**的 key → 已入账交易的外部单号反查不到,外部单号维度
+  /// 判重整体失效。现在按三层探测:
+  /// 1. 调用方显式传 [currency](推荐) + 老公式(不含币种,兼容历史行);
+  /// 2. 未命中 → **账本本位币探测**:按候选事件所属账本的 `currency` 再算
+  ///    一次 key(自动路径的 bill.currency 常解析为账本本位币,是查询侧
+  ///    拿不到原始币种时最可靠的还原);
+  /// 3. 仍未命中 → 全扫描兜底(仅 `billJson`/父行带 external_id 的老数据)。
   Future<int?> findTransactionByExternalId(
     String externalId, {
     int? ledgerId,
     String? sourceChannel,
+    String? currency,
   }) async {
     final normalized = externalId.trim().toLowerCase();
     if (normalized.isEmpty) return null;
 
-    // 快路径:与 SemanticDedupMatcher.semanticKey 相同的 key 公式点查索引。
-    // 注意 normalize 口径完全复用 matcher(含商户词清洗),保证与写入侧一致。
-    try {
-      final externalKey =
-          SemanticDedupMatcher.externalKey(externalId.trim().toLowerCase());
-      if (externalKey != null) {
-        final rows = await (db.select(db.autoBookEventItems)
-              ..where((t) => t.semanticKey.equals(externalKey))
-              ..where((t) => t.transactionId.isNotNull()))
-            .get();
-        if (rows.isNotEmpty) {
-          final eventIds = rows.map((r) => r.eventId).toSet();
-          final events = await (db.select(db.autoBookEvents)
-                ..where((e) => e.id.isIn(eventIds)))
-              .get();
-          final eventById = {for (final e in events) e.id: e};
-          bool matchesChannel(schema.AutoBookEvent event) {
-            final requested = sourceChannel?.trim().toLowerCase();
-            if (requested == null || requested.isEmpty) return true;
-            return event.sourceChannel?.trim().toLowerCase() == requested;
-          }
+    // 第 1 层:显式币种 + 老公式(不含币种)。
+    final explicitKeys = <String>{
+      ..._externalKeysFor(normalized, currency),
+      ..._externalKeysFor(normalized, null),
+    };
+    final direct = await _probeExternalKeys(
+      explicitKeys,
+      ledgerId: ledgerId,
+      sourceChannel: sourceChannel,
+    );
+    if (direct != null) return direct;
 
-          for (final item in rows) {
-            final event = eventById[item.eventId];
-            if (event == null ||
-                event.state != AutoBookState.booked.value ||
-                item.transactionId == null) {
-              continue;
-            }
-            if (ledgerId != null && event.ledgerId != ledgerId) continue;
-            if (!matchesChannel(event)) continue;
-            return item.transactionId;
-          }
-        }
+    // 第 2 层(A10):用候选事件所属账本的本位币再探一次。没有账本作用域的
+    // 事件(ledgerId 为空)不参与 —— 没有币种线索时无从还原,交给第 3 层。
+    try {
+      final ledgerKeys = <String>{};
+      for (final code in await _ledgerCurrenciesForProbe(
+        ledgerId: ledgerId,
+        sourceChannel: sourceChannel,
+      )) {
+        ledgerKeys.addAll(_externalKeysFor(normalized, code));
+      }
+      if (ledgerKeys.isNotEmpty) {
+        final probed = await _probeExternalKeys(
+          ledgerKeys,
+          ledgerId: ledgerId,
+          sourceChannel: sourceChannel,
+        );
+        if (probed != null) return probed;
       }
     } catch (_) {
-      // 快路径任何异常(例如老库 hash 函数不一致)都退回全扫描,不影响正确性。
+      // 账本表读取失败(或老库缺 currency 列)不影响兜底扫描。
     }
 
     return _findTransactionByExternalIdScan(
@@ -437,6 +490,92 @@ class AutoBookEventStore {
       ledgerId: ledgerId,
       sourceChannel: sourceChannel,
     );
+  }
+
+  /// [externalKey] 的容错包装:null/空 externalId 返回空集。
+  static Set<String> _externalKeysFor(String normalized, String? currency) {
+    final key = SemanticDedupMatcher.externalKey(normalized, currency: currency);
+    return key == null ? const {} : {key};
+  }
+
+  /// 按一组候选 semantic key 点查 `auto_book_event_items` 索引,并做
+  /// 事件级校验(booked + transactionId + 账本 + 渠道命中)。命中返回
+  /// transactionId,全部落空返回 null。
+  Future<int?> _probeExternalKeys(
+    Set<String> semanticKeys, {
+    int? ledgerId,
+    String? sourceChannel,
+  }) async {
+    if (semanticKeys.isEmpty) return null;
+    try {
+      final rows = await (db.select(db.autoBookEventItems)
+            ..where((t) => t.semanticKey.isIn(semanticKeys))
+            ..where((t) => t.transactionId.isNotNull()))
+          .get();
+      if (rows.isEmpty) return null;
+      final eventIds = rows.map((r) => r.eventId).toSet();
+      final events = await (db.select(db.autoBookEvents)
+            ..where((e) => e.id.isIn(eventIds)))
+          .get();
+      final eventById = {for (final e in events) e.id: e};
+
+      for (final item in rows) {
+        final event = eventById[item.eventId];
+        if (event == null ||
+            event.state != AutoBookState.booked.value ||
+            item.transactionId == null) {
+          continue;
+        }
+        if (ledgerId != null && event.ledgerId != ledgerId) continue;
+        if (!_matchesSourceChannel(event, sourceChannel)) continue;
+        return item.transactionId;
+      }
+    } catch (_) {
+      // 点查异常(例如老库 hash 函数不一致)由上层退回扫描路径。
+    }
+    return null;
+  }
+
+  /// 候选事件(booked)所属账本的本位币去重集合 —— A10 第 2 层探测用。
+  Future<Set<String>> _ledgerCurrenciesForProbe({
+    int? ledgerId,
+    String? sourceChannel,
+  }) async {
+    final rows = await (db.select(db.autoBookEvents)
+          ..where((t) =>
+              t.ledgerId.isNotNull() &
+              t.state.equals(AutoBookState.booked.value) &
+              (ledgerId == null
+                  ? const d.Constant(true)
+                  : t.ledgerId.equals(ledgerId))))
+        .get();
+    final ledgerIds = <int>{
+      for (final row in rows)
+        if (_matchesSourceChannel(row, sourceChannel)) row.ledgerId!,
+    };
+    if (ledgerIds.isEmpty) return const {};
+    final ledgers = await (db.select(db.ledgers)
+          ..where((t) => t.id.isIn(ledgerIds)))
+        .get();
+    // 大小写兼容:写入侧 `externalKey` 直接拼 bill 的币种原值(不做大小写
+    // 归一),而账本列的币种由 schema 默认 'CNY' / 用户输入决定,可能大小写
+    // 不一致;两种形态都探一次。
+    return {
+      for (final ledger in ledgers)
+        if (ledger.currency.trim().isNotEmpty) ...[
+          ledger.currency.trim(),
+          ledger.currency.trim().toUpperCase(),
+        ],
+    };
+  }
+
+  static bool _matchesSourceChannel(
+    schema.AutoBookEvent event,
+    String? sourceChannel,
+  ) {
+    final requested = sourceChannel?.trim().toLowerCase();
+    if (requested == null || requested.isEmpty) return true;
+    return event.sourceChannel?.trim().toLowerCase() == requested;
   }
 
   /// 旧版全扫描实现(保留为 fallback:semanticKey 为空的历史行、以及
@@ -659,6 +798,79 @@ class AutoBookEventStore {
         eventId: eventId,
       );
     });
+  }
+
+  /// B4:恢复被忽略的子项 → pending(**只能重建候选**,不创建交易、不撤销
+  /// 原交易、不改未结算过滤规则)。
+  ///
+  /// 期望状态检查:仅 `state=ignored` 的子项可恢复;`changed == 0` 表示该
+  /// 子项已被别的路径处理(并发确认/重试),返回 false,调用方不重复执行 ——
+  /// 不能只靠按钮禁用(计划 B4 任务 3)。
+  Future<bool> reopenItem({
+    required int eventId,
+    required int itemIndex,
+    String reason = 'restored',
+  }) async {
+    return db.transaction(() async {
+      final changed = await (db.update(db.autoBookEventItems)
+            ..where((t) =>
+                t.eventId.equals(eventId) &
+                t.itemIndex.equals(itemIndex) &
+                t.state.equals(AutoBookState.ignored.value)))
+          .write(schema.AutoBookEventItemsCompanion(
+        state: d.Value(AutoBookState.pending.value),
+        reason: d.Value(reason),
+      ));
+      if (changed == 0) return false;
+      final items = await itemsForEvent(eventId);
+      final remaining =
+          items.any((item) => item.state == AutoBookState.pending.value);
+      if (remaining) {
+        await mark(
+          AutoBookEventUpdate(
+            state: AutoBookState.pending,
+            reason: 'pending_confirmation',
+          ),
+          eventId: eventId,
+        );
+      }
+      return true;
+    });
+  }
+
+  /// B4:已忽略子项清单(短期恢复入口)。
+  ///
+  /// 只取带 `billJson` 的行 —— 没有结构化摘要就无法重建候选,不给假的恢复
+  /// 按钮(计划 §5.5:摘要不足时返回「无法恢复」)。
+  Future<
+      List<
+          ({
+            schema.AutoBookEvent event,
+            schema.AutoBookEventItem item,
+          })>> listIgnoredItems({int limit = 50}) async {
+    final safeLimit = limit.clamp(1, 200).toInt();
+    final itemQuery = db.select(db.autoBookEventItems)
+      ..where((t) =>
+          t.state.equals(AutoBookState.ignored.value) & t.billJson.isNotNull())
+      ..orderBy([
+        (t) => d.OrderingTerm(
+              expression: t.updatedAt,
+              mode: d.OrderingMode.desc,
+            ),
+      ])
+      ..limit(safeLimit);
+    final items = await itemQuery.get();
+    if (items.isEmpty) return const [];
+    final eventIds = items.map((i) => i.eventId).toSet().toList();
+    final events = await (db.select(db.autoBookEvents)
+          ..where((t) => t.id.isIn(eventIds)))
+        .get();
+    final byId = {for (final e in events) e.id: e};
+    return [
+      for (final item in items)
+        if (byId[item.eventId] != null)
+          (event: byId[item.eventId]!, item: item),
+    ];
   }
 
   /// 查询已保存的原始证据。默认只返回带正文/元数据的行。
@@ -996,6 +1208,18 @@ class AutoBookEventStore {
       // 老库异常不阻塞;下次调用仍会重试回填。
     }
     await cleanupExpiredRawEvidence();
+    // A3(2026-10-11):过期 pending 必须先走 [expireStalePending] 转 expired
+    // 占位,再执行物理删除。旧顺序下,无原始证据的 pending 事件(短信/通知
+    // 最常见的形态)不满足下面的「占位改造」条件,却被 DELETE 直接物理抹掉
+    // —— 历史页记录凭空消失,C8 承诺的「保留为什么停下」失效。谁先跑
+    // (Coordinator.initialize vs PendingCandidateStore.loadForReview)决定了
+    // 记录是占位还是消失,这是不确定行为,必须消除。
+    // 失败不阻断后续清理(与回填/占位改造同款容错)。
+    try {
+      await expireStalePending();
+    } catch (_) {
+      // expire 失败时下面的 DELETE 也会显式排除 pending,不会误删。
+    }
     final now = DateTime.now();
     // 曾有原始证据、证据已被留存策略清掉的过期事件:保留「已过期(证据已
     // 清理)」占位行,历史页不再凭空消失(P1-2)。置 state=expired(终态,
@@ -1025,6 +1249,9 @@ class AutoBookEventStore {
               t.rawTitle.isNull() &
               t.rawActor.isNull() &
               t.rawMetadataJson.isNull() &
+              // A3(2026-10-11):pending 只由 expireStalePending 转终态,
+              // 绝不物理删除 —— 保住「过期占位」这一历史页契约。
+              t.state.isNotIn(const ['pending']) &
               // 已转占位的行(expiresAt 已置空)天然不命中上面的过期条件;
               // 再排除一次,防御同一轮里 update/delete 的顺序竞态
               t.rawEvidenceUploadState.isNotIn(const [
@@ -1044,17 +1271,6 @@ class AutoBookEventStore {
       event.rawText?.isNotEmpty == true ||
       event.rawActor?.isNotEmpty == true ||
       event.rawMetadataJson?.isNotEmpty == true;
-
-  static bool _isTerminal(AutoBookState state) => switch (state) {
-        AutoBookState.booked ||
-        AutoBookState.duplicate ||
-        AutoBookState.ignored ||
-        AutoBookState.pending ||
-        AutoBookState.failed ||
-        AutoBookState.expired =>
-          true,
-        _ => false,
-      };
 
   static String? _redactError(String? error) {
     if (error == null || error.trim().isEmpty) return null;

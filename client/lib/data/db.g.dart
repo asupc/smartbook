@@ -10937,6 +10937,26 @@ class $AutoBookEventsTable extends AutoBookEvents
   late final GeneratedColumn<int> ledgerId = GeneratedColumn<int>(
       'ledger_id', aliasedName, true,
       type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _targetRefMeta =
+      const VerificationMeta('targetRef');
+  @override
+  late final GeneratedColumn<String> targetRef = GeneratedColumn<String>(
+      'target_ref', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _targetConfigVersionMeta =
+      const VerificationMeta('targetConfigVersion');
+  @override
+  late final GeneratedColumn<int> targetConfigVersion = GeneratedColumn<int>(
+      'target_config_version', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _targetStateMeta =
+      const VerificationMeta('targetState');
+  @override
+  late final GeneratedColumn<String> targetState = GeneratedColumn<String>(
+      'target_state', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      defaultValue: const Constant('resolved'));
   static const VerificationMeta _sourceChannelMeta =
       const VerificationMeta('sourceChannel');
   @override
@@ -11144,6 +11164,9 @@ class $AutoBookEventsTable extends AutoBookEvents
         source,
         captureIntent,
         ledgerId,
+        targetRef,
+        targetConfigVersion,
+        targetState,
         sourceChannel,
         externalId,
         contentHash,
@@ -11209,6 +11232,22 @@ class $AutoBookEventsTable extends AutoBookEvents
     if (data.containsKey('ledger_id')) {
       context.handle(_ledgerIdMeta,
           ledgerId.isAcceptableOrUnknown(data['ledger_id']!, _ledgerIdMeta));
+    }
+    if (data.containsKey('target_ref')) {
+      context.handle(_targetRefMeta,
+          targetRef.isAcceptableOrUnknown(data['target_ref']!, _targetRefMeta));
+    }
+    if (data.containsKey('target_config_version')) {
+      context.handle(
+          _targetConfigVersionMeta,
+          targetConfigVersion.isAcceptableOrUnknown(
+              data['target_config_version']!, _targetConfigVersionMeta));
+    }
+    if (data.containsKey('target_state')) {
+      context.handle(
+          _targetStateMeta,
+          targetState.isAcceptableOrUnknown(
+              data['target_state']!, _targetStateMeta));
     }
     if (data.containsKey('source_channel')) {
       context.handle(
@@ -11401,6 +11440,12 @@ class $AutoBookEventsTable extends AutoBookEvents
           .read(DriftSqlType.string, data['${effectivePrefix}capture_intent'])!,
       ledgerId: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}ledger_id']),
+      targetRef: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}target_ref']),
+      targetConfigVersion: attachedDatabase.typeMapping.read(
+          DriftSqlType.int, data['${effectivePrefix}target_config_version']),
+      targetState: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}target_state'])!,
       sourceChannel: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}source_channel']),
       externalId: attachedDatabase.typeMapping
@@ -11487,6 +11532,13 @@ class AutoBookEvent extends DataClass implements Insertable<AutoBookEvent> {
   final String source;
   final String captureIntent;
   final int? ledgerId;
+
+  /// B2:捕获时冻结的自动目标快照。识别入账、确认与失败重放都用同一份,
+  /// 后续改设置/切浏览账本不改已捕获事件的目标(B0 §3.3)。
+  /// target_ref = `syncId:<v>` / `localId:<v>`;为空 = 尚未冻结。
+  final String? targetRef;
+  final int? targetConfigVersion;
+  final String targetState;
   final String? sourceChannel;
   final String? externalId;
   final String? contentHash;
@@ -11539,6 +11591,9 @@ class AutoBookEvent extends DataClass implements Insertable<AutoBookEvent> {
       required this.source,
       required this.captureIntent,
       this.ledgerId,
+      this.targetRef,
+      this.targetConfigVersion,
+      required this.targetState,
       this.sourceChannel,
       this.externalId,
       this.contentHash,
@@ -11579,6 +11634,13 @@ class AutoBookEvent extends DataClass implements Insertable<AutoBookEvent> {
     if (!nullToAbsent || ledgerId != null) {
       map['ledger_id'] = Variable<int>(ledgerId);
     }
+    if (!nullToAbsent || targetRef != null) {
+      map['target_ref'] = Variable<String>(targetRef);
+    }
+    if (!nullToAbsent || targetConfigVersion != null) {
+      map['target_config_version'] = Variable<int>(targetConfigVersion);
+    }
+    map['target_state'] = Variable<String>(targetState);
     if (!nullToAbsent || sourceChannel != null) {
       map['source_channel'] = Variable<String>(sourceChannel);
     }
@@ -11673,6 +11735,13 @@ class AutoBookEvent extends DataClass implements Insertable<AutoBookEvent> {
       ledgerId: ledgerId == null && nullToAbsent
           ? const Value.absent()
           : Value(ledgerId),
+      targetRef: targetRef == null && nullToAbsent
+          ? const Value.absent()
+          : Value(targetRef),
+      targetConfigVersion: targetConfigVersion == null && nullToAbsent
+          ? const Value.absent()
+          : Value(targetConfigVersion),
+      targetState: Value(targetState),
       sourceChannel: sourceChannel == null && nullToAbsent
           ? const Value.absent()
           : Value(sourceChannel),
@@ -11761,6 +11830,10 @@ class AutoBookEvent extends DataClass implements Insertable<AutoBookEvent> {
       source: serializer.fromJson<String>(json['source']),
       captureIntent: serializer.fromJson<String>(json['captureIntent']),
       ledgerId: serializer.fromJson<int?>(json['ledgerId']),
+      targetRef: serializer.fromJson<String?>(json['targetRef']),
+      targetConfigVersion:
+          serializer.fromJson<int?>(json['targetConfigVersion']),
+      targetState: serializer.fromJson<String>(json['targetState']),
       sourceChannel: serializer.fromJson<String?>(json['sourceChannel']),
       externalId: serializer.fromJson<String?>(json['externalId']),
       contentHash: serializer.fromJson<String?>(json['contentHash']),
@@ -11814,6 +11887,9 @@ class AutoBookEvent extends DataClass implements Insertable<AutoBookEvent> {
       'source': serializer.toJson<String>(source),
       'captureIntent': serializer.toJson<String>(captureIntent),
       'ledgerId': serializer.toJson<int?>(ledgerId),
+      'targetRef': serializer.toJson<String?>(targetRef),
+      'targetConfigVersion': serializer.toJson<int?>(targetConfigVersion),
+      'targetState': serializer.toJson<String>(targetState),
       'sourceChannel': serializer.toJson<String?>(sourceChannel),
       'externalId': serializer.toJson<String?>(externalId),
       'contentHash': serializer.toJson<String?>(contentHash),
@@ -11863,6 +11939,9 @@ class AutoBookEvent extends DataClass implements Insertable<AutoBookEvent> {
           String? source,
           String? captureIntent,
           Value<int?> ledgerId = const Value.absent(),
+          Value<String?> targetRef = const Value.absent(),
+          Value<int?> targetConfigVersion = const Value.absent(),
+          String? targetState,
           Value<String?> sourceChannel = const Value.absent(),
           Value<String?> externalId = const Value.absent(),
           Value<String?> contentHash = const Value.absent(),
@@ -11899,6 +11978,11 @@ class AutoBookEvent extends DataClass implements Insertable<AutoBookEvent> {
         source: source ?? this.source,
         captureIntent: captureIntent ?? this.captureIntent,
         ledgerId: ledgerId.present ? ledgerId.value : this.ledgerId,
+        targetRef: targetRef.present ? targetRef.value : this.targetRef,
+        targetConfigVersion: targetConfigVersion.present
+            ? targetConfigVersion.value
+            : this.targetConfigVersion,
+        targetState: targetState ?? this.targetState,
         sourceChannel:
             sourceChannel.present ? sourceChannel.value : this.sourceChannel,
         externalId: externalId.present ? externalId.value : this.externalId,
@@ -11965,6 +12049,12 @@ class AutoBookEvent extends DataClass implements Insertable<AutoBookEvent> {
           ? data.captureIntent.value
           : this.captureIntent,
       ledgerId: data.ledgerId.present ? data.ledgerId.value : this.ledgerId,
+      targetRef: data.targetRef.present ? data.targetRef.value : this.targetRef,
+      targetConfigVersion: data.targetConfigVersion.present
+          ? data.targetConfigVersion.value
+          : this.targetConfigVersion,
+      targetState:
+          data.targetState.present ? data.targetState.value : this.targetState,
       sourceChannel: data.sourceChannel.present
           ? data.sourceChannel.value
           : this.sourceChannel,
@@ -12044,6 +12134,9 @@ class AutoBookEvent extends DataClass implements Insertable<AutoBookEvent> {
           ..write('source: $source, ')
           ..write('captureIntent: $captureIntent, ')
           ..write('ledgerId: $ledgerId, ')
+          ..write('targetRef: $targetRef, ')
+          ..write('targetConfigVersion: $targetConfigVersion, ')
+          ..write('targetState: $targetState, ')
           ..write('sourceChannel: $sourceChannel, ')
           ..write('externalId: $externalId, ')
           ..write('contentHash: $contentHash, ')
@@ -12085,6 +12178,9 @@ class AutoBookEvent extends DataClass implements Insertable<AutoBookEvent> {
         source,
         captureIntent,
         ledgerId,
+        targetRef,
+        targetConfigVersion,
+        targetState,
         sourceChannel,
         externalId,
         contentHash,
@@ -12125,6 +12221,9 @@ class AutoBookEvent extends DataClass implements Insertable<AutoBookEvent> {
           other.source == this.source &&
           other.captureIntent == this.captureIntent &&
           other.ledgerId == this.ledgerId &&
+          other.targetRef == this.targetRef &&
+          other.targetConfigVersion == this.targetConfigVersion &&
+          other.targetState == this.targetState &&
           other.sourceChannel == this.sourceChannel &&
           other.externalId == this.externalId &&
           other.contentHash == this.contentHash &&
@@ -12163,6 +12262,9 @@ class AutoBookEventsCompanion extends UpdateCompanion<AutoBookEvent> {
   final Value<String> source;
   final Value<String> captureIntent;
   final Value<int?> ledgerId;
+  final Value<String?> targetRef;
+  final Value<int?> targetConfigVersion;
+  final Value<String> targetState;
   final Value<String?> sourceChannel;
   final Value<String?> externalId;
   final Value<String?> contentHash;
@@ -12199,6 +12301,9 @@ class AutoBookEventsCompanion extends UpdateCompanion<AutoBookEvent> {
     this.source = const Value.absent(),
     this.captureIntent = const Value.absent(),
     this.ledgerId = const Value.absent(),
+    this.targetRef = const Value.absent(),
+    this.targetConfigVersion = const Value.absent(),
+    this.targetState = const Value.absent(),
     this.sourceChannel = const Value.absent(),
     this.externalId = const Value.absent(),
     this.contentHash = const Value.absent(),
@@ -12236,6 +12341,9 @@ class AutoBookEventsCompanion extends UpdateCompanion<AutoBookEvent> {
     required String source,
     this.captureIntent = const Value.absent(),
     this.ledgerId = const Value.absent(),
+    this.targetRef = const Value.absent(),
+    this.targetConfigVersion = const Value.absent(),
+    this.targetState = const Value.absent(),
     this.sourceChannel = const Value.absent(),
     this.externalId = const Value.absent(),
     this.contentHash = const Value.absent(),
@@ -12275,6 +12383,9 @@ class AutoBookEventsCompanion extends UpdateCompanion<AutoBookEvent> {
     Expression<String>? source,
     Expression<String>? captureIntent,
     Expression<int>? ledgerId,
+    Expression<String>? targetRef,
+    Expression<int>? targetConfigVersion,
+    Expression<String>? targetState,
     Expression<String>? sourceChannel,
     Expression<String>? externalId,
     Expression<String>? contentHash,
@@ -12312,6 +12423,10 @@ class AutoBookEventsCompanion extends UpdateCompanion<AutoBookEvent> {
       if (source != null) 'source': source,
       if (captureIntent != null) 'capture_intent': captureIntent,
       if (ledgerId != null) 'ledger_id': ledgerId,
+      if (targetRef != null) 'target_ref': targetRef,
+      if (targetConfigVersion != null)
+        'target_config_version': targetConfigVersion,
+      if (targetState != null) 'target_state': targetState,
       if (sourceChannel != null) 'source_channel': sourceChannel,
       if (externalId != null) 'external_id': externalId,
       if (contentHash != null) 'content_hash': contentHash,
@@ -12362,6 +12477,9 @@ class AutoBookEventsCompanion extends UpdateCompanion<AutoBookEvent> {
       Value<String>? source,
       Value<String>? captureIntent,
       Value<int?>? ledgerId,
+      Value<String?>? targetRef,
+      Value<int?>? targetConfigVersion,
+      Value<String>? targetState,
       Value<String?>? sourceChannel,
       Value<String?>? externalId,
       Value<String?>? contentHash,
@@ -12398,6 +12516,9 @@ class AutoBookEventsCompanion extends UpdateCompanion<AutoBookEvent> {
       source: source ?? this.source,
       captureIntent: captureIntent ?? this.captureIntent,
       ledgerId: ledgerId ?? this.ledgerId,
+      targetRef: targetRef ?? this.targetRef,
+      targetConfigVersion: targetConfigVersion ?? this.targetConfigVersion,
+      targetState: targetState ?? this.targetState,
       sourceChannel: sourceChannel ?? this.sourceChannel,
       externalId: externalId ?? this.externalId,
       contentHash: contentHash ?? this.contentHash,
@@ -12458,6 +12579,15 @@ class AutoBookEventsCompanion extends UpdateCompanion<AutoBookEvent> {
     }
     if (ledgerId.present) {
       map['ledger_id'] = Variable<int>(ledgerId.value);
+    }
+    if (targetRef.present) {
+      map['target_ref'] = Variable<String>(targetRef.value);
+    }
+    if (targetConfigVersion.present) {
+      map['target_config_version'] = Variable<int>(targetConfigVersion.value);
+    }
+    if (targetState.present) {
+      map['target_state'] = Variable<String>(targetState.value);
     }
     if (sourceChannel.present) {
       map['source_channel'] = Variable<String>(sourceChannel.value);
@@ -12571,6 +12701,9 @@ class AutoBookEventsCompanion extends UpdateCompanion<AutoBookEvent> {
           ..write('source: $source, ')
           ..write('captureIntent: $captureIntent, ')
           ..write('ledgerId: $ledgerId, ')
+          ..write('targetRef: $targetRef, ')
+          ..write('targetConfigVersion: $targetConfigVersion, ')
+          ..write('targetState: $targetState, ')
           ..write('sourceChannel: $sourceChannel, ')
           ..write('externalId: $externalId, ')
           ..write('contentHash: $contentHash, ')
@@ -19694,6 +19827,9 @@ typedef $$AutoBookEventsTableCreateCompanionBuilder = AutoBookEventsCompanion
   required String source,
   Value<String> captureIntent,
   Value<int?> ledgerId,
+  Value<String?> targetRef,
+  Value<int?> targetConfigVersion,
+  Value<String> targetState,
   Value<String?> sourceChannel,
   Value<String?> externalId,
   Value<String?> contentHash,
@@ -19732,6 +19868,9 @@ typedef $$AutoBookEventsTableUpdateCompanionBuilder = AutoBookEventsCompanion
   Value<String> source,
   Value<String> captureIntent,
   Value<int?> ledgerId,
+  Value<String?> targetRef,
+  Value<int?> targetConfigVersion,
+  Value<String> targetState,
   Value<String?> sourceChannel,
   Value<String?> externalId,
   Value<String?> contentHash,
@@ -19787,6 +19926,16 @@ class $$AutoBookEventsTableFilterComposer
 
   ColumnFilters<int> get ledgerId => $composableBuilder(
       column: $table.ledgerId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get targetRef => $composableBuilder(
+      column: $table.targetRef, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get targetConfigVersion => $composableBuilder(
+      column: $table.targetConfigVersion,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get targetState => $composableBuilder(
+      column: $table.targetState, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get sourceChannel => $composableBuilder(
       column: $table.sourceChannel, builder: (column) => ColumnFilters(column));
@@ -19917,6 +20066,16 @@ class $$AutoBookEventsTableOrderingComposer
 
   ColumnOrderings<int> get ledgerId => $composableBuilder(
       column: $table.ledgerId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get targetRef => $composableBuilder(
+      column: $table.targetRef, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get targetConfigVersion => $composableBuilder(
+      column: $table.targetConfigVersion,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get targetState => $composableBuilder(
+      column: $table.targetState, builder: (column) => ColumnOrderings(column));
 
   ColumnOrderings<String> get sourceChannel => $composableBuilder(
       column: $table.sourceChannel,
@@ -20051,6 +20210,15 @@ class $$AutoBookEventsTableAnnotationComposer
   GeneratedColumn<int> get ledgerId =>
       $composableBuilder(column: $table.ledgerId, builder: (column) => column);
 
+  GeneratedColumn<String> get targetRef =>
+      $composableBuilder(column: $table.targetRef, builder: (column) => column);
+
+  GeneratedColumn<int> get targetConfigVersion => $composableBuilder(
+      column: $table.targetConfigVersion, builder: (column) => column);
+
+  GeneratedColumn<String> get targetState => $composableBuilder(
+      column: $table.targetState, builder: (column) => column);
+
   GeneratedColumn<String> get sourceChannel => $composableBuilder(
       column: $table.sourceChannel, builder: (column) => column);
 
@@ -20176,6 +20344,9 @@ class $$AutoBookEventsTableTableManager extends RootTableManager<
             Value<String> source = const Value.absent(),
             Value<String> captureIntent = const Value.absent(),
             Value<int?> ledgerId = const Value.absent(),
+            Value<String?> targetRef = const Value.absent(),
+            Value<int?> targetConfigVersion = const Value.absent(),
+            Value<String> targetState = const Value.absent(),
             Value<String?> sourceChannel = const Value.absent(),
             Value<String?> externalId = const Value.absent(),
             Value<String?> contentHash = const Value.absent(),
@@ -20213,6 +20384,9 @@ class $$AutoBookEventsTableTableManager extends RootTableManager<
             source: source,
             captureIntent: captureIntent,
             ledgerId: ledgerId,
+            targetRef: targetRef,
+            targetConfigVersion: targetConfigVersion,
+            targetState: targetState,
             sourceChannel: sourceChannel,
             externalId: externalId,
             contentHash: contentHash,
@@ -20250,6 +20424,9 @@ class $$AutoBookEventsTableTableManager extends RootTableManager<
             required String source,
             Value<String> captureIntent = const Value.absent(),
             Value<int?> ledgerId = const Value.absent(),
+            Value<String?> targetRef = const Value.absent(),
+            Value<int?> targetConfigVersion = const Value.absent(),
+            Value<String> targetState = const Value.absent(),
             Value<String?> sourceChannel = const Value.absent(),
             Value<String?> externalId = const Value.absent(),
             Value<String?> contentHash = const Value.absent(),
@@ -20287,6 +20464,9 @@ class $$AutoBookEventsTableTableManager extends RootTableManager<
             source: source,
             captureIntent: captureIntent,
             ledgerId: ledgerId,
+            targetRef: targetRef,
+            targetConfigVersion: targetConfigVersion,
+            targetState: targetState,
             sourceChannel: sourceChannel,
             externalId: externalId,
             contentHash: contentHash,

@@ -773,6 +773,127 @@ void main() {
       expect(cats.where((c) => c.syncId == 'cat-xp'), isEmpty,
           reason: '多余父分类应被删除');
     });
+
+    // ══════════════════════════════════════════════════════════════════
+    // 缺陷 B(2026-10-11 复现缺陷修复):全量恢复快照的金额守卫。
+    //
+    // 旧行为:快照 JSON `{"amount": 1e999}` 语法合法 → 解码为 Infinity → 直写
+    // 落库(SQLite REAL 接受 Inf)。探针实测:`getBudgetUsage` 返回
+    // budget=Infinity / remaining=Infinity / rate=0.0 / status='normal',
+    // 余额与净资产聚合全部污染。
+    //
+    // 修复策略:所有恢复路径(账户 initial_balance/credit_limit、预算 amount、
+    // 调整 amount/balance_before/balance_after)统一过非有限守卫,
+    // **跳过该条 + 告警 + 计数**(不抛 —— 部分损坏的快照仍应恢复其余实体);
+    // 跳过数在返回的 skippedBadAmounts 里可见。
+    // ══════════════════════════════════════════════════════════════════
+    test('DEFECT-B: 快照非有限金额在全部恢复路径被跳过,其余实体照常恢复',
+        () async {
+      final ledgerId = await db.into(db.ledgers).insert(
+            LedgersCompanion.insert(name: 'L', syncId: const Value('L1')),
+          );
+
+      // 1e999 是合法 JSON 数字字面量 → 解码为 Infinity(探针同款构造)。
+      const snapshot = '''
+{"count":1,"items":[
+   {"syncId":"tx-ok","type":"expense","amount":8.0,
+    "happenedAt":"2026-09-06T10:00:00Z"}
+ ],
+ "accounts":[
+   {"syncId":"acc-bad","name":"坏账户","type":"cash","initialBalance":1e999,
+    "creditLimit":1e999},
+   {"syncId":"acc-ok","name":"好账户","type":"cash","initialBalance":100.0}
+ ],
+ "categories":[{"syncId":"cat-1","name":"餐饮","kind":"expense","level":1}],
+ "tags":[{"syncId":"tag-1","name":"食"}],
+ "budgets":[
+   {"syncId":"bud-bad","ledgerSyncId":"L1","amount":1e999},
+   {"syncId":"bud-ok","ledgerSyncId":"L1","amount":500.0}
+ ],
+ "accountAdjustments":[
+   {"syncId":"adj-bad","accountId":"acc-ok","amount":1e999,
+    "balanceBefore":1e999,"balanceAfter":1e999,
+    "happenedAt":"2026-09-01T00:00:00Z"},
+   {"syncId":"adj-ok","accountId":"acc-ok","amount":-50.0,
+    "balanceBefore":100.0,"balanceAfter":50.0,
+    "happenedAt":"2026-09-02T00:00:00Z"}
+ ]}
+''';
+      provider.setFakeFullSnapshot(
+        ledgerId: 'L1',
+        content: snapshot,
+        latestCursor: 9,
+      );
+
+      final res = await engine.forceRestoreFromServer(ledgerId: ledgerId);
+
+      // 坏值行被跳过(计数可见),好行照常恢复。
+      expect(res.restoredAccounts, 1, reason: '坏账户被跳过,好账户恢复');
+      expect(res.restoredBudgets, 1, reason: '坏预算被跳过,好预算恢复');
+      expect(res.skippedBadAmounts, 3,
+          reason: 'DEFECT-B: 跳过数必须被 surface(账户1 + 预算1 + 调整1)');
+
+      // 库里不得出现任何非有限金额。
+      final accs = await db.select(db.accounts).get();
+      expect(accs.map((a) => a.syncId).toSet(), {'acc-ok'},
+          reason: 'DEFECT-B: Infinity 初始余额的账户不得落库');
+      expect(accs.every((a) => a.initialBalance.isFinite), isTrue);
+      expect(accs.every((a) => a.creditLimit?.isFinite ?? true), isTrue);
+
+      final buds = await db.select(db.budgets).get();
+      expect(buds.map((b) => b.syncId).toSet(), {'bud-ok'});
+      expect(buds.every((b) => b.amount.isFinite), isTrue,
+          reason: 'DEFECT-B: Infinity 预算不得落库');
+
+      final adjs = await db.select(db.accountAdjustments).get();
+      expect(adjs.map((a) => a.syncId).toSet(), {'adj-ok'});
+      expect(
+          adjs.every((a) =>
+              a.amount.isFinite &&
+              (a.balanceBefore?.isFinite ?? true) &&
+              (a.balanceAfter?.isFinite ?? true)),
+          isTrue,
+          reason: 'DEFECT-B: Infinity 调整三列都不得落库');
+
+      // 预算使用率不再被污染(旧探针:budget=Infinity / status=normal)。
+      final usage = await repo.getBudgetUsage(buds.single.id, DateTime(2026, 9, 1));
+      expect(usage.budget.isFinite, isTrue);
+      expect(usage.remaining.isFinite, isTrue,
+          reason: 'DEFECT-B: remaining 必须是有限数(旧:Infinity)');
+
+      // 交易/分类/标签照常恢复,恢复流程没有被坏值打断。
+      expect(res.inserted, 1);
+      expect(res.restoredCategories, 1);
+      expect(res.restoredTags, 1);
+    });
+
+    test('DEFECT-B: 快照非有限金额不抛错(部分损坏快照仍完成恢复)', () async {
+      final ledgerId = await db.into(db.ledgers).insert(
+            LedgersCompanion.insert(name: 'L', syncId: const Value('L1')),
+          );
+      provider.setFakeFullSnapshot(
+        ledgerId: 'L1',
+        // Dart 的 jsonDecode 不接受 NaN 字面量(FormatException),非有限的
+        // 可达向量只有 1e999 / -1e999(合法 JSON 数字 → ±Infinity)。
+        content: '''
+{"count":0,"items":[],
+ "accounts":[{"syncId":"acc-inf","name":"Inf账户","type":"cash",
+   "initialBalance":-1e999}],
+ "categories":[],"tags":[],
+ "budgets":[{"syncId":"bud-inf","ledgerSyncId":"L1","amount":1e999}]}
+''',
+        latestCursor: 4,
+      );
+
+      final res = await engine.forceRestoreFromServer(ledgerId: ledgerId);
+
+      expect(res.restoredAccounts, 0);
+      expect(res.restoredBudgets, 0);
+      expect(await db.select(db.accounts).get(), isEmpty);
+      expect(await db.select(db.budgets).get(), isEmpty);
+      expect(await engine.appCursor.read(), 4,
+          reason: '恢复流程正常完成(cursor 照常推进,不因坏值中止)');
+    });
   });
 
   group('apply 各种 entity type', () {

@@ -7,11 +7,16 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../widgets/ui/primary_header.dart';
 import '../../widgets/ui/toast.dart';
 import '../../providers.dart';
-import '../../services/automation/dedup_exempt_store.dart';
+import '../../services/automation/dedup_exempt_store.dart';import '../../services/automation/auto_billing_service.dart';
+import '../../services/automation/automation_health.dart';
+import '../../services/automation/automation_settings_store.dart';
+import '../automation/auto_billing_setup_page.dart';
 import '../../services/platform/screenshot_monitor_service.dart';
 import '../../services/platform/sms_monitor_service.dart';
 import '../../services/platform/notify_monitor_service.dart';
 import '../../services/platform/screen_text_monitor_service.dart';
+import 'automation_rules_page.dart';
+
 import 'channel_account_mapping_page.dart';
 import '../../l10n/app_localizations.dart';
 import '../../utils/notification_factory.dart';
@@ -62,6 +67,12 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
   bool _isLoading = true;
   bool _isInitialized = false;
 
+  // B1 解析链路测试:默认只解析不入账;允许时写入独立测试账本。
+  bool _parseTestWrite = false;
+
+  AutoBookNotifyMode _notifyMode = AutoBookNotifyMode.everySuccess;
+  bool? _setupCompleted;
+
   @override
   void initState() {
     super.initState();
@@ -88,6 +99,9 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
     // 当应用从后台恢复到前台时，重新检查状态
     if (state == AppLifecycleState.resumed) {
       _loadMonitorStatus();
+      // B1:配置页与首页/开通页共用状态源,回前台补查一次
+      ref.read(automationHealthRefreshProvider.notifier).state++;
+      ref.invalidate(automationHealthProvider);
     }
   }
 
@@ -106,6 +120,10 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
     final autoBookCheck = prefs.getBool('auto_book_enabled') ?? true;
     final shadowMode =
         await ref.read(autoBillingServiceProvider).isShadowModeEnabled();
+    final setupDone =
+        await ref.read(automationSettingsStoreProvider).isSetupCompleted();
+
+    final notifyMode = await AutoBillingService.notifyMode();
 
     // 检查电池优化状态
     bool batteryOptimizationIgnored = false;
@@ -130,6 +148,9 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
       _autoBookCheckEnabled = autoBookCheck;
       _shadowModeEnabled = shadowMode;
       _isBatteryOptimizationIgnored = batteryOptimizationIgnored;
+      _setupCompleted = setupDone;
+
+      _notifyMode = notifyMode;
       _isLoading = false;
     });
   }
@@ -509,6 +530,22 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                // 开通引导(B1 任务 1):未完成时给可续接的入口
+                if (_setupCompleted == false) ...[
+                  _buildSetupBanner(context, primaryColor, l10n),
+                  const SizedBox(height: 16),
+                ],
+
+                // 共享状态源(B1 任务 2):与首页状态卡、开通页同一份快照
+                _buildSharedStatusCard(context, l10n),
+
+                const SizedBox(height: 16),
+
+                // 自动入账目标(B2):与浏览账本分离,失效即停写并提示修复
+                _buildTargetCard(context, primaryColor, l10n),
+
+                const SizedBox(height: 16),
+
                 // 开关卡片
                 _buildSwitchCard(
                   context,
@@ -647,6 +684,27 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
 
                 // 判重豁免(P1-1):「仍记一笔」落下的规则,可查看/清除
                 _buildDedupExemptCard(context, primaryColor, l10n),
+
+                const SizedBox(height: 16),
+
+                // 通知偏好三档(B5 任务 1)
+                _buildNotifyModeCard(context, l10n),
+
+                const SizedBox(height: 16),
+
+                // 规则总览(B4 任务 5/6):分类学习 / 渠道账户 / 判重豁免
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.rule),
+                    title: Text(l10n.automationRulesTitle),
+                    subtitle: Text(l10n.automationRulesDesc),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                          builder: (_) => const AutomationRulesPage()),
+                    ),
+                  ),
+                ),
 
                 const SizedBox(height: 16),
 
@@ -903,8 +961,335 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
     );
   }
 
-  /// 手动模拟测试卡片:短信/通知两条链路各自可注入模拟数据,
-  /// 直接走完整 AI 提取 → 落库流程,验证「自动记账是否正常」。
+
+  /// 通知提醒三档(B5 任务 1)。配置写回 B2 的设置存储,不另起一份偏好。
+  Widget _buildNotifyModeCard(BuildContext context, AppLocalizations l10n) {
+    final theme = Theme.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(l10n.notifyModeTitle, style: theme.textTheme.titleSmall),
+            const SizedBox(height: 4),
+            Text(
+              l10n.notifyModeDesc,
+              style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
+            ),
+            RadioListTile<AutoBookNotifyMode>(
+              dense: true,
+              value: AutoBookNotifyMode.everySuccess,
+              groupValue: _notifyMode,
+              title: Text(l10n.notifyModeEverySuccess),
+              subtitle: Text(l10n.notifyModeEverySuccessDesc,
+                  style: theme.textTheme.bodySmall),
+              onChanged: (v) => _changeNotifyMode(v),
+            ),
+            RadioListTile<AutoBookNotifyMode>(
+              dense: true,
+              value: AutoBookNotifyMode.confirmAndFault,
+              groupValue: _notifyMode,
+              title: Text(l10n.notifyModeConfirmFault),
+              subtitle: Text(l10n.notifyModeConfirmFaultDesc,
+                  style: theme.textTheme.bodySmall),
+              onChanged: (v) => _changeNotifyMode(v),
+            ),
+            RadioListTile<AutoBookNotifyMode>(
+              dense: true,
+              value: AutoBookNotifyMode.dailyDigest,
+              groupValue: _notifyMode,
+              title: Text(l10n.notifyModeDigest),
+              subtitle: Text(l10n.notifyModeDigestDesc,
+                  style: theme.textTheme.bodySmall),
+              onChanged: (v) => _changeNotifyMode(v),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _changeNotifyMode(AutoBookNotifyMode? mode) async {
+    if (mode == null) return;
+    final l10n = AppLocalizations.of(context);
+    final store = ref.read(automationSettingsStoreProvider);
+    final settings = await store.load();
+    // B0 §3.1:notifyMode 变更同样 bump configVersion,原生缓存按版本生效。
+    await store.bumpVersion(settings.copyWith(notifyMode: mode.storageValue));
+    if (!mounted) return;
+    setState(() => _notifyMode = mode);
+    showToast(context, l10n.notifyModeSaved);
+  }
+
+  /// 自动入账目标卡(B2 任务 1-4):展示当前目标、确认迁移目标、失效修复。
+  /// 与浏览账本相互独立;失效时**停止自动写入**并给出修复入口。
+  Widget _buildTargetCard(
+      BuildContext context, Color primaryColor, AppLocalizations l10n) {
+    final theme = Theme.of(context);
+    final targetAsync = ref.watch(automationTargetProvider);
+    final ledgers = ref.watch(allLedgersProvider).valueOrNull ?? const [];
+    final resolution = targetAsync.asData?.value;
+    if (resolution == null) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Text(l10n.smartBillingChecking,
+              style: theme.textTheme.bodyMedium),
+        ),
+      );
+    }
+
+    final ledger = ledgers
+        .where((l) => l.id == resolution.ledgerId)
+        .firstOrNull;
+    final Color accent;
+    final String status;
+    final Widget? action;
+    switch (resolution.state) {
+      case AutoBookTargetState.resolved:
+        accent = Colors.green;
+        status = l10n.autoTargetLedger(ledger?.name ?? '#${resolution.ledgerId}');
+        action = null;
+      case AutoBookTargetState.unconfirmed:
+        accent = Colors.orange;
+        status = l10n.autoTargetUnconfirmed;
+        action = FilledButton.tonal(
+          onPressed: () async {
+            final store = ref.read(automationSettingsStoreProvider);
+            final settings = await store.load();
+            final t = settings.target;
+            if (t == null) return;
+            await store.bumpVersion(settings.copyWith(
+              target: AutoBookTarget(
+                scope: t.scope,
+                kind: t.kind,
+                value: t.value,
+                accountId: t.accountId,
+                confirmedAt: DateTime.now(),
+                migratedFrom: t.migratedFrom,
+              ),
+            ));
+            ref.invalidate(automationTargetProvider);
+            ref.invalidate(automationHealthProvider);
+            if (mounted) showToast(context, l10n.autoTargetSaved);
+          },
+          child: Text(l10n.autoTargetConfirm),
+        );
+      case AutoBookTargetState.invalid:
+        accent = Colors.red;
+        status = '${l10n.autoTargetInvalid} · '
+            '${resolution.reason == 'target_scope_mismatch' ? l10n.autoTargetInvalidScope : l10n.autoTargetInvalidMissing}';
+        action = FilledButton.tonal(
+          onPressed: () async {
+            await Navigator.of(context).push(
+              MaterialPageRoute(
+                  builder: (_) => const AutoBillingSetupPage(initialStep: 1)),
+            );
+            ref.invalidate(automationTargetProvider);
+            ref.invalidate(automationHealthProvider);
+          },
+          child: Text(l10n.autoTargetChange),
+        );
+      case AutoBookTargetState.undetermined:
+        accent = Colors.orange;
+        status = l10n.autoTargetUndetermined;
+        action = FilledButton.tonal(
+          onPressed: () async {
+            await Navigator.of(context).push(
+              MaterialPageRoute(
+                  builder: (_) => const AutoBillingSetupPage(initialStep: 1)),
+            );
+            ref.invalidate(automationTargetProvider);
+            ref.invalidate(automationHealthProvider);
+          },
+          child: Text(l10n.autoTargetConfirm),
+        );
+    }
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.adjust, color: accent, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(l10n.autoTargetTitle,
+                      style: theme.textTheme.titleSmall),
+                ),
+                if (action != null) action,
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(status,
+                style: theme.textTheme.bodySmall?.copyWith(color: accent)),
+            if (resolution.state == AutoBookTargetState.unconfirmed)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  l10n.autoTargetUnconfirmedHint,
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: theme.hintColor),
+                ),
+              ),
+            if (resolution.state == AutoBookTargetState.invalid)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  l10n.autoTargetPausedHint,
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: theme.hintColor),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 开通引导横幅(B1 任务 1):未完成开通时置顶;进度逐步保存,退出可续接。
+  Widget _buildSetupBanner(BuildContext context, Color primaryColor,
+      AppLocalizations l10n) {
+    final theme = Theme.of(context);
+    return Card(
+      color: primaryColor.withValues(alpha: 0.06),
+      child: ListTile(
+        leading:
+            const Icon(Icons.rocket_launch_outlined, color: Colors.orange),
+        title: Text(l10n.autoSetupBannerTitle),
+        subtitle: Text(
+          l10n.autoSetupBannerDesc,
+          style: theme.textTheme.bodySmall,
+        ),
+        trailing: FilledButton.tonal(
+          onPressed: () async {
+            await Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const AutoBillingSetupPage()),
+            );
+            if (mounted) _loadMonitorStatus();
+          },
+          child: Text(l10n.autoSetupBannerAction),
+        ),
+      ),
+    );
+  }
+
+  /// 共享状态摘要(B1 任务 2):与首页状态卡、开通页共用
+  /// [automationHealthProvider] 快照,不在本页另起一套轮询。
+  Widget _buildSharedStatusCard(BuildContext context, AppLocalizations l10n) {
+    final theme = Theme.of(context);
+    final healthAsync = ref.watch(automationHealthProvider);
+    final aiLive = ref.watch(automationAiStateProvider).valueOrNull;
+    final base = healthAsync.asData?.value;
+
+    if (base == null) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              const SizedBox(width: 12),
+              Text(l10n.autoHealthChecking,
+                  style: theme.textTheme.bodyMedium),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final health = aiLive == null ? base : base.withAiState(aiLive);
+    final issues = health.issues();
+    final healthy = issues.isEmpty;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  healthy ? Icons.check_circle_outline : Icons.warning_amber,
+                  color: healthy ? Colors.green : Colors.orange,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    healthy
+                        ? l10n.autoHealthOk
+                        : AutomationHealth.describe(l10n, issues.first),
+                    style: theme.textTheme.titleSmall,
+                  ),
+                ),
+              ],
+            ),
+            for (final issue in issues.skip(1))
+              Padding(
+                padding: const EdgeInsets.only(left: 28, top: 4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: 72,
+                      child: Text(
+                        AutomationHealth.dimensionLabel(l10n, issue.dimension),
+                        style: theme.textTheme.bodySmall
+                            ?.copyWith(color: theme.hintColor),
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        AutomationHealth.describe(l10n, issue),
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            if ((health.lastCaptureAt ?? health.lastProcessedAt) != null)
+              Padding(
+                padding: const EdgeInsets.only(left: 28, top: 6),
+                child: Text(
+                  [
+                    if (health.lastCaptureAt != null)
+                      l10n.autoHealthLastCapture(
+                          _shortTime(health.lastCaptureAt!)),
+                    if (health.lastProcessedAt != null)
+                      l10n.autoHealthLastProcessed(
+                          _shortTime(health.lastProcessedAt!)),
+                  ].join(' · '),
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: theme.hintColor, fontSize: 11),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _shortTime(DateTime t) {
+    final local = t.toLocal();
+    return '${local.month.toString().padLeft(2, '0')}-'
+        '${local.day.toString().padLeft(2, '0')} '
+        '${local.hour.toString().padLeft(2, '0')}:'
+        '${local.minute.toString().padLeft(2, '0')}';
+  }
+
+  /// 解析链路测试卡片(B1 任务 5):短信/通知/详情页三条链路各自可注入
+  /// 模拟数据,走完整 AI 提取流程。**默认只解析不入账**;允许写入时结果
+  /// 只进独立测试账本,并明确告知账本名。模拟成功 ≠ 真实监听通过。
   Widget _buildMockCard(
       BuildContext context, Color primaryColor, AppLocalizations l10n) {
     final theme = Theme.of(context);
@@ -920,22 +1305,42 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
               children: [
                 Icon(Icons.science_outlined, color: primaryColor, size: 24),
                 const SizedBox(width: 8),
-                Text(
-                  l10n.autoBillingMockTitle,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
+                Expanded(
+                  child: Text(
+                    l10n.autoParseTestTitle,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 8),
             Text(
-              l10n.autoBillingMockDesc,
+              l10n.autoParseTestDesc,
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 4),
+            // 默认预览不入账;显式打开才写入测试账本
+            SwitchListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              title: Text(l10n.autoParseTestWrite,
+                  style: theme.textTheme.bodyMedium),
+              subtitle: Text(
+                _parseTestWrite
+                    ? l10n.autoParseTestWriteDesc(autoBookTestLedgerName)
+                    : l10n.autoParseTestPreviewOn,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: _parseTestWrite ? Colors.orange : Colors.green,
+                ),
+              ),
+              value: _parseTestWrite,
+              onChanged: (v) => setState(() => _parseTestWrite = v),
+            ),
+            const SizedBox(height: 8),
             Row(
               children: [
                 Expanded(
@@ -970,7 +1375,7 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
             ),
             const SizedBox(height: 8),
             Text(
-              '${l10n.autoBillingMockNotice}: ${l10n.autoSmsBillingDesc}\n${l10n.autoBillingNotifyDescEnabled}\n${l10n.autoBillingScreenTextDescEnabled}',
+              l10n.autoParseTestNoticeResult,
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
               ),
@@ -978,6 +1383,40 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
           ],
         ),
       ),
+    );
+  }
+
+  /// 解析链路测试的运行参数:默认预览;允许写入时定位/创建独立测试账本。
+  Future<AutoBookTestOptions> _testOptions() async {
+    if (!_parseTestWrite) {
+      return const AutoBookTestOptions(previewOnly: true);
+    }
+    try {
+      final repo = ref.read(repositoryProvider);
+      final ledgers = await repo.getAllLedgers();
+      for (final ledger in ledgers) {
+        if (ledger.name == autoBookTestLedgerName) {
+          return AutoBookTestOptions(
+              previewOnly: false, testLedgerId: ledger.id);
+        }
+      }
+      final id = await repo.createLedger(name: autoBookTestLedgerName);
+      return AutoBookTestOptions(previewOnly: false, testLedgerId: id);
+    } catch (e) {
+      // 测试账本拿不到就退回预览,绝不把测试结果写进正式账本。
+      return const AutoBookTestOptions(previewOnly: true);
+    }
+  }
+
+  /// 提交后的提示:预览与写入分别告知,不把两者混为一谈。
+  void _mockSubmittedToast(AppLocalizations l10n) {
+    if (!mounted) return;
+    showToast(
+      context,
+      _parseTestWrite
+          ? l10n.autoParseTestSubmittedWrite(autoBookTestLedgerName)
+          : l10n.autoParseTestSubmittedPreview,
+      duration: const Duration(seconds: 3),
     );
   }
 
@@ -994,8 +1433,8 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
     final body = await _pickMockBody(l10n, templates);
     if (body == null) return;
     try {
-      await _smsMonitor.mockSms(body);
-      if (mounted) showToast(context, l10n.autoBillingMockSubmitted);
+      await _smsMonitor.mockSms(body, testOptions: await _testOptions());
+      _mockSubmittedToast(l10n);
     } catch (e) {
       if (mounted) {
         showToast(context, '${l10n.enableFailed}: $e',
@@ -1015,8 +1454,9 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
     final body = await _pickMockNotifyBody(l10n, templates);
     if (body == null) return;
     try {
-      await _notifyMonitor.mockNotification(body.$1, body.$2);
-      if (mounted) showToast(context, l10n.autoBillingMockSubmitted);
+      await _notifyMonitor.mockNotification(body.$1, body.$2,
+          testOptions: await _testOptions());
+      _mockSubmittedToast(l10n);
     } catch (e) {
       if (mounted) {
         showToast(context, '${l10n.enableFailed}: $e',
@@ -1068,8 +1508,8 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
     if (realText == null) return;
     try {
       await _screenTextMonitor.mockScreenText(
-          pkg == '__custom__' ? 'eg.android.AlipayGphone' : pkg, realText);
-      if (mounted) showToast(context, l10n.autoBillingMockSubmitted);
+          pkg == '__custom__' ? 'eg.android.AlipayGphone' : pkg, realText, testOptions: await _testOptions());
+      _mockSubmittedToast(l10n);
     } catch (e) {
       if (mounted) {
         showToast(context, '${l10n.enableFailed}: $e',

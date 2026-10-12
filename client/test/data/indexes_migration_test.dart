@@ -86,7 +86,7 @@ void main() {
     addTearDown(db.close);
     final version = await db.customSelect('PRAGMA user_version').getSingle();
 
-    expect(version.read<int>('user_version'), 43);
+    expect(version.read<int>('user_version'), db.schemaVersion);
     expect(await indexNames(db), containsAll(expected));
   });
 

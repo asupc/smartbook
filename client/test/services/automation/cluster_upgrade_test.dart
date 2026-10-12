@@ -34,10 +34,10 @@ class _FakeEngine implements AiExtractionEngine {
     String text,
     AiExtractionContext ctx, {
     String billGuard = '',
-  }) async => AiExtractionOutcome(
-        status: bills.isEmpty
-            ? ExtractionStatus.noBill
-            : ExtractionStatus.success,
+  }) async =>
+      AiExtractionOutcome(
+        status:
+            bills.isEmpty ? ExtractionStatus.noBill : ExtractionStatus.success,
         bills: bills,
       );
 
@@ -68,6 +68,21 @@ class _FakeEngine implements AiExtractionEngine {
   Future<String?> speechToText(File audio) async => null;
 }
 
+class _FailingResolveStore extends AutoBookEventStore {
+  _FailingResolveStore(super.db);
+
+  @override
+  Future<void> resolvePendingItem({
+    required int eventId,
+    required int itemIndex,
+    required AutoBookState state,
+    int? transactionId,
+    String? reason,
+  }) async {
+    throw StateError('模拟候选事件清理失败');
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -95,17 +110,21 @@ void main() {
   });
 
   /// 跑一次完整自动记账(单事件),返回识别→分流结果。
-  Future<BookkeepingResult> processAuto(
+  Future<BookkeepingResult> processBills(
     String eventKey,
-    BillInfo bill, {
+    List<BillInfo> bills, {
     String source = 'notification',
+    AutoBookEventStore? candidateEventStore,
+    bool requireConfirmationForAll = false,
+    bool shadowMode = false,
   }) async {
+    final store = candidateEventStore ?? eventStore;
     final coordinator = AutoBookCoordinator(db);
     final bookkeeper = AiBookkeeper(
       repository: repo,
-      engine: _FakeEngine(bills: [bill]),
+      engine: _FakeEngine(bills: bills),
       persister: persister,
-      eventStore: eventStore,
+      eventStore: store,
     );
     final execution = await coordinator.execute<BookkeepingResult>(
       input: AutoBookInput(
@@ -121,15 +140,23 @@ void main() {
         autoBookFlow: AutoBookFlow(
           store: candidateStore,
           eventKey: eventKey,
-          eventStore: eventStore,
+          eventStore: store,
+          requireConfirmationForAll: requireConfirmationForAll,
+          shadowMode: shadowMode,
         ),
         source: source,
       ),
       updateFor: (value) => value.eventUpdate,
     );
-    return execution.value ??
-        const BookkeepingResult(awaitingCount: 0);
+    return execution.value ?? const BookkeepingResult(awaitingCount: 0);
   }
+
+  Future<BookkeepingResult> processAuto(
+    String eventKey,
+    BillInfo bill, {
+    String source = 'notification',
+  }) =>
+      processBills(eventKey, [bill], source: source);
 
   group('SemanticDedupMatcher.clusterTextAffinity(纯函数契约)', () {
     BillInfo note(String raw) => BillInfo(
@@ -141,8 +168,7 @@ void main() {
 
     test('同渠道不同写法的地铁文案有亲缘(bigram 交集)', () {
       expect(
-        SemanticDedupMatcher.clusterTextAffinity(
-            note('地铁免密扣款'), note('地铁乘车')),
+        SemanticDedupMatcher.clusterTextAffinity(note('地铁免密扣款'), note('地铁乘车')),
         isTrue,
       );
       expect(
@@ -154,8 +180,7 @@ void main() {
 
     test('不相关的同额消费没有亲缘 → 不允许自动合并', () {
       expect(
-        SemanticDedupMatcher.clusterTextAffinity(
-            note('美团外卖'), note('地铁乘车')),
+        SemanticDedupMatcher.clusterTextAffinity(note('美团外卖'), note('地铁乘车')),
         isFalse,
       );
     });
@@ -164,7 +189,9 @@ void main() {
       expect(
         SemanticDedupMatcher.clusterTextAffinity(
           note('地铁乘车'),
-          BillInfo(amount: -8.1, type: BillType.expense,
+          BillInfo(
+              amount: -8.1,
+              type: BillType.expense,
               time: DateTime(2026, 10, 9, 8, 32)),
         ),
         isFalse,
@@ -219,11 +246,184 @@ void main() {
         expect(event, isNotNull, reason: '事件 $key 应存在');
         final items = await eventStore.itemsForEvent(event!.id);
         final item = items.single;
-        expect(item.state as String?, 'duplicate',
-            reason: '事件 $key 子项应转为已合并');
-        expect(item.transactionId as int?, txId);
-        expect(item.reason as String?, 'cluster_merged');
+        expect(item.state, 'duplicate', reason: '事件 $key 子项应转为已合并');
+        expect(item.transactionId, txId);
+        expect(item.reason, 'cluster_merged');
       }
+    });
+
+    test('第一条仅留在事件记录中,升级后也从确认队列移除', () async {
+      await processAuto('ev1', metro('地铁免密扣款', Duration.zero));
+      final first = (await candidateStore.load()).single;
+      // 模拟兼容缓存淘汰/缺失,确认页仍能从事件记录恢复第一条。
+      await candidateStore.remove(first.id);
+      await processAuto('ev2', metro('地铁免密支付', const Duration(seconds: 20)));
+      expect(await candidateStore.loadForReview(eventStore), hasLength(2));
+
+      final result = await processAuto(
+        'ev3',
+        metro('地铁乘车', const Duration(seconds: 40),
+            status: BillSettlementStatus.settled),
+        source: 'screenText',
+      );
+
+      expect(result.success, isTrue);
+      expect(await candidateStore.loadForReview(eventStore), isEmpty);
+      expect(await candidateStore.count(), 0);
+      expect(await eventStore.listPending(), isEmpty);
+      for (final key in ['ev1', 'ev2']) {
+        final event = (await eventStore.findByEventKey(key))!;
+        final item = (await eventStore.itemsForEvent(event.id)).single;
+        expect(item.state, 'duplicate');
+        expect(item.transactionId, result.firstTransactionId);
+      }
+    });
+
+    test('旧候选缺子项索引,升级后同步结束事件记录', () async {
+      await processAuto('ev1', metro('地铁免密扣款', Duration.zero));
+      final old = (await candidateStore.load()).single;
+      await candidateStore.save([
+        PendingCandidate(
+          id: old.id,
+          bill: old.bill,
+          capturedAt: old.capturedAt,
+          eventKey: old.eventKey,
+        ),
+      ]);
+
+      final result = await processAuto(
+        'ev2',
+        metro('地铁乘车', const Duration(seconds: 20),
+            status: BillSettlementStatus.settled),
+        source: 'screenText',
+      );
+
+      expect(result.success, isTrue);
+      expect(await candidateStore.loadForReview(eventStore), isEmpty);
+      expect(await eventStore.listPending(), isEmpty);
+    });
+
+    test('事件记录与兼容副本 id 不同,升级后不留下旧副本', () async {
+      await processAuto('ev1', metro('地铁免密扣款', Duration.zero));
+      final old = (await candidateStore.load()).single;
+      await candidateStore.save([old.copyWith(candidateId: 'legacy-copy')]);
+
+      final result = await processAuto(
+        'ev2',
+        metro('地铁乘车', const Duration(seconds: 20),
+            status: BillSettlementStatus.settled),
+        source: 'screenText',
+      );
+
+      expect(result.success, isTrue);
+      expect(await candidateStore.count(), 0);
+      expect(await candidateStore.loadForReview(eventStore), isEmpty);
+    });
+
+    test('同批第一条待确认被后来完整账单吸收,父事件和计数同步结束', () async {
+      final result = await processBills('batch', [
+        metro('地铁免密扣款', Duration.zero),
+        metro('地铁乘车', const Duration(seconds: 20),
+            status: BillSettlementStatus.settled),
+      ]);
+
+      expect(result.transactionIds, hasLength(1));
+      expect(result.awaitingCount, 0);
+      expect(result.pendingAbsAmount, 0);
+      expect(result.duplicateCount, 1);
+      expect(result.duplicateTransactionIds, [result.firstTransactionId]);
+      expect(await candidateStore.loadForReview(eventStore), isEmpty);
+      final event = (await eventStore.findByEventKey('batch'))!;
+      expect(event.state, 'booked');
+      final items = await eventStore.itemsForEvent(event.id);
+      expect(items[0].state, 'duplicate');
+      expect(items[0].transactionId, result.firstTransactionId);
+      expect(items[1].state, 'booked');
+    });
+
+    test('同批升级只移除同一笔候选,保留其它待确认及父事件', () async {
+      final result = await processBills('batch-with-other', [
+        metro('地铁免密扣款', Duration.zero),
+        BillInfo(
+          amount: -18,
+          type: BillType.expense,
+          note: '美团外卖',
+          time: t.add(const Duration(seconds: 10)),
+          ledgerId: ledgerId,
+          confidenceProvided: true,
+          timePrecision: BillTimePrecision.minute,
+        ),
+        metro('地铁乘车', const Duration(seconds: 20),
+            status: BillSettlementStatus.settled),
+      ]);
+
+      expect(result.transactionIds, hasLength(1));
+      expect(result.awaitingCount, 1);
+      expect(result.pendingAbsAmount, 18);
+      final candidates = await candidateStore.loadForReview(eventStore);
+      expect(candidates, hasLength(1));
+      expect(candidates.single.bill.note, '美团外卖');
+      expect(await candidateStore.count(), 1);
+      final event = (await eventStore.findByEventKey('batch-with-other'))!;
+      expect(event.state, 'pending');
+      final items = await eventStore.itemsForEvent(event.id);
+      expect(
+          items.map((item) => item.state), ['duplicate', 'pending', 'booked']);
+    });
+
+    test('同批升级清理事件失败,保留候选及待确认计数', () async {
+      final result = await processBills(
+        'batch-failed-cleanup',
+        [
+          metro('地铁免密扣款', Duration.zero),
+          metro('地铁乘车', const Duration(seconds: 20),
+              status: BillSettlementStatus.settled),
+        ],
+        candidateEventStore: _FailingResolveStore(db),
+      );
+
+      expect(result.transactionIds, hasLength(1));
+      expect(result.awaitingCount, 1);
+      expect(result.pendingAbsAmount, closeTo(8.1, 0.00001));
+      expect(await candidateStore.count(), 1);
+      expect(await candidateStore.loadForReview(eventStore), hasLength(1));
+      final event = (await eventStore.findByEventKey('batch-failed-cleanup'))!;
+      expect(event.state, 'pending');
+      final items = await eventStore.itemsForEvent(event.id);
+      expect(items[0].state, 'pending');
+      expect(items[1].state, 'booked');
+    });
+
+    test('总闸关闭时完整账单仍待确认,不清理原候选', () async {
+      await processAuto('ev1', metro('地铁免密扣款', Duration.zero));
+      final result = await processBills(
+        'ev2',
+        [
+          metro('地铁乘车', const Duration(seconds: 20),
+              status: BillSettlementStatus.settled)
+        ],
+        requireConfirmationForAll: true,
+      );
+
+      expect(result.success, isFalse);
+      expect(result.awaitingCount, 1);
+      expect(await candidateStore.loadForReview(eventStore), hasLength(2));
+    });
+
+    test('影子模式观察完整账单,不清理原候选', () async {
+      await processAuto('ev1', metro('地铁免密扣款', Duration.zero));
+      final result = await processBills(
+        'ev2',
+        [
+          metro('地铁乘车', const Duration(seconds: 20),
+              status: BillSettlementStatus.settled)
+        ],
+        shadowMode: true,
+      );
+
+      expect(result.success, isFalse);
+      expect(result.shadowCount, 1);
+      expect(await candidateStore.loadForReview(eventStore), hasLength(1));
     });
 
     test('文案无亲缘(疑似真实的第二笔同额消费)→ 不升级,维持人工确认', () async {
@@ -265,8 +465,8 @@ void main() {
 
       // 「免密支付」vs「免密扣款」:商户词既不相等也无词元交集,旧口径
       // 只到 possible(0.65)→ 待确认;簇亲缘(bigram)升级为强判合并
-      final second =
-          await processAuto('ev2', metro('地铁免密支付', const Duration(seconds: 20)));
+      final second = await processAuto(
+          'ev2', metro('地铁免密支付', const Duration(seconds: 20)));
       expect(second.success, isFalse);
       expect(second.duplicateCount, 1);
       expect(await candidateStore.count(), 0);

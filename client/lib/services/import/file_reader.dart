@@ -134,22 +134,37 @@ class FileReaderService {
       return utf8.decode(bytes.sublist(3), allowMalformed: true);
     }
 
-    // 尝试 UTF-8 解码
+    // 尝试严格 UTF-8 解码
     try {
-      final utfText = utf8.decode(bytes, allowMalformed: false);
-      // 检测是否有乱码字符 (Unicode replacement character U+FFFD)
-      if (!utfText.contains('\uFFFD')) {
-        return utfText;
-      }
+      final strict = utf8.decode(bytes, allowMalformed: false);
+      // 严格解码成功 = 这就是 UTF-8。
+      // 注意:文本里**真的存在** U+FFFD(用户备注里打了 `�`,或上游已经替换过)
+      // 不构成"不是 UTF-8"的证据 —— 若据此改走 GBK,一份完全合法的 UTF-8
+      // 会被重新解码成一整串乱码(U+FFFD 的 EF BF BD 恰是合法 GBK)。
+      return strict;
     } catch (_) {
-      // UTF-8 解码失败，继续尝试 GBK
+      // 严格解码失败:有坏字节。看宽容解码的损坏程度再决定是否怀疑编码。
     }
 
-    // 尝试 GBK 解码（支付宝旧版本 Windows 导出常用）
+    // 宽容 UTF-8 解码(坏字节 → U+FFFD),按替换字符密度判断"坏多少"
+    final lenient = utf8.decode(bytes, allowMalformed: true);
+    final replacementCount = '\uFFFD'.allMatches(lenient).length;
+    if (replacementCount > 0) {
+      final ratio = replacementCount / (lenient.isEmpty ? 1 : lenient.length);
+      // 单点损坏(1 个替换字符)或长文本里的极小比例(≤2%)→ 仍是 UTF-8,保留
+      // 原文。不可因为一个坏字节就把整份文件交给 GBK 重新解码。
+      if (replacementCount <= 1 || ratio <= 0.02) {
+        return lenient;
+      }
+    }
+
+    // 尝试 GBK 解码（支付宝旧版本 Windows 导出常用）:
+    // 仅当上面的 UTF-8 宽容解码"损坏很重"(替换字符比例超阈值)时才回退,
+    // 且 GBK 结果必须看起来是正常中文文本(含汉字且自身无替换字符)。
     try {
       final gbkText = gbk_bytes.decode(bytes);
-      // 简单检测：如果包含常见中文字符，认为GBK解码成功
-      if (_containsChineseCharacters(gbkText)) {
+      if (_containsChineseCharacters(gbkText) &&
+          !gbkText.contains('\uFFFD')) {
         return gbkText;
       }
     } catch (_) {

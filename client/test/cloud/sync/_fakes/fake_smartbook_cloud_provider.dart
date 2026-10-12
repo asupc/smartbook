@@ -154,6 +154,9 @@ class FakeSmartBookCloudProvider extends SmartBookCloudProvider {
   /// 的 markPushed 分流)。
   SmartBookPushResult? pushResultOverride;
 
+  /// 控制附件下载是否抛错(附件 retry 策略测试):返回非 null 即抛出。
+  Object? Function()? downloadAttachmentErrorInjector;
+
   final StreamController<SmartBookCloudRealtimeEvent> _realtimeController =
       StreamController<SmartBookCloudRealtimeEvent>.broadcast();
 
@@ -324,6 +327,7 @@ class FakeSmartBookCloudProvider extends SmartBookCloudProvider {
     storageListError = null;
     pushErrorInjector = null;
     pushResultOverride = null;
+    downloadAttachmentErrorInjector = null;
     _fakeStorage.ledgerSnapshots.clear();
   }
 
@@ -359,6 +363,14 @@ class FakeSmartBookCloudProvider extends SmartBookCloudProvider {
 
   @override
   Future<Uint8List> downloadAttachment({required String fileId}) async {
+    final injector = downloadAttachmentErrorInjector;
+    if (injector != null) {
+      final err = injector();
+      if (err != null) {
+        // ignore: only_throw_errors
+        throw err;
+      }
+    }
     final bytes = downloadableAttachments[fileId] ?? uploadedAttachments[fileId];
     if (bytes == null) {
       throw CloudStorageException(

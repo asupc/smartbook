@@ -17,6 +17,7 @@ import '../../services/export/config_export_service.dart';
 import '../../services/attachment_export_import_service.dart';
 import '../../utils/currencies.dart';
 import '../../widgets/ui/ui.dart';
+import '../automation/auto_billing_setup_page.dart';
 
 /// 首次启动欢迎页面
 /// 展示应用的独特价值：隐私保护、开源透明、数据自主
@@ -38,6 +39,9 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
   bool _isImporting = false; // 导入状态
   bool _isExistingUserFlow = false; // 老用户流程
   bool _isImportingAttachment = false; // 附件导入状态
+  // B1:用户在引导页选择「现在开通」→ 欢迎流程结束后(数据库已初始化)
+  // 直接进自动记账开通引导;否则只提示稍后在「我的」开通。
+  bool _openSetupAfterFinish = false;
 
   @override
   void dispose() {
@@ -62,6 +66,7 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
       _buildCategoryModePage(context, theme, l10n), // 第3屏：分类模式
       _buildCloudSyncPage(context, theme, l10n), // 第4屏：云同步
       _buildPrivacyAndOpenSourcePage(context, theme, l10n), // 第5屏：隐私保护+开源透明
+      _buildAutoBillingPage(context, theme, l10n), // 第6屏：自动记账开通(B1)
     ];
 
     final pages = _isExistingUserFlow ? existingUserPages : newUserPages;
@@ -594,6 +599,105 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
     );
   }
 
+  /// 第6页：自动记账开通说明(B1 任务 1)
+  ///
+  /// 串起 F02 断点:新用户引导此前不含自动记账,开通只能靠事后自己找入口。
+  /// 这里给出「现在开通 / 稍后」两种选择:现在开通在欢迎流程结束后直接
+  /// 进入五步引导;稍后则在「我的 → 自动记账」续接(进度可保存)。
+  Widget _buildAutoBillingPage(
+      BuildContext context, ThemeData theme, AppLocalizations l10n) {
+    return Padding(
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 120,
+            height: 120,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.2),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.auto_awesome_outlined,
+              size: 64,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 32),
+          Text(
+            l10n.welcomeAutoBillingTitle,
+            style: theme.textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            l10n.welcomeAutoBillingDesc,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: Colors.white.withValues(alpha: 0.85),
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 24),
+          Center(
+            child: IntrinsicWidth(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildFeatureItem(context, Icons.cloud_outlined, Colors.white,
+                      l10n.autoSetupStepService),
+                  const SizedBox(height: 12),
+                  _buildFeatureItem(context, Icons.account_balance_outlined,
+                      Colors.white, l10n.autoSetupStepTarget),
+                  const SizedBox(height: 12),
+                  _buildFeatureItem(context, Icons.tune_outlined, Colors.white,
+                      l10n.autoSetupStepSources),
+                  const SizedBox(height: 12),
+                  _buildFeatureItem(context, Icons.verified_outlined,
+                      Colors.white, l10n.autoSetupStepVerify),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.black87,
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 24, vertical: 12),
+            ),
+            onPressed: () {
+              _openSetupAfterFinish = true;
+              _finishWelcome(context);
+            },
+            icon: const Icon(Icons.rocket_launch_outlined, size: 18),
+            label: Text(l10n.welcomeAutoBillingStart),
+          ),
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: () => _finishWelcome(context),
+            child: Text(
+              l10n.welcomeAutoBillingLater,
+              style: const TextStyle(color: Colors.white70),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            l10n.welcomeAutoBillingNote,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: Colors.white.withValues(alpha: 0.7),
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
   /// 第4页：云同步说明
   Widget _buildCloudSyncPage(
       BuildContext context, ThemeData theme, AppLocalizations l10n) {
@@ -769,6 +873,15 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
         }
 
         logger.info('welcome', '数据库初始化完成');
+      }
+
+      if (context.mounted && _openSetupAfterFinish) {
+        // 数据库已初始化(默认账本已建),此时开通引导才能选到账本。
+        // 先 push 再切换欢迎页,路由留在根 Navigator 上,退出引导即进主界面。
+        _openSetupAfterFinish = false;
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const AutoBillingSetupPage()),
+        );
       }
 
       if (context.mounted) {

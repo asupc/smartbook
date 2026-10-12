@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import '../core/exceptions.dart';
+
 /// 云服务后端类型
 enum CloudBackendType {
   local, // 本地存储(不同步)
@@ -73,26 +75,32 @@ class CloudServiceConfig {
 
   String get id => type.name; // 使用类型作为id
 
+  /// Whether the config carries usable connection details.
+  ///
+  /// Values are trimmed: a field holding only whitespace ('  ' / '\t' / '\n')
+  /// is "not configured", not a valid address. Previously such configs passed
+  /// validation, and the failure only surfaced later as an opaque
+  /// "switch cloud service failed" after the provider tried to initialize.
   bool get valid {
+    bool filled(String? v) => v != null && v.trim().isNotEmpty;
     switch (type) {
       case CloudBackendType.local:
         return true; // 本地存储始终有效
       case CloudBackendType.smartbookCloud:
-        return (smartbookCloudBaseUrl?.isNotEmpty ?? false);
+        return filled(smartbookCloudBaseUrl);
       case CloudBackendType.supabase:
-        return (supabaseUrl?.isNotEmpty ?? false) &&
-            (supabaseAnonKey?.isNotEmpty ?? false);
+        return filled(supabaseUrl) && filled(supabaseAnonKey);
       case CloudBackendType.webdav:
-        return (webdavUrl?.isNotEmpty ?? false) &&
-            (webdavUsername?.isNotEmpty ?? false) &&
-            (webdavPassword?.isNotEmpty ?? false);
+        return filled(webdavUrl) &&
+            filled(webdavUsername) &&
+            filled(webdavPassword);
       case CloudBackendType.icloud:
         return true; // iCloud 无需配置，始终有效
       case CloudBackendType.s3:
-        return (s3Endpoint?.isNotEmpty ?? false) &&
-            (s3AccessKey?.isNotEmpty ?? false) &&
-            (s3SecretKey?.isNotEmpty ?? false) &&
-            (s3Bucket?.isNotEmpty ?? false);
+        return filled(s3Endpoint) &&
+            filled(s3AccessKey) &&
+            filled(s3SecretKey) &&
+            filled(s3Bucket);
     }
   }
 
@@ -125,41 +133,47 @@ class CloudServiceConfig {
         's3Port': s3Port,
       };
 
+  /// 反序列化。
+  ///
+  /// 类型契约是**严格**的:结构性字段(`type` / `name` / `s3Port` / `s3UseSSL`)
+  /// 类型不符时抛 [CloudConfigurationException](可分类的包异常),不再让裸
+  /// `_TypeError`(Error 家族,`catch(Exception)` 捕获不到)穿透。
+  /// 唯一的容错是 `type` 的旧品牌枚举名映射(见 [_legacyBackendTypeNames]),
+  /// 那是品牌更名遗留数据的兼容路径。
   static CloudServiceConfig fromJson(Map<String, dynamic> j) {
     // 自动清理 S3 endpoint 中的协议前缀
-    String? s3Endpoint = j['s3Endpoint'] as String?;
+    String? s3Endpoint = _asString(j['s3Endpoint']);
     if (s3Endpoint != null && s3Endpoint.isNotEmpty) {
       s3Endpoint = s3Endpoint.replaceFirst(RegExp(r'^https?://'), '');
     }
 
     return CloudServiceConfig(
-      type: CloudBackendType.values
-          .firstWhere((e) => e.name == j['type'] as String),
-      name: j['name'] as String,
+      type: _parseBackendType(j['type']),
+      name: _requireString(j['name'], 'name'),
       // SmartBook Cloud
-      smartbookCloudBaseUrl: j['smartbookCloudBaseUrl'] as String?,
-      smartbookCloudApiPrefix: j['smartbookCloudApiPrefix'] as String?,
-      smartbookCloudEmail: j['smartbookCloudEmail'] as String?,
-      smartbookCloudPassword: j['smartbookCloudPassword'] as String?,
+      smartbookCloudBaseUrl: _asString(j['smartbookCloudBaseUrl']),
+      smartbookCloudApiPrefix: _asString(j['smartbookCloudApiPrefix']),
+      smartbookCloudEmail: _asString(j['smartbookCloudEmail']),
+      smartbookCloudPassword: _asString(j['smartbookCloudPassword']),
       // Supabase
-      supabaseUrl: j['supabaseUrl'] as String?,
-      supabaseAnonKey: j['supabaseAnonKey'] as String?,
-      supabaseBucket: j['supabaseBucket'] as String?,
-      supabaseEmail: j['supabaseEmail'] as String?,
-      supabasePassword: j['supabasePassword'] as String?,
+      supabaseUrl: _asString(j['supabaseUrl']),
+      supabaseAnonKey: _asString(j['supabaseAnonKey']),
+      supabaseBucket: _asString(j['supabaseBucket']),
+      supabaseEmail: _asString(j['supabaseEmail']),
+      supabasePassword: _asString(j['supabasePassword']),
       // WebDAV
-      webdavUrl: j['webdavUrl'] as String?,
-      webdavUsername: j['webdavUsername'] as String?,
-      webdavPassword: j['webdavPassword'] as String?,
-      webdavRemotePath: j['webdavRemotePath'] as String?,
+      webdavUrl: _asString(j['webdavUrl']),
+      webdavUsername: _asString(j['webdavUsername']),
+      webdavPassword: _asString(j['webdavPassword']),
+      webdavRemotePath: _asString(j['webdavRemotePath']),
       // S3
       s3Endpoint: s3Endpoint,
-      s3Region: j['s3Region'] as String?,
-      s3AccessKey: j['s3AccessKey'] as String?,
-      s3SecretKey: j['s3SecretKey'] as String?,
-      s3Bucket: j['s3Bucket'] as String?,
-      s3UseSSL: j['s3UseSSL'] as bool?,
-      s3Port: j['s3Port'] as int?,
+      s3Region: _asString(j['s3Region']),
+      s3AccessKey: _asString(j['s3AccessKey']),
+      s3SecretKey: _asString(j['s3SecretKey']),
+      s3Bucket: _asString(j['s3Bucket']),
+      s3UseSSL: _requireBool(j['s3UseSSL'], 's3UseSSL'),
+      s3Port: _requireInt(j['s3Port'], 's3Port'),
     );
   }
 
@@ -227,3 +241,74 @@ class CloudServiceConfig {
 String encodeCloudConfig(CloudServiceConfig c) => jsonEncode(c.toJson());
 CloudServiceConfig decodeCloudConfig(String raw) =>
     CloudServiceConfig.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+
+/// Legacy backend enum names (pre-rename brand) mapped to their current value.
+///
+/// The active-type value and the prefs key prefix were migrated when the
+/// product was renamed, but the enum name stored *inside* the config body was
+/// not. Such a config previously decoded to a StateError, which
+/// `CloudServiceStore` swallowed into a silent fallback to local — i.e. the
+/// user's cloud sync "disappeared". These names now decode to their current
+/// equivalent, at the same level as the key / activeType migration.
+const Map<String, CloudBackendType> _legacyBackendTypeNames =
+    <String, CloudBackendType>{
+  'beecountCloud': CloudBackendType.smartbookCloud,
+  'beecountCloudSync': CloudBackendType.smartbookCloud,
+};
+
+/// Resolve the stored backend `type` name.
+///
+/// Legacy brand names are migrated; names this build does not know raise a
+/// [CloudConfigurationException] (a classified package exception) instead of
+/// `StateError`, so callers can tell "unknown backend" apart from other
+/// failures instead of only being able to catch `Error`.
+CloudBackendType _parseBackendType(Object? raw) {
+  if (raw is! String) {
+    throw CloudConfigurationException(
+        'Invalid cloud config: field "type" must be a string');
+  }
+  final legacy = _legacyBackendTypeNames[raw];
+  if (legacy != null) return legacy;
+  for (final candidate in CloudBackendType.values) {
+    if (candidate.name == raw) return candidate;
+  }
+  throw CloudConfigurationException('Unknown cloud backend type: "$raw"');
+}
+
+/// Fallback display name when the stored config has no (or a non-string)
+/// `name`. Keeps the decoded object usable instead of throwing, and stays
+/// recognisable in the UI.
+String encodeBackendFallbackName(Object? type) =>
+    type is String && type.isNotEmpty ? type : '__UNNAMED__';
+
+String? _asString(Object? v) => v is String ? v : null;
+
+String _requireString(Object? v, String field) {
+  if (v is String) return v;
+  throw CloudConfigurationException(
+      'Invalid cloud config: field "$field" must be a string');
+}
+
+bool? _requireBool(Object? v, String field) {
+  if (v == null || v is bool) return v as bool?;
+  if (v is String) {
+    final lower = v.trim().toLowerCase();
+    if (lower == 'true') return true;
+    if (lower == 'false') return false;
+  }
+  throw CloudConfigurationException(
+      'Invalid cloud config: field "$field" must be a boolean');
+}
+
+/// Strict int extraction for numeric JSON fields such as `s3Port`.
+///
+/// This package always *writes* an `int` for these fields, so anything else
+/// (a `double` such as `9000.0`, a non-numeric string, Infinity) means the
+/// stored config is malformed — raise a classified
+/// [CloudConfigurationException] instead of letting the bare `_TypeError`
+/// family (which `catch (Exception)` cannot see) escape.
+int? _requireInt(Object? v, String field) {
+  if (v == null || v is int) return v as int?;
+  throw CloudConfigurationException(
+      'Invalid cloud config: field "$field" must be an integer');
+}

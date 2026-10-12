@@ -6,6 +6,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../automation/auto_billing_service.dart';
 import '../automation/auto_book_coordinator.dart';
 import '../automation/auto_book_event.dart';
+
+import '../automation/automation_settings_store.dart';
 import '../../ai/core/ai_runtime_state.dart';
 import '../../providers/automation_providers.dart';
 import '../system/logger_service.dart' show logger;
@@ -149,14 +151,20 @@ class ScreenshotMonitorService {
       if (!_isEnabled || !_isMonitoring) return;
       // 并行分发:逐张交给 Coordinator(有界并发,同一截图的 key 是内容
       // hash,天然串行),不再逐张 await。
-      final futures = <Future<void>>[];
-      for (final raw in items) {
-        if (raw is! Map) continue;
-        final path = (raw['path'] ?? '').toString();
-        if (path.isEmpty) continue;
-        futures.add(_handleScreenshot(path));
+            // B3:分批读取、有界处理 —— 每批最多 10 条,批内并发、批间串行,
+      // 避免一次把整队(单来源上限 500 条)同时压进 Coordinator。
+      const batchSize = 10;
+      for (var start = 0; start < items.length; start += batchSize) {
+        if (!_isEnabled) return; // 用户中途关闭:剩余项留队
+        final futures = <Future<void>>[];
+        for (final raw in items.skip(start).take(batchSize)) {
+          if (raw is! Map) continue;
+          final path = (raw['path'] ?? '').toString();
+          if (path.isEmpty) continue;
+          futures.add(_handleScreenshot(path, queueItem: raw));
+        }
+        await Future.wait(futures);
       }
-      await Future.wait(futures);
     } catch (e, st) {
       // 队列桥接失败不影响监听；下次启动再 drain。
       print('⚠️ [ScreenshotMonitor] 恢复截图队列失败: $e');
@@ -173,7 +181,7 @@ class ScreenshotMonitorService {
   }
 
   /// 处理截图
-  Future<void> _handleScreenshot(String path) async {
+  Future<void> _handleScreenshot(String path, {Map? queueItem}) async {
     print('📸 [ScreenshotMonitor] _handleScreenshot 被调用，path=$path');
     print(
         '📸 [ScreenshotMonitor] 当前状态: _isEnabled=$_isEnabled, _isMonitoring=$_isMonitoring');
@@ -188,22 +196,46 @@ class ScreenshotMonitorService {
     // (减少打扰;AI 未配置仍保留会话级一次性提示,便于发现配置缺失)。
     final eventKey = await _coordinator.imageEventKey(path);
     final capturedAt = DateTime.now();
+    // B2:优先用捕获时冻结的目标快照(积压 drain 路径),否则按当前配置解析。
+    final snapshot = AutoBookQueueTargetSnapshot.fromQueueItem(queueItem);
+    final target = await resolveAutoBookTarget(
+      _container,
+      frozenRef: snapshot.ref,
+      frozenState: snapshot.state,
+      frozenConfigVersion: snapshot.version,
+    );
+    final input = AutoBookInput(
+      eventKey: eventKey,
+      source: AutoBookSource.screenshot,
+      captureIntent: AutoBookCaptureIntent.automatic,
+      capturedAt: capturedAt,
+      // A2:证据有效期 30 天(capturedAt 起算),到期由 cleanupExpired 清理。
+      expiresAt: AutoBookInput.defaultExpiresAt(capturedAt),
+      contentHash: eventKey.startsWith('image:v1:')
+          ? eventKey.substring('image:v1:'.length)
+          : null,
+      targetRef: target.targetRef,
+      targetConfigVersion: target.configVersion,
+      targetState: target.stateName,
+    );
+    if (!target.canWrite) {
+      // B2:目标失效/待确定 —— 不调 AI、不 ACK,截图留到目标修好再处理。
+      await _coordinator.execute<SmsProcessOutcome>(
+        input: input,
+        action: () async => target.state == AutoBookTargetState.invalid
+            ? SmsProcessOutcome.targetInvalid
+            : SmsProcessOutcome.targetUndetermined,
+        updateFor: (o) => o.eventUpdate,
+      );
+      return;
+    }
     final execution = await _coordinator.execute(
-      input: AutoBookInput(
-        eventKey: eventKey,
-        source: AutoBookSource.screenshot,
-        captureIntent: AutoBookCaptureIntent.automatic,
-        capturedAt: capturedAt,
-        // A2:证据有效期 30 天(capturedAt 起算),到期由 cleanupExpired 清理。
-        expiresAt: AutoBookInput.defaultExpiresAt(capturedAt),
-        contentHash: eventKey.startsWith('image:v1:')
-            ? eventKey.substring('image:v1:'.length)
-            : null,
-      ),
+      input: input,
       action: () => _autoBillingService.processScreenshot(
         path,
         notifyOnlyOnSuccess: true,
         eventKey: eventKey,
+        targetLedgerId: target.ledgerId,
       ),
       // M1-3:走向映射收敛到 BookkeepingResultEvent,与图片分享/deep-link 共用。
       updateFor: (result) => result.eventUpdate,

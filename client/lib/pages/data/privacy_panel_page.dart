@@ -469,6 +469,27 @@ class _PrivacyPanelPageState extends ConsumerState<PrivacyPanelPage> {
                         ),
                       ),
                       const SizedBox(height: 8),
+                      // B3:处理队列的临时存储与「历史原文留存」是两回事。
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(Icons.hourglass_empty,
+                                  size: 18, color: Colors.orange),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(_copy(
+                                  '识别队列（临时）：待处理的短信/通知文本与截图路径只在本机处理队列中临时保存，处理完成即删除，最长保留 72 小时；容量或过期清理会在自动记账状态里留下计数摘要。这与上面的「历史原文留存」是两回事，关闭历史留存不会关闭它，它也不会上传服务端。',
+                                  'Processing queue (temporary): pending SMS/notification text and screenshot paths are kept only locally until processed, at most 72 hours; capacity or expiry cleanups leave a count-only summary in the automation status. This is separate from raw evidence retention above, is not turned off by it, and is never uploaded.',
+                                )),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
                       _policyCard(
                         title: _copy('其他来源默认策略', 'Default for other sources'),
                         icon: Icons.tune_outlined,

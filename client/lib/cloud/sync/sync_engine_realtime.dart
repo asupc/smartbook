@@ -622,12 +622,52 @@ extension SyncEngineRealtime on SyncEngine {
   }
 
   /// 清本地某共享账本所有数据(被踢 / Owner 删账本 / 自己退出)。
+  ///
+  /// 中-1b(2026-10-11 三轮复查):**连同该账本的 local_changes 一起清**。
+  /// 旧行为只删数据不删 change —— upsert change 因实体已删被 C11 永久静默
+  /// 跳过,delete change 推给服务端吃 `ledger_deleted` 终态拒绝 → 进入
+  /// 8 次/会话 + 每 30min 探测的永久空转循环(unpushed 永不排水)。
+  /// 清掉的待推 change 数量汇总写一条 `PushTerminalRejected` 错误行
+  /// (`watchUnresolved` 可见),不静默。
   Future<void> _purgeLocalLedgerByExternalId(String ledgerExternalId) async {
     final localId = await _resolveLedgerIdBySyncId(ledgerExternalId);
     if (localId == null) return;
+    // 先数再删(删除后 WHERE ledgerId 命不到了)。
+    final pendingChanges = await (db.select(db.localChanges)
+          ..where((c) => c.ledgerId.equals(localId) & c.pushedAt.isNull()))
+        .get();
     // tx + tags + attachments 走级联;ledgers 行本身删
     await (db.delete(db.transactions)..where((t) => t.ledgerId.equals(localId))).go();
     await (db.delete(db.ledgers)..where((l) => l.id.equals(localId))).go();
+    // 该账本的待推 local_changes:账本已在本设备清除,这些 change 重试永远
+    // 不可能成功(服务端会以 membership_revoked / ledger_deleted 终态拒绝)。
+    if (pendingChanges.isNotEmpty) {
+      await (db.delete(db.localChanges)
+            ..where((c) => c.id.isIn(
+                [for (final c in pendingChanges) c.id])))
+          .go();
+      try {
+        // 汇总错误行:一个账本一条(change_id 哨兵 = base + 0 的固定槽,
+        // 同账本多次 purge 会命中同槽 attempt_count 累加 —— 可接受,purge
+        // 之后该账本本地已无数据,不会重复触发)。
+        await pullErrors.recordPushTerminalRejected(
+          localChangeId: pendingChanges.first.id,
+          entityType: pendingChanges.first.entityType,
+          entitySyncId: pendingChanges.first.entitySyncId,
+          ledgerExternalId: ledgerExternalId,
+          reason: 'ledger_purged_locally',
+          droppedChangeIds: [for (final c in pendingChanges) c.id],
+        );
+      } catch (e) {
+        logger.warning('SyncEngine',
+            'purge: 待推 change 汇总错误行登记失败 ledger=$ledgerExternalId'
+            '(不阻塞清除): $e');
+      }
+      logger.warning(
+          'SyncEngine',
+          'purge ledger=$ledgerExternalId: 丢弃 ${pendingChanges.length} 条'
+          '待推 local_changes(账本已清除,重推不可能成功)');
+    }
     // SharedLedger* 镜像
     await (db.delete(db.ledgerMembers)
           ..where((t) => t.ledgerSyncId.equals(ledgerExternalId)))

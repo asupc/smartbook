@@ -4,9 +4,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../automation/auto_billing_service.dart'
-    show AutoBillingService, SmsProcessOutcome, SmsProcessOutcomeEvent;
+    show AutoBookTestOptions, AutoBillingService, SmsProcessOutcome, SmsProcessOutcomeEvent;
 import '../automation/auto_book_coordinator.dart';
 import '../automation/auto_book_event.dart';
+
+import '../automation/automation_settings_store.dart';
 import '../data/source_channel_resolver.dart';
 import '../../ai/core/ai_runtime_state.dart';
 import '../../providers/automation_providers.dart';
@@ -149,26 +151,33 @@ class ScreenTextMonitorService {
       if (!_isEnabled) return; // 用户中途关闭:整条队列留在 native
       // 并行分发:逐条交给 Coordinator(有界并发,同 eventKey 串行),每条完成
       // 即 ACK,不再逐条 await —— 一批积压页面文本的识别墙钟时间 ≈ 1/并发数。
-      final futures = <Future<void>>[];
-      for (final raw in items) {
-        if (raw is! Map) continue;
-        final pkg = (raw['package'] ?? '').toString();
-        final text = (raw['text'] ?? '').toString();
-        final fingerprint = (raw['fingerprint'] ?? '').toString();
-        final nativeEventKey = (raw['eventKey'] ?? '').toString().trim();
-        final timestamp = int.tryParse((raw['timestamp'] ?? '').toString());
-        final eventKey = nativeEventKey.isNotEmpty
-            ? 'screen:v3:$nativeEventKey'
-            : 'screen:v2:$fingerprint:${timestamp ?? 0}';
-        futures.add(_processOne(
-          pkg: pkg,
-          text: text,
-          fingerprint: fingerprint,
-          eventKey: eventKey,
-          timestamp: timestamp,
-        ));
+            // B3:分批读取、有界处理 —— 每批最多 10 条,批内并发、批间串行,
+      // 避免一次把整队(单来源上限 500 条)同时压进 Coordinator。
+      const batchSize = 10;
+      for (var start = 0; start < items.length; start += batchSize) {
+        if (!_isEnabled) return; // 用户中途关闭:剩余项留队
+        final futures = <Future<void>>[];
+        for (final raw in items.skip(start).take(batchSize)) {
+          if (raw is! Map) continue;
+          final pkg = (raw['package'] ?? '').toString();
+          final text = (raw['text'] ?? '').toString();
+          final fingerprint = (raw['fingerprint'] ?? '').toString();
+          final nativeEventKey = (raw['eventKey'] ?? '').toString().trim();
+          final timestamp = int.tryParse((raw['timestamp'] ?? '').toString());
+          final eventKey = nativeEventKey.isNotEmpty
+              ? 'screen:v3:$nativeEventKey'
+              : 'screen:v2:$fingerprint:${timestamp ?? 0}';
+          futures.add(_processOne(
+            pkg: pkg,
+            text: text,
+            fingerprint: fingerprint,
+            eventKey: eventKey,
+            timestamp: timestamp,
+            queueItem: raw is Map ? raw : null,
+          ));
+        }
+        await Future.wait(futures);
       }
-      await Future.wait(futures);
     } catch (_) {
       // 队列读取/通道异常不抛;未 ack 的项下次 drain 通过指纹预检补 ack
     }
@@ -181,6 +190,7 @@ class ScreenTextMonitorService {
     required String fingerprint,
     required String eventKey,
     int? timestamp,
+    Map? queueItem,
   }) async {
     // 微信账单页强约束(与 native isWechatBillPage 同口径):旧版本已入队的
     // 微信聊天列表文本(会话预览「已支付¥8.00」命中强锚点)在 drain 时也
@@ -201,28 +211,51 @@ class ScreenTextMonitorService {
     }
     final alreadyWarned = _noAiNotified.contains(eventKey);
     final capturedAt = DateTime.now();
+    // B2:优先用捕获时冻结的目标快照,没有才按当前配置解析。
+    final snapshot = AutoBookQueueTargetSnapshot.fromQueueItem(queueItem);
+    final target = await resolveAutoBookTarget(
+      _container,
+      frozenRef: snapshot.ref,
+      frozenState: snapshot.state,
+      frozenConfigVersion: snapshot.version,
+    );
+    final input = AutoBookInput(
+      eventKey: eventKey,
+      source: AutoBookSource.screenText,
+      captureIntent: AutoBookCaptureIntent.automatic,
+      capturedAt: capturedAt,
+      // A2:证据有效期 30 天(capturedAt 起算),到期由 cleanupExpired 清理。
+      expiresAt: AutoBookInput.defaultExpiresAt(capturedAt),
+      sourceOccurredAt: timestamp == null
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(timestamp),
+      contentHash: fingerprint,
+      targetRef: target.targetRef,
+      targetConfigVersion: target.configVersion,
+      targetState: target.stateName,
+      sourceChannel: SourceChannelResolver.channelForPackage(pkg),
+      rawText: text,
+      rawActor: pkg,
+      rawMetadata: {
+        'fingerprint': fingerprint,
+        if (eventKey.startsWith('screen:v3:'))
+          'nativeEventKey': eventKey.substring('screen:v3:'.length),
+        if (timestamp != null) 'timestamp': timestamp,
+      },
+    );
+    if (!target.canWrite) {
+      // B2:目标失效/待确定 —— 不调 AI、不 ACK,页面文本留到目标修好再处理。
+      await _coordinator.execute<SmsProcessOutcome>(
+        input: input,
+        action: () async => target.state == AutoBookTargetState.invalid
+            ? SmsProcessOutcome.targetInvalid
+            : SmsProcessOutcome.targetUndetermined,
+        updateFor: (o) => o.eventUpdate,
+      );
+      return;
+    }
     final execution = await _coordinator.execute(
-      input: AutoBookInput(
-        eventKey: eventKey,
-        source: AutoBookSource.screenText,
-        captureIntent: AutoBookCaptureIntent.automatic,
-        capturedAt: capturedAt,
-        // A2:证据有效期 30 天(capturedAt 起算),到期由 cleanupExpired 清理。
-        expiresAt: AutoBookInput.defaultExpiresAt(capturedAt),
-        sourceOccurredAt: timestamp == null
-            ? null
-            : DateTime.fromMillisecondsSinceEpoch(timestamp),
-        contentHash: fingerprint,
-        sourceChannel: SourceChannelResolver.channelForPackage(pkg),
-        rawText: text,
-        rawActor: pkg,
-        rawMetadata: {
-          'fingerprint': fingerprint,
-          if (eventKey.startsWith('screen:v3:'))
-            'nativeEventKey': eventKey.substring('screen:v3:'.length),
-          if (timestamp != null) 'timestamp': timestamp,
-        },
-      ),
+      input: input,
       action: () => _autoBillingService.processScreenText(
         pkg,
         text,
@@ -235,6 +268,7 @@ class ScreenTextMonitorService {
         // Coordinator 按 eventKey 幂等,兜住重复 drain。
         skipDedup: false,
         eventKey: eventKey,
+        targetLedgerId: target.ledgerId,
       ),
       // M1-3:与短信/通知共用一份走向映射。
       updateFor: (outcome) => outcome.eventUpdate,
@@ -264,12 +298,16 @@ class ScreenTextMonitorService {
   /// 模拟屏幕文本(调试/验证入口):直接注入详情页文本走完整 AI 提取 →
   /// 落库流程,用于没有真实页面时验证「自动记账是否正常」。skipDedup 保证
   /// 同一模板可反复发送。
-  Future<void> mockScreenText(String pkg, String text) {
+  /// [testOptions] 缺省 = 解析链路测试**只解析不入账**(影子模式);
+  /// 显式传入 testLedgerId 时才写入该测试账本。
+  Future<void> mockScreenText(String pkg, String text,
+      {AutoBookTestOptions? testOptions}) {
     return _enqueue(() async {
       await _autoBillingService.processScreenText(
         pkg,
         text,
         skipDedup: true,
+        testOptions: testOptions,
       );
     });
   }

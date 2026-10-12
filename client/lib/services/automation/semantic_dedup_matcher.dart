@@ -66,9 +66,13 @@ class SemanticDedupMatcher {
     final merchant = _normalize(bill.merchant) ?? _normalize(bill.note);
     final time = bill.time;
     final amount = bill.amount;
+    // A7(2026-10-11):非有限金额不生成 key。`NaN.abs() <= 0` 恒 false,
+    // 旧判定会把 NaN/Infinity 放进 hash 输入 —— 所有 NaN 金额账单共享同一个
+    // 「万用 key」,判重索引误命中。
     if (merchant == null ||
         time == null ||
         amount == null ||
+        !amount.isFinite ||
         amount.abs() <= 0) {
       return null;
     }
@@ -101,10 +105,15 @@ class SemanticDedupMatcher {
   }) async {
     final externalId = _normalize(bill.externalId);
     if (externalId != null && eventStore != null) {
+      // A10(2026-10-11):把 bill 的币种一并传给查询侧。写入侧 semanticKey
+      // 用 `externalKey(id, currency: bill.currency)`(币种进 hash),查询侧
+      // 不带币种时公式漂移 → 已入账交易的外部单号反查不到。store 内部还会
+      // 用账本本位币做二次探测并对老公式兜底,这里显式传币种是首选命中路径。
       final transactionId = await eventStore.findTransactionByExternalId(
         externalId,
         ledgerId: ledgerId,
         sourceChannel: sourceChannel,
+        currency: bill.currency,
       );
       if (transactionId != null) {
         return SemanticDedupMatch(
@@ -117,7 +126,9 @@ class SemanticDedupMatcher {
 
     final amount = bill.amount;
     final time = bill.time;
-    if (amount == null || amount.abs() <= 0 || time == null) return null;
+    if (amount == null || !amount.isFinite || amount.abs() <= 0 || time == null) {
+      return null;
+    }
 
     // 豁免表(P1-1):用户「仍记一笔」裁定过的(商户/备注关键词,金额段)
     // 不再参与判重 —— 同类误判不复发。命中即跳过该对(等价于把这对的
@@ -193,13 +204,20 @@ class SemanticDedupMatcher {
       BillInfo bill, Iterable<BillInfo> others) {
     final amount = bill.amount;
     final time = bill.time;
-    if (amount == null || amount.abs() <= 0 || time == null) return false;
+    // A8(2026-10-11):非有限金额不参与静默合并。`Infinity.abs() != Infinity.abs()`
+    // 为 false(相等),旧判定把两条 Infinity 判成「秒级指纹完全命中」→ 静默
+    // 合并同一条坏数据。NaN 因自比较恒 true 反而安全 —— 两种非有限值行为
+    // 相反,说明这不是有意设计,统一在入口拒绝。
+    if (amount == null || !amount.isFinite || amount.abs() <= 0 || time == null) {
+      return false;
+    }
     final type = _typeValue(bill.type);
     final currency = bill.currency?.trim().toUpperCase();
     for (final other in others) {
       final otherAmount = other.amount;
       final otherTime = other.time;
       if (otherAmount == null ||
+          !otherAmount.isFinite ||
           otherAmount.abs() <= 0 ||
           otherTime == null ||
           other.ledgerId != bill.ledgerId ||

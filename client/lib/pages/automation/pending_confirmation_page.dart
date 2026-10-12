@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -12,7 +13,10 @@ import '../../l10n/app_localizations.dart';
 import '../../providers.dart';
 import '../../providers/ai_chat_providers.dart';
 import '../../services/billing/pending_candidate.dart';
+import '../../services/automation/auto_book_event_store.dart';
 import '../../services/automation/semantic_dedup_matcher.dart';
+import '../../services/automation/auto_book_reason_presenter.dart';
+
 import '../../services/billing/category_learning_store.dart';
 import '../../services/automation/dedup_exempt_store.dart';
 import '../../services/data/tag_seed_service.dart';
@@ -37,12 +41,34 @@ class _MatchedTransactionDetails {
   });
 }
 
+/// 待确认候选的加载器(可测性 2 注入点)。生产路径为
+/// [PendingCandidateStore.loadForReview]。
+typedef PendingCandidatesLoader = Future<List<PendingCandidate>> Function(
+    AutoBookEventStore eventStore);
+
 /// 待确认记账队列页(自动记账 M2)。
 ///
 /// 自动路径(截图/短信/支付通知)解析出的「候选交易」—— 低置信 / 大额 /
 /// 疑似重复 —— 不直接入账,先进入本队列;用户确认 / 编辑后入账 / 拒绝。
+///
+/// **可测性 2(批次 X,2026-10-11)**:[store] / [candidateLoader] 为注入点。
+/// 复现结论:`PendingCandidateStore._serial` 的**进程级静态尾链**在
+/// flutter_test 的 fake-async zone 里创建后,下一个用例再 `.then` 它时回调
+/// 永不触发 → 同文件第二条用例起 "did not complete"(挂起,不是 pending
+/// timer;page/store/coordinator 订阅路径均无 Timer)。生产代码不传这两个
+/// 参数,行为不变;测试注入后即可绕开该尾链、整文件运行。
 class PendingConfirmationPage extends ConsumerStatefulWidget {
-  const PendingConfirmationPage({super.key});
+  const PendingConfirmationPage({
+    super.key,
+    this.store,
+    this.candidateLoader,
+  });
+
+  /// 候选存储注入点;null = 生产默认 [PendingCandidateStore]。
+  final PendingCandidateStore? store;
+
+  /// 候选加载注入点;null = 生产默认 [PendingCandidateStore.loadForReview]。
+  final PendingCandidatesLoader? candidateLoader;
 
   @override
   ConsumerState<PendingConfirmationPage> createState() =>
@@ -51,7 +77,20 @@ class PendingConfirmationPage extends ConsumerStatefulWidget {
 
 class _PendingConfirmationPageState
     extends ConsumerState<PendingConfirmationPage> {
-  final PendingCandidateStore _store = PendingCandidateStore();
+  /// 生产默认 store(进程级静态尾链由 [PendingCandidateStore] 自身持有,
+  /// 注入 [PendingConfirmationPage.store] 可替换实例/换用测试替身)。
+  final PendingCandidateStore _defaultStore = PendingCandidateStore();
+
+  PendingCandidateStore get _store => widget.store ?? _defaultStore;
+
+  /// 加载候选:注入的 loader 优先,否则走 store 的合并投影。
+  Future<List<PendingCandidate>> _loadCandidates() {
+    final eventStore = ref.read(autoBookCoordinatorProvider).store;
+    final loader = widget.candidateLoader;
+    if (loader != null) return loader(eventStore);
+    return _store.loadForReview(eventStore);
+  }
+
   List<PendingCandidate> _candidates = const [];
   bool _loading = true;
   String _sourceFilter = 'all';
@@ -61,9 +100,27 @@ class _PendingConfirmationPageState
   List<schema.Ledger> _ledgers = const [];
   Map<int, _MatchedTransactionDetails?> _matchedTransactions = const {};
   int _reloadToken = 0;
+  StreamSubscription<void>? _eventChanges;
 
   /// 离线识别草稿页签(自动记账连不上服务端时攒下的待重试输入)
-  bool _showDrafts = false;
+  /// 0=候选 1=已忽略 2=草稿(B4:已忽略短期恢复入口)。
+  int _tab = 0;
+
+  bool get _showDrafts => _tab == 2;
+  bool get _showIgnored => _tab == 1;
+
+  /// 行内即时编辑缓冲(B4 任务 1:卡片内补账户/分类,不必走完整编辑流)。
+  final Map<String, PendingCandidate> _inlineEdits = {};
+
+  /// 生效候选:行内编辑优先,其余用原候选。
+  PendingCandidate _effective(PendingCandidate c) => _inlineEdits[c.id] ?? c;
+
+  /// 已忽略子项(只含仍留有结构化摘要的,可恢复)。
+  List<
+      ({
+        schema.AutoBookEvent event,
+        schema.AutoBookEventItem item,
+      })> _ignored = const [];
   List<schema.AutoBookEvent> _drafts = const [];
 
   /// legacy 队列触 cap 淘汰过的提示(P1-3):候选在确认页仍全部可见
@@ -77,15 +134,24 @@ class _PendingConfirmationPageState
   @override
   void initState() {
     super.initState();
+    _eventChanges =
+        ref.read(autoBookCoordinatorProvider).store.watchChanges().listen((_) {
+      if (mounted) unawaited(_reload());
+    });
     _reload();
+  }
+
+  @override
+  void dispose() {
+    _eventChanges?.cancel();
+    _reloadToken++;
+    super.dispose();
   }
 
   Future<void> _reload() async {
     final reloadToken = ++_reloadToken;
     final repo = ref.read(repositoryProvider);
-    final list = await _store.loadForReview(
-      ref.read(autoBookCoordinatorProvider).store,
-    );
+    final list = await _loadCandidates();
     if (_ledgers.isEmpty) {
       try {
         _ledgers = await repo.getAllLedgers();
@@ -303,6 +369,88 @@ class _PendingConfirmationPageState
     );
   }
 
+  /// 已忽略列表(B4 任务 2):材料仍在才允许恢复;恢复只重建候选。
+  Widget _buildIgnoredList(ThemeData theme) {
+    final l10n = AppLocalizations.of(context);
+    if (_ignored.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            l10n.pendingIgnoredEmpty,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+            ),
+          ),
+        ),
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: _reloadIgnored,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: _ignored.length,
+        itemBuilder: (context, index) {
+          final entry = _ignored[index];
+          final bill = _billOfItem(entry.item);
+          final updated = entry.item.updatedAt.toLocal();
+          final timeLabel =
+              '${updated.month}/${updated.day} ${updated.hour.toString().padLeft(2, '0')}:${updated.minute.toString().padLeft(2, '0')}';
+          final amount = bill?.amount;
+          final title = amount == null
+              ? (bill?.merchant ?? bill?.note ?? entry.item.merchant ?? '—')
+              : '¥${amount.abs().toStringAsFixed(2)} · '
+                  '${bill?.merchant ?? bill?.note ?? entry.item.merchant ?? ''}';
+          final reason = AutoBookReasonPresenter.present(
+            l10n,
+            reason: entry.item.reason,
+            state: entry.item.state,
+          ).title;
+          return Card(
+            margin: const EdgeInsets.only(bottom: 10),
+            child: ListTile(
+              leading: Icon(Icons.undo_outlined,
+                  color: Colors.orange.withValues(alpha: 0.9)),
+              title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+              subtitle: Text(
+                '$reason · $timeLabel · ${_sourceLabel(entry.event.source)}',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                ),
+              ),
+              trailing: TextButton(
+                onPressed: () =>
+                    _restoreIgnored(entry.event, entry.item.itemIndex),
+                child: Text(l10n.pendingIgnoredRestore),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// 从子项的结构化摘要还原账单(材料缺失返回 null)。
+  BillInfo? _billOfItem(schema.AutoBookEventItem item) {
+    final raw = item.billJson;
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return null;
+      final payload =
+          Map<String, dynamic>.from(decoded.cast<String, dynamic>());
+      final billPayload = payload['bill'] is Map
+          ? Map<String, dynamic>.from(payload['bill'] as Map)
+          : payload;
+      return BillInfo.fromJson(billPayload);
+    } catch (_) {
+      return null;
+    }
+  }
+
   Widget _buildDraftCard(
     schema.AutoBookEvent event,
     ThemeData theme,
@@ -459,10 +607,15 @@ class _PendingConfirmationPageState
               ],
             ),
           ),
-          Row(
+          // U-2(2026-10-11)窄屏加固:三个 DropdownButton + 计数标签在 320 宽
+          // 下不可收缩(RenderFlex overflow 161px)。改 Wrap:空间不足时换行,
+          // 每个下拉各自可收缩。
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Text('原因', style: theme.textTheme.labelMedium),
-              const SizedBox(width: 8),
               DropdownButton<String>(
                 value: _reasonFilter,
                 isDense: true,
@@ -481,7 +634,6 @@ class _PendingConfirmationPageState
                   if (value != null) setState(() => _reasonFilter = value);
                 },
               ),
-              const SizedBox(width: 8),
               DropdownButton<String>(
                 value: _ledgerFilter,
                 isDense: true,
@@ -489,14 +641,14 @@ class _PendingConfirmationPageState
                   const DropdownMenuItem(value: 'all', child: Text('全部账本')),
                   ..._ledgers.map((ledger) => DropdownMenuItem(
                         value: ledger.id.toString(),
-                        child: Text(ledger.name),
+                        child: Text(ledger.name,
+                            maxLines: 1, overflow: TextOverflow.ellipsis),
                       )),
                 ],
                 onChanged: (value) {
                   if (value != null) setState(() => _ledgerFilter = value);
                 },
               ),
-              const SizedBox(width: 8),
               DropdownButton<String>(
                 value: _dateFilter,
                 isDense: true,
@@ -510,7 +662,6 @@ class _PendingConfirmationPageState
                   if (value != null) setState(() => _dateFilter = value);
                 },
               ),
-              const Spacer(),
               Text('${_visibleCandidates.length}/${_candidates.length}',
                   style: theme.textTheme.bodySmall),
             ],
@@ -596,10 +747,14 @@ class _PendingConfirmationPageState
       forceCreate = choice;
     }
     final bookkeeper = ref.read(aiBookkeeperProvider);
-    final txId = await bookkeeper.approvePending(
-      c,
-      l10n: l10n,
-      forceCreate: forceCreate,
+    // B4 任务 3:确认/忽略/恢复共用互斥链,并由 store 的期望状态检查兜底。
+    final txId = await PendingDecisionCoordinator.run(
+      PendingDecisionCoordinator.keyFor(c),
+      () => bookkeeper.approvePending(
+        c,
+        l10n: l10n,
+        forceCreate: forceCreate,
+      ),
     );
     if (!mounted) return;
     if (txId != null) {
@@ -634,9 +789,101 @@ class _PendingConfirmationPageState
       ),
     );
     if (confirmed != true) return;
-    await ref.read(aiBookkeeperProvider).rejectPending(c);
-    if (mounted) showToast(context, l10n.pendingConfirmationRejected);
+    // B4:与确认/恢复/后台重试共用一条互斥链,并检查期望状态。
+    await PendingDecisionCoordinator.run(
+      PendingDecisionCoordinator.keyFor(c),
+      () => ref.read(aiBookkeeperProvider).rejectPending(c),
+    );
+    if (!mounted) return;
+    showToast(context, l10n.pendingConfirmationRejected);
+    // 10 秒撤销窗口;超时后仍可在「已忽略」标签页恢复。
+    await _showIgnoreUndo(c, l10n);
     await _reload();
+  }
+
+  /// B4 任务 2:普通候选忽略后给 **10 秒撤销**。
+  ///
+  /// 撤销只是把候选放回队列并把子项从 ignored 拉回 pending(期望状态检查),
+  /// 不创建交易;超过 10 秒后走「已忽略」标签页的恢复入口。
+  Future<void> _showIgnoreUndo(PendingCandidate c, AppLocalizations l10n) async {
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.clearSnackBars();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(l10n.pendingIgnoredUndoHint),
+        duration: const Duration(seconds: 10),
+        behavior: SnackBarBehavior.floating,
+        action: SnackBarAction(
+          label: l10n.commonUndo,
+          onPressed: () {
+            unawaited(_undoIgnore(c, l10n));
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<void> _undoIgnore(PendingCandidate c, AppLocalizations l10n) async {
+    final store = ref.read(autoBookCoordinatorProvider).store;
+    final ok = await PendingDecisionCoordinator.run(
+      PendingDecisionCoordinator.keyFor(c),
+      () async {
+        final added = await _store.add(c);
+        if (c.eventKey != null && c.eventItemIndex != null) {
+          final event = await store.findByEventKey(c.eventKey!);
+          if (event != null) {
+            await store.reopenItem(
+              eventId: event.id,
+              itemIndex: c.eventItemIndex!,
+              reason: 'undo_ignore',
+            );
+          }
+        }
+        return added;
+      },
+    );
+    if (!mounted) return;
+    showToast(context, ok ? l10n.pendingIgnoredUndone : l10n.pendingIgnoredUnavailable);
+    await _reload();
+  }
+
+  /// B4 任务 2:已忽略列表(材料仍在才给恢复按钮)。
+  Future<void> _reloadIgnored() async {
+    final store = ref.read(autoBookCoordinatorProvider).store;
+    try {
+      final items = await store.listIgnoredItems();
+      if (!mounted) return;
+      setState(() => _ignored = items);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _ignored = const []);
+    }
+  }
+
+  /// 恢复被忽略的子项:只重建候选,不创建交易。
+  Future<void> _restoreIgnored(
+      schema.AutoBookEvent event, int itemIndex) async {
+    final l10n = AppLocalizations.of(context);
+    final key = 'restore:${event.eventKey}:$itemIndex';
+    final restored = await PendingDecisionCoordinator.run(
+      key,
+      () => ref
+          .read(aiBookkeeperProvider)
+          .restoreIgnored(event, itemIndex: itemIndex),
+    );
+    if (!mounted) return;
+    if (restored > 0) {
+      showToast(context, l10n.pendingIgnoredRestored);
+      await _reloadIgnored();
+      await _reload();
+    } else {
+      showToast(
+        context,
+        l10n.pendingIgnoredUnavailable,
+        duration: const Duration(seconds: 3),
+      );
+    }
   }
 
   // ────────────────────────────────────────────────────────────────────
@@ -673,6 +920,56 @@ class _PendingConfirmationPageState
   /// 或带 matchedTransactionId)时,先弹一次性分组选择 ——「合并到已有交易 /
   /// 仍记一笔」由用户定,不再默认静默合并(旧逻辑用户以为「都记上」,实际
   /// 疑似重复组被并入已有交易,只 toast 成功条数)。非重复组不受影响直记。
+  /// B4 任务 4:分类纠错的「仅本次 / 记住」选择。
+  ///
+  /// 返回要记住的关键词(未规范化,展示用);null = 仅本次/取消,不落规则。
+  Future<String?> _askRememberKeyword(
+    AppLocalizations l10n, {
+    required String category,
+    required String initialKeyword,
+  }) async {
+    final controller = TextEditingController(text: initialKeyword);
+    try {
+      return await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(l10n.pendingRememberAsk),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                l10n.pendingRememberBody(initialKeyword, category),
+                style: Theme.of(ctx).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                decoration: InputDecoration(
+                  labelText: l10n.pendingFieldMerchant,
+                  helperText: l10n.pendingFieldHintRememberKeyword,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, null),
+              child: Text(l10n.pendingRememberOnce),
+            ),
+            FilledButton(
+              onPressed: () =>
+                  Navigator.pop(ctx, controller.text.trim()),
+              child: Text(l10n.pendingRememberYes),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      controller.dispose();
+    }
+  }
+
   Future<void> _batchApprove() async {
     final l10n = AppLocalizations.of(context);
     final targets = _selectedCandidates;
@@ -716,10 +1013,13 @@ class _PendingConfirmationPageState
       final isDuplicate =
           c.matchedTransactionId != null || c.reason == 'duplicate';
       try {
-        final txId = await bookkeeper.approvePending(
-          c,
-          l10n: l10n,
-          forceCreate: isDuplicate ? forceCreateForDuplicates : false,
+        final txId = await PendingDecisionCoordinator.run(
+          PendingDecisionCoordinator.keyFor(c),
+          () => bookkeeper.approvePending(
+            c,
+            l10n: l10n,
+            forceCreate: isDuplicate ? forceCreateForDuplicates : false,
+          ),
         );
         if (txId != null) {
           if (isDuplicate && forceCreateForDuplicates) {
@@ -767,7 +1067,10 @@ class _PendingConfirmationPageState
     var failed = 0;
     for (final c in targets) {
       try {
-        await bookkeeper.rejectPending(c);
+        await PendingDecisionCoordinator.run(
+          PendingDecisionCoordinator.keyFor(c),
+          () => bookkeeper.rejectPending(c),
+        );
         ok++;
       } catch (_) {
         failed++;
@@ -894,31 +1197,54 @@ class _PendingConfirmationPageState
         account: accountName,
       ),
     );
-    // 批次5(分类学习):用户改了分类且与 AI 原判不同 → 落「商户关键词→分类」
-    // 映射,下次同商户自动优先用裁定结果。
+    // B4 任务 4:改了分类先问「仅本次 / 记住」;**入账成功后**才落规则,
+    // 保存失败不影响本次入账。关键词默认取商户(没有商户才回落备注)并让用户
+    // 确认/改写 —— 不默认整段备注,也不自动删数字。
     final finalCategory = picked?.name;
-    if (finalCategory != null &&
-        finalCategory != bill.category &&
-        (finalNote ?? bill.note ?? '').trim().isNotEmpty) {
-      try {
-        await CategoryLearningStore().add(
-          keyword: normalizeAutoBookText(finalNote ?? bill.note ?? ''),
-          categoryName: finalCategory,
-          kind: switch (bill.type) {
-            BillType.income => 'income',
-            BillType.transfer => 'transfer',
-            _ => 'expense',
-          },
-        );
-      } catch (_) {}
+    final categoryChanged =
+        finalCategory != null && finalCategory != bill.category;
+    final initialKeyword = (bill.merchant ?? finalNote ?? bill.note ?? '')
+        .trim();
+    String? rememberKeyword;
+    if (categoryChanged && initialKeyword.isNotEmpty) {
+      rememberKeyword = await _askRememberKeyword(
+        l10n,
+        category: finalCategory,
+        initialKeyword: initialKeyword,
+      );
     }
-    final txId = await ref.read(aiBookkeeperProvider).approvePending(
-          editedCandidate,
-          l10n: l10n,
-          forceCreate: true,
-        );
+
+    final txId = await PendingDecisionCoordinator.run(
+      PendingDecisionCoordinator.keyFor(editedCandidate),
+      () => ref.read(aiBookkeeperProvider).approvePending(
+            editedCandidate,
+            l10n: l10n,
+            forceCreate: true,
+          ),
+    );
     if (mounted) {
       if (txId != null) {
+        if (rememberKeyword != null && rememberKeyword.isNotEmpty) {
+          try {
+            await CategoryLearningStore().add(
+              keyword: normalizeAutoBookText(rememberKeyword),
+              categoryName: finalCategory!,
+              kind: switch (bill.type) {
+                BillType.income => 'income',
+                BillType.transfer => 'transfer',
+                _ => 'expense',
+              },
+              ledgerId: editedCandidate.bill.ledgerId,
+            );
+            showToast(
+              context,
+              l10n.pendingRememberSaved(
+                  rememberKeyword, finalCategory),
+            );
+          } catch (_) {
+            showToast(context, l10n.pendingRememberSaveFailed);
+          }
+        }
         await _rememberSeparatePayment(editedCandidate);
         if (!mounted) return;
         showToast(context, l10n.pendingConfirmationApproved);
@@ -999,22 +1325,29 @@ class _PendingConfirmationPageState
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: SegmentedButton<bool>(
+            child: SegmentedButton<int>(
               segments: [
                 ButtonSegment(
-                  value: false,
+                  value: 0,
                   label: Text(l10n.pendingConfirmationTitle),
                   icon: const Icon(Icons.fact_check_outlined),
                 ),
                 ButtonSegment(
-                  value: true,
+                  value: 1,
+                  label: Text(l10n.pendingIgnoredTab),
+                  icon: const Icon(Icons.undo_outlined),
+                ),
+                ButtonSegment(
+                  value: 2,
                   label: Text(l10n.automationDraftsTitle),
                   icon: const Icon(Icons.schedule_send_outlined),
                 ),
               ],
-              selected: {_showDrafts},
-              onSelectionChanged: (value) =>
-                  setState(() => _showDrafts = value.single),
+              selected: {_tab},
+              onSelectionChanged: (value) {
+                setState(() => _tab = value.single);
+                if (_tab == 1) _reloadIgnored();
+              },
             ),
           ),
           Expanded(
@@ -1022,7 +1355,9 @@ class _PendingConfirmationPageState
                 ? const Center(child: CircularProgressIndicator())
                 : _showDrafts
                     ? _buildDraftsList(theme)
-                    : Column(
+                    : _showIgnored
+                        ? _buildIgnoredList(theme)
+                        : Column(
                     children: [
                       if (_archivedHint)
                         Padding(
@@ -1046,10 +1381,14 @@ class _PendingConfirmationPageState
                         ),
                       if (_candidates.isNotEmpty) _buildFilters(context),
                       // 批量选择条(P1-4):多选模式下按当前筛选全选 + 批量确认/拒绝
+                      // U-2:改 Wrap,320 宽/大字体下按钮换行不溢出。
                       if (_multiSelect && _candidates.isNotEmpty)
                         Padding(
                           padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-                          child: Row(
+                          child: Wrap(
+                            spacing: 8,
+                            runSpacing: 4,
+                            crossAxisAlignment: WrapCrossAlignment.center,
                             children: [
                               TextButton(
                                 onPressed: _selectAllVisible,
@@ -1057,14 +1396,12 @@ class _PendingConfirmationPageState
                               ),
                               Text('${_selectedIds.length}',
                                   style: theme.textTheme.titleSmall),
-                              const Spacer(),
                               FilledButton.tonal(
                                 onPressed: _selectedIds.isEmpty
                                     ? null
                                     : _batchApprove,
                                 child: Text(l10n.pendingBatchApprove),
                               ),
-                              const SizedBox(width: 8),
                               OutlinedButton(
                                 onPressed:
                                     _selectedIds.isEmpty ? null : _batchReject,
@@ -1087,7 +1424,8 @@ class _PendingConfirmationPageState
                                 padding: const EdgeInsets.all(16),
                                 itemCount: _visibleCandidates.length,
                                 itemBuilder: (context, index) {
-                                  final c = _visibleCandidates[index];
+                                  final c =
+                                      _effective(_visibleCandidates[index]);
                                   final bill = c.bill;
                                   return _selectableCard(
                                     context,
@@ -1133,41 +1471,81 @@ class _PendingConfirmationPageState
                                                 style: theme
                                                     .textTheme.titleMedium
                                                     ?.copyWith(
-                                                        fontWeight:
-                                                            FontWeight.w700),
+                                                      fontWeight:
+                                                          FontWeight.w700,
+                                                      color: _fieldsToFix(c)
+                                                              .contains('amount')
+                                                          ? Colors.orange
+                                                          : null,
+                                                    ),
                                               ),
                                             ],
                                           ),
                                           const SizedBox(height: 6),
-                                          Wrap(
-                                            spacing: 8,
-                                            crossAxisAlignment:
-                                                WrapCrossAlignment.center,
-                                            children: [
-                                              if (c.bill.category != null &&
-                                                  c.bill.category!.isNotEmpty)
+                                          // B4 任务 1:显示时间/商家/目标账本,
+                                          // 并按原因突出**需要修正的字段**;
+                                          // 账户与分类可在卡片内直接补。
+                                          Builder(builder: (ctx) {
+                                            final fix = _fieldsToFix(c);
+                                            final timeText = c.bill.time == null
+                                                ? l10n.pendingFieldHintTime
+                                                : '${c.bill.time.toString().split(' ').first} ${_timePrecisionLabel(l10n, c.bill)}';
+                                            return Wrap(
+                                              spacing: 8,
+                                              runSpacing: 4,
+                                              crossAxisAlignment:
+                                                  WrapCrossAlignment.center,
+                                              children: [
                                                 _chip(
-                                                    context, c.bill.category!),
-                                              ...TagSeedService
-                                                      .getBillingTagNames(
-                                                          c.billingTypes, l10n)
-                                                  .map(
-                                                      (t) => _chip(context, t)),
-                                              Text(
-                                                c.bill.time
-                                                        ?.toString()
-                                                        .split(' ')
-                                                        .first ??
-                                                    '',
+                                                  ctx,
+                                                  (c.bill.account ?? '')
+                                                          .trim()
+                                                          .isEmpty
+                                                      ? l10n.pendingFieldHintAccount
+                                                      : c.bill.account!,
+                                                  highlight:
+                                                      fix.contains('account'),
+                                                  onTap: () =>
+                                                      _pickAccountInline(c),
+                                                ),
+                                                if (c.bill.category != null &&
+                                                    c.bill.category!.isNotEmpty)
+                                                  _chip(ctx, c.bill.category!,
+                                                      onTap: () =>
+                                                          _pickCategoryInline(c)),
+                                                ...TagSeedService
+                                                        .getBillingTagNames(
+                                                            c.billingTypes, l10n)
+                                                    .map((t) => _chip(ctx, t)),
+                                                _chip(
+                                                  ctx,
+                                                  timeText,
+                                                  highlight:
+                                                      fix.contains('time'),
+                                                  onTap: () =>
+                                                      _editAndApprove(c),
+                                                ),
+                                                _chip(
+                                                  ctx,
+                                                  '${l10n.pendingFieldLedger}：${_ledgerLabel(c.bill.ledgerId)}',
+                                                ),
+                                              ],
+                                            );
+                                          }),
+                                          if ((bill.merchant ?? '').trim().isNotEmpty)
+                                            Padding(
+                                              padding:
+                                                  const EdgeInsets.only(top: 2),
+                                              child: Text(
+                                                '${l10n.pendingFieldMerchant}：${bill.merchant}',
                                                 style: theme.textTheme.bodySmall
                                                     ?.copyWith(
                                                   color: theme
                                                       .colorScheme.onSurface
-                                                      .withValues(alpha: 0.5),
+                                                      .withValues(alpha: 0.6),
                                                 ),
                                               ),
-                                            ],
-                                          ),
+                                            ),
                                           const SizedBox(height: 6),
                                           // 待确认原因(疑似重复/大额/低置信)
                                           if (c.reason != null)
@@ -1209,30 +1587,44 @@ class _PendingConfirmationPageState
                                             ),
                                           ),
                                           const SizedBox(height: 8),
-                                          Row(
+                                          // U-2(2026-10-11):动作行改 Wrap —— 三个
+                                          // 按钮的文本在 320 宽 / textScale 2.0 下
+                                          // 超出可用宽度(RenderFlex overflow),
+                                          // 换行后仍全部可点(不再把按钮挤出屏幕
+                                          // 导致无法确认/忽略候选)。每个按钮保持
+                                          // 最小点击宽度,文本可收缩省略。
+                                          Wrap(
+                                            spacing: 8,
+                                            runSpacing: 6,
+                                            crossAxisAlignment:
+                                                WrapCrossAlignment.center,
                                             children: [
-                                              Expanded(
-                                                child: OutlinedButton(
-                                                  onPressed: () => _reject(c),
-                                                  child: Text(l10n
-                                                      .pendingConfirmationReject),
+                                              OutlinedButton(
+                                                onPressed: () => _reject(c),
+                                                child: Text(
+                                                  l10n.pendingConfirmationReject,
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
                                                 ),
                                               ),
-                                              const SizedBox(width: 8),
-                                              Expanded(
-                                                child: OutlinedButton(
-                                                  onPressed: () =>
-                                                      _editAndApprove(c),
-                                                  child: Text(l10n
-                                                      .pendingConfirmationEdit),
+                                              OutlinedButton(
+                                                onPressed: () =>
+                                                    _editAndApprove(c),
+                                                child: Text(
+                                                  l10n.pendingConfirmationEdit,
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
                                                 ),
                                               ),
-                                              const SizedBox(width: 8),
-                                              Expanded(
-                                                child: FilledButton(
-                                                  onPressed: () => _approve(c),
-                                                  child: Text(l10n
-                                                      .pendingConfirmationConfirm),
+                                              FilledButton(
+                                                onPressed: () => _approve(c),
+                                                child: Text(
+                                                  l10n.pendingConfirmationConfirm,
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
                                                 ),
                                               ),
                                             ],
@@ -1356,17 +1748,25 @@ class _PendingConfirmationPageState
                   : Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
+                        // U-2:标题行改 Wrap —— 窄屏/大字体下"相似已有交易 #N"
+                        // 与"匹配度 N%"不再互相挤压(小屏此前溢出)。
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 2,
+                          crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
                             Icon(
                               Icons.compare_arrows,
                               size: 17,
                               color: theme.colorScheme.secondary,
                             ),
-                            const SizedBox(width: 6),
-                            Expanded(
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(
+                                  maxWidth: 220),
                               child: Text(
                                 '${l10n.pendingConfirmationSimilarTransaction} #$transactionId',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                                 style: theme.textTheme.labelLarge?.copyWith(
                                   color: theme.colorScheme.secondary,
                                   fontWeight: FontWeight.w700,
@@ -1651,19 +2051,190 @@ class _PendingConfirmationPageState
     }
   }
 
-  Widget _chip(BuildContext context, String text) {
+  /// B4 任务 1:[highlight] = 按待确认原因**需要修正的字段**;[onTap] = 卡片
+  /// 内直接改这一项,不必进完整编辑流。
+  /// U-2(2026-10-11)窄屏/大字体加固:芯片文本可收缩(ellipsis)。
+  /// 旧实现 Text 无 maxLines/overflow,超长字段名(账户/分类/备注)在 320 宽
+  /// 或 textScale 2.0 下会撑破外层 Wrap 的可用宽度。
+  Widget _chip(
+    BuildContext context,
+    String text, {
+    bool highlight = false,
+    VoidCallback? onTap,
+  }) {
     final theme = Theme.of(context);
-    return Container(
+    final color = highlight
+        ? Colors.orange
+        : theme.colorScheme.primary;
+    final chip = Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
-        color: theme.colorScheme.primary.withValues(alpha: 0.08),
+        color: color.withValues(alpha: highlight ? 0.14 : 0.08),
         borderRadius: BorderRadius.circular(8),
+        border: highlight ? Border.all(color: color, width: 1) : null,
       ),
       child: Text(
         text,
-        style: theme.textTheme.labelSmall
-            ?.copyWith(color: theme.colorScheme.primary),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: theme.textTheme.labelSmall?.copyWith(color: color),
       ),
     );
+    if (onTap == null) return chip;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: chip,
+    );
+  }
+
+  /// 按待确认原因/缺失字段算出「需要修正的字段」。
+  Set<String> _fieldsToFix(PendingCandidate c) {
+    final fields = <String>{};
+    final reason = c.reason ?? '';
+    final bill = c.bill;
+    if (reason == 'timeInferred' ||
+        reason == 'timePrecisionWeak' ||
+        bill.timeInferred ||
+        bill.timePrecision == BillTimePrecision.date ||
+        bill.timePrecision == BillTimePrecision.inferred ||
+        bill.timePrecision == BillTimePrecision.unknown ||
+        bill.time == null) {
+      fields.add('time');
+    }
+    if (reason == 'transferAccountMissing' ||
+        (bill.account ?? '').trim().isEmpty) {
+      fields.add('account');
+    }
+    if (reason == 'confidenceMissing' ||
+        reason == 'lowConfidence' ||
+        reason == 'settlementUnknown' ||
+        bill.amount == null ||
+        bill.amount == 0) {
+      fields.add('amount');
+    }
+    if (reason == 'duplicate') fields.add('compare');
+    return fields;
+  }
+
+  /// 时间精度的可读标注(可信时间的判断口径,不展示内部枚举)。
+  String _timePrecisionLabel(AppLocalizations l10n, BillInfo bill) {
+    if (bill.time == null) return '· ${l10n.pendingFieldHintTime}';
+    if (bill.timeInferred) return '· ${l10n.pendingTimeInferred}';
+    return switch (bill.timePrecision) {
+      BillTimePrecision.date => '· ${l10n.pendingTimeDateOnly}',
+      BillTimePrecision.inferred => '· ${l10n.pendingTimeInferred}',
+      BillTimePrecision.unknown => '· ${l10n.pendingTimeDateOnly}',
+      _ => '· ${l10n.pendingTimeTrusted}',
+    };
+  }
+
+  /// 目标账本标签:按本地 id 反查名称,查不到显示 id(不虚构账本名)。
+  String _ledgerLabel(int? ledgerId) {
+    if (ledgerId == null) return '—';
+    for (final l in _ledgers) {
+      if (l.id == ledgerId) return l.name;
+    }
+    return '#$ledgerId';
+  }
+
+  /// 卡片内选账户:只补这一个字段,确认仍走「确认」按钮。
+  Future<void> _pickAccountInline(PendingCandidate c) async {
+    final accounts =
+        ref.read(allAccountsStreamProvider).valueOrNull ?? const [];
+    if (accounts.isEmpty) return;
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: Text(l10nPendingSelectAccount(ctx),
+                  style: Theme.of(ctx).textTheme.titleSmall),
+            ),
+            for (final a in accounts)
+              ListTile(
+                dense: true,
+                title: Text(a.name),
+                subtitle: Text(a.currency),
+                trailing: (c.bill.account ?? '') == a.name
+                    ? const Icon(Icons.check)
+                    : null,
+                onTap: () => Navigator.pop(ctx, a.name),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _inlineEdits[c.id] =
+          c.copyWith(bill: c.bill.copyWith(account: picked));
+    });
+  }
+
+  String l10nPendingSelectAccount(BuildContext ctx) =>
+      AppLocalizations.of(ctx).pendingSelectAccount;
+
+  /// 卡片内选分类:同编辑流第一步,选完即生效。
+  Future<void> _pickCategoryInline(PendingCandidate c) async {
+    final l10n = AppLocalizations.of(context);
+    final kind = switch (c.bill.type) {
+      BillType.income => 'income',
+      BillType.transfer => 'transfer',
+      _ => 'expense',
+    };
+    final ledgerId = c.bill.ledgerId;
+    if (ledgerId == null) {
+      showToast(context, l10n.pendingConfirmationUncheckedReason);
+      return;
+    }
+    schema.Category? initialCategory;
+    try {
+      initialCategory = await _matchCategoryByName(c.bill.category, kind);
+    } catch (_) {
+      initialCategory = null;
+    }
+    if (!mounted) return;
+    final picked = await showModalBottomSheet<schema.Category>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => SizedBox(
+        height: MediaQuery.of(ctx).size.height * 0.75,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: Row(
+                children: [
+                  Text(l10n.pendingSelectCategory,
+                      style: Theme.of(ctx).textTheme.titleMedium),
+                  const Spacer(),
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: Text(l10n.commonCancel),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: CategorySelector(
+                kind: kind,
+                initialCategoryId: initialCategory?.id,
+                onCategorySelected: (cat) => Navigator.pop(ctx, cat),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _inlineEdits[c.id] =
+          c.copyWith(bill: c.bill.copyWith(category: picked.name));
+    });
   }
 }

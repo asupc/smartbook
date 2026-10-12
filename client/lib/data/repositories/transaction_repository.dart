@@ -1,6 +1,19 @@
 import '../db.dart';
 import '../../models/note_history.dart';
 
+/// [TransactionRepository.updateTransaction] 可选字段的哨兵(C3/F-11)。
+///
+/// 语义:`= unsetTransactionField`(即不传)= **保持原值**;显式传 `null` =
+/// **清空**。旧实现把「不传」与「清空」混为一谈(可选参数默认 null 被无条件
+/// 写库),导致「只改金额」的调用静默丢掉分类与备注。
+const Object unsetTransactionField = _UnsetTransactionField();
+
+class _UnsetTransactionField {
+  const _UnsetTransactionField();
+  @override
+  String toString() => 'unsetTransactionField';
+}
+
 /// 批量按 syncId 更新交易时的单条 update payload。
 class TransactionUpdateBySyncIdData {
   final String syncId;
@@ -329,17 +342,20 @@ abstract class TransactionRepository {
   });
 
   /// 更新交易
+  ///
+  /// C3/F-11:可选字段用 [unsetTransactionField] 哨兵区分「未传」与「显式清空」。
+  /// 不传 = 保持原值;传 `null` = 清空。
   Future<void> updateTransaction({
     required int id,
     required String type,
     required double amount,
-    int? categoryId,
-    String? note,
+    Object? categoryId = unsetTransactionField,
+    Object? note = unsetTransactionField,
     DateTime? happenedAt,
     dynamic accountId,
-    String? categorySyncIdOverride,
-    String? accountSyncIdOverride,
-    String? toAccountSyncIdOverride,
+    Object? categorySyncIdOverride = unsetTransactionField,
+    Object? accountSyncIdOverride = unsetTransactionField,
+    Object? toAccountSyncIdOverride = unsetTransactionField,
     bool? excludeFromStats,
     bool? excludeFromBudget,
     // v30 交易级多币种:未传(null)= 不改动既有值;聚合层对 amount/账户变化

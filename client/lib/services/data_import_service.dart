@@ -305,6 +305,22 @@ class DataImportService {
         ));
         continue;
       }
+      // X2:升级兼容 —— 旧版本(未小写化)已落库的事件行同样算已导入。
+      if (eventStore != null &&
+          await legacyImportKeyExists(
+            eventStore,
+            ledgerId: ledgerId,
+            provider: tx.provider ?? provider,
+            transaction: tx,
+          )) {
+        rows.add(ImportPreviewRow(
+          index: index,
+          status: ImportPreviewStatus.duplicate,
+          reason: 'already_imported_legacy_key',
+          eventKey: eventKey,
+        ));
+        continue;
+      }
       rows.add(ImportPreviewRow(
         index: index,
         status: ImportPreviewStatus.newRow,
@@ -571,6 +587,11 @@ class DataImportService {
   /// 生成导入行的本地幂等键。externalId 优先；没有外部 ID 时使用
   /// provider + batchKey + row hash，避免重复导入同一文件，又不把来源键
   /// 塞进 transactions.syncId。
+  ///
+  /// 大小写归一(批次 X2):externalId 先 trim 再 **toLowerCase** 后进 hash。
+  /// 旧实现直接用原值,同一订单号换大小写(`ABC123` vs `abc123`)得到不同
+  /// 幂等键 → 重复导入落两笔;而查询侧 `findTransactionByExternalId` 是
+  /// 归一化(lowercase)查询,两侧口径分裂。平台订单号大小写不携带语义。
   static String importEventKey({
     required int ledgerId,
     required String provider,
@@ -579,7 +600,8 @@ class DataImportService {
   }) {
     final external = transaction.externalId?.trim();
     if (external != null && external.isNotEmpty) {
-      return 'import:v1:$ledgerId:${provider.trim().toLowerCase()}:external:${_keyHash(external)}';
+      return 'import:v1:$ledgerId:${provider.trim().toLowerCase()}:external:'
+          '${_keyHash(external.toLowerCase())}';
     }
     final row = transaction.sourceRowHash?.trim().isNotEmpty == true
         ? transaction.sourceRowHash!.trim()
@@ -589,11 +611,54 @@ class DataImportService {
     return 'import:v1:$ledgerId:${provider.trim().toLowerCase()}:$batch:$row';
   }
 
+  /// 升级前的旧幂等键(externalId 未小写化)。仅用于**探测**旧版本已落库的
+  /// 事件行,不用于新建 —— 大小写归一后同订单号的旧行仍应判重复,否则升级
+  /// 用户重导同一文件会多出一笔。返回 null 表示无需探测(无 externalId,
+  /// 或原值本就全小写、与规范键相同)。
+  static String? legacyImportEventKey({
+    required int ledgerId,
+    required String provider,
+    required ImportTransaction transaction,
+  }) {
+    final external = transaction.externalId?.trim();
+    if (external == null || external.isEmpty) return null;
+    if (external == external.toLowerCase()) return null;
+    return 'import:v1:$ledgerId:${provider.trim().toLowerCase()}:external:'
+        '${_keyHash(external)}';
+  }
+
+  /// 旧键是否已落库(只读探测)。给 preview / import 两侧共用,保证口径一致。
+  static Future<bool> legacyImportKeyExists(
+    AutoBookEventStore eventStore, {
+    required int ledgerId,
+    required String provider,
+    required ImportTransaction transaction,
+  }) async {
+    final legacyKey = legacyImportEventKey(
+      ledgerId: ledgerId,
+      provider: provider,
+      transaction: transaction,
+    );
+    if (legacyKey == null) return false;
+    return await eventStore.findByEventKey(legacyKey) != null;
+  }
+
+  /// 状态是否**不可记账**(待支付/失败/关闭/取消/账单汇总等)。
+  ///
+  /// 判定顺序(2026-10-11 批次 C2):**退款优先** —— 含"退款/退费/refund"
+  /// 的状态一律返回 false。`退款关闭`/`取消退款成功` 这类复合状态同时命中
+  /// "退款"与"关闭/取消",单看子串会被判失效而静默丢弃退款行;参数解析器
+  /// (`AlipayBillParser._normalizePlatformStatus`)已把这类状态归一成
+  /// `refund`,过滤口径必须与之一致,否则同一行出现
+  /// 「parser 说 refund、导入服务说 ignored」的冲突。
+  /// 注意:**仅含"退款"二字**的模糊状态也走此分支(既非 dead row 也非
+  /// 明确成功,由下游按退款收入处理)。
   static bool isNonBookableStatus(String? status) {
     final raw = status?.trim().toLowerCase() ?? '';
     if (raw.isEmpty) return false;
-    return [
-      '待支付',
+    // 退款优先:退款语义比"关闭/取消"更具体,且 parser 侧同样 refund 优先。
+    if (isRefundStatus(status)) return false;
+    return [      '待支付',
       '待付款',
       '处理中',
       '失败',
@@ -891,6 +956,21 @@ class DataImportService {
         batchKey: batchKey,
       );
       if (!seenEventKeys.add(eventKey)) {
+        duplicated++;
+        processed++;
+        onProgress?.call(processed, total);
+        continue;
+      }
+      // X2:升级兼容 —— 旧版本(未小写化)已落库的事件行同样算已导入,
+      // 否则大小写归一后旧行查不到,重导同一文件会多出一笔。
+      // (claim 的 ensure 只在规范键上找行,不会命中旧键。)
+      if (eventStore != null &&
+          await legacyImportKeyExists(
+            eventStore,
+            ledgerId: ledgerId,
+            provider: tx.provider ?? provider,
+            transaction: tx,
+          )) {
         duplicated++;
         processed++;
         onProgress?.call(processed, total);

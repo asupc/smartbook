@@ -395,11 +395,23 @@ class SeedService {
   // ========== 种子数据生成方法 ==========
 
   /// 生成默认账本
+  ///
+  /// 幂等(批次 X2):已有任何账本时**跳过创建并返回既有账本 id**。
+  /// seed 语义是「首次初始化」(welcome 流程);二次调用(欢迎页重入 /
+  /// ensureSeed 被调两次)曾再建一个"默认账本",造成账本重复。
   static Future<int> createDefaultLedger(
     BeeDatabase db,
     AppLocalizations l10n,
     String currency,
   ) async {
+    final existing = await (db.select(db.ledgers)
+          ..orderBy([(t) => OrderingTerm(expression: t.id)])
+          ..limit(1))
+        .getSingleOrNull();
+    if (existing != null) {
+      logger.info('seed_service', '已存在账本(id=${existing.id}),跳过默认账本创建');
+      return existing.id;
+    }
     final ledgerId = await db.into(db.ledgers).insert(
       LedgersCompanion.insert(
         name: l10n.ledgerDefaultName,
@@ -407,6 +419,20 @@ class SeedService {
       ),
     );
     return ledgerId;
+  }
+
+  /// 读取既有分类的确定性 syncId → id 映射,以及 (name,kind) 占用集合。
+  /// 供分类 seed 幂等判定用(单查询预载,避免逐条 SELECT)。
+  static Future<({Map<String, int> bySyncId, Set<String> nameKind})>
+      _existingCategoryIndex(BeeDatabase db) async {
+    final rows = await db.select(db.categories).get();
+    return (
+      bySyncId: <String, int>{
+        for (final c in rows)
+          if ((c.syncId ?? '').isNotEmpty) c.syncId!: c.id,
+      },
+      nameKind: <String>{for (final c in rows) '${c.name}|${c.kind}'},
+    );
   }
 
   /// 生成默认账户（3个：现金、银行卡、信用卡）
@@ -608,11 +634,21 @@ class SeedService {
   }
 
   /// 生成默认分类（一级分类模式）
+  ///
+  /// 幂等(批次 X2):按**确定性 syncId** 判重,已存在的分类跳过不重复插入。
+  /// 历史行为:二次调用会把 59 条一级分类再插一遍(名称重复)。
   static Future<void> createFlatCategories(BeeDatabase db, AppLocalizations l10n) async {
+    final existing = await _existingCategoryIndex(db);
+
     // 创建支出分类
     for (var i = 0; i < flatExpenseCategoryKeys.length; i++) {
       final key = flatExpenseCategoryKeys[i];
       final translatedName = _getTranslatedCategoryName(key, 'expense', l10n);
+      final syncId =
+          deterministicCategorySyncId(kind: 'expense', level: 1, key: key);
+      if (existing.bySyncId.containsKey(syncId)) {
+        continue;
+      }
 
       logger.info('seed_service', '创建支出分类: key=$key, name=$translatedName');
 
@@ -623,8 +659,7 @@ class SeedService {
           icon: Value(getDefaultIcon(key)),
           sortOrder: Value(i),
           level: const Value(1),
-          syncId: Value(
-              deterministicCategorySyncId(kind: 'expense', level: 1, key: key)),
+          syncId: Value(syncId),
         ),
       );
     }
@@ -633,6 +668,11 @@ class SeedService {
     for (var i = 0; i < flatIncomeCategoryKeys.length; i++) {
       final key = flatIncomeCategoryKeys[i];
       final translatedName = _getTranslatedCategoryName(key, 'income', l10n);
+      final syncId =
+          deterministicCategorySyncId(kind: 'income', level: 1, key: key);
+      if (existing.bySyncId.containsKey(syncId)) {
+        continue;
+      }
 
       logger.info('seed_service', '创建收入分类: key=$key, name=$translatedName');
 
@@ -643,15 +683,21 @@ class SeedService {
           icon: Value(getDefaultIcon(key)),
           sortOrder: Value(i),
           level: const Value(1),
-          syncId: Value(
-              deterministicCategorySyncId(kind: 'income', level: 1, key: key)),
+          syncId: Value(syncId),
         ),
       );
     }
   }
 
   /// 生成默认分类（二级分类模式）
+  ///
+  /// 幂等(批次 X2):按确定性 syncId 判重(父子都判),已存在则跳过。
+  /// 注意父分类被跳过后,其子分类的 `parentId` 必须回落到**既有父行的 id**
+  /// (不能拿本次循环的局部变量),否则第二次 seed 会往旧父下重复挂子级。
   static Future<void> createHierarchicalCategories(BeeDatabase db, AppLocalizations l10n) async {
+    final existing = await _existingCategoryIndex(db);
+    final knownSyncIds = Map<String, int>.of(existing.bySyncId);
+
     // 创建支出分类
     var sortOrder = 0;
     for (final entry in hierarchicalExpenseCategories.entries) {
@@ -659,29 +705,44 @@ class SeedService {
       final childKeys = entry.value;
 
       final parentTranslatedName = _getTranslatedParentCategoryName(parentKey, 'expense', l10n);
-      logger.info('seed_service', '创建支出父分类: key=$parentKey, name=$parentTranslatedName');
+      final parentSyncId = deterministicCategorySyncId(
+          kind: 'expense', level: 1, key: parentKey);
 
-      // 创建父分类
-      final parentId = await db.into(db.categories).insert(
-        CategoriesCompanion.insert(
-          name: parentTranslatedName, // 使用翻译后的名称
-          kind: 'expense',
-          icon: Value(getDefaultIcon(parentKey)),
-          sortOrder: Value(sortOrder++),
-          level: const Value(1),
-          syncId: Value(deterministicCategorySyncId(
-              kind: 'expense', level: 1, key: parentKey)),
-        ),
-      );
+      int parentId;
+      final existingParentId = knownSyncIds[parentSyncId];
+      if (existingParentId != null) {
+        parentId = existingParentId;
+        sortOrder++;
+      } else {
+        logger.info('seed_service', '创建支出父分类: key=$parentKey, name=$parentTranslatedName');
+
+        // 创建父分类
+        parentId = await db.into(db.categories).insert(
+          CategoriesCompanion.insert(
+            name: parentTranslatedName, // 使用翻译后的名称
+            kind: 'expense',
+            icon: Value(getDefaultIcon(parentKey)),
+            sortOrder: Value(sortOrder++),
+            level: const Value(1),
+            syncId: Value(parentSyncId),
+          ),
+        );
+        knownSyncIds[parentSyncId] = parentId;
+      }
 
       // 创建子分类
       for (var i = 0; i < childKeys.length; i++) {
         final childKey = childKeys[i];
+        final childSyncId = deterministicCategorySyncId(
+            kind: 'expense', level: 2, key: childKey);
+        if (knownSyncIds.containsKey(childSyncId)) {
+          continue;
+        }
         final childTranslatedName = _getTranslatedSubCategoryName(childKey, 'expense', l10n);
 
         logger.info('seed_service', '创建支出子分类: key=$childKey, name=$childTranslatedName');
 
-        await db.into(db.categories).insert(
+        final childId = await db.into(db.categories).insert(
           CategoriesCompanion.insert(
             name: childTranslatedName, // 使用翻译后的名称
             kind: 'expense',
@@ -689,10 +750,10 @@ class SeedService {
             sortOrder: Value(i),
             level: const Value(2),
             parentId: Value(parentId),
-            syncId: Value(deterministicCategorySyncId(
-                kind: 'expense', level: 2, key: childKey)),
+            syncId: Value(childSyncId),
           ),
         );
+        knownSyncIds[childSyncId] = childId;
       }
     }
 
@@ -703,29 +764,44 @@ class SeedService {
       final childKeys = entry.value;
 
       final parentTranslatedName = _getTranslatedParentCategoryName(parentKey, 'income', l10n);
-      logger.info('seed_service', '创建收入父分类: key=$parentKey, name=$parentTranslatedName');
+      final parentSyncId = deterministicCategorySyncId(
+          kind: 'income', level: 1, key: parentKey);
 
-      // 创建父分类
-      final parentId = await db.into(db.categories).insert(
-        CategoriesCompanion.insert(
-          name: parentTranslatedName, // 使用翻译后的名称
-          kind: 'income',
-          icon: Value(getDefaultIcon(parentKey)),
-          sortOrder: Value(sortOrder++),
-          level: const Value(1),
-          syncId: Value(deterministicCategorySyncId(
-              kind: 'income', level: 1, key: parentKey)),
-        ),
-      );
+      int parentId;
+      final existingParentId = knownSyncIds[parentSyncId];
+      if (existingParentId != null) {
+        parentId = existingParentId;
+        sortOrder++;
+      } else {
+        logger.info('seed_service', '创建收入父分类: key=$parentKey, name=$parentTranslatedName');
+
+        // 创建父分类
+        parentId = await db.into(db.categories).insert(
+          CategoriesCompanion.insert(
+            name: parentTranslatedName, // 使用翻译后的名称
+            kind: 'income',
+            icon: Value(getDefaultIcon(parentKey)),
+            sortOrder: Value(sortOrder++),
+            level: const Value(1),
+            syncId: Value(parentSyncId),
+          ),
+        );
+        knownSyncIds[parentSyncId] = parentId;
+      }
 
       // 创建子分类
       for (var i = 0; i < childKeys.length; i++) {
         final childKey = childKeys[i];
+        final childSyncId = deterministicCategorySyncId(
+            kind: 'income', level: 2, key: childKey);
+        if (knownSyncIds.containsKey(childSyncId)) {
+          continue;
+        }
         final childTranslatedName = _getTranslatedSubCategoryName(childKey, 'income', l10n);
 
         logger.info('seed_service', '创建收入子分类: key=$childKey, name=$childTranslatedName');
 
-        await db.into(db.categories).insert(
+        final childId = await db.into(db.categories).insert(
           CategoriesCompanion.insert(
             name: childTranslatedName, // 使用翻译后的名称
             kind: 'income',
@@ -733,10 +809,10 @@ class SeedService {
             sortOrder: Value(i),
             level: const Value(2),
             parentId: Value(parentId),
-            syncId: Value(deterministicCategorySyncId(
-                kind: 'income', level: 2, key: childKey)),
+            syncId: Value(childSyncId),
           ),
         );
+        knownSyncIds[childSyncId] = childId;
       }
     }
   }

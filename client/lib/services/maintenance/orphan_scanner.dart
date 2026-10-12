@@ -34,7 +34,7 @@ class OrphanScanner {
   /// 测试用:覆盖自定义图标目录路径。
   final String? iconsDirOverride;
 
-  /// 跑全部 13 项检测。
+  /// 跑全部检测项(A1..A12 / B1..B3 / C1)。
   Future<OrphanScanReport> scanAll() async {
     final dbOrphans = <OrphanRecord>[
       ...await scanBudgetMissingLedger(),
@@ -47,6 +47,9 @@ class OrphanScanner {
       ...await scanBudgetMissingCategory(),
       ...await scanSharedCategoryMissingParent(),
       ...await scanTxTagOverrideMissingTx(),
+      // C3/F-31/F-22:此前缺的两项
+      ...await scanTxMissingLedger(),
+      ...await scanAdjustmentMissingAccount(),
     ];
     final fileOrphans = <OrphanRecord>[
       ...await scanFileOrphanAttachments(),
@@ -343,6 +346,66 @@ class OrphanScanner {
   }
 
   // ─────────────────────────── B. 文件孤儿 ───────────────────────────
+
+  /// A11(C3/F-31)— 交易的 `ledger_id` 在 ledgers 表不存在。
+  ///
+  /// 删除账本/重导数据时若遗漏清理,交易会永久留在已不存在的账本上 ——
+  /// 既不计入任何账本视图,也不会被扫描器报出来。
+  Future<List<OrphanRecord>> scanTxMissingLedger() async {
+    final rows = await db.customSelect(
+      '''
+      SELECT t.id AS tx_id, t.ledger_id, t.amount, t.sync_id
+      FROM transactions t
+      LEFT JOIN ledgers l ON l.id = t.ledger_id
+      WHERE l.id IS NULL
+      ''',
+      readsFrom: {db.transactions, db.ledgers},
+    ).get();
+    return rows.map((row) {
+      final txId = row.read<int>('tx_id');
+      final ledgerId = row.read<int>('ledger_id');
+      final amount = row.readNullable<double>('amount') ?? 0;
+      return OrphanRecord(
+        type: OrphanType.txMissingLedger,
+        localId: txId,
+        syncId: row.readNullable<String>('sync_id'),
+        title: '交易 #$txId',
+        subtitle: '¥${amount.toStringAsFixed(2)} · 账本已删 (ledgerId=$ledgerId)',
+        extra: {'ledgerId': ledgerId},
+      );
+    }).toList();
+  }
+
+  /// A12(C3/F-22)— `account_adjustments` 的账户(或账本)已不存在。
+  ///
+  /// 调整记录只参与余额/净值口径,悬挂行会让余额"凭空带旧调整",且历史
+  /// 版本无任何检查项覆盖 → 永久孤儿。
+  Future<List<OrphanRecord>> scanAdjustmentMissingAccount() async {
+    final rows = await db.customSelect(
+      '''
+      SELECT a.id AS adj_id, a.account_id, a.ledger_id, a.amount
+      FROM account_adjustments a
+      LEFT JOIN accounts acc ON acc.id = a.account_id
+      LEFT JOIN ledgers l ON l.id = a.ledger_id
+      WHERE acc.id IS NULL OR l.id IS NULL
+      ''',
+      readsFrom: {db.accountAdjustments, db.accounts, db.ledgers},
+    ).get();
+    return rows.map((row) {
+      final adjId = row.read<int>('adj_id');
+      final accountId = row.read<int>('account_id');
+      final ledgerId = row.read<int>('ledger_id');
+      final amount = row.readNullable<double>('amount') ?? 0;
+      return OrphanRecord(
+        type: OrphanType.adjustmentMissingAccount,
+        localId: adjId,
+        title: '余额调整 #$adjId',
+        subtitle: '¥${amount.toStringAsFixed(2)} · 账户或账本已删 '
+            '(accountId=$accountId, ledgerId=$ledgerId)',
+        extra: {'accountId': accountId, 'ledgerId': ledgerId},
+      );
+    }).toList();
+  }
 
   /// B1 — `attachments/` 目录里的文件不在 `transaction_attachments.file_name`。
   Future<List<OrphanRecord>> scanFileOrphanAttachments() async {

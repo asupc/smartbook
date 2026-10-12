@@ -60,7 +60,12 @@ class AutoBookCoordinator {
 
   // ── 同 eventKey 串行守卫 ──
   /// eventKey → 该 key 的任务尾链。同 key 请求严格串行;跨 key 并行。
-  final Map<String, Future<void>> _keyTails = {};
+  ///
+  /// A2(2026-10-11):**进程级 static**。旧实现是实例字段 —— drain 与手动
+  /// 重试各持一个 Coordinator 实例(或进程重启后的新实例)时两条链互不可见,
+  /// 同 eventKey 并发 execute 会双执行。进程内共享一条 map 才能保证
+  /// 「同一事件绝不双执行」;跨进程边界由 store.claim 的原子条件 UPDATE 兜底。
+  static final Map<String, Future<void>> _keyTails = {};
 
   AutoBookCoordinator(BeeDatabase db) : store = AutoBookEventStore(db);
 

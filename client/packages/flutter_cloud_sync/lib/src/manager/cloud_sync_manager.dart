@@ -122,11 +122,11 @@ class CloudSyncManager<T> {
       );
 
       // 6. Invalidate cache
-      _statusCache.remove(path);
+      _invalidateStatusCache(path);
 
       logger?.info('Upload completed: $path');
     } catch (e) {
-      logger?.error('Upload failed: $e');
+      logger?.error('Upload failed: ${describeCloudError(e)}');
       if (e is CloudSyncException) {
         rethrow;
       }
@@ -174,15 +174,20 @@ class CloudSyncManager<T> {
       final data = await serializer.deserialize(serializedData);
 
       // 4. Invalidate cache
-      _statusCache.remove(path);
+      _invalidateStatusCache(path);
 
       logger?.info('Download completed: $path');
       return data;
     } catch (e) {
-      logger?.error('Download failed: $e');
+      logger?.error('Download failed: ${describeCloudError(e)}');
       if (e is CloudSyncException) {
         rethrow;
       }
+      // The cause is preserved for programmatic inspection, but must NOT be
+      // interpolated anywhere: `FormatException.toString()` appends a raw
+      // excerpt of the cloud payload. CloudSyncException.toString() only ever
+      // prints the type of a non-String originalError, and every log/UI path in
+      // this file goes through describeCloudError(), so no excerpt escapes.
       throw CloudStorageException('Download failed', e);
     }
   }
@@ -218,9 +223,43 @@ class CloudSyncManager<T> {
   }) async {
     logger?.debug('Getting sync status: $path (forceRefresh: $forceRefresh)');
 
-    // 1. Check cache
+    // 1. Compute the local fingerprint up-front when data is supplied.
+    //
+    // It is needed for the cache key (see step 2) as well as for the
+    // comparison below, so it must be computed before the cache lookup.
+    String? localFingerprint;
+    int? localCount;
+    String? localData;
+    if (data != null) {
+      localData = await serializer.serialize(data);
+      localFingerprint = serializer.fingerprint(localData);
+
+      // Try to extract count from serialized data (if it's JSON with a 'count' field)
+      try {
+        final json = jsonDecode(localData) as Map<String, dynamic>?;
+        if (json != null && json.containsKey('count')) {
+          localCount = (json['count'] as num?)?.toInt();
+        }
+      } catch (_) {
+        // Not JSON or doesn't have count field, ignore
+      }
+
+      logger?.debug('Local fingerprint: $localFingerprint, count: $localCount');
+    }
+
+    // 2. Check cache.
+    //
+    // The key embeds everything that can change the answer for the same path:
+    // the local fingerprint (i.e. the actual `data`) and the local timestamp
+    // used for direction. Keying on `path` alone returned a stale status
+    // ("same path, different data") for the whole TTL window.
+    final cacheKey = _cacheKey(
+      path: path,
+      localFingerprint: localFingerprint,
+      localUpdatedAt: localUpdatedAt,
+    );
     if (!forceRefresh) {
-      final cached = _statusCache[path];
+      final cached = _statusCache[cacheKey];
       if (cached != null && !cached.isExpired(cacheTTL)) {
         logger?.debug('Returning cached status: $path');
         return cached.status;
@@ -228,37 +267,15 @@ class CloudSyncManager<T> {
     }
 
     try {
-      // 2. Check authentication
+      // 3. Check authentication
       final user = await provider.auth.currentUser;
       if (user == null) {
         const status = SyncStatus(
           state: SyncState.notAuthenticated,
           message: 'User not authenticated',
         );
-        _cacheStatus(path, status);
+        _cacheStatus(cacheKey, status);
         return status;
-      }
-
-      // 3. Calculate local fingerprint and extract metadata if data provided
-      String? localFingerprint;
-      int? localCount;
-      String? localData;
-
-      if (data != null) {
-        localData = await serializer.serialize(data);
-        localFingerprint = serializer.fingerprint(localData);
-
-        // Try to extract count from serialized data (if it's JSON with a 'count' field)
-        try {
-          final json = jsonDecode(localData) as Map<String, dynamic>?;
-          if (json != null && json.containsKey('count')) {
-            localCount = (json['count'] as num?)?.toInt();
-          }
-        } catch (_) {
-          // Not JSON or doesn't have count field, ignore
-        }
-
-        logger?.debug('Local fingerprint: $localFingerprint, count: $localCount');
       }
 
       // 4. Check if cloud file exists
@@ -270,7 +287,7 @@ class CloudSyncManager<T> {
           localFingerprint: localFingerprint,
           message: 'No cloud backup found',
         );
-        _cacheStatus(path, status);
+        _cacheStatus(cacheKey, status);
         return status;
       }
 
@@ -381,14 +398,17 @@ class CloudSyncManager<T> {
         message: message,
       );
 
-      _cacheStatus(path, status);
+      _cacheStatus(cacheKey, status);
       logger?.info('Sync status: $state');
       return status;
     } catch (e) {
-      logger?.error('Get status failed: $e');
+      logger?.error('Get status failed: ${describeCloudError(e)}');
+      // Structured classification only — never interpolate `$e`: a
+      // FormatException would append a cloud-content excerpt here, and the App
+      // displays this message directly (cloud_sync_page.dart).
       final status = SyncStatus(
         state: SyncState.error,
-        message: 'Failed to get sync status: $e',
+        message: 'Failed to get sync status (${e.runtimeType})',
       );
       return status;
     }
@@ -420,11 +440,11 @@ class CloudSyncManager<T> {
       await provider.storage.delete(path: path);
 
       // 3. Invalidate cache
-      _statusCache.remove(path);
+      _invalidateStatusCache(path);
 
       logger?.info('Delete completed: $path');
     } catch (e) {
-      logger?.error('Delete failed: $e');
+      logger?.error('Delete failed: ${describeCloudError(e)}');
       if (e is CloudSyncException) {
         rethrow;
       }
@@ -438,8 +458,27 @@ class CloudSyncManager<T> {
     _statusCache.clear();
   }
 
+  /// Cache key for a status lookup.
+  ///
+  /// Includes the local fingerprint and the local timestamp so a cache hit can
+  /// only ever describe the very same (path, data, localUpdatedAt) triple.
+  String _cacheKey({
+    required String path,
+    String? localFingerprint,
+    DateTime? localUpdatedAt,
+  }) {
+    final fp = localFingerprint ?? '-';
+    final ts = localUpdatedAt?.toUtc().toIso8601String() ?? '-';
+    return '$path|$fp|$ts';
+  }
+
+  /// Drop every cached status for [path], regardless of the key suffix.
+  void _invalidateStatusCache(String path) {
+    _statusCache.removeWhere((key, _) => key == path || key.startsWith('$path|'));
+  }
+
   /// Cache sync status
-  void _cacheStatus(String path, SyncStatus status) {
-    _statusCache[path] = _CachedStatus(status, DateTime.now());
+  void _cacheStatus(String cacheKey, SyncStatus status) {
+    _statusCache[cacheKey] = _CachedStatus(status, DateTime.now());
   }
 }

@@ -289,6 +289,8 @@ class _TransactionEditorPageState extends ConsumerState<TransactionEditorPage>
         initialExcludeFromBudget: widget.initialExcludeFromBudget,
         initialCurrencyCode: widget.initialCurrencyCode,
         initialNativeAmount: widget.initialNativeAmount,
+        // B5 任务 4:快捷记账可连续记 —— 保存后不关闭面板。
+        allowSaveAndContinue: true,
         onSubmit: (res) async {
           final repo = ref.read(repositoryProvider);
           // 手动记账只做可解释的软提示；用户取消时保留表单，选择继续
@@ -456,11 +458,15 @@ class _TransactionEditorPageState extends ConsumerState<TransactionEditorPage>
           if (context.mounted) {
             updateAppWidget(ref, context);
           }
-          // 先关闭页面，再播放反馈
-          if (ctx.mounted && Navigator.of(ctx).canPop())
-            Navigator.of(ctx).pop();
-          if (context.mounted && Navigator.of(context).canPop())
-            Navigator.of(context).pop();
+          // 先关闭页面，再播放反馈;
+          // B5 任务 4:勾了「保存后再记一笔」就都不关 —— 面板留在原地,
+          // 改金额继续下一笔(一次保存只产生一笔交易)。
+          if (!res.keepOpen) {
+            if (ctx.mounted && Navigator.of(ctx).canPop())
+              Navigator.of(ctx).pop();
+            if (context.mounted && Navigator.of(context).canPop())
+              Navigator.of(context).pop();
+          }
           // 反馈：轻微触感 + 系统点击音
           HapticFeedback.lightImpact();
           SystemSound.play(SystemSoundType.click);

@@ -15,7 +15,11 @@ import '../data/tag_seed_service.dart';
 import '../system/logger_service.dart';
 import '../automation/auto_book_event.dart';
 import '../automation/auto_book_event_store.dart';
+import '../automation/automation_settings_store.dart';
+
 import '../automation/dedup_exempt_store.dart';
+
+import '../billing/channel_account_store.dart';
 
 import '../automation/auto_book_policy.dart';
 import '../automation/auto_book_trace.dart';
@@ -469,6 +473,105 @@ class AiBookkeeper {
     return rebuilt;
   }
 
+  /// B4:恢复被忽略的子项 → 重建待确认候选(**不创建交易、不撤销原交易**)。
+  ///
+  /// 约束(计划 §5.5 / B4 任务 3):
+  /// - 材料留存:`billJson` 缺失或解析失败 → 该子项不可恢复,计 0;
+  /// - 目标有效性:事件冻结的目标已失效 → 不恢复(恢复后确认会写到无效目标);
+  /// - 并发:先 `reopenItem`(期望状态 ignored→pending,失败即已被别的路径
+  ///   处理)再写候选,快速重复点击不会重复入队。
+  ///
+  /// 返回重建的候选数;0 = 无可恢复项(调用方提示「无法恢复」)。
+  Future<int> restoreIgnored(
+    schema.AutoBookEvent event, {
+    int? itemIndex,
+  }) async {
+    final store = _eventStore;
+    if (store == null) return 0;
+
+    // 目标有效性检查:有冻结目标但已解析不出来 → 停止恢复(不猜账本)。
+    // 冻结分支只按 targetRef 解析,不看当前设置,也不需要账号作用域。
+    if ((event.targetRef ?? '').isNotEmpty) {
+      try {
+        final target = resolveAutoBookTargetPure(
+          settings: await AutomationSettingsStore().load(),
+          ledgers: await _repo.getAllLedgers(),
+          legacyLedgerId: null,
+          currentScope: '',
+          frozenRef: event.targetRef,
+          frozenState: event.targetState,
+          frozenConfigVersion: event.targetConfigVersion,
+        );
+        if (target.ledgerId == null) {
+          logger.info(_tag, '忽略项恢复被拦下:自动目标不可用',
+              'event=${event.eventKey} reason=${target.reason}');
+          return 0;
+        }
+      } catch (e) {
+        logger.warning(_tag, '忽略项恢复:目标检查失败,保守不恢复', '$e');
+        return 0;
+      }
+    }
+
+    final items = await store.itemsForEvent(event.id);
+    var rebuilt = 0;
+    for (final item in items) {
+      if (itemIndex != null && item.itemIndex != itemIndex) continue;
+      if (item.state != AutoBookState.ignored.value) continue;
+      final raw = item.billJson;
+      if (raw == null || raw.isEmpty) continue;
+      final Map<String, dynamic> payload;
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is! Map) continue;
+        payload = Map<String, dynamic>.from(decoded.cast<String, dynamic>());
+      } catch (_) {
+        continue;
+      }
+      final billPayload = payload['bill'] is Map
+          ? Map<String, dynamic>.from(payload['bill'] as Map)
+          : payload;
+      final BillInfo bill;
+      try {
+        bill = BillInfo.fromJson(billPayload);
+      } catch (_) {
+        continue;
+      }
+      if (bill.amount == null || bill.amount!.abs() <= 0) continue;
+      final ledgerId = bill.ledgerId ?? event.ledgerId;
+      if (ledgerId == null) continue;
+
+      // 期望状态检查:已被并发路径处理过则跳过,不重复建候选。
+      final reopened = await store.reopenItem(
+        eventId: event.id,
+        itemIndex: item.itemIndex,
+        reason: item.reason is String && (item.reason as String).isNotEmpty
+            ? item.reason as String
+            : 'restored',
+      );
+      if (!reopened) continue;
+
+      final added = await PendingCandidateStore().add(PendingCandidate(
+        id: PendingCandidate.candidateId(bill),
+        bill: bill.copyWith(ledgerId: ledgerId),
+        billingTypes: _billingTypesForSource(event.source),
+        source: event.source,
+        capturedAt: DateTime.now(),
+        reason: 'restored',
+        eventKey: event.eventKey,
+        eventItemIndex: item.itemIndex,
+        semanticKey: item.semanticKey,
+        matchedTransactionId: item.transactionId,
+      ));
+      if (added) rebuilt++;
+    }
+    if (rebuilt > 0) {
+      logger.info(_tag, '忽略项已恢复为待确认候选',
+          'event=${event.eventKey}, restored=$rebuilt');
+    }
+    return rebuilt;
+  }
+
   List<String> _billingTypesForSource(String source) {
     final primary = switch (source) {
       'sms' => TagSeedService.billingTypeSms,
@@ -614,15 +717,37 @@ class AiBookkeeper {
     // 用可变副本维护本批已经处理的账单，防止模型一次返回重复对象时
     // 第一笔入账后第二笔仍拿旧 pool 判定为“无重复”。
     List<BillInfo> recentBills = const [];
-    var pendingCandidates = const <PendingCandidate>[];
-    List<BillInfo> pendingBills = const [];
+    var pendingCandidates = <PendingCandidate>[];
     if (autoBookFlow != null) {
       recentBills = (await _loadBaseline(ledgerId)) ?? const [];
-      pendingCandidates = await autoBookFlow.store.load();
-      pendingBills = pendingCandidates.map((c) => c.bill).toList();
+      // 与确认页读取同一份候选:兼容缓存可能已淘汰最早的一条,
+      // 旧副本也可能缺少事件子项索引,必须以事件记录补齐。
+      final store = autoBookFlow.eventStore;
+      pendingCandidates = store == null
+          ? await autoBookFlow.store.load()
+          : await autoBookFlow.store.loadForReview(store);
     }
     final recentComparison = List<BillInfo>.from(recentBills);
-    final pendingComparison = List<BillInfo>.from(pendingBills);
+    final pendingComparison = pendingCandidates.map((c) => c.bill).toList();
+    final pendingFromThisBatch = <PendingCandidate>{};
+
+    void rememberPending(PendingCandidate candidate) {
+      final replaced = pendingCandidates
+          .where((c) =>
+              c.eventKey == candidate.eventKey &&
+              (c.id == candidate.id ||
+                  (candidate.eventKey != null &&
+                      candidate.eventItemIndex != null &&
+                      c.eventItemIndex == candidate.eventItemIndex)))
+          .toList();
+      pendingCandidates.removeWhere(replaced.contains);
+      pendingComparison
+          .removeWhere((bill) => replaced.any((c) => identical(c.bill, bill)));
+      pendingCandidates.add(candidate);
+      pendingComparison.add(candidate.bill);
+      pendingFromThisBatch.add(candidate);
+    }
+
     var awaitingCount = 0;
     var ignoredCount = 0;
     var duplicateCount = 0;
@@ -723,7 +848,7 @@ class AiBookkeeper {
         if (priorState == AutoBookState.pending && autoBookFlow != null) {
           final reason =
               (priorItem.reason as String?) ?? 'pending_confirmation';
-          await autoBookFlow.store.add(PendingCandidate(
+          final candidate = PendingCandidate(
             id: PendingCandidate.candidateId(bill),
             bill: bill,
             billingTypes: billingTypes,
@@ -734,9 +859,11 @@ class AiBookkeeper {
             eventItemIndex: i,
             semanticKey: SemanticDedupMatcher.semanticKey(bill),
             matchedTransactionId: priorTransactionId,
-          ));
+          );
+          await autoBookFlow.store.add(candidate);
           awaitingCount++;
-          pendingComparison.add(bill);
+          pendingAbsAmount += bill.amount?.abs() ?? 0;
+          rememberPending(candidate);
           continue;
         }
       }
@@ -944,8 +1071,8 @@ class AiBookkeeper {
           policy.isAllowed &&
           !AutoBookRule.isLowConfidence(bill) &&
           !autoBookFlow.requireConfirmationForAll &&
-          matchedPendingCandidates.every((c) =>
-              SemanticDedupMatcher.clusterTextAffinity(bill, c.bill));
+          matchedPendingCandidates.every(
+              (c) => SemanticDedupMatcher.clusterTextAffinity(bill, c.bill));
       if (clusterUpgradable) {
         // 清掉重复标记落入正常入账路径;吸收动作在 createFromBill 成功后执行
         duplicate = false;
@@ -972,7 +1099,7 @@ class AiBookkeeper {
           reason = _candidateReasonForPolicy(policy) ??
               AutoBookRule.reasonKeyFor(bill: bill, duplicate: duplicate);
         }
-        await autoBookFlow.store.add(PendingCandidate(
+        final candidate = PendingCandidate(
           id: PendingCandidate.candidateId(bill),
           bill: bill,
           billingTypes: billingTypes,
@@ -984,7 +1111,8 @@ class AiBookkeeper {
           semanticKey: SemanticDedupMatcher.semanticKey(bill),
           matchedTransactionId: semanticMatch?.transactionId,
           matchScore: semanticMatch?.score,
-        ));
+        );
+        await autoBookFlow.store.add(candidate);
         awaitingCount++;
         pendingAbsAmount += bill.amount?.abs() ?? 0;
         await recordEventItem(
@@ -1004,7 +1132,7 @@ class AiBookkeeper {
               'match_score': semanticMatch!.score,
           },
         );
-        pendingComparison.add(bill);
+        rememberPending(candidate);
         logger.info(_tag, '第 ${i + 1} 笔进入待确认(候选制)', _billDiagnostic(bill));
         continue;
       }
@@ -1016,6 +1144,8 @@ class AiBookkeeper {
           billingTypes: billingTypes,
           l10n: l10n,
           sourceChannel: sourceChannel,
+          // B2:来源类型进账户规则作用域(账本/来源/卡尾号/币种)。
+          source: source,
           context: billContext,
         );
         if (txId == null) {
@@ -1071,23 +1201,67 @@ class AiBookkeeper {
           // 簇升级吸收:入账已成功,把被覆盖的待确认候选置为已合并。
           // 同时从本批快照里摘除,避免同批后续账单再次命中已吸收的候选
           // (会把它们关联到错误的交易上)。
+          final absorbed = <PendingCandidate>[];
           for (final candidate in matchedPendingCandidates) {
-            await _absorbPendingCandidate(
+            final resolved = await _absorbPendingCandidate(
               flow: autoBookFlow,
               eventStore: eventStore,
               candidate: candidate,
               transactionId: txId,
             );
+            if (!resolved) continue;
+            absorbed.add(candidate);
+            if (pendingFromThisBatch.remove(candidate)) {
+              // 同批前面的待确认已被吸收,返回值不能再把父事件写回 pending。
+              awaitingCount--;
+              pendingAbsAmount -= candidate.bill.amount?.abs() ?? 0;
+              duplicateCount++;
+              duplicateTransactionIds.add(txId);
+            }
           }
-          pendingCandidates = pendingCandidates
-              .where((c) => !matchedPendingCandidates.contains(c))
-              .toList();
-          pendingComparison.removeWhere((b) =>
-              matchedPendingCandidates.any((c) => identical(c.bill, b)));
-          logger.info(_tag,
-              '簇升级入账,吸收 ${matchedPendingCandidates.length} 条待确认候选',
+          pendingCandidates =
+              pendingCandidates.where((c) => !absorbed.contains(c)).toList();
+          pendingComparison
+              .removeWhere((b) => absorbed.any((c) => identical(c.bill, b)));
+          logger.info(_tag, '簇升级入账,吸收 ${absorbed.length} 条待确认候选',
               'tx=$txId ${_billDiagnostic(bill)}');
         }
+      } on AccountRuleConflictException catch (e) {
+        // B2 任务 5:用户账户规则命中但**无法验证**(账户已删/隐藏/币种不符)
+        // → 转待确认,不静默回落默认账户;手动路径没有规则作用域,不会走到这。
+        if (autoBookFlow == null) rethrow;
+        const reason = 'accountRuleConflict';
+        final candidate = PendingCandidate(
+          id: PendingCandidate.candidateId(bill),
+          bill: bill,
+          billingTypes: billingTypes,
+          source: source,
+          capturedAt: DateTime.now(),
+          reason: reason,
+          eventKey: autoBookFlow.eventKey,
+          eventItemIndex: i,
+          semanticKey: SemanticDedupMatcher.semanticKey(bill),
+        );
+        await autoBookFlow.store.add(candidate);
+        awaitingCount++;
+        pendingAbsAmount += bill.amount?.abs() ?? 0;
+        rememberPending(candidate);
+        await recordEventItem(
+          index: i,
+          bill: bill,
+          state: AutoBookState.pending.value,
+          reason: reason,
+          metadata: {
+            'candidate_id': PendingCandidate.candidateId(bill),
+            'candidate_reason': reason,
+            'billing_types': billingTypes,
+            'source': source,
+            'captured_at': candidate.capturedAt.toIso8601String(),
+            'account_rule_reason': e.reason,
+          },
+        );
+        logger.info(_tag, '第 ${i + 1} 笔因账户规则冲突进入待确认',
+            'reason=${e.reason} ${_billDiagnostic(bill)}');
       } catch (e, st) {
         failed++;
         await recordEventItem(
@@ -1270,7 +1444,7 @@ class AiBookkeeper {
   /// 走确认页同一条路径([AutoBookEventStore.resolvePendingItem]:子项
   /// 转 duplicate 并关联新交易,父事件状态同事务重算),legacy
   /// SharedPreferences 队列同步移除。吸收失败只记日志,不影响已入账交易。
-  Future<void> _absorbPendingCandidate({
+  Future<bool> _absorbPendingCandidate({
     required AutoBookFlow flow,
     required AutoBookEventStore? eventStore,
     required PendingCandidate candidate,
@@ -1293,11 +1467,21 @@ class AiBookkeeper {
       } catch (e, st) {
         logger.warning(_tag, '簇升级吸收候选失败(事件表)', '$e');
         logger.debug(_tag, '簇升级吸收堆栈', st);
+        return false;
       }
     }
     try {
-      await flow.store.remove(candidate.id);
-    } catch (_) {}
+      await flow.store.remove(
+        candidate.id,
+        eventKey: candidate.eventKey,
+        eventItemIndex: candidate.eventItemIndex,
+      );
+      return true;
+    } catch (e, st) {
+      logger.warning(_tag, '簇升级清理兼容候选失败', '$e');
+      logger.debug(_tag, '簇升级清理候选堆栈', st);
+      return false;
+    }
   }
 
   /// A2:强判重合并时把后到捕获的增量信息补进已有交易(**只补缺,不覆盖**)。

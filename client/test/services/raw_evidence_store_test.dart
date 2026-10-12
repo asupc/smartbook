@@ -91,7 +91,11 @@ void main() {
         serverRetentionDays: 30,
       ),
     );
-    final capturedAt = DateTime.utc(2026, 9, 5, 8);
+    // 基线腐烂:capturedAt 曾用固定绝对日期(2026-09-05),7 天本地保留窗
+    // 早已过期 → planFor().shouldStore=false → 原始体不再落库,断言恒红。
+    // 改为相对时间基准(1 天前),稳定落在保留窗内且随测试时间平移。
+    final capturedAt =
+        DateTime.now().toUtc().subtract(const Duration(days: 1));
 
     final event = await eventStore.ensure(
       input(
@@ -108,7 +112,8 @@ void main() {
     expect(event.rawEvidenceServerEnabled, isFalse);
     expect(
       event.rawEvidenceLocalExpiresAt?.toUtc(),
-      capturedAt.add(const Duration(days: 7)),
+      // 与落库值比(秒级截断),而非与内存里的 capturedAt 比。
+      event.capturedAt.toUtc().add(const Duration(days: 7)),
     );
     expect(event.rawEvidenceServerExpiresAt, isNull);
     expect(event.rawEvidenceUploadState, RawEvidenceUploadState.notRequested);

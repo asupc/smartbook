@@ -80,8 +80,21 @@ class NotificationDetails {
 
 /// 计算下一次提醒时间
 ///
-/// 如果指定时间已过，返回明天的该时间
+/// 如果指定时间已过，返回明天的该时间。
+///
+/// [hour] 必须在 0-23、[minute] 必须在 0-59 —— 越界直接抛 [ArgumentError]。
+/// 不能让 `DateTime` 构造器"溢出进位":`(25, 61)` 会静默变成次日 02:01,
+/// 调用方(以及用户)看到的是一个看似合法但完全不是自己设定的提醒时刻。
+/// 选择抛错而非钳制:提醒时间是用户显式设定的语义值,静默改写成 23:59
+/// 同样是错的时刻,只会把 bug 藏得更深。
 DateTime calculateNextReminderTime(int hour, int minute) {
+  if (hour < 0 || hour > 23) {
+    throw ArgumentError.value(hour, 'hour', 'hour 必须在 0-23 之间');
+  }
+  if (minute < 0 || minute > 59) {
+    throw ArgumentError.value(minute, 'minute', 'minute 必须在 0-59 之间');
+  }
+
   final now = DateTime.now();
   var scheduledDate = DateTime(now.year, now.month, now.day, hour, minute);
 

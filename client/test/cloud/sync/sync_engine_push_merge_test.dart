@@ -117,8 +117,13 @@ void main() {
     for (var i = 0; i < 250; i++) {
       await seedEntityWithChanges('tx-resume-$i', 1);
     }
+    // 分批后每批 ≤200,注入器条件必须可达:pushChanges 先记录本批再调用注入器,
+    // 故第 2 批发送时 pushedBatches 已有 2 条 → 正好在第二批失败。
     provider.pushErrorInjector = (changes) =>
-        changes.length > 200 ? Exception('network down on batch 2') : null;
+        changes.length <= SyncEngine.pushBatchSize &&
+                provider.pushedBatches.length >= 2
+            ? Exception('network down on batch 2')
+            : null;
 
     await expectLater(
         engine.push(ledgerId.toString()), throwsA(isA<Exception>()));
@@ -263,9 +268,11 @@ void main() {
     }
     // 服务端修好后一次接受:change 被标记已推,计数清除。
     provider.pushResultOverride = null;
-    provider.pushedBatches.clear();
     await engine.push(ledgerId.toString());
     expect(await changeTracker.getUnpushedChangesForLedger(ledgerId), isEmpty);
+    // 清点从「重置之后」起算:接受轮本身也是 1 批,必须清在 accept 轮之后,
+    // 否则下面的 =maxPushRejectAttempts-1 断言会多算这一批(基线腐烂 7 vs 8)。
+    provider.pushedBatches.clear();
 
     // 用户再次编辑(新 change id)+ 又开始被拒:计数从头累计,不因历史 7 次误熔断。
     await addChange();

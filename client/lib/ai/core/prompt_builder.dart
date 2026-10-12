@@ -244,6 +244,12 @@ $_currencyFieldSpec
   /// [billGuard] 前置过滤段，截图/自动路径传入 [billGuardForImage]，聊天等主动输入传空字符串。
   /// [ocrText] 文本输入(图片场景留空)
   /// [now] 时间锚点,默认 `DateTime.now()` (测试可注入固定时间)
+  ///
+  /// 替换是**单遍**的(`replaceAllMapped` 一次正则扫描 + 查表回调):
+  /// 每段占位符只按它在**模板里**出现的位置展开一次,展开产物(用户文本、
+  /// 分类清单等)不再参与扫描。顺序 `replaceAll` 链做不到这一点 ——
+  /// `{{OCR_TEXT}}` 先被替换,用户文本里字面写着的 `{{CATEGORIES}}` 会在
+  /// 后续轮次里被替换成真实分类清单,等于让用户文本篡改 prompt 结构。
   String build({
     required AiExtractionContext context,
     required String inputSource,
@@ -260,15 +266,22 @@ $_currencyFieldSpec
         ? context.customPromptTemplate!
         : defaultTemplate;
 
-    return template
-        .replaceAll('{{BILL_GUARD}}', billGuard)
-        .replaceAll('{{INPUT_SOURCE}}', inputSource)
-        .replaceAll('{{CURRENT_TIME}}', currentTime)
-        .replaceAll('{{CURRENT_DATE}}', currentDate)
-        .replaceAll('{{OCR_TEXT}}', ocrText)
-        .replaceAll('{{CATEGORIES}}', _buildCategoryHint(context))
-        .replaceAll('{{ACCOUNTS}}', _buildAccountHint(context))
-        .replaceAll('{{CURRENCIES}}', _buildCurrencyHint(context));
+    final replacements = <String, String>{
+      '{{BILL_GUARD}}': billGuard,
+      '{{INPUT_SOURCE}}': inputSource,
+      '{{CURRENT_TIME}}': currentTime,
+      '{{CURRENT_DATE}}': currentDate,
+      '{{OCR_TEXT}}': ocrText,
+      '{{CATEGORIES}}': _buildCategoryHint(context),
+      '{{ACCOUNTS}}': _buildAccountHint(context),
+      '{{CURRENCIES}}': _buildCurrencyHint(context),
+    };
+
+    // 只匹配「已登记的占位符形状」;未登记写法(如 {{FOO}})原样保留。
+    return template.replaceAllMapped(
+      RegExp(r'\{\{[A-Z_]+\}\}'),
+      (m) => replacements[m.group(0)!] ?? m.group(0)!,
+    );
   }
 
   String _buildCategoryHint(AiExtractionContext ctx) {

@@ -171,10 +171,23 @@ abstract class AccountRepository {
   /// 按币种分组的净资产分解
   Future<Map<String, ({double totalAssets, double totalLiabilities, double netWorth})>> getNetWorthBreakdownByCurrency();
 
-  /// 获取净资产每日余额快照（用于净资产趋势图）
+  /// 获取净资产每日余额快照（用于净资产趋势图）。
+  ///
+  /// C3/F-20:旧入口多币种**裸加**(Σ 各币种原币余额),与
+  /// [getNetWorthTrendSeries] / 净资产卡(按汇率折算 + 缺汇率整条剔除)口径分裂。
+  /// 现在改为委托折算版(主币种自身 1.0,缺汇率的币种整条剔除),两个"净值趋势"
+  /// 入口给出同一答案。未传 [ratesToBase] 时子仓用可查到的有效汇率合成。
   Future<List<({DateTime date, double balance})>> getNetWorthDailyBalances({
     required DateTime startDate,
     required DateTime endDate,
+    Map<String, double>? ratesToBase,
+  });
+
+  /// [getNetWorthDailyBalances] 的折算版显式入口(趋势页用)。
+  Future<List<({DateTime date, double balance})>> getNetWorthDailyBalancesConverted({
+    required DateTime startDate,
+    required DateTime endDate,
+    required Map<String, double> ratesToBase,
   });
 
   /// 净值趋势序列:每日 (资产合计, 负债合计, 净资产),已折算到主币种。

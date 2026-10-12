@@ -131,7 +131,32 @@ class ChangeTracker {
   ///
   /// **幂等**:同一 (entityType, entitySyncId) 多次调用只插一次(同 entity
   /// 通过 apply update 多次也不会挤爆表)。
+  ///
+  /// C3/F-10:并发安全性。旧实现是 select-then-insert 两步,中间有 await
+  /// 让步点 → 5 个并发调用落 5 行(注释自称的幂等失效,污染 fullPush 的
+  /// legacy backfill 判断)。`local_changes` 上没有 (entity_type,
+  /// entity_sync_id) 唯一索引,DB 无法兜底 —— 故这里用 _serial 尾链把
+  /// read-modify-write 串行化(照抄 PendingCandidateStore._tail 模式)。
+  Future<void> _serial = Future<void>.value();
+
   Future<void> recordPulledFromServer({
+    required String entityType,
+    required int entityId,
+    required String entitySyncId,
+    required int ledgerId,
+  }) {
+    final result = _serial.then((_) => _recordPulledFromServerInner(
+          entityType: entityType,
+          entityId: entityId,
+          entitySyncId: entitySyncId,
+          ledgerId: ledgerId,
+        ));
+    // 尾链失败不应毒化后续调用
+    _serial = result.catchError((_) {});
+    return result;
+  }
+
+  Future<void> _recordPulledFromServerInner({
     required String entityType,
     required int entityId,
     required String entitySyncId,

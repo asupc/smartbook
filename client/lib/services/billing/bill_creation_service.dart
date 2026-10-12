@@ -108,12 +108,20 @@ class BillCreationService {
     /// 时按「渠道→账户映射」回退。手动/主动路径传 null。
     String? sourceChannel,
 
+    /// B2:来源类型('sms'/'notification'/'screen'/'image'),账户规则的
+    /// 来源作用域用;手动/主动路径传 null。
+    String? source,
+
     /// M3-5:同一批账单共享的元数据缓存。不传则本笔内部临时建一个。
     BillCreationContext? context,
   }) async {
     final ctx = context ?? BillCreationContext();
     final amount = bill.amount;
-    if (amount == null || amount.abs() <= 0) {
+    // A12(2026-10-11):非有限金额在落库前必须拦下。`NaN.abs() <= 0` 恒 false
+    // → 旧判定放行,Drift 把 NaN 绑成 SQL NULL → SqliteException(1299)
+    // NOT NULL 违约(用户在自动记账链上只看到「失败」看不出根因);
+    // Infinity 是合法 REAL → 静默落库,任何含它的求和都是 Infinity。
+    if (amount == null || !amount.isFinite || amount.abs() <= 0) {
       logger.warning(_tag, '[校验] amount 无效,跳过');
       return null;
     }
@@ -127,8 +135,9 @@ class BillCreationService {
     final categories = await _usableCategories(transactionType, ctx);
 
     // 3. 匹配分类(AI 名称 → 完全匹配 → 模糊匹配 → 规则匹配 → 兜底"其他")
-    var categoryId =
-        await _matchCategory(bill.category, bill.note ?? '', categories);
+    var categoryId = await _matchCategory(
+        bill.category, bill.note ?? '', categories,
+        ledgerId: ledgerId);
     if (categoryId == null && categories.isNotEmpty) {
       categoryId = _fallbackCategoryId(categories);
     }
@@ -176,6 +185,8 @@ class BillCreationService {
         requestedCurrency: requestedCurrency,
         ledgerBase: ledgerBase,
         sourceChannel: sourceChannel,
+        source: source,
+        cardLast4: bill.cardLast4,
         ctx: ctx,
       );
     }
@@ -279,7 +290,8 @@ class BillCreationService {
   Future<int?> matchCategoryId(BillInfo bill) async {
     final type = _resolveType(bill);
     final categories = await _loadUsableCategories(type);
-    return _matchCategory(bill.category, bill.note ?? '', categories);
+    return _matchCategory(bill.category, bill.note ?? '', categories,
+        ledgerId: bill.ledgerId);
   }
 
   /// 入账路径的兜底分类关键词(「其他」系列)。强判重合并富化(A2)用它判断
@@ -382,6 +394,7 @@ class BillCreationService {
     String note,
     List<Category> categories, {
     String kind = 'expense',
+    int? ledgerId,
   }) async {
     if (categories.isEmpty) return null;
 
@@ -389,8 +402,9 @@ class BillCreationService {
     // 最近一次裁定的分类,压过静态关键词表与 AI 输出(AI 错一次同一商户
     // 永远错下去的问题)。
     try {
-      final learned = await CategoryLearningStore()
-          .match(normalizeAutoBookText(note), kind);
+      final learned = await CategoryLearningStore().match(
+          normalizeAutoBookText(note), kind,
+          ledgerId: ledgerId);
       if (learned != null) {
         final hit = categories.firstWhereOrNull(
           (c) => c.name == learned.categoryName,
@@ -465,7 +479,14 @@ class BillCreationService {
 
   /// 收入/支出场景的账户匹配。
   ///
-  /// 优先级:AI 账户名(完全→模糊→类型映射)→ 来源渠道映射(M4)> 默认账户。
+  /// 优先级(B2 行为变更):
+  /// 1. **明确且有效的用户账户规则**(账本/来源/卡尾号/币种作用域命中);
+  /// 2. AI 账户名(完全→模糊→类型映射);
+  /// 3. 旧版渠道规则(仅 AI 未给账户名时,保持 B2 之前的兼容路径);
+  /// 4. 默认账户。
+  ///
+  /// 规则命中但无法验证(账户已删/隐藏/币种不符)→ 抛
+  /// [AccountRuleConflictException],由记账层转**待确认**,不静默回落。
   Future<int?> _matchAccount(
     String? aiAccountName,
     int ledgerId, {
@@ -473,6 +494,8 @@ class BillCreationService {
     required String? requestedCurrency,
     required String ledgerBase,
     String? sourceChannel,
+    String? source,
+    String? cardLast4,
     required BillCreationContext ctx,
   }) async {
     final prefs = await SharedPreferences.getInstance();
@@ -482,7 +505,37 @@ class BillCreationService {
       return null;
     }
 
-    // 渠道映射仅在 AI 未给账户名时生效(给了名字且能匹配就尊重 AI)。
+    // B2:用户规则优先于 AI 猜测。只认有账本作用域的规则;旧版规则(未确认
+    // 作用账本)仍走下面的兼容路径,不参与这里。
+    if (sourceChannel != null && sourceChannel.isNotEmpty) {
+      final verdict = await ChannelAccountStore().matchFor(
+        channel: sourceChannel,
+        source: source,
+        ledgerId: ledgerId,
+        cardLast4: cardLast4,
+        currency: requestedCurrency,
+        accounts: await _accountPool(ctx),
+      );
+      if (verdict.status == ChannelRuleStatus.hit) {
+        final rule = verdict.rule!;
+        logger.debug(
+            _tag,
+            '[账户匹配-用户规则] 来源"$sourceChannel" → 账户 '
+            'ID:${rule.accountId}(账本 ${rule.ledgerId},优先于 AI)');
+        return rule.accountId;
+      }
+      if (verdict.status == ChannelRuleStatus.conflict) {
+        logger.info(_tag, '[账户匹配-用户规则] 规则冲突,转待确认',
+            'reason=${verdict.reason} account=${verdict.rule?.accountId}');
+        throw AccountRuleConflictException(
+          verdict.reason ?? 'account_missing',
+          accountId: verdict.rule?.accountId,
+        );
+      }
+    }
+
+    // 旧版渠道映射(兼容路径)仅在 AI 未给账户名时生效(给了名字且能匹配就
+    // 尊重 AI) —— 与 B2 之前完全一致。
     if (sourceChannel != null &&
         (aiAccountName == null || aiAccountName.isEmpty)) {
       final rule = await ChannelAccountStore().ruleFor(sourceChannel);
