@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
@@ -30,9 +31,19 @@ from ..security import (
     create_access_token,
     create_refresh_token,
     decode_token,
-    hash_password,
     hash_token,
-    verify_password,
+)
+
+# 密码守卫统一在 security.py(所有 passlib 调用点的唯一实现;admin.py 等
+# 其它入口共用同一份 —— 对抗缺陷 3:守卫曾只存在于本文件,admin.py 漏网)。
+from ..security import (
+    hash_password_or_422 as _hash_password_or_422,
+)
+from ..security import (
+    require_password_size as _require_password_size,
+)
+from ..security import (
+    verify_password_or_401 as _verify_password_or_401,
 )
 
 logger = logging.getLogger(__name__)
@@ -42,9 +53,40 @@ settings = get_settings()
 _rate_limit_lock = Lock()
 _rate_limit_buckets: dict[str, list[float]] = {}
 
+# 列宽上限(对齐 src/models.py)—— SQLite 不强制 VARCHAR 长度,超长字段会静默
+# 入库;生产 Postgres 则抛 DataError → 500(对抗测试 F-07)。注册 / 登录入口在
+# 写库前按列宽显式校验 → 422,与「非法输入不入库」口径一致。
+_EMAIL_MAX_LENGTH = 255  # users.email String(255)
+_DEVICE_ID_MAX_LENGTH = 36  # devices.id String(36)
+_DEVICE_FIELD_MAX_LENGTHS: dict[str, int] = {
+    "device_name": 128,  # devices.name String(128)
+    "platform": 32,  # devices.platform String(32)
+    "app_version": 64,  # devices.app_version String(64)
+    "os_version": 64,  # devices.os_version String(64)
+    "device_model": 128,  # devices.device_model String(128)
+}
+
 
 def _normalize_email(email: str) -> str:
     return email.strip().lower()
+
+
+def _reject_oversized(value: str | None, field: str, limit: int) -> None:
+    if value is not None and len(value) > limit:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"{field} too long (max {limit} characters)",
+        )
+
+
+def _validate_field_lengths(
+    req: AuthRegisterRequest | AuthLoginRequest, *, email: str
+) -> None:
+    """注册 / 登录的字段长度边界(按列宽)校验;超限 → 422。"""
+    _reject_oversized(email, "email", _EMAIL_MAX_LENGTH)
+    _reject_oversized(req.device_id, "device_id", _DEVICE_ID_MAX_LENGTH)
+    for field, limit in _DEVICE_FIELD_MAX_LENGTHS.items():
+        _reject_oversized(getattr(req, field, None), field, limit)
 
 
 def _upsert_device(
@@ -188,13 +230,28 @@ def register(
         )
     _apply_rate_limit(request, "register")
     email = _normalize_email(req.email)
+    _validate_field_lengths(req, email=email)
+    _require_password_size(
+        req.password,
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        detail="Password too long",
+    )
     existing = db.scalar(select(User).where(User.email == email))
     if existing:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already exists")
 
-    user = User(email=email, password_hash=hash_password(req.password))
+    user = User(email=email, password_hash=_hash_password_or_422(req.password))
     db.add(user)
-    db.flush()
+    # S8:上面的 SELECT 预检(TOCTOU)拦不住并发同邮箱注册 —— flush 撞
+    # users.email UNIQUE 时转 409,而非 500(模式同 write/ledgers.py:create_ledger)。
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        logger.warning("auth.register duplicate email race email=%s", email)
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Email already exists"
+        ) from None
 
     device = _upsert_device(
         db,
@@ -228,8 +285,14 @@ def login(
     """密码登录。"""
     _apply_rate_limit(request, "login")
     email = _normalize_email(req.email)
+    _validate_field_lengths(req, email=email)
+    _require_password_size(
+        req.password,
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid credentials",
+    )
     user = db.scalar(select(User).where(User.email == email))
-    if not user or not verify_password(req.password, user.password_hash):
+    if not user or not _verify_password_or_401(req.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
     if not user.is_enabled:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User disabled")

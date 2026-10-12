@@ -1227,6 +1227,7 @@ const zhCN = {
   'transactions.error.transferAccountsRequired': '转账需要选择转出账户和转入账户。',
   'transactions.error.transferAccountsDifferent': '转出账户和转入账户不能相同。',
   'transactions.error.amountInvalid': '金额必须大于 0。',
+  'transactions.error.amountTooLarge': '金额过大（须小于 1 万亿）。',
   'transactions.error.categoryRequired': '请选择分类。',
   'transactions.filter.preset.today': '今天',
   'transactions.filter.preset.thisWeek': '本周',
@@ -1651,11 +1652,14 @@ const zhCN = {
 
   'login.error.invalid': '账号或密码错误。',
   'error.default': '操作失败，请稍后重试。',
+  'error.boundary.title': '页面渲染出错。',
+  'error.boundary.hint': '请刷新重试。若持续出错，可能是地址含非法字符，或服务端暂时不可用。',
   'error.AUTH_INVALID_CREDENTIALS': '账号或密码错误。',
   'error.INTERNAL_ERROR': '服务器内部错误,请稍后重试或查看 server 日志。',
   'error.WRITE_CONFLICT':
     '数据已被其他设备更新，请刷新后重试。latest_change_id={latestChangeId}, latest_server_timestamp={latestServerTimestamp}',
   'error.WRITE_ROLE_FORBIDDEN': '当前角色无写入权限。',
+  'error.SHARE_ROLE_FORBIDDEN': '你没有该共享账本的权限。',
   'error.SYNC_VIEWER_WRITE_FORBIDDEN': 'Viewer 角色禁止写入。',
   'error.SYNC_LEDGER_WRITE_FORBIDDEN': '当前账本无写权限。',
   'error.AUTH_INSUFFICIENT_SCOPE': '权限范围不足。',
@@ -1666,6 +1670,7 @@ const zhCN = {
   'error.WRITE_VALIDATION_FAILED': '写入校验失败，请检查输入。',
   'error.USER_EMAIL_EXISTS': '该邮箱已存在。',
   'error.USER_PASSWORD_TOO_SHORT': '密码至少需要 6 位。',
+  'error.SHARE_MEMBER_USER_NOT_FOUND': '未找到该邮箱对应的账号，请对方先注册。',
   'error.ADMIN_USER_DELETE_SELF_FORBIDDEN': '不能删除当前登录管理员。',
   'error.ADMIN_USER_DELETE_LAST_ADMIN_FORBIDDEN': '不能删除最后一个启用的管理员。',
 

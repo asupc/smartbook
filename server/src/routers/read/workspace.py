@@ -19,6 +19,7 @@ from sqlalchemy import text as sa_text
 
 from ._shared import *  # noqa: F401,F403 — imports + helpers + router
 from ...models import ExchangeRateCache, UserExchangeRateProjection
+from ...schemas import MAX_INT64
 
 # ---------------------------------------------------------------------------
 # 净值历史 — 响应 schema
@@ -53,7 +54,12 @@ def list_workspace_transactions(
     sort_by: str = Query(default="happened_at", pattern="^(happened_at|created_at|amount)$", description="排序字段:happened_at=交易时间(默认),created_at=记录时间,amount=金额绝对值(批次5:找最大一笔支出不用翻页目测)"),
     sort_order: str = Query(default="desc", pattern="^(asc|desc)$", description="排序方向,默认倒序(最新在前)"),
     limit: int = Query(default=20, ge=1, le=2000),
-    offset: int = Query(default=0, ge=0),
+    # S3(审核记录 建议-14 / S1 handed-off):offset 必须有 int64 上界 ——
+    # Python int 无界,超过 int64 会在 SQLAlchemy → SQLite/PG INTEGER/int8
+    # 转换时抛 OverflowError → 500(对抗 injection: offset=2**63)。
+    # 上界取 MAX_INT64(不用更小值):`test_ai_relay_adversarial.py` 的
+    # HARDENING 锁 `offset=1e14 → 200 空页`,小上界会让它翻红。
+    offset: int = Query(default=0, ge=0, le=MAX_INT64),
     _scopes: set[str] = Depends(_READ_SCOPE_DEP),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -321,6 +327,8 @@ def export_workspace_transactions_csv(
     date_to: datetime | None = Query(default=None),
     tz_offset_minutes: int = Query(
         default=0,
+        ge=-720,
+        le=840,
         description="客户端本地时区偏移,正数 = 东半球;Time 列按这个折算",
     ),
     lang: str | None = Query(
@@ -568,7 +576,12 @@ def list_workspace_accounts(
     user_id: str | None = Query(default=None),
     q: str | None = Query(default=None),
     limit: int = Query(default=500, ge=1, le=5000),
-    offset: int = Query(default=0, ge=0),
+    # S3(审核记录 建议-14 / S1 handed-off):offset 必须有 int64 上界 ——
+    # Python int 无界,超过 int64 会在 SQLAlchemy → SQLite/PG INTEGER/int8
+    # 转换时抛 OverflowError → 500(对抗 injection: offset=2**63)。
+    # 上界取 MAX_INT64(不用更小值):`test_ai_relay_adversarial.py` 的
+    # HARDENING 锁 `offset=1e14 → 200 空页`,小上界会让它翻红。
+    offset: int = Query(default=0, ge=0, le=MAX_INT64),
     _scopes: set[str] = Depends(_READ_SCOPE_DEP),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -744,7 +757,12 @@ def list_workspace_categories(
     user_id: str | None = Query(default=None),
     q: str | None = Query(default=None),
     limit: int = Query(default=500, ge=1, le=5000),
-    offset: int = Query(default=0, ge=0),
+    # S3(审核记录 建议-14 / S1 handed-off):offset 必须有 int64 上界 ——
+    # Python int 无界,超过 int64 会在 SQLAlchemy → SQLite/PG INTEGER/int8
+    # 转换时抛 OverflowError → 500(对抗 injection: offset=2**63)。
+    # 上界取 MAX_INT64(不用更小值):`test_ai_relay_adversarial.py` 的
+    # HARDENING 锁 `offset=1e14 → 200 空页`,小上界会让它翻红。
+    offset: int = Query(default=0, ge=0, le=MAX_INT64),
     _scopes: set[str] = Depends(_READ_SCOPE_DEP),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -844,7 +862,12 @@ def list_workspace_tags(
     user_id: str | None = Query(default=None),
     q: str | None = Query(default=None),
     limit: int = Query(default=500, ge=1, le=5000),
-    offset: int = Query(default=0, ge=0),
+    # S3(审核记录 建议-14 / S1 handed-off):offset 必须有 int64 上界 ——
+    # Python int 无界,超过 int64 会在 SQLAlchemy → SQLite/PG INTEGER/int8
+    # 转换时抛 OverflowError → 500(对抗 injection: offset=2**63)。
+    # 上界取 MAX_INT64(不用更小值):`test_ai_relay_adversarial.py` 的
+    # HARDENING 锁 `offset=1e14 → 200 空页`,小上界会让它翻红。
+    offset: int = Query(default=0, ge=0, le=MAX_INT64),
     _scopes: set[str] = Depends(_READ_SCOPE_DEP),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -1031,7 +1054,10 @@ def workspace_ledger_counts(
         now_utc = datetime.now(timezone.utc)
         first_day = first_at.astimezone(timezone.utc).date()
         today_utc = now_utc.date()
-        days_since_first_tx = (today_utc - first_day).days + 1
+        # 对抗 A5:未来时间的交易(2999)会让 (today - first).days + 1 变成大负数
+        # (-355097),首页"记账天数"直接崩坏。clamp 到 0 —— 与「还没有已发生的
+        # 记账」同语义,不改变既有正常区间(过去时间仍然照常计数)。
+        days_since_first_tx = max(0, (today_utc - first_day).days + 1)
 
     return WorkspaceLedgerCountsOut(
         tx_count=tx_count,
@@ -1088,6 +1114,10 @@ def workspace_analytics(
 
     if ledger_internal_ids:
         _native = func.coalesce(ReadTxProjection.native_amount, ReadTxProjection.amount)
+        # 金额是幅值、方向由 tx_type 表达(与 _projection_totals 同口径)。
+        # 负值金额(畸形/旧客户端写入)若原样求和会让 expense_total 变负、
+        # 分类排行被 `> 0` 过滤整条隐藏 —— 统计侧统一 abs 兜底(对抗 S3)。
+        _native = func.abs(_native)
         base_filters = [
             ReadTxProjection.ledger_id.in_(ledger_internal_ids),
             ReadTxProjection.deleted_at.is_(None),
@@ -1180,6 +1210,29 @@ def workspace_analytics(
         analytics_missing_rate = multi_currency and any(
             r is None for r in _ledger_rate.values()
         )
+
+        # 对抗 D1:交易级外币缺折算快照。账本维度只覆盖「账本币种 ≠ 主币种」,
+        # 漏掉了「交易币种 ≠ 账本币种且 native_amount 缺失」的行 —— 这种行会被
+        # 统计端 `COALESCE(native_amount, amount)` 按 1:1 当本位币加(外币数值
+        # 直接混进本位币合计,静默错账),却不带任何标记。补一条轻量存在性探测:
+        # 命中即置 incomplete,前端据此提示补折算/汇率(与账本维度同交互)。
+        _foreign_tx_currencies = db.execute(
+            select(
+                ReadTxProjection.ledger_id,
+                ReadTxProjection.currency_code,
+            ).where(
+                *base_filters,
+                ReadTxProjection.currency_code.isnot(None),
+                ReadTxProjection.native_amount.is_(None),
+                ReadTxProjection.tx_type.in_(("income", "expense")),
+            ).distinct()
+        ).all()
+        if any(
+            (str(code or "").strip().upper() or "")
+            and (str(code or "").strip().upper() != ledger_currency_of.get(lid))
+            for lid, code in _foreign_tx_currencies
+        ):
+            analytics_missing_rate = True
 
         for row in rows:
             if scope == "month":

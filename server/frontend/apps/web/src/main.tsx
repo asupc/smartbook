@@ -14,6 +14,7 @@ import {
 } from '@smartbook/ui'
 
 import { App } from './App'
+import { AppErrorBoundary } from './components/AppErrorBoundary'
 import { dictionaries } from './i18n'
 import { AntdProvider } from './theme/antd-theme'
 import { setupLaunchQueue } from './lib/pwa-launch'
@@ -54,7 +55,9 @@ createRoot(document.getElementById('root')!).render(
         <PrimaryColorProvider>
           <AntdProvider>
             <ToastProvider>
-              <App />
+              <AppErrorBoundary>
+                <App />
+              </AppErrorBoundary>
             </ToastProvider>
           </AntdProvider>
         </PrimaryColorProvider>

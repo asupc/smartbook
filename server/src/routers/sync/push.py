@@ -9,15 +9,170 @@ worker 线程,大批推送不再阻塞 event loop(WS 心跳 / 健康检查);与 
 (issue #31 A2)同款模式 —— WS 广播留在 loop 上。advisory 锁(user→ledger 顺序,
 §4.7)是事务级的:取锁与 apply 与 commit 都在同一个 worker 线程的同一个
 session/事务里,不跨连接。
+
+对抗批次 S2 对 LWW / 幂等语义的加固(详见 docs/SYNC_ARCHITECTURE.md §4.2):
+
+- **F-01 幂等四元组**:重放判定从 ``(updated_at, device_id)`` 升级为
+  ``(原始 updated_at, device_id, action, payload_hash)``。``payload_hash`` 是
+  变更体的规范化 sha256(**阻塞-3**:在身份注入
+  ``updatedByUserId/createdByUserId`` *之后*计算,与库内 ``payload_json`` 的
+  形态一致),因此「同毫秒的第二次编辑」不再被当成重放吞掉。
+- **LWW 与幂等**两层**解耦**(交叉复核 D1):
+  - **LWW 决胜**用 **clamp 后的有效 ts**(= ``min(原始 ts, now+5s)``,即服务端
+    真正接受的「现在」)—— 快时钟设备不能靠原始未来 ts 永久压过合法写入;
+  - **重放判定**用**原始 ts**(被 clamp 的 change 把原始 ts 记进 payload 内部键
+    ``__rawUpdatedAt``,只写不改;老行回退到 ``updated_at`` 列)—— 重试时 clamp
+    天花板漂移不再破坏幂等,同批同实体的多次编辑也不再坍缩。
+  - 有效 ts 并列 + 原始 ts 并列(同设备、action 翻转、且既有行的有效 ts 仍在
+    未来)时**保持既有形态**并报 ``rejected``(确定性,不翻转存在性);既有行的
+    有效 ts 一旦落到过去,后到者按有效 ts 正常胜出(可恢复,不自锁)。
+- **D2 内部键边界**:``__`` 前缀键是服务端内部状态,入站一律 strip(客户端不能
+  伪造 LWW 键锁死实体),出站(/sync/pull、WS fan-out)一律过滤(不下发实现细节)。
+- **F-02 cascade 让位**:user-global rename 派生的 cascade-only tx 事件延后到
+  批循环**之后**补发,客户端显式变更优先,不再抢占 LWW 槽位。
 """
 from __future__ import annotations
 
+import hashlib
 import time
 
 from starlette.concurrency import run_in_threadpool
 
 from ...concurrency import lock_user_global
 from ._shared import *  # noqa: F401,F403 — 拉取所有 imports / helpers / router / constants
+
+# 显式重导入本文件新增代码引用的 star-import 符号(同对象),消除新增 F405。
+from ._shared import (  # noqa: F401 — re-import for explicitness
+    Ledger,
+    ReadTxProjection,
+    Session,
+    SyncChange,
+    SyncChangeIn,
+    User,
+    _is_internal_payload_key,
+    _public_payload,
+    _strip_internal_payload_keys,
+    _to_utc,
+    datetime,
+    json,
+    logger,
+    select,
+)
+
+# 被 clamp 的 change 在 payload 里留下的内部标记(clamp 前的客户端 ts)。
+# 前缀 ``__`` = 服务端内部键,客户端 serializer 不会产生同名字段。
+# 只写不改:老 SyncChange 行没有这个键时回退到 ``updated_at`` 列。
+_RAW_TS_PAYLOAD_KEY = "__rawUpdatedAt"
+
+# entity_sync_id / sync_id 的列宽上限(models.py 的 String(255))。push 入口按
+# 列宽校验,避免 SQLite 静默通过、PostgreSQL `value too long` 整批失败(F-11)。
+MAX_ENTITY_SYNC_ID_LENGTH = 255
+
+
+def _normalized_payload_hash(payload: object) -> str:
+    """变更体规范化 sha256(F-01 幂等四元组的第 4 位)。
+
+    规范化 = 排序 key + 紧凑分隔符 + 非 JSON 值 ``str()`` 兜底,保证
+    「同一逻辑 payload」在两次请求里 hash 相同(键序 / 空白 / SQLite 的
+    JSON 文本往返都不影响)。``payload_json`` 在 SQLite 下可能取回字符串,
+    先解析回对象再规范化。
+
+    **命令-3(幂等回归)**:hash 在**身份注入之后**计算(与库内
+    ``payload_json`` 的形态一致)。**D2(内部键边界)**:两侧都剔除 ``__``
+    前缀的服务端内部键(如 ``__rawUpdatedAt``)—— 入站侧它们已被 strip,
+    库内行(服务端自己写的 clamp 标记 / 老行)也剔除,否则「本次请求是否
+    触发 clamp」会改变 hash,导致真重放 hash 不等 → 重复落 SyncChange 行
+    (tests/test_sync_concurrency.py 的幂等契约会翻红)。
+    """
+    if isinstance(payload, (str, bytes)):
+        try:
+            payload = json.loads(payload)
+        except (ValueError, TypeError):
+            return hashlib.sha256(str(payload).encode("utf-8", "replace")).hexdigest()
+    if isinstance(payload, dict):
+        payload = {k: v for k, v in payload.items() if not _is_internal_payload_key(k)}
+    try:
+        canonical = json.dumps(
+            payload, sort_keys=True, separators=(",", ":"),
+            ensure_ascii=False, default=str,
+        )
+    except (TypeError, ValueError):
+        canonical = repr(payload)
+    return hashlib.sha256(canonical.encode("utf-8", "replace")).hexdigest()
+
+
+def _raw_updated_at_of(change_row: SyncChange) -> datetime | None:
+    """取该 SyncChange 行 clamp 前的原始 ts(payload 内部标记)。
+
+    没有标记(未 clamp / 老行 / cascade 补发行)→ None,调用方回退到
+    ``updated_at`` 列(对未 clamp 的行二者等价)。
+
+    **仅用于重放判定**(交叉复核 D1):LWW 决胜不得用原始 ts —— 否则快时钟
+    设备的未来 ts 会永久压过合法写入(clamp 形同虚设)。该键只由服务端写入
+    (``_emit_user_global_cascade_tx_changes`` 与 clamp 分支),入站 payload 的
+    同名字段已在批处理前被 ``_strip_internal_payload_keys`` 清除。
+    """
+    payload = change_row.payload_json
+    if isinstance(payload, (str, bytes)):
+        try:
+            payload = json.loads(payload)
+        except (ValueError, TypeError):
+            return None
+    if not isinstance(payload, dict):
+        return None
+    raw = payload.get(_RAW_TS_PAYLOAD_KEY)
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    try:
+        return _to_utc(datetime.fromisoformat(raw.replace("Z", "+00:00")))
+    except ValueError:
+        return None
+
+
+def _inject_actor_ids_early(
+    db: Session,
+    *,
+    change: SyncChangeIn,
+    ledger: Ledger | None,
+    current_user: User,
+    tx_creator_cache: dict[tuple[str, str], str | None],
+) -> None:
+    """事务 payload 的身份字段注入 —— **必须在幂等判定之前**跑(阻塞-3)。
+
+    契约:库内 ``SyncChange.payload_json`` 是**注入后**的形态。若对入站的裸
+    payload 算 hash,真重放的 hash 不匹配 → 重复落 Event 行 → 既有幂等绿测
+    (``tests/test_sync_concurrency.py::test_lww_idempotent_replay_does_not_duplicate``)
+    翻红。因此把注入提前到 replay 判定之前,两侧(hash 与落库)看到同一份 payload。
+
+    - ``updatedByUserId``:始终用当前 actor(谁 push 就是谁编辑);
+    - ``createdByUserId``:first-write-wins —— 已有投影行就保留原创建人
+      (避免 B 编辑 A 创建的 tx 时把 created 改成 B),否则用当前 actor。
+    - 与**旧实现逐字同条件**(entity_type='transaction' + ledger 非 None),
+      delete 的 payload 同样注入 —— 保持库内 payload 形态不变(既有 delete
+      事件的 payload 契约 / 回归测试不受影响)。
+
+    ``ledger`` 为 None(auto-create 之前的路径 / user-global)时跳过 —— 那两种
+    情况本来也不注入。
+    """
+    if change.entity_type != "transaction" or not isinstance(change.payload, dict):
+        return
+    if ledger is None:
+        return
+    if not change.payload.get("updatedByUserId"):
+        change.payload["updatedByUserId"] = current_user.id
+    if not change.payload.get("createdByUserId"):
+        cache_key = (ledger.id, change.entity_sync_id)
+        if cache_key not in tx_creator_cache:
+            tx_creator_cache[cache_key] = db.scalar(
+                select(ReadTxProjection.created_by_user_id).where(
+                    ReadTxProjection.ledger_id == ledger.id,
+                    ReadTxProjection.sync_id == change.entity_sync_id,
+                )
+            )
+        change.payload["createdByUserId"] = (
+            tx_creator_cache[cache_key] or current_user.id
+        )
+
 
 
 def _user_global_prev_name(
@@ -55,7 +210,7 @@ def _emit_user_global_cascade_tx_changes(
     updated_at: datetime,
     entity_type: str,
     entity_sync_id: str,
-) -> None:
+) -> int:
     """user-global rename 后补发 cascade-only tx SyncChange(push 路径)。
 
     与 web 快路径 write/_shared._emit_cascade_tx_changes 同语义:投影已由
@@ -64,6 +219,12 @@ def _emit_user_global_cascade_tx_changes(
     pull 后刷新本地 denorm 列。owner 拉不到 Editor 的 scope=user 改名事件
     (pull 按 user 过滤),没有这路补发的话 owner 端 mobile 永远旧名
     (P0-1)。软删行不补发:cascade upsert 会让 mobile 按重建已删交易。
+
+    **F-02**:补发事件不参与同批 LWW 槽位抢占 —— 调用方把它延后到批循环
+    **之后**(见 ``pending_cascade_emissions``),所以客户端显式 tx 变更先落库,
+    cascade 事件随后补发(事件流顺序与投影终态一致)。
+
+    返回插入的 cascade 行数(诊断 / 测试用)。
     """
     from sqlalchemy import insert as sa_insert
 
@@ -77,10 +238,13 @@ def _emit_user_global_cascade_tx_changes(
     elif entity_type == "tag":
         rows = _projection.cascade_tx_rows_for_tag(db, tag_sync_id=entity_sync_id)
     else:
-        return
+        return 0
     bulk_rows = []
     for r in rows:
         payload = _projection_row_to_tx_dict(r)
+        # F-01/F-06:补发行同样标注原始 ts,重放判定才能稳定。cascade 行不是
+        # 客户端变更体,不参与「客户端显式变更」的 identity。
+        payload[_RAW_TS_PAYLOAD_KEY] = _to_utc(updated_at).isoformat()
         bulk_rows.append({
             # tx 投影行的 user_id 是 ledger owner(denorm);真实操作者身份在
             # updated_by_user_id。与 ledger-scope 分支的 row_change 约定一致。
@@ -101,6 +265,8 @@ def _emit_user_global_cascade_tx_changes(
             "sync.push.cascade_fanout entity=%s sync_id=%s tx_rows=%d",
             entity_type, entity_sync_id, len(bulk_rows),
         )
+    return len(bulk_rows)
+
 
 
 # ---------------------------------------------------------------------------
@@ -254,6 +420,11 @@ async def push_changes(
         # 该 user 作为 owner 的所有共享账本的非 owner member。收集后 commit 后广播。
         pending_shared_resource_events: list[dict[str, Any]] = []
 
+        # F-02:cascade-only tx 事件延后到批循环之后补发。旧行为在循环内即时
+        # bulk insert —— 抢占了同批客户端 tx 变更的 LWW 槽位(同 ts → replay
+        # 分支吞掉真变更)。现在收集到此列表,循环结束后统一 emit。
+        pending_cascade_emissions: list[dict[str, Any]] = []
+
         # 是否触动 user-global —— 触动了就额外给 owner 广播一条 __user_global__
         # 通道的 sync_change(让其他设备拉这一份)。
         touched_user_global = False
@@ -275,6 +446,26 @@ async def push_changes(
 
         for change in req.changes:
             is_user_global = change.entity_type in USER_GLOBAL_ENTITY_TYPES
+
+            # ============================================================
+            # D2(交叉复核):入站 payload 剥离服务端内部键
+            # ============================================================
+            # ``__`` 前缀键是服务端内部状态(当前只有 clamp 的原始 ts 标记
+            # ``__rawUpdatedAt``)。旧实现只在服务端 clamp 时 ``setdefault``,
+            # 但**从不清理入站 payload** —— 客户端可以自带
+            # ``payload: {"__rawUpdatedAt": "2999-01-01T00:00:00+00:00"}``,
+            # 服务端随后 ``_raw_updated_at_of`` 把该值当作既有侧 LWW 键,
+            # 实体被永久锁死(D2 repro:首次 accepted=1,之后所有编辑
+            # accepted=0)。内部状态只能由服务端写,入站一律 strip 并留日志。
+            if isinstance(change.payload, dict):
+                _stripped = _strip_internal_payload_keys(change.payload)
+                if _stripped:
+                    logger.warning(
+                        "sync.push.strip_internal_payload_keys entity=%s sync_id=%s "
+                        "device=%s removed=%d",
+                        change.entity_type, change.entity_sync_id,
+                        req.device_id, _stripped,
+                    )
 
             # ============================================================
             # 路径分流:user-global vs ledger-scoped
@@ -342,6 +533,10 @@ async def push_changes(
                             change.entity_type,
                         )
                         rejected += 1
+                        # round-3 缺陷 3:被拒分支同时计数 failed_count —— 客户端
+                        # 按 conflict+failed 与 rejected 取 max 对账,不计数会让
+                        # unclassified 落进 conflict 桶,语义错位。
+                        failed_count += 1
                         if len(failed_samples) < 20:
                             failed_samples.append({
                                 "reason": "membership_revoked",
@@ -374,6 +569,8 @@ async def push_changes(
                                 change.entity_type,
                             )
                             rejected += 1
+                            # round-3 缺陷 3:同上,被拒分支计入 failed_count。
+                            failed_count += 1
                             if len(failed_samples) < 20:
                                 failed_samples.append({
                                     "reason": "unknown_ledger",
@@ -400,6 +597,31 @@ async def push_changes(
                     ledger_cache[f"__auto__{change.ledger_id}"] = ledger
                 else:
                     ledger, caller_role = row
+                    # F-10:push 到已软删账本必须拒绝(与 web 写路径同口径)。
+                    # 旧行为照常 upsert 投影行 → read 路径因账本墓碑全部 404/过滤
+                    # (用户看不见),但 read_tx_projection 留下**幽灵行**;账本一旦
+                    # 恢复/快照重建,这些行凭空冒出来。web 侧同款检查见
+                    # write/_shared._load_ledger_for_write(404 拒绝)。
+                    from ..read._shared import _is_ledger_deleted  # late import 防循环
+
+                    if _is_ledger_deleted(db, ledger_id=ledger.id):
+                        logger.warning(
+                            "sync.push.reject soft-deleted ledger "
+                            "user=%s device=%s ledger=%s entity=%s",
+                            current_user.id, req.device_id, change.ledger_id,
+                            change.entity_type,
+                        )
+                        rejected += 1
+                        # round-3 缺陷 3:同上,被拒分支计入 failed_count。
+                        failed_count += 1
+                        if len(failed_samples) < 20:
+                            failed_samples.append({
+                                "reason": "ledger_deleted",
+                                "ledgerId": change.ledger_id,
+                                "entityType": change.entity_type,
+                                "entitySyncId": change.entity_sync_id,
+                            })
+                        continue
                     # 共享账本 Phase 1:Editor 只能推 transaction / budget;不能推
                     # ledger / ledger_snapshot(账本 meta 改 / 删账本属 owner 操作)。
                     # 老协议没有 entity_type='ledger_snapshot' 路径(0011 后),所以
@@ -413,19 +635,123 @@ async def push_changes(
                         rejected += 1
                         continue
 
+            # ============================================================
+            # F-05:entity_sync_id 与 payload.syncId 必须一致
+            # ============================================================
+            # 事件行 / LWW 键用 `entity_sync_id`,而投影 PK 用 `payload.syncId`
+            # (sync_applier.setdefault 只在缺键时注入)。两者不一致时:
+            #   - 投影落 `payload.syncId` 那行;
+            #   - 后续 delete(用 entity_sync_id)永远删不掉它 → 永久幽灵行
+            #     (read / 统计 / 导出都看得到,任何事件都改不动)。
+            # 入口直接拒绝,不给幽灵行留机会(客户端修好 syncId 后重推即成功)。
+            # 例外:delete 的 payload 通常为空(或只带 syncId),缺键时无可比对。
+            _payload_sync_id = (
+                change.payload.get("syncId")
+                if isinstance(change.payload, dict)
+                else None
+            )
+            if (
+                _payload_sync_id is not None
+                and str(_payload_sync_id) != change.entity_sync_id
+            ):
+                logger.warning(
+                    "sync.push.reject sync_id mismatch entity=%s entity_sync_id=%s "
+                    "payload_sync_id=%s",
+                    change.entity_type, change.entity_sync_id, _payload_sync_id,
+                )
+                rejected += 1
+                # round-3 缺陷 3:同上,被拒分支计入 failed_count。
+                failed_count += 1
+                if len(failed_samples) < 20:
+                    failed_samples.append({
+                        "reason": "sync_id_mismatch",
+                        "ledgerId": change.ledger_id,
+                        "entityType": change.entity_type,
+                        "entitySyncId": change.entity_sync_id,
+                        "payloadSyncId": str(_payload_sync_id)[:255],
+                    })
+                continue
+
+            # ============================================================
+            # F-11:entity_sync_id 长度上限
+            # ============================================================
+            # `sync_changes.entity_sync_id` / 各 projection 的 `sync_id` 都是
+            # String(255)(models.py),且 `attachment_files` 等多表共用该长度
+            # 假设。SQLite 静默接受 400+ 字符,PostgreSQL 抛
+            # `value too long for type character varying(255)` → 整批 500 或
+            # savepoint 隔离。正常客户端是 UUID / `tx_<12hex>`,超长必是脏数据,
+            # 入口拒绝(比静默截断安全:截断会让两条不同实体撞成同一个 sync_id)。
+            if len(change.entity_sync_id) > MAX_ENTITY_SYNC_ID_LENGTH:
+                logger.warning(
+                    "sync.push.reject overlong entity_sync_id entity=%s len=%d",
+                    change.entity_type, len(change.entity_sync_id),
+                )
+                rejected += 1
+                # round-3 缺陷 3:同上,被拒分支计入 failed_count。
+                failed_count += 1
+                if len(failed_samples) < 20:
+                    failed_samples.append({
+                        "reason": "entity_sync_id_too_long",
+                        "ledgerId": change.ledger_id,
+                        "entityType": change.entity_type,
+                        # round-3 缺陷 4:sample 的 entitySyncId 必须**完整**
+                        # (客户端拿本地全长 syncId 与 sample 比对决定丢弃哪些
+                        # 本地实体;截断到 255 会让比对永不命中 → 整批
+                        # "不 markPushed" 保护生效,健康同批 change 永远重推)。
+                        # 这是客户端自己的数据回显,不构成注入面;列宽截断
+                        # (String(255))只作用于落库,与本回显无关。
+                        "entitySyncId": change.entity_sync_id,
+                        "maxLength": MAX_ENTITY_SYNC_ID_LENGTH,
+                    })
+                continue
+
             # Clamp incoming updated_at to the server clock to neutralize client
             # clock skew. Without this, a mobile device whose local clock is ahead
             # of the server by minutes/hours will always win LWW against a legitimate
             # web write that used server time — silently overriding the user's latest
             # change. Cap the incoming timestamp at (server_now + 5s); legitimate
             # small skew still passes, intentional-or-accidental future dates don't.
+            #
+            # **D1(交叉复核,BLOCKER)**:LWW 与幂等是**两个不同用途**,必须解耦:
+            #
+            #   - **LWW 决胜键** = ``comparison_ts`` = **clamp 后的有效 ts**
+            #     (``min(原始 ts, now+5s)``,即服务端真正接受的「现在」)。
+            #     既有侧同样用落库的 ``updated_at`` 列(clamp 值,非 payload 标记)。
+            #     若两侧都比原始 ts,clamp 对 LWW 完全失效:快时钟设备一条
+            #     ``now+1h`` 的变更会以「原始 ts = now+1h」永久占据 LWW 槽位,
+            #     之后所有合法写入(web 服务端时间 / 其他设备)全部被拒 —— 实体
+            #     永久不可修(D1 repro:amount 永远停在 10)。
+            #     改用有效 ts 后,该变更的实际领先幅度被压到 5s:天花板一过,
+            #     任何合法写入(ts ≥ 旧天花板)即胜出 —— 最长 5s 写入真空
+            #     (H-04 已记录的接受项),绝不永久锁死。
+            #
+            #   - **重放/并列键** = 原始 ts(被 clamp 的 change 把它记进 payload
+            #     内部键 ``__rawUpdatedAt``,只写不改;老行回退 ``updated_at`` 列)。
+            #     重试同一批时 clamp 天花板 ``now+5s`` 会随请求漂移,用有效 ts
+            #     当重放键会让真重放 hash/元组不等 → 重复事件行(F-06);
+            #     同批同实体多编辑也会坍缩到同一天花板而丢失后序编辑(F-03)。
+            #
+            # 落库的 ``updated_at`` 仍是 clamp 后的值(时钟偏移防御不放松)。
             raw_updated_at = _to_utc(change.updated_at)
             max_allowed = now + timedelta(seconds=5)
             incoming_updated_at = min(raw_updated_at, max_allowed)
+            was_clamped = incoming_updated_at != raw_updated_at
+            if was_clamped and isinstance(change.payload, dict):
+                # 内部标记写进 payload(随 SyncChange.payload_json 持久化);
+                # 入站同名字段已在循环开头 strip,客户端无法伪造;出站
+                # (/sync/pull)由 _public_payload 过滤,不下发。
+                change.payload.setdefault(
+                    _RAW_TS_PAYLOAD_KEY, raw_updated_at.isoformat(),
+                )
+            comparison_ts = incoming_updated_at
 
             # ============================================================
             # LWW lookup —— scope-aware
             # ============================================================
+            # F-02:cascade-only 补发行**不再出现在本批的槽位历史里** —— 它们
+            # 已延后到批循环之后 emit(见 pending_cascade_emissions),所以这里
+            # 的 latest 只可能看到客户端显式变更 / 跨批的历史行,不存在
+            # 「服务端派生事件抢占同批客户端变更」的窗口。
             if is_user_global:
                 latest_entity_change = db.scalar(
                     select(SyncChange)
@@ -454,16 +780,39 @@ async def push_changes(
             # Deterministic LWW with device_id tie-break:
             # compare (updated_at, device_id) tuples lexicographically so two servers
             # or retried calls produce the same winner regardless of arrival order.
+            #
+            # **D1(交叉复核,BLOCKER):两个键,两种用途。**
+            #
+            # (a) **LWW 决胜键** ``(有效 ts, device_id)`` —— 有效 ts 是 clamp 后的
+            #     落库值,既有侧也取 ``updated_at`` 列(clamp 值),**不取** payload
+            #     里的原始 ts 标记。这样快时钟设备的未来 ts 无法永久占住槽位:
+            #     它的领先幅度被 clamp 压到最长 5s,天花板一过,任何 ts ≥ 天花板的
+            #     合法写入即胜出(最长 5s 真空,见 H-04 接受项,不自锁死)。
+            #     旧实现两侧都比原始 ts → clamp 对 LWW 完全失效 → 一条 ``now+1h``
+            #     的变更把实体永久锁死(之后所有合法编辑被拒)。
+            #
+            # (b) **重放/并列键** ``(原始 ts, device_id)`` —— 被 clamp 的 change 用
+            #     payload 内部标记 ``__rawUpdatedAt``(服务端写入,入站已 strip),
+            #     老行回退 ``updated_at`` 列。重试同一批时 clamp 天花板随请求漂移,
+            #     只有原始 ts 才能让元组稳定(F-06 幂等);同批同实体多编辑也靠
+            #     原始 ts 保序,不坍缩(F-03)。
+            #
+            # 两个键只在「元组全等」时交叉:重放判定额外比对 action + payload_hash。
             incoming_device_id = req.device_id or ""
-            incoming_tuple = (incoming_updated_at, incoming_device_id)
-            existing_tuple: tuple[datetime, str] | None = None
+            incoming_lww_tuple = (comparison_ts, incoming_device_id)
+            incoming_replay_tuple = (raw_updated_at, incoming_device_id)
+            existing_lww_tuple: tuple[datetime, str] | None = None
+            existing_replay_tuple: tuple[datetime, str] | None = None
             if latest_entity_change:
-                existing_tuple = (
-                    _to_utc(latest_entity_change.updated_at),
-                    latest_entity_change.updated_by_device_id or "",
+                existing_effective_ts = _to_utc(latest_entity_change.updated_at)
+                existing_raw_ts = (
+                    _raw_updated_at_of(latest_entity_change) or existing_effective_ts
                 )
+                existing_device_id = latest_entity_change.updated_by_device_id or ""
+                existing_lww_tuple = (existing_effective_ts, existing_device_id)
+                existing_replay_tuple = (existing_raw_ts, existing_device_id)
 
-            if existing_tuple is not None and existing_tuple > incoming_tuple:
+            if existing_lww_tuple is not None and existing_lww_tuple > incoming_lww_tuple:
                 rejected += 1
                 conflict_count += 1
                 sample = {
@@ -483,8 +832,8 @@ async def push_changes(
                     change.ledger_id,
                     change.entity_sync_id,
                     req.device_id,
-                    incoming_updated_at.isoformat(),
-                    existing_tuple[0].isoformat(),
+                    comparison_ts.isoformat(),
+                    existing_lww_tuple[0].isoformat(),
                     latest_entity_change.change_id,
                 )
                 # 附录 B3:被拒 change 会被客户端永久重推,同 key 冲突的
@@ -503,26 +852,133 @@ async def push_changes(
                             action="sync_conflict",
                             metadata_json={
                                 **sample,
-                                "incomingUpdatedAt": incoming_updated_at.isoformat(),
-                                "existingUpdatedAt": existing_tuple[0].isoformat(),
+                                "incomingUpdatedAt": comparison_ts.isoformat(),
+                                "existingUpdatedAt": existing_lww_tuple[0].isoformat(),
                                 "incomingDeviceId": req.device_id,
-                                "existingDeviceId": existing_tuple[1],
+                                "existingDeviceId": existing_lww_tuple[1],
                             },
                         )
                     )
                 continue
 
-            if existing_tuple is not None and existing_tuple == incoming_tuple:
-                # Idempotent replay (same device, same timestamp) — don't duplicate.
-                accepted += 1
-                logger.debug(
-                    "sync.push.replay entity=%s action=%s ledger=%s sync_id=%s device=%s",
-                    change.entity_type,
-                    change.action,
-                    change.ledger_id,
-                    change.entity_sync_id,
-                    req.device_id,
+            # ============================================================
+            # F-01 幂等四元组:(原始 ts, device_id, action, payload_hash)
+            # ============================================================
+            # 旧实现只看 (updated_at, device_id) 相等就 `continue` —— 同毫秒的
+            # **第二次编辑**(payload 不同)或「upsert 之后同 ts 的 delete」都被
+            # 当成重放静默丢弃,而响应照算 accepted(客户端以为成功 ⇒ 幽灵交易 /
+            # 丢失更新)。现在必须四元组全等才算重放:
+            #   - action 不同(upsert vs delete)→ 不是重放;
+            #   - payload_hash 不同(内容变了)→ 不是重放。
+            #
+            # **阻塞-3**:身份注入 `updatedByUserId/createdByUserId` 必须在
+            # **重放判定之前**完成 —— 库内 `payload_json` 是注入后的形态,若对
+            # 入站裸 payload 算 hash,真重放的 hash 不匹配 → 重复落 SyncChange 行
+            # (tests/test_sync_concurrency.py 的既有幂等契约翻红)。
+            # 注入本身是两次 dict 取值 + 至多一次点查(带批内缓存),很便宜。
+            if isinstance(change.payload, dict):
+                _inject_actor_ids_early(
+                    db, change=change, ledger=ledger, current_user=current_user,
+                    tx_creator_cache=tx_creator_cache,
                 )
+
+            # 性能:payload_hash 只在「重放键全等」(潜在重放)时才计算 —— 正常增量
+            # 推送(ts 严格递增)完全跳过 json.dumps+sha256,400 条批次的 worker
+            # 线程 GIL 占用与旧实现同级(否则 event-loop 探针会漂移)。
+            if (
+                existing_replay_tuple is not None
+                and existing_replay_tuple == incoming_replay_tuple
+            ):
+                incoming_payload_hash = _normalized_payload_hash(
+                    change.payload if change.action != "delete" else {}
+                )
+                if (
+                    latest_entity_change is not None
+                    and latest_entity_change.action == change.action
+                    and _normalized_payload_hash(
+                        latest_entity_change.payload_json
+                        if latest_entity_change.action != "delete" else {}
+                    ) == incoming_payload_hash
+                ):
+                    # Idempotent replay (same device / raw ts / action / payload) —
+                    # don't duplicate.
+                    accepted += 1
+                    logger.debug(
+                        "sync.push.replay entity=%s action=%s ledger=%s sync_id=%s device=%s",
+                        change.entity_type,
+                        change.action,
+                        change.ledger_id,
+                        change.entity_sync_id,
+                        req.device_id,
+                    )
+                    continue
+
+            # 非重放但原始 ts 并列(F-03 坍缩窗口的残留形态):本 change 被 clamp
+            # 过(设备时钟超前 → 落库 ts 被压到 ceiling)且原始 ts 与既有行相同。
+            # 原始 ts 相等说明客户端确实复用了同一个 ts;此时 action 不同
+            # (upsert↔delete)无法判定先后(有效 ts 也相等)⇒ **保持首个已落库的
+            # 形态**,不翻转存在性(确定性优先)。
+            #
+            # D3(交叉复核):这个分支**没有 apply**,因此绝不能报 accepted ——
+            # 旧实现 `accepted += 1` 让客户端以为 delete 成功,而投影行仍在、
+            # `deleted_at IS NULL`,本地与服务端永久分叉(客户端不重试)。
+            # 现在如实报 rejected + conflict sample(带 entitySyncId):客户端
+            # `rejectedEntitySyncIds` 命中 → 不 markPushed → 保留待重推/pull 对齐;
+            # 用户重新编辑(更大 ts)即可越过(不会自锁)。
+            #
+            # 未 clamp 的窗口内真实并列(action 不同)不走这里 —— 后到者胜
+            # (F-01 核心诉求:delete 不再被静默吞掉)。
+            if (
+                was_clamped
+                and existing_replay_tuple is not None
+                and existing_replay_tuple == incoming_replay_tuple
+                and latest_entity_change is not None
+                and latest_entity_change.action != change.action
+            ):
+                rejected += 1
+                conflict_count += 1
+                sample = {
+                    "reason": "lww_tie_action_kept",
+                    "ledgerId": change.ledger_id,
+                    "entityType": change.entity_type,
+                    "entitySyncId": change.entity_sync_id,
+                    "existingChangeId": latest_entity_change.change_id,
+                    "incomingAction": change.action,
+                    "existingAction": latest_entity_change.action,
+                }
+                if len(conflict_samples) < 20:
+                    conflict_samples.append(sample)
+                logger.warning(
+                    "sync.push.tie_action_kept entity=%s incoming_action=%s "
+                    "existing_action=%s ledger=%s sync_id=%s device=%s ts=%s "
+                    "(not applied, reported rejected)",
+                    change.entity_type, change.action, latest_entity_change.action,
+                    change.ledger_id, change.entity_sync_id, req.device_id,
+                    comparison_ts.isoformat(),
+                )
+                if _should_write_conflict_audit(
+                    user_id=current_user.id,
+                    ledger_id=ledger.id if ledger is not None else None,
+                    entity_type=change.entity_type,
+                    entity_sync_id=change.entity_sync_id,
+                    device_id=incoming_device_id,
+                ):
+                    db.add(
+                        AuditLog(
+                            user_id=current_user.id,
+                            ledger_id=ledger.id if ledger is not None else None,
+                            action="sync_conflict",
+                            metadata_json={
+                                **sample,
+                                "incomingUpdatedAt": comparison_ts.isoformat(),
+                                # 条件已保证 latest_entity_change 非 None ⇒
+                                # existing_lww_tuple 非 None。
+                                "existingUpdatedAt": existing_lww_tuple[0].isoformat(),
+                                "incomingDeviceId": req.device_id,
+                                "existingDeviceId": existing_lww_tuple[1],
+                            },
+                        )
+                    )
                 continue
 
             # ============================================================
@@ -600,17 +1056,20 @@ async def push_changes(
                 # P0-1:rename 落定(apply 内 cascade 已刷投影),补发 cascade-only
                 # tx SyncChange。在 savepoint 之后跑:补发失败不应回滚已接受的
                 # rename 本身。
+                #
+                # F-02:**延后到批循环之后**(`pending_cascade_emissions`)——
+                # 旧实现在这里即时 bulk insert,同一批里后到的客户端 tx 编辑
+                # 会命中那条 cascade 行的 LWW 槽位(同 ts → 旧 replay 分支吞掉),
+                # 客户端以为成功而数据丢失。延后 + updated_at 保持 rename 的 ts
+                # ⇒ 显式变更先落、cascade 之后补,事件流顺序与投影一致。
                 if prev_entity_name is not None:
                     new_entity_name = str((change.payload or {}).get("name") or "").strip()
                     if new_entity_name and new_entity_name != prev_entity_name:
-                        _emit_user_global_cascade_tx_changes(
-                            db,
-                            actor_user_id=current_user.id,
-                            device_id=req.device_id,
-                            updated_at=incoming_updated_at,
-                            entity_type=change.entity_type,
-                            entity_sync_id=change.entity_sync_id,
-                        )
+                        pending_cascade_emissions.append({
+                            "entity_type": change.entity_type,
+                            "entity_sync_id": change.entity_sync_id,
+                            "updated_at": incoming_updated_at,
+                        })
                 # 共享账本 fan-out:只对 category/account/tag 三种 user-global 类型
                 # 推 shared_resource_change(其他 user-global 类型如 device 等不外推)
                 if change.entity_type in ("category", "account", "tag"):
@@ -618,7 +1077,11 @@ async def push_changes(
                         "resource_type": change.entity_type,
                         "action": change.action,
                         "sync_id": change.entity_sync_id,
-                        "payload": change.payload or {"sync_id": change.entity_sync_id},
+                        # D2:WS 出站同样过滤内部键(与 /sync/pull 同口径);
+                        # 入站已 strip,这里是纵深防御 + 不带实现细节给成员端。
+                        "payload": _public_payload(
+                            change.payload
+                        ) or {"sync_id": change.entity_sync_id},
                     })
                     # category delete 的服务端级联会连带删掉子分类(见
                     # sync_applier._delete_user_category_cascade),这些子分类的
@@ -627,32 +1090,10 @@ async def push_changes(
                         pending_shared_resource_events.extend(extra_fanout)
             else:
                 assert ledger is not None
-                # §7 共享账本:mobile 历史路径未在本地 transactions.created_by_user_id
-                # / last_edited_by_user_id 上回填(addTransaction / updateTransaction
-                # 不写这两列),所以 EntitySerializer 序列化出来的 payload 缺这俩
-                # 字段。server 这里兜底注入,让 SyncChange.payload_json 保留正确身份;
-                # 否则 pull 端拿到的 payload 没有 user id,mobile 本地 DB 的
-                # created_by / last_edited 字段全空,UI 无法显示"X 创建 / Y 编辑"。
-                #
-                # createdByUserId:first-write-wins — 已存在 read_tx_projection
-                # 行就保留(避免 B 编辑 A 创建的 tx 时把 created 改成 B),否则用
-                # 当前 actor。
-                # updatedByUserId:始终用当前 actor(谁 push 就是谁编辑)。
-                if change.entity_type == "transaction" and isinstance(change.payload, dict):
-                    if not change.payload.get("updatedByUserId"):
-                        change.payload["updatedByUserId"] = current_user.id
-                    if not change.payload.get("createdByUserId"):
-                        cache_key = (ledger.id, change.entity_sync_id)
-                        if cache_key not in tx_creator_cache:
-                            tx_creator_cache[cache_key] = db.scalar(
-                                select(ReadTxProjection.created_by_user_id).where(
-                                    ReadTxProjection.ledger_id == ledger.id,
-                                    ReadTxProjection.sync_id == change.entity_sync_id,
-                                )
-                            )
-                        change.payload["createdByUserId"] = (
-                            tx_creator_cache[cache_key] or current_user.id
-                        )
+                # §7 共享账本:身份字段注入(updatedByUserId / createdByUserId)
+                # 已在**幂等判定之前**由 `_inject_actor_ids_early` 完成 ——
+                # 阻塞-3 要求 hash 与落库看到同一份 payload(库内 payload_json
+                # 是注入后的形态),否则真重放 hash 不匹配 → 重复事件行。
                 row_change = SyncChange(
                     user_id=ledger.user_id,
                     ledger_id=ledger.id,
@@ -730,6 +1171,24 @@ async def push_changes(
                 req.device_id,
                 current_user.id,
                 row_change.scope,
+            )
+
+        # F-02:cascade-only tx 事件在**全部显式变更之后**补发。语义:
+        #   1. 客户端显式变更优先落库(LWW 槽位不被服务端派生事件抢占);
+        #   2. cascade 行按 rename 的 ts 写,落后设备 pull 后仍能刷新 denorm
+        #      (事件流完整);
+        #   3. 补发时投影已是最终状态(rename + 显式编辑都 apply 完),所以
+        #      `_emit_user_global_cascade_tx_changes` 点查出的 payload 就是
+        #      新名 + 客户端最终金额 —— 同批「rename 后新建/编辑的交易」不再
+        #      沿用旧 denorm 名(F-07 的同批分支)。
+        for _pend in pending_cascade_emissions:
+            _emit_user_global_cascade_tx_changes(
+                db,
+                actor_user_id=current_user.id,
+                device_id=req.device_id,
+                updated_at=_pend["updated_at"],
+                entity_type=_pend["entity_type"],
+                entity_sync_id=_pend["entity_sync_id"],
             )
 
         # P1-B2:owner 的 user-global 变更派生 ledger-scope 镜像 SyncChange

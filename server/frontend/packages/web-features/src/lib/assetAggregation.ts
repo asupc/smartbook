@@ -91,7 +91,11 @@ export function effectiveRateToBase(
   }
   const raw = Number(auto?.rates?.[quote])
   if (!Number.isFinite(raw) || raw <= 0) return null
-  return { rate: 1 / raw, source: 'auto', date: auto!.rate_date }
+  // 极小汇率(如 1e-320)通过上面的 finite 校验后,1/raw 仍会溢出成 Infinity。
+  // 契约是「无效汇率 → null」,所以倒数后再验一次,绝不把 Infinity 折进资产。
+  const rate = 1 / raw
+  if (!Number.isFinite(rate) || rate <= 0) return null
+  return { rate, source: 'auto', date: auto!.rate_date }
 }
 
 /**

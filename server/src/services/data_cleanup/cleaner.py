@@ -2,24 +2,34 @@
 
 DB 操作 caller 保证事务边界(router 层 commit / rollback);文件操作 best-effort
 unlink,失败 warn。
+
+**删除包含性契约(P1,B3/B1)**:本模块的删除目标是**客户端可控制的输入**
+(scan 结果回传到 /clean),因此每个待删路径在 ``os.remove`` 之前必须经共享的
+``src.storage_paths.path_within_root`` 证明落在附件存储根之内;不在根内的记录
+**明确失败**(记入 result.failures 并把 DB 行回滚),绝不静默跳过 ——
+操作员要能看到「为什么没删掉」。
 """
 from __future__ import annotations
 
 import json
 import logging
 import os
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from ...config import get_settings
 from ...models import (
     AttachmentFile,
     ReadBudgetProjection,
     ReadTxProjection,
     SyncChange,
+)
+from ...storage_paths import (
+    attachment_storage_root,
+    attachment_storage_root_if_configured,
+    resolve_path_within_root,
 )
 from .models import CleanFailure, CleanResult, OrphanRecord, OrphanType
 
@@ -27,8 +37,57 @@ logger = logging.getLogger("smartbook.data_cleanup")
 
 
 def _storage_root() -> Path:
-    """attachment_storage_dir 解析为绝对路径,用作 rmdir 向上递归的 stop_at。"""
-    return Path(get_settings().attachment_storage_dir).expanduser().resolve()
+    """附件存储根(共享 helper 派生,绝对路径);供 rmdir 向上递归的 stop_at。
+
+    ``create=False`` —— 清理器不创建目录;判据与扫描 / 落盘点同源。
+    """
+    root = attachment_storage_root(create=False)
+    return root.resolve()
+
+
+def resolve_deletable_within_root(file_path: str | None) -> Path | None:
+    """待删路径的**唯一**包含性判据:在附件根之内 → 解析后绝对路径,否则 None。
+
+    两个删除形态共用(与扫描侧的标记同源,不会出现「扫说能删、删时被拒」的分叉):
+      - B3 ``disk_file_no_row``:``file_path`` 直接来自**客户端**回传,可指向任意
+        绝对路径(如 ``C:\\Users\\…\\victim.txt``);
+      - B1 ``attachment_no_ref``:``storage_path`` 来自 DB,但该行可由历史脏数据
+        (或 scan 回传的 file_path)写入根之外。
+
+    用 `resolve_path_within_root`(**整条**路径按 cwd 解析,不做 root 拼接)——
+    与 ``os.remove`` 的语义一致;`Path.resolve()` 消解 ``..`` / 绝对片段 /
+    符号链接,Windows 下大小写 / 盘符切换也由 ``is_relative_to`` 兜住。
+
+    `ATTACHMENT_STORAGE_DIR` 空串(文档化的「关闭附件存储」开关)时
+    fail-closed:没有根 → 一切物理删除都拒绝(宁可不删,不可误删)。
+    """
+    if not file_path:
+        return None
+    root = attachment_storage_root_if_configured()
+    if root is None:
+        return None
+    return resolve_path_within_root(root, file_path)
+
+
+def _require_deletable_within_root(file_path: str | None) -> Path:
+    """``resolve_deletable_within_root`` 的抛错包装 —— 不可删 → ValueError。
+
+    错误串里带上被拒路径与根,`CleanFailure.error` 会原样回给 admin 操作员
+    (响应 failures[]),日志侧另记一条 ERROR(admin 日志面板默认筛 ERROR)。
+    """
+    resolved = resolve_deletable_within_root(file_path)
+    if resolved is None:
+        root = _storage_root()
+        logger.error(
+            "data_cleanup.path_outside_root_blocked path=%r root=%s",
+            file_path,
+            root,
+        )
+        raise ValueError(
+            f"refusing to delete {file_path!r}: path is outside the attachment "
+            f"storage root ({root})"
+        )
+    return resolved
 
 
 def _remove_empty_parents(file_path: str, stop_at: Path | None = None) -> None:
@@ -100,6 +159,8 @@ def clean(db: Session, records: Iterable[OrphanRecord]) -> CleanResult:
             try:
                 op()
             except Exception as exc:  # noqa: BLE001
+                # 包含性校验已在 _dispatch 阶段完成(失败 → 上面的 failures
+                # 分支);这里只剩真实 IO 错误(权限 / 占用),按契约只 warn。
                 logger.warning(
                     "clean record %s file op failed: %s",
                     record.unique_key,
@@ -129,7 +190,11 @@ def _dispatch(db: Session, r: OrphanRecord, file_ops: list) -> None:
     elif t == OrphanType.ATTACHMENT_FILE_MISSING:
         _delete_attachment_row_only(db, r)
     elif t == OrphanType.DISK_FILE_NO_ROW:
-        file_ops.append(lambda: _delete_disk_file_only(r))
+        # B3 的 file_path 是**客户端回传**的任意字符串,先在 dispatch 阶段
+        # (commit 之前)证明它在附件根之内;逃逸 → ValueError → 记 failures
+        # 并在响应里明确回报(不静默跳过)。
+        resolved = _require_deletable_within_root(r.file_path)
+        file_ops.append(lambda p=resolved: _delete_disk_file_only(p))
     elif t == OrphanType.TX_REF_BROKEN_ATTACHMENT:
         _strip_broken_attachments(db, r)
     elif t == OrphanType.TX_TRASH_EXPIRED:
@@ -205,13 +270,22 @@ def _delete_attachment_with_file(
     if row is None:
         return
     storage_path = row.storage_path
+    # P1 包含性前置校验:storage_path 是 DB 值,但该行可能由历史脏数据 / 迁移
+    # 写入根之外(实测:DB 行 storage_path=C:\...\victim.txt,clean 直接 os.remove)。
+    # 必须在 db.delete(row) **之前**判定 —— 失败时整条 record 回滚,DB 行与
+    # 文件都保留,响应 failures 里给出原因(不静默跳过)。空 storage_path
+    # (无物理文件)跳过校验,只删行。
+    resolved = _require_deletable_within_root(storage_path) if storage_path else None
     db.delete(row)
     if storage_path:
-        def _do_file_op(path: str = storage_path, row_id: str = r.row_id) -> None:
+        assert resolved is not None  # storage_path 非空时上面的校验必返回路径
+
+        def _do_file_op(path: Path = resolved, row_id: str = r.row_id) -> None:
             try:
-                if os.path.exists(path):
-                    os.remove(path)
-                _remove_empty_parents(path)
+                path_str = str(path)
+                if os.path.exists(path_str):
+                    os.remove(path_str)
+                _remove_empty_parents(path_str)
             except OSError as exc:
                 logger.warning(
                     "B1 unlink failed file=%s path=%s err=%s",
@@ -230,13 +304,16 @@ def _delete_attachment_row_only(db: Session, r: OrphanRecord) -> None:
     db.delete(row)
 
 
-def _delete_disk_file_only(r: OrphanRecord) -> None:
-    """B3:DB 没记,只清磁盘 + 删空父目录。"""
-    if not r.file_path:
-        raise ValueError("disk file record 缺 file_path")
-    if os.path.exists(r.file_path):
-        os.remove(r.file_path)
-    _remove_empty_parents(r.file_path)
+def _delete_disk_file_only(file_path: Path) -> None:
+    """B3:DB 没记,只清磁盘 + 删空父目录。
+
+    `file_path` 必须是**已通过包含性校验**的解析路径(`_dispatch` 在 commit
+    之前用 `_require_deletable_within_root` 判过),本函数不再接受裸字符串 ——
+    避免未来新增调用点绕过校验。
+    """
+    if os.path.exists(file_path):
+        os.remove(file_path)
+    _remove_empty_parents(str(file_path))
 
 
 def _strip_broken_attachments(db: Session, r: OrphanRecord) -> None:
@@ -287,9 +364,16 @@ def _purge_expired_trash_tx(db: Session, r: OrphanRecord, file_ops: list) -> Non
     副本删干净(upsert 事件对已不存在的实体毫无价值,apply 是幂等 no-op)。
     """
     from ... import projection
+    from ...concurrency import lock_ledger_for_materialize, lock_user_global
     from ...sync_applier import _compact_entity_upsert_events
 
     ledger_id, sync_id = _ledger_sync_from_record(r)
+    # F-13 锁覆盖(§4.7 user→ledger):清理器改投影(purge 行 + GC)会与并发
+    # push/web 写同一批行竞争。旧实现无锁 —— PostgreSQL 下真实竞态(SQLite 的
+    # lock_* 是 no-op)。锁顺序固定 user→ledger:r.user_id 是投影行的 user_id
+    # (= ledger owner,见下方 _compact 注释),可作 user 锁 key。
+    lock_user_global(db, r.user_id)
+    lock_ledger_for_materialize(db, ledger_id)
     # 二次校验仍在回收站(避免清理扫描后用户已恢复的行被误删)
     row = db.scalar(
         select(ReadTxProjection).where(

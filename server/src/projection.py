@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import json
 import logging
+import math
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -43,6 +45,74 @@ logger = logging.getLogger(__name__)
 # snapshot items 里的 key 是 camelCase(mobile Flutter 友好);projection 列
 # 是 snake_case。这些 helper 把两边对齐。入参宽松:None / 空字符串 / 缺失都
 # 当作 None 处理,不抛。
+#
+# 对抗批次 S2(F-04 / F-12):`float(v)` 裸转会把 `'inf'` / `Infinity` /
+# 指数溢出(`'1e400'`)放进 projection 的金额列 —— 落库后所有读路径 / 聚合 /
+# CSV 导出 / `/sync/full`(RFC 8259 非法 token)全部中毒。这里的口径:
+#
+#   - NaN / 不可解析的字符串 / bool  → **拒绝**(抛 InvalidNumericValue,由
+#     push 的 savepoint 隔离成 `failed_count++`,不写投影也不留孤儿事件);
+#   - ±Infinity / 超出双精度上限(如 `'1e400'` / `10**400`)→ **封顶**到
+#     ±DBL_MAX(绝不写非有限值;`/sync/full` 的 `allow_nan=False` 因此不会
+#     500,读路径聚合也永远拿到数字)。
+#
+# 为什么「封顶」而不是「拒绝」:金额语义上 ±Inf 是客户端溢出 / 缺失量纲的
+# 产物,折叠到可表示的最大值既保住事件的可用性(客户端拿到确定值、投影不
+# 丢行),又不违反 JSON 契约;而 NaN 无法归一(任何确定值都是伪造),必须
+# 拒绝。该口径与 `finite_aggregate`(读侧 SUM 溢出封顶)同源。
+
+class InvalidNumericValue(ValueError):
+    """投影写入收到无法安全表示 / 归一的数值(NaN、垃圾字符串、bool)。"""
+
+
+# 双精度最大有限值(避免依赖 sys.float_info 的拼写,显式写死)。
+MAX_FINITE_FLOAT = 1.7976931348623157e308
+
+
+def _coerce_finite(v: Any) -> float:
+    """把任意输入归一成**有限** float;NaN / 不可解析 / bool → 抛。
+
+    ``None`` 由调用方决定语义(``_as_float`` 给默认值,``_as_float_or_none``
+    保留 NULL),本函数只处理「非 None 的数值输入」。
+    """
+    if isinstance(v, bool):
+        # bool 是 int 子类,True/False 当金额几乎一定是客户端 bug(JSON 形态
+        # 里应是数字),静默变 1.0/0.0 属于「静默变形」,直接拒。
+        raise InvalidNumericValue("boolean is not a valid number")
+    if isinstance(v, (int, float)):
+        if isinstance(v, float) and math.isnan(v):
+            raise InvalidNumericValue("NaN is not a valid number")
+        try:
+            f = float(v)
+        except OverflowError:
+            # 超大整数(10**400)超出双精度上限 → 封顶
+            return MAX_FINITE_FLOAT if v > 0 else -MAX_FINITE_FLOAT
+        if math.isinf(f):
+            return math.copysign(MAX_FINITE_FLOAT, f)
+        return f
+    if isinstance(v, str):
+        s = v.strip()
+        if not s:
+            raise InvalidNumericValue("empty string is not a valid number")
+        try:
+            d = Decimal(s)
+        except (InvalidOperation, ValueError):
+            # `'0x1p3'` / `'abc'` / `'1,5'` —— 旧实现静默归零(float 失败 →
+            # 0.0),现在拒绝,让客户端拿到 failed 反馈而不是"金额变 0"。
+            raise InvalidNumericValue(f"not a decimal number: {s[:32]!r}") from None
+        if d.is_nan():
+            raise InvalidNumericValue(f"NaN is not a valid number: {s[:32]!r}")
+        try:
+            f = float(d)
+        except OverflowError:
+            # Decimal 指数无上限(`'1e400'`)→ 双精度溢出 → 封顶。
+            return MAX_FINITE_FLOAT if d > 0 else -MAX_FINITE_FLOAT
+        if math.isinf(f):
+            # `'inf'` / `'Infinity'` 字符串字面量 → 封顶(与 float inf 同口径)。
+            return math.copysign(MAX_FINITE_FLOAT, f)
+        return f
+    raise InvalidNumericValue(f"unsupported numeric type: {type(v).__name__}")
+
 
 def _as_str(v: Any) -> str | None:
     if v is None:
@@ -51,13 +121,21 @@ def _as_str(v: Any) -> str | None:
     return s or None
 
 
+def _as_currency(v: Any) -> str | None:
+    """币种代码归一(对齐 web 的 `_normalize_currency`):strip + upper + 截断
+    到列宽 String(16)。对抗 F-11(超长 → PG `value too long`)/ F-14
+    (push 不归一大小写,与 web 落库值分裂)。"""
+    s = _as_str(v)
+    if s is None:
+        return None
+    return s.upper()[:16] or None
+
+
 def _as_float(v: Any) -> float:
+    """金额 / 余额:None → 0.0;非有限 / 不可解析 → 抛(见模块注释)。"""
     if v is None:
         return 0.0
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        return 0.0
+    return _coerce_finite(v)  # type: ignore[return-value]
 
 
 def _as_float_or_none(v: Any) -> float | None:
@@ -65,10 +143,64 @@ def _as_float_or_none(v: Any) -> float | None:
     统计端靠 NULL 触发 COALESCE 回退 amount;默认 0.0 会把统计清零)。"""
     if v is None:
         return None
-    try:
-        return float(v)
-    except (TypeError, ValueError):
+    return _coerce_finite(v)
+
+
+def _as_finite_or_none(v: Any) -> float | None:
+    """可选数值字段(credit_limit / balance_before / balance_after / 预算
+    金额):None 或**无意义值** → None,不抛。
+
+    与 `_as_float_or_none` 的区别:这些列 nullable 且语义上"没填 / 填了非法
+    值"的后果一样(展示为空),所以非法输入不阻断整条 change(预算 F-15:
+    push 侧金额 -50 / 'inf' 必须与 web 的 `gt=0` 口径对齐 —— 归一成 NULL 而
+    不是照原样落库)。
+    """
+    if v is None:
         return None
+    try:
+        return _coerce_finite(v)
+    except InvalidNumericValue:
+        return None
+
+
+def _as_positive_or_none(v: Any) -> float | None:
+    """金额必须 > 0 的字段(预算 amount,web 侧 `Field(gt=0)`):非法 / 非正 →
+    None。对抗 F-15:push 曾接受 -50 / 'inf',与 web 422 相反。"""
+    f = _as_finite_or_none(v)
+    if f is None or f <= 0:
+        return None
+    return f
+
+
+def finite_aggregate(value: Any, *, default: float = 0.0) -> float:
+    """读路径聚合值归一(对抗 F-12):SUM 溢出成 ±inf / NaN 时,HTTP 层
+    `allow_nan=False` 会把它序列化成 `null`(用户看到"合计为空");
+
+    这里封顶到有限值,保证 `expense_total` / `balance` 永远是数字。
+    """
+    if value is None:
+        return default
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return default
+    if math.isnan(f):
+        return default
+    if math.isinf(f):
+        return math.copysign(MAX_FINITE_FLOAT, f)
+    return f
+
+
+def active_only(model) -> Any:
+    """软删过滤谓词(0030 回收站):`deleted_at IS NULL` 的单点口径。
+
+    所有「业务可见」的 projection 点查 / 计数 / 聚合都应带上它;回收站自身
+    (`read/trash.py`)与「彻底删除 / 过期清理」走 `deleted_at IS NOT NULL`,
+    不走这里。收敛到这里是为了避免 39 处内联写法各自漂移 —— 新增读路径
+    请直接 `query.where(active_only(ReadTxProjection))`。
+    """
+    return model.deleted_at.is_(None)
+
 
 
 def _as_int(v: Any, default: int = 0) -> int:
@@ -166,6 +298,40 @@ def _upsert(db: Session, model, pk_fields: tuple[str, ...], values: dict) -> Non
 # 单实体:upsert / delete                                                       #
 # --------------------------------------------------------------------------- #
 
+def _auth_name_cache(db: Session) -> dict[str, Any]:
+    """请求级(per-session)权威 denorm 名缓存。
+
+    F-07 的 denorm 回填(分类名 / 账户名)对同一实体在一条 push 批里会被
+    反复查 —— 400 条 tx 指向同一个分类/账户时,逐条点查 = 800 次冗余 SELECT,
+    在 worker 线程里拖长 GIL 占用(实测会让 event-loop 探针漂移)。
+    缓存在 `db.info`(SQLAlchemy 官方 per-session 字典)上,请求结束即回收,
+    不会跨请求泄漏脏值。
+
+    **失效契约**:任何**权威实体**(account / category / tag)自身的 upsert /
+    delete 都必须调用 `_invalidate_auth_name_cache(db)` —— 否则同批
+    「先 tx(缓存旧名)→ 再 rename → 再 tx」的第二个 tx 会拿到过期名
+    (F-07 的漂移换了个形态复现)。缓存是请求级廉价的,整块清即可。
+
+    结构:``{"cat": {sync_id: (name, kind)}, "acc": {sync_id: name},
+    "tag_deleted": set, "tag_seen": set}``。
+    """
+    cache = db.info.get("_sb_auth_denorm_cache")
+    if cache is None:
+        cache = {"cat": {}, "acc": {}, "tag_deleted": set(), "tag_seen": set()}
+        db.info["_sb_auth_denorm_cache"] = cache
+    return cache
+
+
+def _invalidate_auth_name_cache(db: Session) -> None:
+    """权威实体(account / category / tag)变更后清空 denorm 名缓存。
+
+    调用点:各 user-global 实体的 upsert_* / delete_*。清整块而不是只删一项:
+    缓存只在单请求内有效,重建成本是一次点查,而「漏删一项」的后果是 denorm
+    名永久漂移(比一次多余 SELECT 严重得多)。
+    """
+    db.info.pop("_sb_auth_denorm_cache", None)
+
+
 def _resolve_account_sync_id_by_name(
     db: Session, *, user_id: str, name: str | None
 ) -> str | None:
@@ -220,6 +386,98 @@ def upsert_tx(
         or "expense"
     )
 
+    # --- F-07 投影 denorm 名以**权威实体行**为准 -------------------------- #
+    # 离线设备推的旧 payload 带着改名前的 categoryName / accountName;merge 只
+    # 补 None 字段,不校验 FK 一致性 → 同一 FK 的两个 denorm 副本分裂(web 交易
+    # 列表显示旧分类名,分类列表显示新名)。这里在落盘前按稳定 FK
+    # (category_sync_id / account_sync_id / from / to)点查权威行回填。
+    #
+    # 谓词按 sync_id 且**不按 user_id**(P0-1 契约):共享账本 tx 投影行的
+    # user_id 是 ledger owner,而 user-global 实体行按操作者存;两者不一致时
+    # 按 sync_id 匹配才不会漏。查不到权威行(离线先到 / 老数据)时保留 payload
+    # 原值 —— 宁缺勿错,等实体行到位后由 rename cascade 统一纠正。
+    category_sync_id = _as_str(payload.get("categoryId"))
+    category_name = _as_str(payload.get("categoryName"))
+    category_kind = _as_str(payload.get("categoryKind"))
+    if category_sync_id:
+        _cache = _auth_name_cache(db)
+        if category_sync_id not in _cache["cat"]:
+            cat_row = db.execute(
+                select(UserCategoryProjection.name, UserCategoryProjection.kind)
+                .where(UserCategoryProjection.sync_id == category_sync_id)
+                .order_by(UserCategoryProjection.source_change_id.desc())
+                .limit(1)
+            ).first()
+            _cache["cat"][category_sync_id] = (
+                (_as_str(cat_row[0]), _as_str(cat_row[1])) if cat_row is not None else None
+            )
+        auth_cat = _cache["cat"][category_sync_id]
+        if auth_cat is not None:
+            if auth_cat[0]:
+                category_name = auth_cat[0]
+            if auth_cat[1]:
+                category_kind = auth_cat[1]
+
+    account_sync_id = _as_str(payload.get("accountId"))
+    account_name = _as_str(payload.get("accountName"))
+    from_account_sync_id = _as_str(payload.get("fromAccountId"))
+    from_account_name = _as_str(payload.get("fromAccountName"))
+    to_account_sync_id = _as_str(payload.get("toAccountId"))
+    to_account_name = _as_str(payload.get("toAccountName"))
+    _acc_ids = [
+        sid for sid in (account_sync_id, from_account_sync_id, to_account_sync_id) if sid
+    ]
+    if _acc_ids:
+        _cache = _auth_name_cache(db)
+        missing = [sid for sid in _acc_ids if sid not in _cache["acc"]]
+        if missing:
+            for sid, nm in db.execute(
+                select(UserAccountProjection.sync_id, UserAccountProjection.name).where(
+                    UserAccountProjection.sync_id.in_(missing)
+                )
+            ).all():
+                _cache["acc"][sid] = _as_str(nm)
+            for sid in missing:
+                _cache["acc"].setdefault(sid, None)
+        if _cache["acc"].get(account_sync_id):
+            account_name = _cache["acc"][account_sync_id]
+        if _cache["acc"].get(from_account_sync_id):
+            from_account_name = _cache["acc"][from_account_sync_id]
+        if _cache["acc"].get(to_account_sync_id):
+            to_account_name = _cache["acc"][to_account_sync_id]
+
+    # --- F-08 悬挂 tag 引用剥离 ------------------------------------------- #
+    # tag 删除后离线设备推回旧 payload(tags/tagIds 仍带该标签)→ 引用复活成
+    # 永久孤儿(标签列表里没有,`cascade_tx_rows_for_tag` 却还会为它补发事件)。
+    # 只剥离**有 delete 墓碑**的 tag —— 从未同步过的 tag(先建交易后同步标签)
+    # 必须保留,否则离线排序的合法数据被削平。
+    if isinstance(tag_sync_ids, list) and tag_sync_ids:
+        from .models import SyncChange as _SyncChange  # 局部 import 防循环
+
+        _cache = _auth_name_cache(db)
+        tombstoned = _cache.setdefault("tag_deleted", set())
+        _cand = [str(t) for t in tag_sync_ids]
+        _unknown = [t for t in _cand if t not in _cache.setdefault("tag_seen", set())]
+        if _unknown:
+            tombstoned.update(db.scalars(
+                select(_SyncChange.entity_sync_id).where(
+                    _SyncChange.entity_type == "tag",
+                    _SyncChange.entity_sync_id.in_(_unknown),
+                    _SyncChange.action == "delete",
+                )
+            ).all())
+            _cache["tag_seen"].update(_unknown)
+        hit = [t for t in _cand if t in tombstoned]
+        if hit:
+            kept_ids = [t for t in tag_sync_ids if str(t) not in tombstoned]
+            if kept_ids:
+                tag_sync_ids_json = json.dumps(kept_ids)
+            else:
+                # 该交易的标签全部指向已删标签 → id 与 name 一起清干净,
+                # 否则 web 列表仍显示一个标签列表里不存在的名字。
+                tag_sync_ids_json = None
+                tags_csv = None
+
     # F11:prev 行只查一次,三个用途共用 —— (1) 附件 GC diff;(2) created_by
     # first-write-wins;(3) created_at 首插盖章。旧实现对同一行做了 3 次独立
     # SELECT + collect_tx_attachment_fileids 再 1 次,push 500 条 = 2500 次点查。
@@ -258,15 +516,15 @@ def upsert_tx(
         ),
         "created_at": existing_created_at or utcnow(),
         "note": _as_str(payload.get("note")),
-        "category_sync_id": _as_str(payload.get("categoryId")),
-        "category_name": _as_str(payload.get("categoryName")),
-        "category_kind": _as_str(payload.get("categoryKind")),
-        "account_sync_id": _as_str(payload.get("accountId")),
-        "account_name": _as_str(payload.get("accountName")),
-        "from_account_sync_id": _as_str(payload.get("fromAccountId")),
-        "from_account_name": _as_str(payload.get("fromAccountName")),
-        "to_account_sync_id": _as_str(payload.get("toAccountId")),
-        "to_account_name": _as_str(payload.get("toAccountName")),
+        "category_sync_id": category_sync_id,
+        "category_name": category_name,
+        "category_kind": category_kind,
+        "account_sync_id": account_sync_id,
+        "account_name": account_name,
+        "from_account_sync_id": from_account_sync_id,
+        "from_account_name": from_account_name,
+        "to_account_sync_id": to_account_sync_id,
+        "to_account_name": to_account_name,
         "tags_csv": tags_csv,
         "tag_sync_ids_json": tag_sync_ids_json,
         "attachments_json": attachments_json,
@@ -285,7 +543,9 @@ def upsert_tx(
         "exclude_from_budget": _as_bool(payload.get("excludeFromBudget"), default=False),
         # 交易级多币种(0018):缺键保留由上游 merge_with_existing 负责;首次
         # 插入且旧 payload 无字段 → NULL(统计端 COALESCE 回退 amount)。
-        "currency_code": _as_str(payload.get("currencyCode")),
+        # F-14:归一(strip+upper+截断 16)与 web `_normalize_currency` 同口径 ——
+        # 旧实现原样透传,'usd' 与 'EUR' 在按原值分组的下游被当成两种币。
+        "currency_code": _as_currency(payload.get("currencyCode")),
         "native_amount": _as_float_or_none(payload.get("nativeAmount")),
         # P0-5 复活语义(2026-09):upsert 是「此实体存在且内容如此」的声明,
         # 能通过 LWW 胜出的 upsert 同时清软删标记(与 trash restore 对齐,
@@ -330,16 +590,11 @@ def upsert_account(
     if sync_id is None:
         return
 
-    # 扩展字段读 snapshot 的 camelCase key,空 / NaN 转 None。这些字段是
+    # 扩展字段读 snapshot 的 camelCase key,空 / 非法数转 None。这些字段是
     # nullable 的(老 snapshot 没这些 key 时落 None,前端展示空)。
-    def _opt_float(raw: Any) -> float | None:
-        if raw is None:
-            return None
-        try:
-            return float(raw)
-        except (TypeError, ValueError):
-            return None
-
+    #
+    # 建议-13②:`_opt_float` 是内联副本(旧实现无 isfinite 守卫,NaN/inf
+    # 可落库)。本批统一收敛到模块级 `_as_finite_or_none`,删掉两份重复实现。
     def _opt_int(raw: Any) -> int | None:
         if raw is None:
             return None
@@ -353,10 +608,11 @@ def upsert_account(
         "sync_id": sync_id,
         "name": _as_str(payload.get("name")),
         "account_type": _as_str(payload.get("type")),
-        "currency": _as_str(payload.get("currency")),
+        # F-14:币种归一(strip+upper+截断 16)与 web `_normalize_currency` 同口径。
+        "currency": _as_currency(payload.get("currency")),
         "initial_balance": _as_float(payload.get("initialBalance")),
         "note": _as_str(payload.get("note")),
-        "credit_limit": _opt_float(payload.get("creditLimit")),
+        "credit_limit": _as_finite_or_none(payload.get("creditLimit")),
         "billing_day": _opt_int(payload.get("billingDay")),
         "payment_due_day": _opt_int(payload.get("paymentDueDay")),
         "bank_name": _as_str(payload.get("bankName")),
@@ -368,6 +624,8 @@ def upsert_account(
         "source_change_id": source_change_id,
     }
     _upsert(db, UserAccountProjection, ("user_id", "sync_id"), values)
+    # F-07 缓存失效:权威账户行变更 → 后续 tx 的 denorm 回填必须重新查。
+    _invalidate_auth_name_cache(db)
 
 
 def upsert_category(
@@ -428,6 +686,9 @@ def upsert_category(
         "source_change_id": source_change_id,
     }
     _upsert(db, UserCategoryProjection, ("user_id", "sync_id"), values)
+    # F-07 缓存失效:权威分类行变更(name/kind)→ 后续 tx 的 denorm 回填
+    # 必须重新查,否则同批「先 tx(缓存旧名)→ 再 rename → 再 tx」漂移。
+    _invalidate_auth_name_cache(db)
 
     # 如果 prev_icon_file_id 跟新值不一样(包括清空、换图),且 prev 不是空,
     # 把旧 fileId 交给 gc_orphan_attachments —— 真孤儿才删 AttachmentFile +
@@ -448,14 +709,18 @@ def upsert_tag(
     sync_id = _as_str(payload.get("syncId"))
     if sync_id is None:
         return
+    # F-11:color 列声明 String(32);push payload 无长度校验,超长在 PG 上会
+    # `value too long` 整批失败(SQLite 静默)。按列宽截断。
+    color = _as_str(payload.get("color"))
     values = {
         "user_id": user_id,
         "sync_id": sync_id,
         "name": _as_str(payload.get("name")),
-        "color": _as_str(payload.get("color")),
+        "color": color[:32] if color else None,
         "source_change_id": source_change_id,
     }
     _upsert(db, UserTagProjection, ("user_id", "sync_id"), values)
+    _invalidate_auth_name_cache(db)
 
 
 def upsert_budget(
@@ -466,6 +731,13 @@ def upsert_budget(
     source_change_id: int,
     payload: dict[str, Any],
 ) -> None:
+    """预算 upsert。
+
+    F-15:push 侧历史无任何校验,`amount = -50` / `'inf'` 原样落库,而 web 侧
+    `WriteBudgetCreateRequest.amount: float = Field(gt=0)` 直接 422 —— 同一
+    操作两条路径语义相反(mobile 能建出负预算,UI 进度条/剩余额崩坏)。
+    这里对齐 web 口径:金额非有限 / 非正 → NULL(展示为空,不阻断整批)。
+    """
     sync_id = _as_str(payload.get("syncId"))
     if sync_id is None:
         return
@@ -475,7 +747,7 @@ def upsert_budget(
         "user_id": user_id,
         "budget_type": _as_str(payload.get("type")),
         "category_sync_id": _as_str(payload.get("categoryId")),
-        "amount": _as_float(payload.get("amount")) if payload.get("amount") is not None else None,
+        "amount": _as_positive_or_none(payload.get("amount")),
         "period": _as_str(payload.get("period")),
         "start_day": _as_int(payload.get("startDay"), default=1)
         if payload.get("startDay") is not None
@@ -538,6 +810,7 @@ def restore_tx(db: Session, *, ledger_id: str, sync_id: str) -> bool:
 
 def delete_account(db: Session, *, user_id: str, sync_id: str) -> None:
     """user-global account delete。PK=(user_id, sync_id)。"""
+    _invalidate_auth_name_cache(db)
     db.execute(
         delete(UserAccountProjection).where(
             UserAccountProjection.user_id == user_id,
@@ -548,6 +821,7 @@ def delete_account(db: Session, *, user_id: str, sync_id: str) -> None:
 
 def delete_category(db: Session, *, user_id: str, sync_id: str) -> None:
     """user-global category delete。PK=(user_id, sync_id)。"""
+    _invalidate_auth_name_cache(db)
     db.execute(
         delete(UserCategoryProjection).where(
             UserCategoryProjection.user_id == user_id,
@@ -558,6 +832,7 @@ def delete_category(db: Session, *, user_id: str, sync_id: str) -> None:
 
 def delete_tag(db: Session, *, user_id: str, sync_id: str) -> None:
     """user-global tag delete。PK=(user_id, sync_id)。"""
+    _invalidate_auth_name_cache(db)
     db.execute(
         delete(UserTagProjection).where(
             UserTagProjection.user_id == user_id,
@@ -670,14 +945,9 @@ def upsert_account_adjustment(
     existing = existing_row[0] if existing_row else None
     existing_creator = existing_row[1] if existing_row else None
 
-    def _opt_float(raw: Any) -> float | None:
-        if raw is None:
-            return None
-        try:
-            return float(raw)
-        except (TypeError, ValueError):
-            return None
-
+    # 建议-13②:第二处内联 `_opt_float` 同样缺 isfinite 守卫 → 统一收敛到
+    # 模块级 `_as_finite_or_none`(balance_before / balance_after 是可选审计
+    # 快照,非法值归 NULL 比落 inf 更安全)。
     account_sync_id = _as_str(payload.get("accountId")) or ""
 
     # 批次4(审计快照校验):balance_before 是客户端自报的本地余额,离线多日
@@ -685,8 +955,8 @@ def upsert_account_adjustment(
     # 与自报差异 > 1 元则以服务端值为准(balanceAfter 同步平移差额),
     # 让审计记录始终可与「服务端视角」对上。
     amount_val = _as_float(payload.get("amount"))
-    balance_before_val = _opt_float(payload.get("balanceBefore"))
-    balance_after_val = _opt_float(payload.get("balanceAfter"))
+    balance_before_val = _as_finite_or_none(payload.get("balanceBefore"))
+    balance_after_val = _as_finite_or_none(payload.get("balanceAfter"))
     if existing is None and balance_before_val is not None:
         try:
             server_before = _server_side_account_balance(
@@ -1464,13 +1734,23 @@ def upsert_exchange_rate_override(
     source_change_id: int,
     payload: dict,
 ) -> None:
-    """手动汇率 override → user_exchange_rate_projection。方向:1 quote = rate base。"""
+    """手动汇率 override → user_exchange_rate_projection。方向:1 quote = rate base。
+
+    `rate` 是**字符串列**(String(32),不落 float)—— 因此 `'inf'` 不会污染
+    `/sync/full`(它是 JSON 字符串,不是非法 token),H-10 的读端 `float(...) > 0`
+    判定问题属独立项,`tests/adversarial/test_sync_numeric_boundary_adversarial.py`
+    的 HARDENING 用例锁定了「原样落库」这一现状(§五「保留测试锁行为」),
+    本批**不改变**该行为,只补上列宽截断(超长在 PG 会 `value too long`)。
+    """
     sync_id = str(payload.get("syncId") or "")
-    base = str(payload.get("baseCurrency") or "").upper()
-    quote = str(payload.get("quoteCurrency") or "").upper()
+    base = str(payload.get("baseCurrency") or "").upper()[:16]
+    quote = str(payload.get("quoteCurrency") or "").upper()[:16]
     rate = str(payload.get("rate") or "")
     if not sync_id or not base or not quote or not rate:
         return
+    # F-11:rate 列声明 String(32)(models.py UserExchangeRateProjection.rate),
+    # 超长在 SQLite 静默、PG 报 value too long。按列宽截断。
+    rate = rate[:32]
     updated_at = _parse_happened_at(payload.get("updatedAt"))
     values = {
         "user_id": user_id,

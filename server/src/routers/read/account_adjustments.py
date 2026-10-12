@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from ._shared import *  # noqa: F401,F403 — imports + helpers + router
 from ...models import ReadAccountAdjustmentProjection
-from ...schemas import AccountAdjustmentOut
+from ...schemas import MAX_INT64, AccountAdjustmentOut
 
 
 @router.get(
@@ -18,7 +18,12 @@ def list_account_adjustments(
     ledger_id: str,
     account_id: str | None = Query(default=None),
     limit: int = Query(default=200, ge=1, le=1000),
-    offset: int = Query(default=0, ge=0),
+    # S3(审核记录 建议-14 / S1 handed-off):offset 必须有 int64 上界 ——
+    # Python int 无界,超过 int64 会在 SQLAlchemy → SQLite/PG INTEGER/int8
+    # 转换时抛 OverflowError → 500(对抗 injection: offset=2**63)。
+    # 上界取 MAX_INT64(不用更小值):`test_ai_relay_adversarial.py` 的
+    # HARDENING 锁 `offset=1e14 → 200 空页`,小上界会让它翻红。
+    offset: int = Query(default=0, ge=0, le=MAX_INT64),
     _scopes: set[str] = Depends(_READ_SCOPE_DEP),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),

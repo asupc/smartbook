@@ -27,6 +27,9 @@ from ...services.ai import (
     get_user_custom_prompt,
     resolve_chat_provider,
 )
+from ...services.ai.outbound_policy import AiHostNotAllowedError
+from ...services.ai.provider_client import preflight_outbound_host_policy
+from ._shared import host_not_allowed_http
 from .parse_tx_image import _load_ledger_context, _parse_and_log
 
 logger = logging.getLogger(__name__)
@@ -61,6 +64,18 @@ async def parse_tx_text(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"error_code": "AI_NO_CHAT_PROVIDER", "message": str(exc)},
         )
+
+    # SSRF host 策略 preflight:配置类错误在拼 prompt / 调上游之前就 400
+    # (对抗缺陷 2 —— 解析入口原先漏了这一步;`_parse_and_log` 内部也兜了一层,
+    # 这里提前返避免无谓的账本上下文查询与 prompt 构建)。
+    try:
+        preflight_outbound_host_policy(chat_cfg, context="parse_tx_text_preflight")
+    except AiHostNotAllowedError as exc:
+        logger.warning(
+            "ai.parse_tx_text host not allowed user=%s provider=%s: %s",
+            current_user.id, chat_cfg.provider_id, exc,
+        )
+        raise host_not_allowed_http(exc) from exc
 
     cats, accts, ledger_currency = _load_ledger_context(db, req.ledger_id, current_user.id)
     logger.debug(

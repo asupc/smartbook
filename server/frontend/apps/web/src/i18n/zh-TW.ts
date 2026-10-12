@@ -1187,6 +1187,7 @@ const zhTW = {
   'transactions.error.transferAccountsRequired': '轉帳需要選擇轉出與轉入帳戶。',
   'transactions.error.transferAccountsDifferent': '轉出與轉入帳戶不可相同。',
   'transactions.error.amountInvalid': '金額必須大於 0。',
+  'transactions.error.amountTooLarge': '金額過大（須小於 1 兆）。',
   'transactions.error.categoryRequired': '請選擇分類。',
   'transactions.filter.preset.today': '今天',
   'transactions.filter.preset.thisWeek': '本週',
@@ -1607,11 +1608,14 @@ const zhTW = {
 
   'login.error.invalid': '帳號或密碼錯誤。',
   'error.default': '操作失敗，請稍後重試。',
+  'error.boundary.title': '頁面渲染出錯。',
+  'error.boundary.hint': '請重新整理重試。若持續出錯，可能是網址含非法字元，或伺服器暫時無法使用。',
   'error.AUTH_INVALID_CREDENTIALS': '帳號或密碼錯誤。',
   'error.INTERNAL_ERROR': '伺服器內部錯誤,請稍後重試或查看 server 日誌。',
   'error.WRITE_CONFLICT':
     '資料已被其他裝置更新，請重新整理後重試。latest_change_id={latestChangeId}, latest_server_timestamp={latestServerTimestamp}',
   'error.WRITE_ROLE_FORBIDDEN': '目前角色沒有寫入權限。',
+  'error.SHARE_ROLE_FORBIDDEN': '你沒有該共享帳本的權限。',
   'error.SYNC_VIEWER_WRITE_FORBIDDEN': 'Viewer 角色不可寫入。',
   'error.SYNC_LEDGER_WRITE_FORBIDDEN': '目前帳本沒有寫入權限。',
   'error.AUTH_INSUFFICIENT_SCOPE': '權限範圍不足。',
@@ -1624,6 +1628,7 @@ const zhTW = {
   'error.WRITE_VALIDATION_FAILED': '寫入驗證失敗，請檢查輸入。',
   'error.USER_EMAIL_EXISTS': '此信箱已存在。',
   'error.USER_PASSWORD_TOO_SHORT': '密碼至少需 6 碼。',
+  'error.SHARE_MEMBER_USER_NOT_FOUND': '找不到該信箱對應的帳號，請對方先註冊。',
 
   'notice.userCreated': '使用者已建立。',
 

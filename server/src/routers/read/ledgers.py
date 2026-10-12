@@ -7,6 +7,7 @@ from __future__ import annotations
 from sqlalchemy import false as sa_false
 
 from ._shared import *  # noqa: F401,F403 — imports + helpers + router
+from ...schemas import MAX_INT64
 
 
 def _dedupe_by_sync_id(rows):
@@ -70,7 +71,16 @@ def list_ledgers(
             )
             .group_by(ReadTxProjection.ledger_id)
         ).all()
-        base_totals = {r[0]: (int(r[1] or 0), float(r[2] or 0), float(r[3] or 0), float(r[4] or 0)) for r in rows}
+        base_totals = {
+            r[0]: (
+                int(r[1] or 0),
+                # F-12:SUM 溢出 ±inf 会在 HTTP 层序列化成 null(合计"变空")。
+                finite_aggregate(r[2]),
+                finite_aggregate(r[3]),
+                finite_aggregate(r[4]),
+            )
+            for r in rows
+        }
         adj_rows = db.execute(
             select(
                 ReadAccountAdjustmentProjection.ledger_id,
@@ -78,7 +88,7 @@ def list_ledgers(
             ).where(ReadAccountAdjustmentProjection.ledger_id.in_(ledger_ids))
             .group_by(ReadAccountAdjustmentProjection.ledger_id)
         ).all()
-        adj_map = {r[0]: float(r[1] or 0) for r in adj_rows}
+        adj_map = {r[0]: finite_aggregate(r[1]) for r in adj_rows}
         totals_map = {
             lid: (t[0], t[1], t[2], t[3] + adj_map.get(lid, 0.0))
             for lid, t in base_totals.items()
@@ -152,7 +162,18 @@ def get_ledger_stats(
             select(func.count()).select_from(model).where(model.ledger_id == ledger.id)
         ) or 0)
 
-    tx_count = _count(ReadTxProjection)
+    # 对抗 E1:tx 计数必须排除软删行 —— 否则 stats 报 3 而 /read/ledgers/{id}
+    # 的 transaction_count 报 2,mobile「深度同步检测」判定服务端更多 → 反复
+    # 触发全量同步(statistical 口径必须与 _projection_totals 一致)。
+    def _count_active_tx() -> int:
+        return int(db.scalar(
+            select(func.count()).select_from(ReadTxProjection).where(
+                ReadTxProjection.ledger_id == ledger.id,
+                ReadTxProjection.deleted_at.is_(None),
+            )
+        ) or 0)
+
+    tx_count = _count_active_tx()
     budget_count = _count(ReadBudgetProjection)
 
     # user-global tables 都用 user_id PK,count distinct 就是 count rows。
@@ -304,7 +325,12 @@ def list_transactions(
     start_at: datetime | None = Query(default=None),
     end_at: datetime | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=2000),
-    offset: int = Query(default=0, ge=0),
+    # S3(审核记录 建议-14 / S1 handed-off):offset 必须有 int64 上界 ——
+    # Python int 无界,超过 int64 会在 SQLAlchemy → SQLite/PG INTEGER/int8
+    # 转换时抛 OverflowError → 500(对抗 injection: offset=2**63)。
+    # 上界取 MAX_INT64(不用更小值):`test_ai_relay_adversarial.py` 的
+    # HARDENING 锁 `offset=1e14 → 200 空页`,小上界会让它翻红。
+    offset: int = Query(default=0, ge=0, le=MAX_INT64),
     _scopes: set[str] = Depends(_READ_SCOPE_DEP),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),

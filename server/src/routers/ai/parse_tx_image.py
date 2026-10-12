@@ -47,6 +47,9 @@ from ...services.ai import (
 )
 from ...services.ai.analysis_log import token_count, write_ai_analysis_log_async
 from ...services.ai.image_cache import store_image
+from ...services.ai.outbound_policy import AiHostNotAllowedError
+from ...services.ai.provider_client import preflight_outbound_host_policy
+from ._shared import host_not_allowed_http
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -103,6 +106,19 @@ async def parse_tx_image(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"error_code": "AI_NO_VISION_PROVIDER", "message": str(exc)},
         )
+
+    # 2b. SSRF host 策略 preflight —— 在做昂贵工作(读账本上下文 / base64 编码
+    # 图片 / 调上游)之前就把**配置类错误**归一成 400。与 relay 的
+    # `_preflight_host_policy` 同一份实现(对抗缺陷 2:解析入口曾漏掉这一步,
+    # blocked host 变成 500 且图片被无谓地编码了一遍)。
+    try:
+        preflight_outbound_host_policy(vision_cfg, context="parse_tx_image_preflight")
+    except AiHostNotAllowedError as exc:
+        logger.warning(
+            "ai.parse_tx_image host not allowed user=%s provider=%s: %s",
+            current_user.id, vision_cfg.provider_id, exc,
+        )
+        raise host_not_allowed_http(exc) from exc
 
     # 3. 取 ledger 上下文(categories + accounts 给 LLM 选)
     # 「父类有子分类」的父类不喂给 LLM(产品规则:tx 不能直接落到这种父类)
@@ -203,6 +219,18 @@ async def _parse_and_log(
                     "raw": exc.raw_content[:1000],
                 },
             ) from exc
+        except AiHostNotAllowedError as exc:
+            # SSRF 策略拒绝 = 配置类错误 → 400(不是 502 transient,客户端
+            # 不该重试)。**必须放在 ChatProviderError 之前**:2026-10-11
+            # 对抗缺陷 2 —— host 策略错误原先不继承 ChatProviderError,穿过
+            # 下面的 except 直达全局兜底 → 500 INTERNAL_ERROR。
+            log_status = "error"
+            error_message = str(exc)[:500]
+            logger.warning(
+                "ai.%s host not allowed user=%s provider=%s: %s",
+                entry_type, user_id, cfg.provider_id, exc,
+            )
+            raise host_not_allowed_http(exc) from exc
         except ChatProviderError as exc:
             log_status = "error"
             error_message = str(exc)[:500]

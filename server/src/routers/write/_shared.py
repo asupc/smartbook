@@ -711,6 +711,11 @@ async def _commit_write_fast_tx(
             select(ReadTxProjection).where(
                 ReadTxProjection.ledger_id == ledger.id,
                 ReadTxProjection.sync_id == tx_id,
+                # 对抗 C1:回收站里的交易不可 PATCH —— 不过滤会让
+                # projection.upsert_tx 落 `deleted_at=None` 把软删标记清掉,
+                # 交易"复活"回账本列表(删除安全网被静默绕过)。与读路径
+                # /batch_delete 同口径:命中软删行 = 404(需先 restore)。
+                ReadTxProjection.deleted_at.is_(None),
             )
         )
         if tx_row is None:
@@ -748,7 +753,24 @@ async def _commit_write_fast_tx(
             from ...snapshot_mutator import update_transaction
             # 构造最小 snapshot 让 mutator 跑逻辑(只有 1 个 item)
             minimal_snap = {"items": [prev_item], "count": 1}
-            minimal_snap = update_transaction(minimal_snap, tx_id, mutate_payload)
+            # 对抗 B3/A4:mutator 的业务校验失败(必填枚举置 null、非有限浮点、
+            # 非法 tx_type)统一映射 400 WRITE_VALIDATION_FAILED。此前快路径
+            # **没有** try/except ValueError(全量路径 :1360 有)→ 冒泡成 500,
+            # 与同一端点 tx_type:"bogus" → 422 形成两条异常通道不一致。
+            try:
+                minimal_snap = update_transaction(minimal_snap, tx_id, mutate_payload)
+            except PermissionError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)
+                ) from exc
+            except KeyError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found"
+                ) from exc
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+                ) from exc
             new_item = minimal_snap["items"][0]
 
             change_row = SyncChange(

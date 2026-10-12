@@ -23,6 +23,7 @@ from ...deps import get_current_user, require_any_scopes
 from ...ledger_access import get_accessible_ledger_by_external_id
 from ...models import RawBookkeepingEvidence, User
 from ...schemas import (
+    MAX_INT64,
     RawEvidenceCleanupRequest,
     RawEvidenceListOut,
     RawEvidenceOut,
@@ -134,4 +135,7 @@ __all__ = ["router", "_READ_SCOPE_DEP", "_WRITE_SCOPE_DEP", "_UPLOAD_SCOPE_DEP",
     "RawBookkeepingEvidence", "RawEvidenceCleanupRequest", "RawEvidenceListOut",
     "RawEvidenceOut", "RawEvidenceUpsertRequest", "User", "Session", "Depends",
     "HTTPException", "Query", "status", "delete", "func", "select", "Any",
-    "datetime", "timezone", "IntegrityError", "get_current_user", "get_db"]
+    "datetime", "timezone", "IntegrityError", "get_current_user", "get_db",
+    # S3:offset 上界常量(raw.py 的 Query(le=...) 用;star-import 受 __all__
+    # 过滤,explicit list 里必须补上,否则 raw.py 直接 NameError)。
+    "MAX_INT64"]

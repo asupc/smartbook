@@ -70,6 +70,9 @@ from ...schemas import (
 )
 from ...security import SCOPE_APP_WRITE, SCOPE_WEB_READ
 from ... import snapshot_cache
+# F-12:SUM 溢出(±inf)在 HTTP 层会被 `allow_nan=False` 序列化成 null,
+# 读路径聚合统一经 `finite_aggregate` 封顶。导出给 `read/*` 子模块 star-import。
+from ...projection import active_only, finite_aggregate  # noqa: F401
 
 router = APIRouter()
 settings = get_settings()
@@ -497,23 +500,29 @@ def _projection_totals(
     from ...models import ReadAccountAdjustmentProjection
 
     _native = func.coalesce(ReadTxProjection.native_amount, ReadTxProjection.amount)
+    # 金额是**幅值**,方向由 tx_type 表达(与 App/CSV 导入同口径)。负值 amount
+    # 只会来自畸形/旧客户端写入,若原样求和会把支出总额拉成负数(报表静默失真、
+    # 分类排行按 `> 0` 过滤还会整条隐藏)。统计侧统一取绝对值兜底 ——
+    # 对抗 S3「负金额污染收支统计」;写入口保持宽容(既有 HARDENING 锁
+    # `test_negative_amount_and_extreme_values` 要求 -100 → 200,见审核记录)。
+    _abs_native = func.abs(_native)
     _counted = ReadTxProjection.exclude_from_stats == sa_false()
     row = db.execute(
         select(
             func.count(ReadTxProjection.sync_id),
             func.coalesce(func.sum(
-                sa_case(((ReadTxProjection.tx_type == "income") & _counted, _native),
+                sa_case(((ReadTxProjection.tx_type == "income") & _counted, _abs_native),
                         else_=0.0)
             ), 0.0),
             func.coalesce(func.sum(
-                sa_case(((ReadTxProjection.tx_type == "expense") & _counted, _native),
+                sa_case(((ReadTxProjection.tx_type == "expense") & _counted, _abs_native),
                         else_=0.0)
             ), 0.0),
             # balance_all:不排除标记笔(D5「余额=钱的位置」)
             func.coalesce(func.sum(
                 sa_case(
-                    (ReadTxProjection.tx_type == "income", _native),
-                    (ReadTxProjection.tx_type == "expense", -_native),
+                    (ReadTxProjection.tx_type == "income", _abs_native),
+                    (ReadTxProjection.tx_type == "expense", -_abs_native),
                     else_=0.0,
                 )
             ), 0.0),
@@ -532,11 +541,15 @@ def _projection_totals(
             ReadAccountAdjustmentProjection.ledger_id == ledger_internal_id
         )
     )
+    # F-12:SUM 溢出成 ±inf 时,HTTP 层(Starlette `allow_nan=False`)会把它序列化
+    # 成 `null` —— 用户看到"支出合计为空"。封顶到双精度上限,保证永远是数字。
+    from ...projection import finite_aggregate
+
     return (
         int(tx_count or 0),
-        float(income_total or 0),
-        float(expense_total or 0),
-        float(balance_all or 0) + float(adjustment_total or 0),
+        finite_aggregate(income_total),
+        finite_aggregate(expense_total),
+        finite_aggregate(balance_all) + finite_aggregate(adjustment_total),
         _to_utc(latest_raw) if latest_raw else None,
     )
 
@@ -624,6 +637,11 @@ def _analytics_range(
             raise HTTPException(status_code=400, detail="Invalid analytics period") from exc
         if month < 1 or month > 12:
             raise HTTPException(status_code=400, detail="Invalid analytics period")
+        # 年份上界 9998(不是 9999):周期终点是 [year, year+1),9999 会让
+        # `datetime(year + 1, ...)` 抛 "year must be in 1..9999" → 500
+        # (E3/E4 同族;month scope 的 12 月分支同样触达该行)。
+        if year < 1 or year > 9998:
+            raise HTTPException(status_code=400, detail="Invalid analytics period")
         # 本地时区周期起点/终点 → 转 UTC 给 SQL 用;周期按起始月命名
         start_local = datetime(year, month, day, tzinfo=tz)
         end_local = (
@@ -648,6 +666,14 @@ def _analytics_range(
         year = int(target)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Invalid analytics period") from exc
+    # 对抗 E3/E4:year 分支此前只做 int() 转换,**不校范围** →
+    # `datetime(year, 1, day)` 对 0 / -1 / 99999 抛
+    # "year must be in 1..9999" ValueError → 500。与 month 分支的 1..12
+    # 校验对齐:域外一律 400。上界 9998 而非 9999 —— 周期终点是
+    # [year, year+1),9999 会在 `datetime(year + 1, ...)` 位置溢出(同一
+    # ValueError)。同一 helper 被 member-stats 复用,两处同修。
+    if year < 1 or year > 9998:
+        raise HTTPException(status_code=400, detail="Invalid analytics period")
     start_local = datetime(year, 1, day, tzinfo=tz)
     end_local = datetime(year + 1, 1, day, tzinfo=tz)
     return start_local.astimezone(timezone.utc), end_local.astimezone(timezone.utc), f"{year:04d}"
@@ -662,14 +688,30 @@ import re as _re
 _CSV_NEEDS_QUOTE = (",", '"', "\n", "\r")
 _FILENAME_BAD = _re.compile(r'[\\/:*?"<>|\r\n]')
 
+# CSV 公式注入(对抗 G1):单元格以 `=` `+` `-` `@` 或制表符/回车起始时,
+# Excel / LibreOffice / Sheets 会把它当**公式**求值(`=cmd|'/C calc'!A0` 是
+# 经典 DDE 串;`=HYPERLINK(...)`/远程引用可外泄数据)。导出侧必须中和。
+_CSV_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
 
 def _csv_field(value: Any) -> str:
-    """RFC 4180 字段转义。None / "" → 空;含 , " \\n \\r → 双引号包裹 + 转义。"""
+    """RFC 4180 字段转义 + 公式前缀中和(OWASP CSV injection)。
+
+    None / "" → 空;含 , " \\n \\r → 双引号包裹 + 转义;以 `=+-@\\t\\r` 起始
+    → 前置单引号(Excel 视作文本,单元格内容显示时不含 `'`)。
+
+    为什么不加制表符包裹:那会改变可见内容;`'` 前缀是 Excel 家族的标准
+    文本标记,且导入侧(_split 后的字段)读到的仍是带 `'` 的串 —— 往返
+    一致性由「导出 → 导入」的既有 `'` 语义承担(导入不受影响:数字/日期
+    列不以上述字符起始,备注列原本就是自由文本)。
+    """
     if value is None:
         return ""
     s = str(value)
     if s == "":
         return ""
+    if s.startswith(_CSV_FORMULA_PREFIXES):
+        s = "'" + s
     if any(c in s for c in _CSV_NEEDS_QUOTE):
         return '"' + s.replace('"', '""') + '"'
     return s
@@ -749,6 +791,8 @@ __all__ = [
     'SCOPE_APP_WRITE',
     'SCOPE_WEB_READ',
     'snapshot_cache',
+    'active_only',
+    'finite_aggregate',
     'router',
     'settings',
     '_READ_SCOPE_DEP',

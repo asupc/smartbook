@@ -60,6 +60,7 @@ from ...deps import get_current_user, require_any_scopes
 from ...models import User, UserProfile
 from ...security import SCOPE_APP_WRITE, SCOPE_WEB_WRITE
 from ...services.ai import (
+    ChatProviderConfig,
     ChatProviderError,
     NoAudioProviderError,
     NoChatProviderError,
@@ -81,6 +82,10 @@ from ...services.ai.bill_identifier import (
     mark_duplicate_hit,
     register_identifiers,
 )
+from ...services.ai.media_sniff import is_plausible_audio, is_plausible_image
+from ...services.ai.outbound_policy import AiHostNotAllowedError
+from ...services.ai.provider_client import preflight_outbound_host_policy
+from ._shared import host_not_allowed_http
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -138,6 +143,14 @@ _SUFFIX_MIME = {
 _MAX_AUDIO_BYTES = 10 * 1024 * 1024  # 10MB,语音录音足够
 _MAX_MESSAGES = 40
 _MAX_MESSAGES_TOTAL_CHARS = 100_000
+# vision-batch 单请求图片张数上限。每张图 = 一次独立的上游 LLM 调用(各自
+# 计费 / 计入上游配额),无上限时一个请求可放大成任意多次调用。
+#
+# 取值与 `_MAX_MESSAGES`(40)同量级:上限的作用是给「单次请求能触发的上游
+# 调用数」封顶,真正的成本闸是**按张数计限流**(见 `_rate_limited(tokens=...)`)
+# ——60 令牌/分钟 配合本上限,最坏 60 次上游调用/分钟。32 也覆盖了「AI 助手
+# 一次选多张账单截图」的真实用法(App 端过滤/去重后一次通常 1~5 张)。
+_MAX_BATCH_IMAGES = 32
 
 # M2-5 上游 timeout。每档都比客户端 deadline 小 5s:服务端先放弃,客户端才能
 # 拿到 502 AI_PROVIDER_ERROR(transient)并落 retry 状态;反过来客户端先超时,
@@ -149,7 +162,12 @@ _UPSTREAM_TIMEOUT_VISION = 60.0  # 图片提取
 _UPSTREAM_TIMEOUT_STT = 60.0  # 语音转写
 
 
-def _check_rate_limit(user_id: str) -> bool:
+def _check_rate_limit(user_id: str, tokens: int = 1) -> bool:
+    """单 user 60 秒内最多 `_RATE_LIMIT_MAX` 个令牌。
+
+    `tokens` 支持一次消耗多个 —— vision-batch 一次 N 张图就是 N 次上游调用
+    (N 份账单 / 配额),必须按张数计令牌,否则「60/分钟」可被放大成 60×N。
+    """
     now = time.monotonic()
     window = _RATE_WINDOWS[user_id]
     while window and now - window[0] > _RATE_LIMIT_WINDOW_S:
@@ -158,18 +176,42 @@ def _check_rate_limit(user_id: str) -> bool:
         # S11:窗口清空即删 key,防长期运行下 defaultdict 只增不减。
         _RATE_WINDOWS.pop(user_id, None)
         window = _RATE_WINDOWS[user_id]
-    if len(window) >= _RATE_LIMIT_MAX:
+    if len(window) + tokens > _RATE_LIMIT_MAX:
         return False
-    window.append(now)
+    window.extend([now] * tokens)
     return True
 
 
-def _rate_limited(user_id: str) -> None:
-    if not _check_rate_limit(user_id):
+def _rate_limited(user_id: str, tokens: int = 1) -> None:
+    if not _check_rate_limit(user_id, tokens):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail={"error_code": "AI_RELAY_RATE_LIMITED"},
         )
+
+
+def _host_not_allowed(exc: AiHostNotAllowedError) -> HTTPException:
+    """SSRF 策略拒绝 → 400 配置类错误(不是 502 transient)。
+
+    与 `/ai/parse-tx-*`、`/ai/ask` 共用 `_shared.host_not_allowed_http`
+    —— 同一个策略错误在所有 AI 入口必须归一成同一个客户端可见形态
+    (对抗缺陷 2)。
+    """
+    return host_not_allowed_http(exc)
+
+
+def _preflight_host_policy(cfg: ChatProviderConfig) -> None:
+    """出站前先判 host 策略 —— 违规立即 400,不做无谓的图片读盘 / 日志准备。
+
+    `provider_client` 内部每个 egress 点也会各自校验(那是权威闸);这里提前
+    判一次是为了让**配置类错误**在请求早期就以 400 返回,而不是等走到上游
+    调用才被归一 —— 也保证 vision/stt 在读完整个 body 之前就拒掉。
+
+    实现是 `provider_client.preflight_outbound_host_policy`(与
+    `/ai/parse-tx-*`、`/ai/ask` 同一份 —— host 策略的覆盖面靠单一实现保证,
+    对抗缺陷 2 的教训)。
+    """
+    preflight_outbound_host_policy(cfg, context="relay_preflight")
 
 
 def _resolve_profile(db: Session, user_id: str) -> UserProfile | None:
@@ -233,9 +275,16 @@ def _resolve_image_mime(
 
 
 async def _check_image_upload(image: UploadFile) -> tuple[str, bytes]:
-    """对单个 UploadFile 做 mime + 大小校验,返回 (mime, bytes)。
+    """对单个 UploadFile 做 mime + 大小 + **魔数** 校验,返回 (mime, bytes)。
 
-    非法 mime → 400 AI_IMAGE_TYPE_INVALID;超过 5MB → 413 AI_IMAGE_TOO_LARGE。
+    非法 mime / 内容不像图片 → 400 AI_IMAGE_TYPE_INVALID;
+    超过 5MB → 413 AI_IMAGE_TOO_LARGE。
+
+    魔数是必需的:原先 content-type 不在白名单时**无条件回退到文件名后缀**,
+    而文件名完全由客户端控制 —— `<html><script>` 改名 `.png`、zip(`PK\\x03\\x04`)
+    改名 `.png` 都能通过校验并被 base64 转发上游。现在后缀只用来决定
+    「按哪种类型去校验」,字节本身必须是可识别的图片容器(见 media_sniff)。
+    声明了明确 image/* 也仍然校验魔数 —— 声明同样是客户端可控的。
     """
     mime = _resolve_image_mime(image.content_type, image.filename)
     if mime not in _ALLOWED_IMAGE_MIMES:
@@ -254,6 +303,19 @@ async def _check_image_upload(image: UploadFile) -> tuple[str, bytes]:
             detail={
                 "error_code": "AI_IMAGE_TOO_LARGE",
                 "message": f"image size {len(image_bytes)} exceeds 5MB",
+            },
+        )
+    # 魔数校验:仅凭 CT / 后缀不足以证明是图片(0 字节仍放行 — 既有行为)。
+    if not is_plausible_image(image_bytes, declared_mime=mime):
+        logger.warning(
+            "ai.relay.image_magic_rejected declared=%s filename=%r bytes=%d",
+            image.content_type, image.filename, len(image_bytes),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error_code": "AI_IMAGE_TYPE_INVALID",
+                "message": "payload is not a recognizable image (magic bytes mismatch)",
             },
         )
     return mime, image_bytes
@@ -370,6 +432,11 @@ async def relay_chat(
 
     messages = [{"role": m.role, "content": m.content} for m in req.messages]
 
+    try:
+        _preflight_host_policy(cfg)
+    except AiHostNotAllowedError as exc:
+        raise _host_not_allowed(exc) from exc
+
     t0 = time.perf_counter()
     log_status = "ok"
     output_text: str | None = None
@@ -419,6 +486,11 @@ async def relay_chat(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail={"error_code": "AI_PROVIDER_ERROR", "message": str(exc)[:200]},
             ) from exc
+        except AiHostNotAllowedError as exc:
+            # SSRF 策略拒绝:配置类错误 → 400(不是 502 transient,客户端不该重试)
+            log_status = "error"
+            error_message = str(exc)[:500]
+            raise _host_not_allowed(exc) from exc
     finally:
         await write_ai_analysis_log_async(
             user_id=current_user.id,
@@ -471,6 +543,11 @@ async def relay_vision(
     input_text = log_input or f"image(mime={mime}, size={len(image_bytes)} bytes)"
     messages = _build_vision_messages(prompt, mime, image_bytes)
 
+    try:
+        _preflight_host_policy(cfg)
+    except AiHostNotAllowedError as exc:
+        raise _host_not_allowed(exc) from exc
+
     t0 = time.perf_counter()
     log_status = "ok"
     output_text: str | None = None
@@ -512,6 +589,10 @@ async def relay_vision(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail={"error_code": "AI_PROVIDER_ERROR", "message": str(exc)[:200]},
             ) from exc
+        except AiHostNotAllowedError as exc:
+            log_status = "error"
+            error_message = str(exc)[:500]
+            raise _host_not_allowed(exc) from exc
     finally:
         await write_ai_analysis_log_with_image_async(
             user_id=current_user.id,
@@ -561,10 +642,24 @@ async def relay_vision_batch(
     _rate_limited(current_user.id)
 
     # 发起前整批校验:任何一张非法即整批失败,不调用 provider。
+    if len(images) > _MAX_BATCH_IMAGES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error_code": "AI_IMAGE_BATCH_TOO_LARGE",
+                "message": f"at most {_MAX_BATCH_IMAGES} images per batch (got {len(images)})",
+            },
+        )
     prepared: list[tuple[str, bytes]] = []
     for image in images:
         mime, image_bytes = await _check_image_upload(image)
         prepared.append((mime, image_bytes))
+
+    # 限流**按张数计令牌**:每张图是一次独立上游调用(独立计费),只在入口记 1
+    # 个令牌会把「60/分钟」放大成 60×N 次上游调用。在这里补记剩余张数
+    # (入口那次已计 1)。
+    if len(prepared) > 1:
+        _rate_limited(current_user.id, len(prepared) - 1)
 
     profile = _resolve_profile(db, current_user.id)
     try:
@@ -578,6 +673,11 @@ async def relay_vision_batch(
     sem = _provider_sem(
         current_user.id, cfg.provider_id, cfg.vision_concurrency,
     )
+    # host 策略在整批启动前判一次(同 provider → 各张结果一致)。
+    try:
+        _preflight_host_policy(cfg)
+    except AiHostNotAllowedError as exc:
+        raise _host_not_allowed(exc) from exc
     results: list[dict[str, object]] = [{} for _ in prepared]
 
     async def recognize(index: int, mime: str, image_bytes: bytes) -> None:
@@ -606,6 +706,11 @@ async def relay_vision_batch(
                         source="parse_tx_image",
                     )
             except ChatProviderError as exc:
+                error_message = str(exc)[:500]
+            except AiHostNotAllowedError as exc:
+                # 单张的 host 违规让该张记 error(整批仍 200,与既有「单张失败
+                # 不影响其它张」的语义一致);host 策略对同 provider 是确定的,
+                # 因此整批各张会一致失败。
                 error_message = str(exc)[:500]
             finally:
                 duration_ms = int((time.perf_counter() - t0) * 1000)
@@ -681,6 +786,32 @@ async def relay_stt(
                 "message": f"audio size {len(audio_bytes)} exceeds 10MB",
             },
         )
+    # 魔数校验:`application/octet-stream`(以及缺失 CT)是 App 的默认形态,
+    # 原先它等于一个**通配符** —— 任意载荷(HTML / 脚本 / zip)都能借此进入
+    # 上游 STT,server 侧零校验。这里对这类「不可信声明」做容器识别。
+    #
+    # 明确声明 `audio/*` 的保持放行:音频容器家族(amr / adts-aac / opus-in-ogg /
+    # 各家 m4a 变体…)远比图片松散,严格白名单会误伤合法录音,而「声明 audio/*
+    # 但内容不是音频」只会被上游拒(不构成放大面)。图片侧则一律校验魔数
+    # ——那里白名单是封闭的 4 种,且要防的正是「声明 text/html 改名 .png」。
+    # 0 字节仍放行(既有 HARDENING 锁定的行为)。
+    trusted_declaration = bool(mime) and mime.startswith("audio/")
+    if (
+        audio_bytes
+        and not trusted_declaration
+        and not is_plausible_audio(audio_bytes, declared_mime=mime or None)
+    ):
+        logger.warning(
+            "ai.relay.audio_magic_rejected declared=%r filename=%r bytes=%d",
+            audio.content_type, audio.filename, len(audio_bytes),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error_code": "AI_AUDIO_TYPE_INVALID",
+                "message": "payload is not a recognizable audio container (magic bytes mismatch)",
+            },
+        )
 
     profile = _resolve_profile(db, current_user.id)
     try:
@@ -692,6 +823,11 @@ async def relay_stt(
         )
 
     input_text = log_input or f"audio(mime={mime or 'unknown'}, size={len(audio_bytes)} bytes)"
+
+    try:
+        _preflight_host_policy(cfg)
+    except AiHostNotAllowedError as exc:
+        raise _host_not_allowed(exc) from exc
 
     t0 = time.perf_counter()
     log_status = "ok"
@@ -719,6 +855,10 @@ async def relay_stt(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail={"error_code": "AI_PROVIDER_ERROR", "message": str(exc)[:200]},
             ) from exc
+        except AiHostNotAllowedError as exc:
+            log_status = "error"
+            error_message = str(exc)[:500]
+            raise _host_not_allowed(exc) from exc
     finally:
         await write_ai_analysis_log_async(
             user_id=current_user.id,

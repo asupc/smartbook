@@ -18,12 +18,19 @@ from ..database import get_db
 from ..deps import get_current_user, require_any_scopes
 from ..models import User, UserProfile
 from ..schemas import (
+    MAX_SERVABLE_JSON_DEPTH,
     UserProfileAvatarUploadOut,
     UserProfileOut,
     UserProfilePatchRequest,
+    json_depth_ok,
 )
 from ..security import SCOPE_APP_WRITE, SCOPE_OPS_WRITE, SCOPE_WEB_READ, SCOPE_WEB_WRITE
-from ..services.ai.ai_config_store import mask_ai_config, merge_ai_config_on_patch
+from ..services.ai.ai_config_store import (
+    AIConfigBoundsError,
+    dump_ai_config,
+    mask_ai_config,
+    merge_ai_config_on_patch,
+)
 from .ai.providers import save_ai_config_guarded
 
 router = APIRouter()
@@ -112,9 +119,36 @@ def _resolve_avatar_extension(file: UploadFile) -> str:
     )
 
 
-def _parse_appearance_json(raw: str | None) -> dict | None:
-    """把 DB 里的 appearance_json TEXT 解析成 dict。无值 / 非法 JSON 都返 None,
-    让客户端按"未设置"处理,不至于请求失败。"""
+def _parse_profile_json(
+    raw: str | None, *, label: str, max_depth: int = MAX_SERVABLE_JSON_DEPTH
+) -> dict | None:
+    """把 DB 里的 profile JSON TEXT 列（appearance_json / ai_config_json）
+    解析成 dict。无值 / 非法 JSON / 非 dict 顶层 都返 None,让客户端按
+    "未设置"处理,不至于请求失败。
+
+    **读侧容错只挡「真的无法服务」的行**:
+
+    - 解析失败（`json.loads` 抛错 / 递归超限）→ 反序列化本身就不可用；
+    - 顶层不是 dict → `UserProfileOut.appearance/ai_config: dict | None`
+      校验会失败 → 响应 500；
+    - 嵌套深度 > `MAX_SERVABLE_JSON_DEPTH`（64）→ pydantic 序列化实测
+      90 层仍可、100 层抛 `PydanticSerializationError: Circular reference
+      detected`，超深行会把 GET /profile/me 打成永久 500（对抗 F-04）。
+
+    **刻意不做序列化体积检查**（2026-10-11 对抗缺陷 1，BLOCKER）：
+
+    历史实现把**写侧**上限 `MAX_FREE_DICT_BYTES`（64 KB）当读侧畸形判据，
+    于是「合法但体积大」的配置（`/ai/providers` 允许 32 个自建服务商 ×
+    ~5.6 KB 满配 ≈ 180 KB，正常经官方 API 写入）在用户读一次
+    `GET /profile/me` 时被当成畸形行**归零**，真 key 不可恢复地丢失。
+    写侧的上限是「输入收窄」，读侧判据必须是「能不能服务」—— 两者不同源。
+    现在的大小约束统一放在写侧（`schemas.MAX_AI_CONFIG_BYTES` 256 KB +
+    `ai_config_store.enforce_ai_config_bounds`），因此读侧看到的内容天然
+    有界，不需要、也不允许在这里做体积判定。
+
+    同时这个判据不做 `json.dumps`（深度判定只遍历容器、超限立即短路），
+    避免每次读 profile 都为整块配置分配一份等长输出串。
+    """
     if raw is None:
         return None
     stripped = raw.strip()
@@ -122,17 +156,135 @@ def _parse_appearance_json(raw: str | None) -> dict | None:
         return None
     try:
         parsed = json.loads(stripped)
-    except (ValueError, TypeError):
-        logger.warning("profile appearance_json parse failed: %s", stripped[:80])
+    except (ValueError, TypeError, RecursionError):
+        # **不打印内容片段**:ai_config_json 按 sort_keys 序列化后 `apiKey` 是
+        # 首个字段,前 80 字就足以泄露真 key 的一截。只记长度与列名 ——
+        # 排查够用,不落密。
+        logger.warning("profile %s_json parse failed (len=%d)", label, len(stripped))
         return None
-    return parsed if isinstance(parsed, dict) else None
+    if not isinstance(parsed, dict):
+        logger.warning(
+            "profile %s_json top-level is not an object (%s), treated as unset",
+            label,
+            type(parsed).__name__,
+        )
+        return None
+    if not json_depth_ok(parsed, max_depth=max_depth):
+        logger.warning(
+            "profile %s_json nesting deeper than %d (len=%d), treated as unset",
+            label,
+            max_depth,
+            len(stripped),
+        )
+        return None
+    return parsed
 
 
 def _dump_appearance_json(value: dict | None) -> str | None:
-    """把客户端传来的 dict 序列化成 TEXT 存库。None / 空 dict 都存 NULL 清掉。"""
+    """把客户端传来的 appearance dict 序列化成 TEXT 存库。None / 空 dict
+    存 NULL 清掉。
+
+    写侧 schema(`BoundedFreeDictOptional`)已保证深度 ≤ 8 / 体积 ≤ 64 KB,
+    这里只做序列化;若 JSON 层仍有异常(理论上不会)也转 400 而不是 500。
+    """
     if value is None or not isinstance(value, dict) or not value:
         return None
-    return json.dumps(value, ensure_ascii=False, sort_keys=True)
+    try:
+        return json.dumps(value, ensure_ascii=False, sort_keys=True)
+    except (ValueError, TypeError, RecursionError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Profile JSON value is not serializable",
+        ) from exc
+
+
+def _dump_ai_config_json(
+    value: dict | None,
+    *,
+    profile: UserProfile | None = None,
+) -> str | None:
+    """把 ai_config dict 序列化成 TEXT 存库(None / 空 dict 存 NULL 清掉)。
+
+    落库前走写侧唯一边界 `dump_ai_config`(深度 ≤ 8 / 体积 ≤ 256 KB,
+    见 `ai_config_store.MAX_AI_CONFIG_BYTES`)。body schema 的
+    `BoundedAIConfigOptional` 已在入参处判过一次,但
+    `merge_ai_config_on_patch` 的合并结果(保留服务端原 key + 新增 provider)
+    可能比入参更大,因此合并后必须再判 —— 超限 → 422,不落库。
+
+    **缩容豁免(round-3 缺陷 2)**:传入当前 profile(`profile` 参数)时,
+    库内 `ai_config_json` 的字节数作为 `stored_bytes` 透传给 `dump_ai_config`
+    —— 与 `/ai/providers` 的 `_save_config` 同一语义:合并结果 ≤ 存量字节数
+    一律放行。否则存量超限(CJK 撑过 256 KB)用户的 app 端 AI 偏好同步
+    (`snapshotForSync()` 发 prefs 不带 providers 段,合并结果不变)会被
+    422 永久拒掉 —— 这正是移动端的真实调用形态。真增长的写入仍 422。
+    """
+    if value is None or not isinstance(value, dict) or not value:
+        return None
+    stored_bytes: int | None = None
+    if profile is not None and profile.ai_config_json:
+        raw = profile.ai_config_json
+        stored_bytes = (
+            len(raw.encode("utf-8")) if isinstance(raw, str)
+            else len(str(raw).encode("utf-8"))
+        )
+    try:
+        return dump_ai_config(value, stored_bytes=stored_bytes)
+    except AIConfigBoundsError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={"error_code": "AI_CONFIG_TOO_LARGE", "message": str(exc)},
+        ) from exc
+    except (ValueError, TypeError, RecursionError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Profile JSON value is not serializable",
+        ) from exc
+
+
+def _heal_malformed_profile_json(db: Session, *, profile: UserProfile) -> None:
+    """一次性自愈:把**真的不可服务**(解析失败 / 顶层非对象 / 超深)的
+    appearance_json / ai_config_json 归零为 NULL,让自锁的账号恢复正常。
+
+    - **幂等**:正常行不做任何写操作;两次调用结果一致;
+    - **best-effort**:写失败只告警,不影响本次读请求(宁可返回空,不 500);
+    - 只清畸形的那一列(另一列若正常则保留),不做整行归零;
+    - **只对不可服务的行生效**:合法但体积大的配置不在此列 —— 体积上限
+      由写侧负责(`MAX_AI_CONFIG_BYTES`),读侧判「畸形」绝不含体积
+      (见 `_parse_profile_json` 的注释与对抗缺陷 1)。
+    """
+    repairs: list[str] = []
+    for attr, label in (
+        ("appearance_json", "appearance"),
+        ("ai_config_json", "ai_config"),
+    ):
+        raw = getattr(profile, attr, None)
+        if raw is None:
+            continue
+        stripped = raw.strip() if isinstance(raw, str) else ""
+        if not stripped:
+            continue
+        if _parse_profile_json(raw, label=label) is None:
+            repairs.append(label)
+            setattr(profile, attr, None)
+    if not repairs:
+        return
+    try:
+        db.commit()
+    except Exception as exc:  # noqa: BLE001 — 自愈失败不能拖垮读请求
+        db.rollback()
+        logger.warning(
+            "profile_json_selfheal failed user=%s fields=%s err=%s",
+            profile.user_id,
+            repairs,
+            exc,
+        )
+        return
+    # ERROR 级:admin 日志面板默认筛 ERROR,运维能直接看到哪些账号被自愈过。
+    logger.error(
+        "profile_json_selfheal applied user=%s fields=%s (unservable rows zeroed)",
+        profile.user_id,
+        repairs,
+    )
 
 
 @router.get("/me", response_model=UserProfileOut)
@@ -142,16 +294,22 @@ def get_my_profile(
     db: Session = Depends(get_db),
 ) -> UserProfileOut:
     profile = db.scalar(select(UserProfile).where(UserProfile.user_id == current_user.id))
+    # S1 一次性修复路径:加固前写入的深嵌套 JSON 会让反序列化/序列化递归爆栈,
+    # 用户此后所有 profile 请求全 500 且无法自救(对抗 F-04)。读路径顺手做
+    # **幂等**自愈:发现畸形列就归零(NULL)+ 告警;成功后正常返回 200。
+    # 只在真的畸形时写库,正常读不产生任何 UPDATE。
+    if profile is not None:
+        _heal_malformed_profile_json(db, profile=profile)
     display_name = profile.display_name if profile is not None else None
     avatar_file_id = profile.avatar_file_id if profile is not None else None
     avatar_version = profile.avatar_version if profile is not None else 0
     income_is_red = profile.income_is_red if profile is not None else None
     theme_primary_color = profile.theme_primary_color if profile is not None else None
-    appearance = _parse_appearance_json(profile.appearance_json) if profile is not None else None
+    appearance = _parse_profile_json(profile.appearance_json, label="appearance") if profile is not None else None
     # ai_config 对外一律掩码:providers[].apiKey 只回 `****+末4位`,真 key
     # 永不出服务端(与 /ai/providers 列表同口径)。
     ai_config = mask_ai_config(
-        _parse_appearance_json(profile.ai_config_json) if profile is not None else None
+        _parse_profile_json(profile.ai_config_json, label="ai_config") if profile is not None else None
     )
     primary_currency = profile.primary_currency if profile is not None else None
     return UserProfileOut(
@@ -187,7 +345,7 @@ async def patch_my_profile(
             income_is_red=req.income_is_red,
             theme_primary_color=req.theme_primary_color,
             appearance_json=_dump_appearance_json(req.appearance),
-            ai_config_json=_dump_appearance_json(merge_ai_config_on_patch(None, req.ai_config))
+            ai_config_json=_dump_ai_config_json(merge_ai_config_on_patch(None, req.ai_config))
             if req.ai_config is not None
             else None,
             primary_currency=(req.primary_currency.upper() if req.primary_currency is not None else None),
@@ -230,10 +388,12 @@ async def patch_my_profile(
             # S3:ai_config_json 走乐观锁 guarded UPDATE(版本不匹配 → 409,
             # 同时回滚本次请求的其它字段改动,整体重试);helper 内部 commit,
             # 其 autoflush 会把上面已设的 ORM 字段一并发出去。
-            merged_json = _dump_appearance_json(
+            # 写侧边界:合并结果再判一次(超限 → 422,不落库)。
+            merged_json = _dump_ai_config_json(
                 merge_ai_config_on_patch(
-                    _parse_appearance_json(profile.ai_config_json), req.ai_config,
-                )
+                    _parse_profile_json(profile.ai_config_json, label="ai_config"), req.ai_config,
+                ),
+                profile=profile,
             )
             save_ai_config_guarded(
                 db,
@@ -255,8 +415,8 @@ async def patch_my_profile(
         profile.avatar_version,
         profile.primary_currency,
     )
-    appearance = _parse_appearance_json(profile.appearance_json)
-    ai_config = mask_ai_config(_parse_appearance_json(profile.ai_config_json))
+    appearance = _parse_profile_json(profile.appearance_json, label="appearance")
+    ai_config = mask_ai_config(_parse_profile_json(profile.ai_config_json, label="ai_config"))
     await _broadcast_profile_change(
         request,
         user_id=current_user.id,

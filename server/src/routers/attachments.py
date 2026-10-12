@@ -22,6 +22,7 @@ from ..schemas import (
     AttachmentUploadOut,
 )
 from ..security import SCOPE_APP_WRITE, SCOPE_WEB_READ, SCOPE_WEB_WRITE
+from ..storage_paths import attachment_storage_root, resolve_within_root
 
 logger = logging.getLogger(__name__)
 
@@ -29,17 +30,82 @@ router = APIRouter()
 _READ_SCOPE_DEP = require_any_scopes(SCOPE_APP_WRITE, SCOPE_WEB_READ, SCOPE_WEB_WRITE)
 _WRITE_SCOPE_DEP = require_any_scopes(SCOPE_APP_WRITE, SCOPE_WEB_WRITE)
 
+# ── 图片魔数(对抗 F-02 / S4 加固)────────────────────────────────────
+# multipart 的 content-type 完全由客户端声明,不可信。只对**声明为 image/**
+# 的上传做魔数比对:
+#   - 比对通过 → 保留声明 mime(下载头正确);
+#   - 比对失败 → 降级成 application/octet-stream(HTML 伪装成 image/png 时
+#     下载响应不再是 image/*,同源 <img>/<iframe> 渲染面被关闭);
+#   - 非 image/* 声明(CSV / 音频 / 任意二进制)不做魔数校验,行为不变。
+_MAGIC_PNG = b"\x89PNG\r\n\x1a\n"
+_IMAGE_MAGIC_PREFIXES: tuple[tuple[bytes, str], ...] = (
+    (_MAGIC_PNG, "image/png"),
+    (b"\xff\xd8\xff", "image/jpeg"),
+    (b"GIF87a", "image/gif"),
+    (b"GIF89a", "image/gif"),
+    (b"BM", "image/bmp"),
+    (b"II*\x00", "image/tiff"),
+    (b"MM\x00*", "image/tiff"),
+)
+# ISO-BMFF(HEIC / AVIF):`....ftyp<brand>`,brand 在偏移 8..12。
+_HEIF_BRANDS = (b"heic", b"heix", b"hevc", b"hevx", b"mif1", b"msf1", b"avif", b"avis")
+
+
+def _sniff_image_mime(data: bytes) -> str | None:
+    """返回魔数命中的 image mime;不是已知图片格式则 None。"""
+    for prefix, mime in _IMAGE_MAGIC_PREFIXES:
+        if data.startswith(prefix):
+            return mime
+    if len(data) >= 12 and data[4:8] == b"ftyp" and data[8:12] in _HEIF_BRANDS:
+        return "image/heic"
+    if (
+        len(data) >= 12
+        and data.startswith(b"RIFF")
+        and data[8:12] == b"WEBP"
+    ):
+        return "image/webp"
+    return None
+
+
+def _effective_mime(data: bytes, declared: str | None) -> str | None:
+    """按魔数收敛声明 MIME。声明 image/* 但魔数不符 → octet-stream。"""
+    mime = (declared or "").strip().lower() or None
+    if mime is None or not mime.startswith("image/"):
+        return mime
+    sniffed = _sniff_image_mime(data)
+    if sniffed is None:
+        # 审计:声明图片但内容不是 —— 可能是伪装载荷(存储型 XSS 面)。
+        logger.warning(
+            "attachments.mime_magic_mismatch declared=%s size=%d -> application/octet-stream",
+            mime,
+            len(data),
+        )
+        return "application/octet-stream"
+    return mime
+
 
 def _attachment_root() -> Path:
-    settings = get_settings()
-    root = Path(settings.attachment_storage_dir).expanduser()
-    root.mkdir(parents=True, exist_ok=True)
-    return root
+    return attachment_storage_root()
 
 
 def _safe_file_name(raw: str) -> str:
     value = Path(raw or "").name.strip()
     return value[:255] or "attachment.bin"
+
+
+def _resolve_storage_path(root: Path, *parts: str) -> Path:
+    """把 root 与各路径片段拼起来做包含性检查(纵深防御)。
+
+    实现已收敛到共享的 `src/storage_paths.resolve_within_root` —— 附件域
+    有多个落盘点(本文件两处 + `write/transactions_batch.py` 的 attach_image_id),
+    历史上只给本文件加了检查、batch 写点漏网(对抗复核第四写点)。共享
+    一份实现保证新增落盘点不会再次只改一个入口。
+
+    第一道防线是 schemas 的 `ledger_id` 字符集白名单(创建点),但**存量账本**
+    可能带着历史脏 external_id(`String(128)` 列,以前无字符集校验),所以落盘
+    前必须再验一次(400 + 审计日志,不落盘、不建目录)。
+    """
+    return resolve_within_root(root, *parts, component="attachments")
 
 
 def _resolve_ledger(
@@ -137,7 +203,12 @@ async def upload_attachment(
     storage_name = f"{uuid4().hex}_{safe_name}"
     # 路径加 user_id 前缀隔离多用户:同一 external_id 的账本(比如两个用户
     # 各自的 "default")不再共用一个目录,删号 / 迁移也能按用户打包。
-    storage_dir = _attachment_root() / ledger.user_id / ledger.external_id / sha256[:2]
+    #
+    # S1 加固:`_resolve_storage_path` 对最终路径做 resolve() 包含性检查 ——
+    # 创建点虽已加 external_id 白名单,存量脏行仍可能穿越(见 helper 注释)。
+    storage_dir = _resolve_storage_path(
+        _attachment_root(), ledger.user_id, ledger.external_id, sha256[:2]
+    )
     storage_dir.mkdir(parents=True, exist_ok=True)
     storage_path = storage_dir / storage_name
     storage_path.write_bytes(data)
@@ -147,7 +218,7 @@ async def upload_attachment(
         user_id=current_user.id,
         sha256=sha256,
         size_bytes=len(data),
-        mime_type=file.content_type,
+        mime_type=_effective_mime(data, file.content_type),
         file_name=safe_name,
         storage_path=str(storage_path),
     )
@@ -192,16 +263,38 @@ def batch_exists(
         current_user=current_user,
         roles=set(),
     )
-    wanted = [value.strip().lower() for value in req.sha256_list if isinstance(value, str) and value.strip()]
+    # 响应 items 与入参**一一对应**(顺序 / 长度都保持),因此这里不能去重;
+    # 只在 SQL 侧用唯一值 + 分块 IN,避免同 sha 重复上万次让单条 SQL 的绑定
+    # 变量数超出 SQLite 的 999 老上限(入参条数已由 schema 限 10k)。
+    wanted = [
+        value.strip().lower()
+        for value in req.sha256_list
+        if isinstance(value, str) and value.strip()
+    ]
     if not wanted:
         return AttachmentBatchExistsResponse(items=[])
-    rows = db.scalars(
-        select(AttachmentFile).where(
-            AttachmentFile.ledger_id == ledger.id,
-            AttachmentFile.sha256.in_(wanted),
+    unique = list(dict.fromkeys(wanted))
+    # 999 = SQLite 3.32 之前的变量上限;按该值以下切块对 Postgres 也无害。
+    _CHUNK = 900
+    rows = []
+    for start in range(0, len(unique), _CHUNK):
+        chunk = unique[start : start + _CHUNK]
+        rows.extend(
+            db.scalars(
+                select(AttachmentFile).where(
+                    AttachmentFile.ledger_id == ledger.id,
+                    AttachmentFile.sha256.in_(chunk),
+                )
+            ).all()
         )
-    ).all()
     by_sha = {row.sha256: row for row in rows}
+    logger.info(
+        "attachments.batch_exists ledger=%s requested=%d unique=%d user=%s",
+        ledger.external_id,
+        len(wanted),
+        len(unique),
+        current_user.id,
+    )
     items = []
     for sha in wanted:
         row = by_sha.get(sha)
@@ -262,7 +355,9 @@ async def upload_category_icon(
     safe_name = _safe_file_name(file.filename or "category_icon.png")
     storage_name = f"{uuid4().hex}_{safe_name}"
     # 路径:user_id/category-icons/<sha256[:2]>/...,不含 ledger 维度
-    storage_dir = _attachment_root() / current_user.id / "category-icons" / sha256[:2]
+    storage_dir = _resolve_storage_path(
+        _attachment_root(), current_user.id, "category-icons", sha256[:2]
+    )
     storage_dir.mkdir(parents=True, exist_ok=True)
     storage_path = storage_dir / storage_name
     storage_path.write_bytes(data)
@@ -272,7 +367,7 @@ async def upload_category_icon(
         user_id=current_user.id,
         sha256=sha256,
         size_bytes=len(data),
-        mime_type=file.content_type,
+        mime_type=_effective_mime(data, file.content_type),
         file_name=safe_name,
         storage_path=str(storage_path),
         attachment_kind="category_icon",
@@ -307,9 +402,11 @@ def download_attachment(
     #    (owner/editor 均可读)。**「本人上传」不再放行**:被移除的成员
     #    曾上传的交易附件必须随成员资格一并失去访问权(S1 越权修复)。
     if not current_user.is_admin:
+        from sqlalchemy import and_
+        from sqlalchemy import exists as sa_exists
+
         from ..ledger_access import get_accessible_ledger_ids
         from ..models import Ledger, LedgerMember
-        from sqlalchemy import and_, exists as sa_exists
 
         if row.ledger_id is None:
             if row.user_id == current_user.id:
@@ -361,8 +458,26 @@ def download_attachment(
         row.size_bytes,
         current_user.id,
     )
+    media_type = row.mime_type or "application/octet-stream"
+    # 纵深防御:存量行的 mime_type 可能是伪装上传时落库的 image/*(本次加固前
+    # 不校验魔数)。下载时再验一次魔数,不符就降级 octet-stream —— 同源
+    # <img>/<iframe> 不会把 HTML 载荷当图片渲染。
+    if media_type.startswith("image/"):
+        try:
+            head = path.read_bytes()[:16]
+        except OSError:
+            head = b""
+        if _sniff_image_mime(head) is None:
+            logger.warning(
+                "attachments.download.mime_magic_mismatch file=%s declared=%s",
+                row.id,
+                media_type,
+            )
+            media_type = "application/octet-stream"
     return FileResponse(
         path=path,
-        media_type=row.mime_type or "application/octet-stream",
+        media_type=media_type,
         filename=row.file_name or path.name,
+        # 浏览器对响应体做 MIME 嗅探会把 octet-stream 猜成 HTML;显式禁掉。
+        headers={"X-Content-Type-Options": "nosniff"},
     )

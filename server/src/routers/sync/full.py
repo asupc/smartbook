@@ -58,7 +58,12 @@ def full_snapshot(
         snapshot_cache.put(ledger.id, ledger_change_id, cached)
 
     payload_json = {
-        "content": json.dumps(cached, ensure_ascii=False),
+        # F-04 纵深防御:非有限浮点(NaN/±Infinity)违反 RFC 8259,Dart/JS 的
+        # 严格 JSON 解析器会直接抛错 → mobile 首次同步崩在畸形 payload 上。
+        # 写入侧(projection 的 `_as_float*` / `_coerce_finite`)已在源头拒绝,
+        # 这里 `allow_nan=False` 作为最后一道断言:一旦存量脏数据绕过入口,
+        # 宁可在这里显式炸(带 traceback 可定位),也不要下发非法 token。
+        "content": json.dumps(cached, ensure_ascii=False, allow_nan=False),
         "metadata": {"source": "lazy_rebuild"},
     }
     return SyncFullResponse(

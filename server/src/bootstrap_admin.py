@@ -26,7 +26,7 @@ from sqlalchemy import select
 
 from .database import SessionLocal
 from .models import User
-from .security import hash_password
+from .security import hash_password_or_422, password_size_exceeded
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +97,19 @@ def ensure_admin() -> None:
             email, password = env_email, env_password
             source = "env BOOTSTRAP_ADMIN_EMAIL/PASSWORD"
             persisted_at: Path | None = None
+            # 超长 env 密码会让 passlib 抛 PasswordSizeError —— 本函数整体被
+            # except Exception 兜住,不会 500,但会把「启动即建号」静默变成
+            # 「永远建不出 admin」。这里显式判一次并换用随机密码,保证首次
+            # 启动一定能登录(对抗缺陷 3 的同族调用点:seed 路径也必须过守卫)。
+            if password_size_exceeded(password):
+                logger.warning(
+                    "bootstrap_admin: BOOTSTRAP_ADMIN_PASSWORD exceeds passlib limit "
+                    "(%d chars); falling back to an auto-generated password",
+                    len(password),
+                )
+                password = _generate_password()
+                source = "auto-generated (env password too long)"
+                persisted_at = _persist_password(password, email)
         else:
             email = _DEFAULT_EMAIL
             password = _generate_password()
@@ -105,7 +118,7 @@ def ensure_admin() -> None:
 
         admin = User(
             email=email,
-            password_hash=hash_password(password),
+            password_hash=hash_password_or_422(password),
             is_admin=True,
             is_enabled=True,
         )

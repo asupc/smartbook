@@ -51,7 +51,12 @@ def list_raw_evidence(
     from_at: datetime | None = Query(default=None, alias="from"),
     to_at: datetime | None = Query(default=None, alias="to"),
     limit: int = Query(default=50, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
+    # S3(审核记录 建议-14 / S1 handed-off):offset 必须有 int64 上界 ——
+    # Python int 无界,超过 int64 会在 SQLAlchemy → SQLite/PG INTEGER/int8
+    # 转换时抛 OverflowError → 500(对抗 injection: offset=2**63)。
+    # 上界取 MAX_INT64(不用更小值):`test_ai_relay_adversarial.py` 的
+    # HARDENING 锁 `offset=1e14 → 200 空页`,小上界会让它翻红。
+    offset: int = Query(default=0, ge=0, le=MAX_INT64),
     _scopes: set[str] = Depends(_READ_SCOPE_DEP),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -160,14 +165,22 @@ def cleanup_raw_evidence(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict[str, int]:
+    from ...services import raw_evidence_retention as retention_svc
+
     request = payload or RawEvidenceCleanupRequest()
-    cutoff = _utc(request.before) or datetime.now(timezone.utc)
-    filters: list[Any] = [
-        RawBookkeepingEvidence.user_id == current_user.id,
-        RawBookkeepingEvidence.captured_at < cutoff,
-    ]
-    if request.source:
-        filters.append(RawBookkeepingEvidence.source == _validate_source(request.source))
-    result = db.execute(delete(RawBookkeepingEvidence).where(*filters))
-    db.commit()
-    return {"deleted": int(result.rowcount or 0)}
+    source = _validate_source(request.source) if request.source else None
+    if request.before is None:
+        # 缺省语义 = TTL 清理:只删已过期(expires_at <= now)的行。历史上
+        # 缺省 cutoff=now 会把**全部**证据一次删光(captured_at < now 无条件
+        # 成立),客户端误发清理请求即不可逆丢失取证数据。显式传 before 才
+        # 走按采集时间的窗口删除。
+        return {
+            "deleted": retention_svc.purge_expired_raw_evidence(
+                db, user_id=current_user.id, source=source
+            )
+        }
+    return {
+        "deleted": retention_svc.purge_captured_before(
+            db, cutoff=_utc(request.before), user_id=current_user.id, source=source
+        )
+    }

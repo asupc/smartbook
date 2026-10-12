@@ -65,6 +65,7 @@ from ..schemas import (
     DuplicateEvidenceDetailResponse,
     DuplicateEvidenceLinkRequest,
     DuplicateGroup,
+    MAX_INT64,
     UserAdminCreateRequest,
     UserAdminListOut,
     UserAdminOut,
@@ -72,7 +73,13 @@ from ..schemas import (
     UserAdminPatchRequest,
 )
 from ..services import data_cleanup as data_cleanup_svc
-from ..security import SCOPE_APP_WRITE, SCOPE_OPS_WRITE, hash_password, verify_password
+from ..security import (
+    SCOPE_APP_WRITE,
+    SCOPE_OPS_WRITE,
+    hash_password_or_422,
+    require_password_size,
+    verify_password_or_401,
+)
 from .. import projection, snapshot_cache
 
 logger = logging.getLogger(__name__)
@@ -99,6 +106,54 @@ def _backup_root() -> Path:
     root = Path(settings.backup_storage_dir).expanduser()
     root.mkdir(parents=True, exist_ok=True)
     return root
+
+
+def _safe_storage_component(raw: str, *, fallback: str) -> str:
+    """把一个账本 external_id 变成**单个**安全的磁盘路径片段。
+
+    与附件域同一根因(external_id 直拼盘路):代码只对长度做校验,不校验
+    字符集。`../../x` / `/abs` / `..\\..\\x` 都会让产物写出 backup 根之外。
+    这里不做拒绝(创建账本的历史数据仍要可读),而是安全化:非
+    [A-Za-z0-9._-] 一律替换为 `_`,并显式排除 `.` / `..` 与纯分隔符串。
+    """
+    cleaned = _SAFE_FILE_NAME_RE.sub("_", (raw or "").strip())
+    if not cleaned or set(cleaned) <= {".", "_"}:
+        return fallback
+    return cleaned[:128]
+
+
+def _backup_artifact_dir(
+    *,
+    db: Session,
+    user_id: str,
+    ledger_id_external: str,
+    ledger_db_id: int,
+    kind: str,
+) -> Path:
+    """产物目录 = `<backup_root>/<安全化 external_id>/<kind>`,含包含性校验。
+
+    纵深防御:即使未来 `_safe_storage_component` 被绕过,resolve 后逃出
+    backup 根的一律 400 + 审计日志(不落盘)。
+    """
+    component = _safe_storage_component(ledger_id_external, fallback=f"ledger-{ledger_db_id}")
+    root = _backup_root().resolve()
+    target = (root / component / kind).resolve()
+    if target != root and not target.is_relative_to(root):
+        logger.warning(
+            "backup artifact path traversal blocked: ledger=%r resolved=%s root=%s",
+            ledger_id_external, target, root,
+        )
+        db.add(
+            AuditLog(
+                user_id=user_id,
+                ledger_id=ledger_db_id,
+                action="backup_artifact_path_rejected",
+                metadata_json={"ledgerId": ledger_id_external, "kind": kind},
+            )
+        )
+        db.commit()
+        raise HTTPException(status_code=400, detail="Invalid backup artifact path")
+    return target
 
 
 def _artifact_payload(artifact: BackupArtifact, *, ledger_external_id: str) -> AdminBackupArtifactOut:
@@ -205,7 +260,12 @@ def list_users(
     q: str | None = Query(default=None),
     status: Literal["enabled", "disabled", "all"] = Query(default="enabled"),
     limit: int = Query(default=100, ge=1, le=500),
-    offset: int = Query(default=0, ge=0),
+    # S3(审核记录 建议-14 / S1 handed-off):offset 必须有 int64 上界 ——
+    # Python int 无界,超过 int64 会在 SQLAlchemy → SQLite/PG INTEGER/int8
+    # 转换时抛 OverflowError → 500(对抗 injection: offset=2**63)。
+    # 上界取 MAX_INT64(不用更小值):`test_ai_relay_adversarial.py` 的
+    # HARDENING 锁 `offset=1e14 → 200 空页`,小上界会让它翻红。
+    offset: int = Query(default=0, ge=0, le=MAX_INT64),
     _scopes: set[str] = Depends(require_scopes(SCOPE_OPS_WRITE)),
     _admin_user: User = Depends(require_admin_user),
     db: Session = Depends(get_db),
@@ -307,7 +367,9 @@ def change_user_password(
     # 1) 先校验**当前 admin 自己**的密码 —— 二次验证,防止被劫持的 session 改
     #    别人密码 / UI 误点造成不可逆损失。admin_user 一定是 enabled(通过了
     #    require_admin_user dep),不用再查 is_enabled。
-    if not verify_password(req.admin_password, admin_user.password_hash):
+    #    超长 admin_password 走 `verify_password_or_401` → False → 401(不是
+    #    500):passlib 的 PasswordSizeError 由该 helper 吞掉(对抗缺陷 3)。
+    if not verify_password_or_401(req.admin_password, admin_user.password_hash):
         raise HTTPException(status_code=401, detail="Admin password mismatch")
 
     user = db.scalar(select(User).where(User.id == user_id))
@@ -315,7 +377,8 @@ def change_user_password(
         raise HTTPException(status_code=404, detail="User not found")
 
     # 2) 更新目标用户密码,并 revoke 所有 refresh token,所有设备强制重登。
-    user.password_hash = hash_password(req.new_password)
+    #    超长 new_password → 422(守卫在哈希之前,不进入 passlib)。
+    user.password_hash = hash_password_or_422(req.new_password)
     revoked = 0
     for token_row in db.scalars(
         select(RefreshToken).where(
@@ -434,6 +497,10 @@ def create_user(
 ) -> UserAdminOut:
     if len(req.password) < 6:
         raise HTTPException(status_code=400, detail="User password too short")
+    # 超长密码 → 422(守卫在哈希之前;与注册入口同口径,对抗缺陷 3)。
+    # 用 `hash_password_or_422` 的同一状态码(422)—— 本模块的既有错误都用
+    # 数字字面量风格,这里保持一致。
+    require_password_size(req.password, status_code=422, detail="Password too long")
     exists = db.scalar(select(User).where(User.email == req.email))
     if exists is not None:
         raise HTTPException(status_code=409, detail="User email exists")
@@ -445,7 +512,7 @@ def create_user(
     new_user_is_admin = False
     user = User(
         email=req.email,
-        password_hash=hash_password(req.password),
+        password_hash=hash_password_or_422(req.password),
         is_admin=new_user_is_admin,
         is_enabled=bool(req.is_enabled),
     )
@@ -487,7 +554,10 @@ def admin_overview(
     #
     # 注意:projection 的 account/category/tag 在每个 ledger 下都重复存一份
     # (历史上 snapshot per-ledger 结构继承过来),全局总览需 DISTINCT sync_id
-    # 去重;transaction 是 per-ledger 真实行,COUNT(*) 就对。
+    # 去重;transaction 是 per-ledger 真实行,COUNT(*) 就对 —— 但 0030 起
+    # projection 的 tx 行是**软删**(回收站),必须带 `deleted_at IS NULL`,
+    # 否则 admin 面板把回收站行也算进总量(对抗 G5:删 1 笔后仍报 2,purge
+    # 后才降)。与 /read/ledgers 的 tx 计数口径一致。
     return AdminOverviewOut(
         users_total=int(db.scalar(select(func.count()).select_from(User)) or 0),
         users_enabled_total=int(
@@ -495,7 +565,11 @@ def admin_overview(
         ),
         ledgers_total=int(db.scalar(select(func.count()).select_from(Ledger)) or 0),
         transactions_total=int(
-            db.scalar(select(func.count()).select_from(ReadTxProjection)) or 0
+            db.scalar(
+                select(func.count()).select_from(ReadTxProjection).where(
+                    ReadTxProjection.deleted_at.is_(None)
+                )
+            ) or 0
         ),
         # user-global per-user 表已唯一,count(*) 就是 distinct sync_id 数。
         accounts_total=int(
@@ -757,7 +831,12 @@ def list_devices(
     online_only: bool = Query(default=False),
     active_within_days: int = Query(default=30, ge=0, le=3650),
     limit: int = Query(default=100, ge=1, le=500),
-    offset: int = Query(default=0, ge=0),
+    # S3(审核记录 建议-14 / S1 handed-off):offset 必须有 int64 上界 ——
+    # Python int 无界,超过 int64 会在 SQLAlchemy → SQLite/PG INTEGER/int8
+    # 转换时抛 OverflowError → 500(对抗 injection: offset=2**63)。
+    # 上界取 MAX_INT64(不用更小值):`test_ai_relay_adversarial.py` 的
+    # HARDENING 锁 `offset=1e14 → 200 空页`,小上界会让它翻红。
+    offset: int = Query(default=0, ge=0, le=MAX_INT64),
     _scopes: set[str] = Depends(require_scopes(SCOPE_OPS_WRITE)),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -880,7 +959,13 @@ async def upload_backup_db(
 
     artifact_id = str(uuid4())
     file_name = _safe_file_name(file.filename or "", fallback="backup.sqlite3")
-    target_dir = _backup_root() / ledger.external_id / "db"
+    target_dir = _backup_artifact_dir(
+        db=db,
+        user_id=current_user.id,
+        ledger_id_external=ledger.external_id,
+        ledger_db_id=ledger.id,
+        kind="db",
+    )
     target_dir.mkdir(parents=True, exist_ok=True)
     target_path = target_dir / f"{artifact_id}_{file_name}"
     target_path.write_bytes(raw)
@@ -944,7 +1029,13 @@ def upload_backup_snapshot(
 
     artifact_id = str(uuid4())
     file_name = _safe_file_name(f"{ledger.external_id}-{artifact_id}.json", fallback="snapshot.json")
-    target_dir = _backup_root() / ledger.external_id / "snapshot"
+    target_dir = _backup_artifact_dir(
+        db=db,
+        user_id=current_user.id,
+        ledger_id_external=ledger.external_id,
+        ledger_db_id=ledger.id,
+        kind="snapshot",
+    )
     target_dir.mkdir(parents=True, exist_ok=True)
     target_path = target_dir / file_name
     target_path.write_text(payload_text, encoding="utf-8")
@@ -1335,7 +1426,12 @@ def _to_admin_detail(row: AIAnalysisLog, email: str) -> AdminAIAnalysisLogDetail
 @router.get("/ai-analysis-logs", response_model=AdminAIAnalysisLogListOut)
 def admin_list_ai_logs(
     limit: int = Query(default=50, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
+    # S3(审核记录 建议-14 / S1 handed-off):offset 必须有 int64 上界 ——
+    # Python int 无界,超过 int64 会在 SQLAlchemy → SQLite/PG INTEGER/int8
+    # 转换时抛 OverflowError → 500(对抗 injection: offset=2**63)。
+    # 上界取 MAX_INT64(不用更小值):`test_ai_relay_adversarial.py` 的
+    # HARDENING 锁 `offset=1e14 → 200 空页`,小上界会让它翻红。
+    offset: int = Query(default=0, ge=0, le=MAX_INT64),
     user_id: str | None = Query(default=None),
     entry_type: str | None = Query(default=None, pattern=r"^(ask|parse_tx_image|parse_tx_text|chat|stt)$"),
     status: str | None = Query(default=None, pattern=r"^(ok|error)$"),

@@ -11,11 +11,12 @@ import os
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy.exc import IntegrityError
 
-from ._shared import *  # noqa: F401,F403 — 集中从 _shared 取所有 symbol
 from ...models import AttachmentFile
+from ...schemas import LEDGER_EXTERNAL_ID_PATTERN
+from ...services.data_cleanup.cleaner import _remove_empty_parents
 from ...services.exchange_rate import fetcher as _rate_fetcher
 from ...snapshot_mutator import _to_float as _snap_to_float
-from ...services.data_cleanup.cleaner import _remove_empty_parents
+from ._shared import *  # noqa: F401,F403 — 集中从 _shared 取所有 symbol
 
 router = APIRouter()
 
@@ -31,6 +32,19 @@ async def create_ledger(
     external_id = (req.ledger_id or f"ledger_{uuid4().hex[:12]}").strip()
     if not external_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Ledger id is required")
+    # S1:external_id 会拼进磁盘路径(附件 / 备份产物),schema 已加白名单;
+    # 这里再验一次是因为本路由还有「未传 ledger_id 时自动生成」的分支,且
+    # 白名单是安全边界,值得在真正的写入口做显式断言(而不是只依赖 pydantic)。
+    if not LEDGER_EXTERNAL_ID_PATTERN.match(external_id):
+        logger.warning(
+            "write.ledger.reject invalid external_id user=%s value=%r",
+            current_user.id,
+            external_id[:64],
+        )
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="ledger_id must match ^[A-Za-z0-9_-]{3,128}$",
+        )
     # Scope uniqueness to current user — different users can use the same
     # external_id (enforced by the (user_id, external_id) unique constraint).
     exists = db.scalar(
@@ -305,6 +319,12 @@ async def delete_ledger(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ledger not found")
     ledger, _ = row
 
+    # F-13 锁覆盖(§4.7 user→ledger):删账本会 truncate 该账本的 ledger-scope
+    # 投影(ReadTxProjection / budget / adjustment)。旧实现只取 ledger 锁,
+    # 与 push 的 user-scope 分支(user-global rename cascade 按 sync_id **全表**
+    # UPDATE tx denorm 列)交错时,两批行可并发命中。补 owner 的 user 锁并保持
+    # 固定顺序 user→ledger(防死锁,与 push / web 写路径一致)。
+    lock_user_global(db, ledger.user_id)
     lock_ledger_for_materialize(db, ledger.id)
     now = _utcnow()
     # 共享账本 Phase 1:删账本前,先把所有非 owner member 的 user_id 记下来,

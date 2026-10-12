@@ -151,6 +151,8 @@ def clean_duplicate_transactions(
 
 def _delete_one(db: Session, ledger_id: str, sync_id: str) -> None:
     """删除单笔交易。行不存在(已被删 / 脏数据)视为成功,不抛。"""
+    from ...concurrency import lock_ledger_for_materialize, lock_user_global
+
     tx = db.scalar(
         select(ReadTxProjection).where(
             ReadTxProjection.ledger_id == ledger_id,
@@ -159,6 +161,13 @@ def _delete_one(db: Session, ledger_id: str, sync_id: str) -> None:
     )
     if tx is None:
         return
+
+    # F-13 锁覆盖(§4.7 user→ledger):去重清理写投影(软删 + GC),与并发
+    # push/web 写同一同步槽位竞争。旧实现无锁 —— PG 下真实竞态(SQLite 的
+    # lock_* 是 no-op)。锁顺序固定 user→ledger(防死锁);tx.user_id 是投影
+    # 行的 user_id(= ledger owner)。
+    lock_user_global(db, tx.user_id)
+    lock_ledger_for_materialize(db, ledger_id)
 
     file_ids = projection.collect_tx_attachment_fileids(
         db, ledger_id=ledger_id, sync_id=sync_id

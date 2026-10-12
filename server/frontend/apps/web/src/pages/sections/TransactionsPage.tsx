@@ -1522,6 +1522,12 @@ export function TransactionsPage() {
       setErrorNotice(t('transactions.error.amountInvalid'))
       return false
     }
+    // 数量级上限(服务端同口径 422):mobile pull 守卫会静默跳过 >= 1e12 的
+    // 交易,源头拦下并给出人话提示,避免「web 有、手机无」的分叉。
+    if (amountNum >= 1e12) {
+      setErrorNotice(t('transactions.error.amountTooLarge'))
+      return false
+    }
     // 非转账交易必须选分类(transfer 自动归虚拟"转账"分类,server 处理)。
     // mobile 端 transaction_editor_page 也强制必选,跨端一致避免 ungrouped tx
     // 污染分类统计。

@@ -167,10 +167,15 @@ async def move_tx_batch(
             )
 
         # 一次点查目标 tx 行(sync_id IN,复合 PK),构造 items 子集喂 mutator。
+        # 对抗 C2:必须过滤软删行 —— 不过滤会让回收站里的交易被喂进
+        # update_transaction,`_emit_entity_diffs → upsert_tx` 落
+        # `deleted_at=None` 把软删标记清掉,交易"复活"回账本列表。与
+        # batch_delete(:140-146 同款 `deleted_at.is_(None)`)同口径。
         rows = db.scalars(
             select(ReadTxProjection).where(
                 ReadTxProjection.ledger_id == ledger.id,
                 ReadTxProjection.sync_id.in_(unique_ids),
+                ReadTxProjection.deleted_at.is_(None),
             )
         ).all()
         items = [_projection_row_to_tx_dict(r) for r in rows]

@@ -5,7 +5,10 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import jwt
+from fastapi import HTTPException, status
 from passlib.context import CryptContext
+from passlib.exc import PasswordSizeError
+from passlib.utils import MAX_PASSWORD_SIZE
 
 from .config import get_settings
 
@@ -39,6 +42,69 @@ def hash_password(password: str) -> str:
 
 def verify_password(password: str, password_hash: str) -> bool:
     return pwd_context.verify(password, password_hash)
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# 密码长度守卫(所有 passlib 调用点的唯一入口)
+#
+# passlib 对超过 `MAX_PASSWORD_SIZE`(默认 4096 字符)的密码抛
+# `PasswordSizeError`;任何**未守卫**的调用点都会让它穿透到全局兜底 handler
+# → 500 INTERNAL_ERROR(对抗 F-05 + 2026-10-11 缺陷 3:auth.py 修过了,但
+# admin.py 的三处 passlib 调用漏网 —— admin 改密 / 建用户照样 500)。
+#
+# 放在 security.py 而不是 auth.py,是因为守卫必须覆盖**所有**调用点,而
+# security.py 是 passlib 的唯一封装层;任何新代码要哈希/校验密码都从这个
+# 模块 import,`grep hash_password` 就能查出是否绕过了守卫。
+#
+# 上限用 passlib 自己的常量而非写死 4096 —— 该值可由环境变量
+# `PASSLIB_MAX_PASSWORD_SIZE` 覆盖。
+# ──────────────────────────────────────────────────────────────────────────
+
+
+def password_size_exceeded(password: str | None) -> bool:
+    """密码是否超过 passlib 的处理上限(True = 必须拒绝,不能进 passlib)。"""
+    if password is None:
+        return False
+    return len(password) > MAX_PASSWORD_SIZE
+
+
+def require_password_size(password: str, *, status_code: int, detail: str) -> None:
+    """超长密码前置拦截(不进入 passlib),超限抛 `HTTPException`。
+
+    调用方按语义给 status_code:注册 / 建用户 / 改密 → 422(校验失败),
+    登录 / 二次验证 → 401(凭据错误,不泄漏内部状态)。
+    """
+    if password_size_exceeded(password):
+        raise HTTPException(status_code=status_code, detail=detail)
+
+
+def hash_password_or_422(password: str, *, detail: str = "Password too long") -> str:
+    """哈希密码;超长(前置判定 + 兜住 passlib 的 ``PasswordSizeError``)→ 422。
+
+    两层防护:
+    1. `password_size_exceeded` 前置判 —— 与 `require_password_size` 同一常量;
+    2. `except PasswordSizeError` —— 兜住库内策略变化(如换 handler 后上限
+       不同)导致的意外,避免退化成 500。
+    """
+    if password_size_exceeded(password):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=detail)
+    try:
+        return hash_password(password)
+    except PasswordSizeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=detail,
+        ) from exc
+
+
+def verify_password_or_401(password: str, password_hash: str) -> bool:
+    """校验密码;超长 → False(= 凭据错误),不泄漏内部状态、不 500。"""
+    if password_size_exceeded(password):
+        return False
+    try:
+        return verify_password(password, password_hash)
+    except PasswordSizeError:
+        return False
 
 
 def hash_token(token: str) -> str:

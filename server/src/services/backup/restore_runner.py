@@ -22,7 +22,6 @@ from __future__ import annotations
 import json
 import logging
 import shutil
-import tarfile
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -35,7 +34,7 @@ from ...database import SessionLocal
 from ...models import BackupRemote, BackupRun
 from .rclone_config import get_age_passphrase, remote_path
 from .rclone_runner import RcloneError, RcloneRunner
-from .tar_builder import extract_zip
+from .tar_builder import extract_targz, extract_zip
 
 
 logger = logging.getLogger(__name__)
@@ -261,7 +260,9 @@ def _run_prepare(
         _write_status(run_id, status)
         _push({"type": "restore_progress", "phase": "extracting"})
 
-        # 解包(按格式分支)
+        # 解包(按格式分支)。extract_zip / extract_targz 内部执行三重
+        # 上限(条目数 / 总展开字节 / 压缩比)与条目名安全化,超限即抛错 →
+        # 这里必须检查 outcome,不能把被中止的半包目录当完整数据。
         extracted = rdir / "extracted"
         extracted.mkdir(parents=True, exist_ok=True)
         if is_encrypted:
@@ -272,13 +273,14 @@ def _run_prepare(
                     "not stored; download the .zip via rclone/browser and "
                     "open with macOS Archive Utility / 7-Zip / Keka"
                 )
-            extract_zip(downloaded, extracted, passphrase=passphrase)
+            outcome = extract_zip(downloaded, extracted, passphrase=passphrase)
         else:
-            with tarfile.open(downloaded, "r:gz") as tf:
-                try:
-                    tf.extractall(extracted, filter="data")
-                except TypeError:
-                    tf.extractall(extracted)
+            outcome = extract_targz(downloaded, extracted)
+        if not outcome.ok:
+            shutil.rmtree(extracted, ignore_errors=True)
+            raise RuntimeError(
+                f"archive rejected by extraction limits: {outcome.limit_exceeded}"
+            )
         status["extracted_path"] = str(extracted)
         status["phase"] = "done"
         status["finished_at"] = _now().isoformat()

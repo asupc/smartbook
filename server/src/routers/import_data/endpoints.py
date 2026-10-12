@@ -41,7 +41,11 @@ from ...services.import_data import (
     parse_excel_bytes,
 )
 from ...services.import_data.cache import save_token_data, update_token
-from ...services.import_data.stats import build_existing_sets, compute_stats
+from ...services.import_data.stats import (
+    build_existing_sets,
+    canonical_amount_key,
+    compute_stats,
+)
 from ...snapshot_mutator import (
     create_account,
     create_category,
@@ -80,7 +84,11 @@ class FieldMappingPayload(BaseModel):
     expense_is_negative: bool = False
     # 客户端本地时区相对 UTC 的分钟偏移(东为正,UTC+8 = 480);用于把 CSV 本地
     # 时间正确换算成 UTC(issue #314)。前端传 -new Date().getTimezoneOffset()。
-    tz_offset_minutes: int | None = None
+    # S3(审核记录 建议-14):与归档/analytics 的 `ge=-720, le=840` 域对齐 ——
+    # 此前无范围校验,超大值在 `timezone(timedelta(...))` 处抛 ValueError,
+    # 该行静默变成 PARSE_INVALID_FIELD(用户看到"金额/时间非法"却不知是 tz);
+    # 域外直接 422 让调用方定位到参数。
+    tz_offset_minutes: int | None = Field(default=None, ge=-720, le=840)
 
     def to_internal(self) -> ImportFieldMapping:
         return ImportFieldMapping(
@@ -498,7 +506,13 @@ async def _do_execute(
         # 计算 dedup keys(包括即将插入的,防止文件内自身有重复)
         seen_keys = set(existing_dedup)
         for idx, tx in enumerate(txs, 1):
-            dedup_key = (tx.tx_type, f"{tx.amount}", tx.happened_at.isoformat())
+            # 对抗 G3:与 build_existing_sets(preview 侧)共用同一规范化口径,
+            # 否则 Decimal("35.50") → "35.50" 永远打不中库内 Float 的 "35.5"。
+            dedup_key = (
+                tx.tx_type,
+                canonical_amount_key(tx.amount),
+                tx.happened_at.isoformat(),
+            )
             if dedup_strategy == "skip_duplicates" and dedup_key in seen_keys:
                 skipped += 1
             else:

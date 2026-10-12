@@ -41,11 +41,20 @@ def _validate_token(token: str) -> str | None:
     return str(user_id)
 
 
-def _user_exists(user_id: str) -> bool:
+def _is_user_active(user_id: str) -> bool:
+    """用户行存在**且**未被禁用才放行。
+
+    REST 侧 ``src/deps.py:get_current_user`` 对 ``is_enabled=False`` 返回 403;
+    WS 若不查该列,被管理员禁用的账号仍能完成认证并持续接收实时推送
+    (账本变更 / 成员变更 / profile_change)—— 账号处置失效(对抗测试 F-02)。
+    两条路径(首帧 auth 与兼容 query token)都走这里。
+    """
     db = SessionLocal()
     try:
-        user = db.scalar(select(User).where(User.id == user_id))
-        return user is not None
+        enabled = db.scalar(
+            select(User.is_enabled).where(User.id == user_id)
+        )
+        return bool(enabled)
     finally:
         db.close()
 
@@ -66,7 +75,7 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(default=""
     user_id: str | None = None
     if token:
         user_id = _validate_token(token)
-        if user_id is None or not _user_exists(user_id):
+        if user_id is None or not _is_user_active(user_id):
             await websocket.close(code=1008)
             return
 
@@ -96,7 +105,7 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(default=""
             return
         auth_token = msg.get("token")
         user_id = _validate_token(auth_token if isinstance(auth_token, str) else "")
-        if user_id is None or not _user_exists(user_id):
+        if user_id is None or not _is_user_active(user_id):
             await websocket.close(code=1008)
             return
         # 注册进 manager。这里不能走 manager.connect():它内部会再 accept 一次,

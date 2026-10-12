@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..deps import get_current_user, require_any_scopes
 from ..models import MCPCallLog, PersonalAccessToken, User
+from ..schemas import MAX_INT64
 from ..security import SCOPE_APP_WRITE, SCOPE_WEB_READ, SCOPE_WEB_WRITE
 
 router = APIRouter()
@@ -70,7 +71,12 @@ class MCPCallListResponse(BaseModel):
 @router.get("", response_model=MCPCallListResponse)
 def list_mcp_calls(
     limit: int = Query(default=50, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
+    # S3(审核记录 建议-14 / S1 handed-off):offset 必须有 int64 上界 ——
+    # Python int 无界,超过 int64 会在 SQLAlchemy → SQLite/PG INTEGER/int8
+    # 转换时抛 OverflowError → 500(对抗 injection: offset=2**63)。
+    # 上界取 MAX_INT64(不用更小值):`test_ai_relay_adversarial.py` 的
+    # HARDENING 锁 `offset=1e14 → 200 空页`,小上界会让它翻红。
+    offset: int = Query(default=0, ge=0, le=MAX_INT64),
     tool_name: str | None = Query(default=None),
     status: str | None = Query(default=None, pattern=r"^(ok|error)$"),
     pat_id: str | None = Query(default=None),

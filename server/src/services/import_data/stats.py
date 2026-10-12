@@ -5,13 +5,38 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from .schema import (
     ImportError,
     ImportTransaction,
     ParseWarning,
 )
+
+
+def canonical_amount_key(amount: object) -> str:
+    """金额的**规范化字符串**键 —— 导入去重两侧共用同一口径。
+
+    对抗 G3:导入侧 dedup key 用 `f"{tx.amount}"`(Decimal("35.50") → "35.50"),
+    而库内 build_existing_sets 用 `f"{amt}"`(ReadTxProjection.amount 是 Float
+    → "35.5")—— 只有末尾非零小数(12.34)能命中,35.50 / 100.00 这类最常见
+    的整角/整元金额**永远判重失败**,导出后立刻回导会让账本翻倍。
+
+    本函数把两侧都收敛到 Decimal 语义的规范形式:先 `Decimal(str(x))`
+    (Float → 最短 repr,再进 Decimal 精确化),再 `normalize()` 去掉尾随零,
+    最后 `format(..., 'f')` 避免科学计数法(`1E+2` → `100`)。这样
+    "35.50" / "35.5" / 35.5 / Decimal("35.50") 全部得到 `"35.5"`。
+    """
+    if isinstance(amount, Decimal):
+        value = amount
+    else:
+        try:
+            value = Decimal(str(amount))
+        except (InvalidOperation, ValueError):
+            return str(amount)
+    if not value.is_finite():
+        return str(amount)
+    return format(value.normalize(), "f")
 
 
 @dataclass
@@ -170,7 +195,7 @@ def compute_stats(
         # dedup 预扫
         dedup_key = (
             tx.tx_type,
-            f"{tx.amount}",
+            canonical_amount_key(tx.amount),
             tx.happened_at.isoformat(),
         )
         if dedup_key in existing_dedup_keys:
@@ -240,5 +265,5 @@ def build_existing_sets(snapshot: dict) -> tuple[set[str], set[tuple[str, str]],
         when = (tx.get("happenedAt") or "").strip()
         if not t or amt is None or not when:
             continue
-        dedup_keys.add((t, f"{amt}", when))
+        dedup_keys.add((t, canonical_amount_key(amt), when))
     return account_names, category_keys, tag_names, dedup_keys

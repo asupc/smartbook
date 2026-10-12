@@ -29,6 +29,7 @@ from fastapi import (
     APIRouter,
     Depends,
     HTTPException,
+    Path,
     Query,
     status,
 )
@@ -40,6 +41,7 @@ from sqlalchemy.orm import Session
 from ...database import get_db
 from ...deps import get_current_user, require_any_scopes
 from ...models import AIAnalysisLog, User
+from ...schemas import MAX_INT64
 from ...security import SCOPE_APP_WRITE, SCOPE_WEB_READ, SCOPE_WEB_WRITE
 from ...services.ai.analysis_log import resolve_log_image_path
 
@@ -192,7 +194,12 @@ def _filter_conditions(
 @router.get("/logs", response_model=AIAnalysisLogListResponse)
 def list_ai_logs(
     limit: int = Query(default=50, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
+    # S3(审核记录 建议-14 / S1 handed-off):offset 必须有 int64 上界 ——
+    # Python int 无界,超过 int64 会在 SQLAlchemy → SQLite/PG INTEGER/int8
+    # 转换时抛 OverflowError → 500(对抗 injection: offset=2**63)。
+    # 上界取 MAX_INT64(不用更小值):`test_ai_relay_adversarial.py` 的
+    # HARDENING 锁 `offset=1e14 → 200 空页`,小上界会让它翻红。
+    offset: int = Query(default=0, ge=0, le=MAX_INT64),
     entry_type: str | None = Query(default=None, pattern=_ENTRY_TYPE_PATTERN),
     status: str | None = Query(default=None, pattern=r"^(ok|error)$"),
     _scopes: set[str] = Depends(_AUTH_SCOPE_DEP),
@@ -221,7 +228,10 @@ def list_ai_logs(
 
 @router.get("/logs/{log_id}", response_model=AIAnalysisLogDetail)
 def get_ai_log_detail(
-    log_id: int,
+    # S3:path 参数同样要有 int64 上界 —— `log_id: int` 无界时
+    # `db.get(AIAnalysisLog, 10**22)` 在 SQLAlchemy 绑参阶段抛 OverflowError
+    # → 500(对抗 injection test_huge_int_path_param_returns_500,期望 404/422)。
+    log_id: int = Path(ge=0, le=MAX_INT64),
     _scopes: set[str] = Depends(_AUTH_SCOPE_DEP),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -235,7 +245,10 @@ def get_ai_log_detail(
 
 @router.get("/logs/{log_id}/image")
 def get_ai_log_image(
-    log_id: int,
+    # S3:path 参数同样要有 int64 上界 —— `log_id: int` 无界时
+    # `db.get(AIAnalysisLog, 10**22)` 在 SQLAlchemy 绑参阶段抛 OverflowError
+    # → 500(对抗 injection test_huge_int_path_param_returns_500,期望 404/422)。
+    log_id: int = Path(ge=0, le=MAX_INT64),
     _scopes: set[str] = Depends(_AUTH_SCOPE_DEP),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -260,7 +273,10 @@ def get_ai_log_image(
 
 @router.delete("/logs/{log_id}")
 def delete_ai_log(
-    log_id: int,
+    # S3:path 参数同样要有 int64 上界 —— `log_id: int` 无界时
+    # `db.get(AIAnalysisLog, 10**22)` 在 SQLAlchemy 绑参阶段抛 OverflowError
+    # → 500(对抗 injection test_huge_int_path_param_returns_500,期望 404/422)。
+    log_id: int = Path(ge=0, le=MAX_INT64),
     _scopes: set[str] = Depends(_AUTH_SCOPE_DEP),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),

@@ -301,6 +301,29 @@ def _delete_tx(db: Session, ledger_id: str, sync_id: str, user_id: str) -> None:
 
 
 def _delete_user_category(db: Session, user_id: str, sync_id: str) -> None:
+    # F-09:与 web 路径同口径 —— 分类仍被**活跃交易**引用时拒绝删除。
+    # 旧行为无校验,直接删行留下悬挂 `category_sync_id`(web 交易列表显示旧
+    # 分类名、分类列表已无该分类),而 web 侧 `snapshot_mutator.delete_category`
+    # 的家族校验返回 400「category has N transactions」—— 同一操作两条路径
+    # 语义相反。对照:account 侧 push 已有同款守卫(`_delete_user_account`)。
+    #
+    # 谓词按 sync_id 稳定 FK 且不按 user_id(P0-1 契约):共享账本 tx 投影行的
+    # user_id 是 ledger owner,操作者可能是 Editor,按操作者过滤会误判无引用。
+    #
+    # 拒绝 = 抛 ValueError → push 端 savepoint 隔离记 failed_samples,App 端提示
+    # 「该分类仍有交易」;用户先迁/删交易后重推即成功。**子分类级联**
+    # (`_delete_user_category_cascade`)里的子分类删除走同一条路径,同样受保护。
+    linked = db.scalar(
+        select(ReadTxProjection.sync_id).where(
+            ReadTxProjection.deleted_at.is_(None),
+            ReadTxProjection.category_sync_id == sync_id,
+        ).limit(1)
+    )
+    if linked is not None:
+        raise ValueError(
+            "category has linked transactions: "
+            f"category_sync_id={sync_id} linked_tx={linked}"
+        )
     # 删 user_category_projection 行,再 GC 自身 + 子分类的图标附件。
     cat_file_ids = projection.collect_category_icon_fileids(
         db, user_id=user_id, sync_id=sync_id,
@@ -727,9 +750,12 @@ def apply_change_to_projection(
         ledger_row = db.scalar(select(Ledger).where(Ledger.id == ledger_id))
         if ledger_row is not None:
             if isinstance(new_name, str) and new_name.strip():
-                ledger_row.name = new_name.strip()
+                ledger_row.name = new_name.strip()[:255]
             if isinstance(new_currency, str) and new_currency.strip():
-                ledger_row.currency = new_currency.strip()[:16]
+                # F-14:币种归一(strip + upper + 截断 16),与 web
+                # `_normalize_currency` 同口径 —— 旧实现只 strip+截断,
+                # 'usd' 与 'EUR' 在按原值分组的下游被当成两种币。
+                ledger_row.currency = new_currency.strip().upper()[:16]
             # bool 是 int 子类,显式排除;key 缺失时不动(partial-update merge 契约)
             if isinstance(new_month_start_day, int) and not isinstance(new_month_start_day, bool):
                 ledger_row.month_start_day = max(1, min(28, new_month_start_day))

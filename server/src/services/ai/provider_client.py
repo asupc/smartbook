@@ -35,6 +35,12 @@ import httpx
 
 from ...config import get_settings
 from ...models import User, UserProfile
+from .outbound_policy import (
+    AiHostNotAllowedError,  # noqa: F401 — re-export(既有 import 路径兼容)
+    ChatProviderError,  # noqa: F401 — re-export(定义在 outbound_policy,避免循环 import)
+    enforce_outbound_url,
+    outbound_event_hooks,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +86,12 @@ async def get_ai_http_client() -> httpx.AsyncClient:
                 max_keepalive_connections=_AI_HTTP_MAX_KEEPALIVE_CONNECTIONS,
                 keepalive_expiry=_AI_HTTP_KEEPALIVE_EXPIRY_S,
             ),
+            # SSRF:禁止跟随重定向 —— 上游 302 到另一个 host 会把
+            # `Authorization: Bearer <apiKey>` 原样带到目标(跨 host 外带密钥)。
+            # 这是 httpx 默认值,显式写出以免将来被"顺手打开"。
+            follow_redirects=False,
+            # SSRF 兜底:每个实际出站请求(含未来新增的直接调用)都过 host 策略。
+            event_hooks=outbound_event_hooks(),
         )
         _ai_http_client = client
         _ai_http_client_loop = loop
@@ -128,6 +140,32 @@ def _normalize_anthropic_base_url(base_url: str) -> str:
     """baseUrl 允许带或不带 /v1:统一剥掉尾部 /v1 后自己拼 /v1/messages,
     用户填 https://api.anthropic.com 和 https://api.anthropic.com/v1 等价。"""
     return base_url.rstrip("/").removesuffix("/v1")
+
+
+def preflight_outbound_host_policy(
+    config: ChatProviderConfig, *, context: str = "ai_preflight"
+) -> None:
+    """出站前把该 provider 会打的全部路径过一遍 SSRF host 策略。
+
+    违规抛 `AiHostNotAllowedError`（`ChatProviderError` 子类）。**每个 AI
+    入口都应在做任何昂贵工作之前先调它**：违规是配置类错误，必须立即以 4xx
+    返回，而不是等走到上游调用才发现（那时 500 / 502 都已经污染了响应）。
+
+    把它做成共享 helper 而不是每个 router 各写一份，是因为 2026-10-11 的
+    对抗缺陷 2 正是「直播入口（relay）做了 _preflight，解析入口
+    （parse-tx-*）漏了」—— host 策略的覆盖面必须靠单一实现保证，不靠人工
+    逐个入口补齐。
+
+    探测的路径与各 capability 实际会用的 URL 对齐（protocol=anthropic 走
+    /v1/messages；openai 走 chat/completions，音频再加
+    audio/transcriptions）——同 host 时这些调用等价，判一遍也是廉价操作。
+    """
+    if config.protocol == "anthropic":
+        base = _normalize_anthropic_base_url(config.base_url)
+        enforce_outbound_url(f"{base}/v1/messages", context=context)
+        return
+    enforce_outbound_url(f"{config.base_url}/chat/completions", context=context)
+    enforce_outbound_url(f"{config.base_url}/audio/transcriptions", context=context)
 
 
 def _anthropic_system_and_messages(
@@ -279,8 +317,11 @@ class ChatProviderConfig:
     vision_concurrency: int = 3
 
 
-class ChatProviderError(RuntimeError):
-    """通用 provider 调用失败。"""
+# `ChatProviderError` / `AiHostNotAllowedError` 的基类定义在 `outbound_policy`
+# (让 host 策略错误能继承 provider 错误而不产生循环 import);上面的
+# `from .outbound_policy import ...` 已把它们带到本模块命名空间 ——
+# 既有 `from ...provider_client import ChatProviderError` 调用方与
+# isinstance 判定全部继续成立(对抗缺陷 2)。
 
 
 def supports_disabled_thinking(model: str) -> bool:
@@ -456,9 +497,50 @@ def _resolve_provider_by_kind(
         is_built_in=bool(matched.get("isBuiltIn")),
         # 存量配置没有 protocol 字段 → openai(行为与升级前一致)
         protocol=matched.get("protocol") or "openai",
-        # 存量 / 未配置的 provider 无 visionConcurrency → 默认 3
-        vision_concurrency=int(matched.get("visionConcurrency") or 3),
+        vision_concurrency=_clamp_vision_concurrency(
+            matched.get("visionConcurrency"), provider_id=provider_id,
+        ),
     )
+
+
+def _clamp_vision_concurrency(raw: Any, *, provider_id: str) -> int:
+    """读取时钳制并发上限到 1..32 —— 脏数据不得把 relay 打成 500。
+
+    `visionConcurrency` 是自由 dict(`/profile/me` 的 ai_config 直通 JSON、
+    客户端同步、手改 DB / 旧版本 schema 漂移)写进来的,写入侧校验**不覆盖
+    所有入口**,因此脏值(字符串 / dict / 0 / 负数 / 巨大数)是必然存在的:
+
+      - 非数值(字符串 "abc" / dict / 布尔外的对象)→ `int()` 抛
+        ValueError/TypeError → 过去冒泡成全局 500。客户端会把 500 当
+        transient 一直重试,而这是**配置类错误**。这里归一成默认值 3 +
+        告警,让配置错误不阻塞用户记账;
+      - 数值但越界(0 / -1 / 10**9)→ 钳制到 1..32,防 `asyncio.Semaphore`
+        被 0/负值或超大值破坏(0 → 永远阻塞;超大 → 上游被打满)。
+    """
+    if raw is None:
+        return 3
+    if isinstance(raw, bool):
+        logger.warning(
+            "ai.provider_config.vision_concurrency_dirty provider=%s value=%r -> 3",
+            provider_id, raw,
+        )
+        return 3
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        logger.warning(
+            "ai.provider_config.vision_concurrency_dirty provider=%s value=%r -> 3",
+            provider_id, raw,
+        )
+        return 3
+    if value < 1 or value > 32:
+        clamped = max(1, min(32, value))
+        logger.warning(
+            "ai.provider_config.vision_concurrency_clamped provider=%s value=%d -> %d",
+            provider_id, value, clamped,
+        )
+        return clamped
+    return value
 
 
 def get_user_custom_prompt(profile: UserProfile | None, key: str) -> str | None:
@@ -643,6 +725,8 @@ async def call_chat_json(
     last_exc: Exception | None = None
     client = await get_ai_http_client()
     url = f"{config.base_url}/chat/completions"
+    # SSRF:配置类 host 违规必须在出站前拒(调用方归一成 4xx,不是 502)。
+    enforce_outbound_url(url, context="call_chat_json")
     headers = {
         "Authorization": f"Bearer {config.api_key}",
         "Content-Type": "application/json",
@@ -751,6 +835,7 @@ async def _call_chat_json_anthropic(
         "Content-Type": "application/json",
     }
     url = f"{_normalize_anthropic_base_url(config.base_url)}/v1/messages"
+    enforce_outbound_url(url, context="call_chat_json_anthropic")
 
     for attempt in range(max_retries + 1):
         temperature = 0.2 if attempt == 0 else 0.05
@@ -836,6 +921,7 @@ async def call_chat_text(
         )
 
     url = f"{config.base_url}/chat/completions"
+    enforce_outbound_url(url, context="call_chat_text")
     headers = {
         "Authorization": f"Bearer {config.api_key}",
         "Content-Type": "application/json",
@@ -917,6 +1003,7 @@ async def _call_chat_text_anthropic(
         "Content-Type": "application/json",
     }
     url = f"{_normalize_anthropic_base_url(config.base_url)}/v1/messages"
+    enforce_outbound_url(url, context="call_chat_text_anthropic")
 
     t0 = time.monotonic()
     logger.info(
@@ -987,6 +1074,12 @@ async def transcribe_audio(
             f"provider {config.provider_id} uses Anthropic protocol which has no speech-to-text API"
         )
     headers = {"Authorization": f"Bearer {config.api_key}"}
+    enforce_outbound_url(
+        f"{config.base_url}/chat/completions", context="transcribe_audio"
+    )
+    enforce_outbound_url(
+        f"{config.base_url}/audio/transcriptions", context="transcribe_audio"
+    )
     try:
         client = await get_ai_http_client()
         if _is_zhipu_audio(config):
@@ -1099,6 +1192,7 @@ async def stream_chat_completion(
         "Accept": "text/event-stream",
     }
     url = f"{config.base_url}/chat/completions"
+    enforce_outbound_url(url, context="stream_chat_openai")
 
     try:
         client = await get_ai_http_client()
@@ -1180,6 +1274,7 @@ async def _stream_chat_anthropic(
         "Accept": "text/event-stream",
     }
     url = f"{_normalize_anthropic_base_url(config.base_url)}/v1/messages"
+    enforce_outbound_url(url, context="stream_chat_anthropic")
 
     try:
         client = await get_ai_http_client()

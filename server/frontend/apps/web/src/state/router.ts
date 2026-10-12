@@ -228,7 +228,15 @@ export function parseRoute(pathname: string): AppRoute {
     return { kind: 'app', ledgerId: '', section: 'annual-report' }
   }
 
-  const ledgerId = decodeURIComponent(parts[1])
+  // 残缺百分号编码(`/app/%`、粘贴一半的 `%E0%A4%A`)会让 decodeURIComponent
+  // 抛 URIError。AdminLayout 在 render 期调用 parseRoute,异常冒泡出去 = 整页
+  // 白屏,所以这里必须兜底:解码失败按原始段处理,绝不抛出。
+  let ledgerId = parts[1]
+  try {
+    ledgerId = decodeURIComponent(parts[1])
+  } catch {
+    // 非法编码:保留原始段(下游仍会做 encodeURIComponent 保护)
+  }
   return {
     kind: 'app',
     ledgerId,

@@ -40,7 +40,12 @@ from ...services.ai import (
     stream_chat_completion,
 )
 from ...services.ai.analysis_log import write_ai_analysis_log_async
-from ...services.ai.provider_client import EmbeddingNotConfiguredError
+from ...services.ai.outbound_policy import AiHostNotAllowedError
+from ...services.ai.provider_client import (
+    EmbeddingNotConfiguredError,
+    preflight_outbound_host_policy,
+)
+from ._shared import host_not_allowed_http
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -82,6 +87,19 @@ async def ask(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"error_code": "AI_NO_CHAT_PROVIDER", "message": str(exc)},
         )
+
+    # 1b. SSRF host 策略 preflight —— 必须在进 SSE 之前判:一旦开始
+    # StreamingResponse,HTTP 状态码已经发出,host 违规只能降级成流内 error
+    # 事件(客户端拿不到 400,会把它当传输层故障重试)。这里拒掉 = 干净的
+    # 400 配置类错误(对抗缺陷 2:ask 原先完全没有 host 归一)。
+    try:
+        preflight_outbound_host_policy(provider_cfg, context="ask_preflight")
+    except AiHostNotAllowedError as exc:
+        logger.warning(
+            "ai.ask host not allowed user=%s provider=%s: %s",
+            current_user.id, provider_cfg.provider_id, exc,
+        )
+        raise host_not_allowed_http(exc) from exc
 
     # 2. 索引可用性检查 — 不可用也直接 503,不进 stream
     docs_idx = get_docs_index(req.locale)
@@ -137,6 +155,18 @@ async def ask(
                 yield _sse("chunk", {"text": delta}).encode("utf-8")
             yield _sse("sources", {"items": sources}).encode("utf-8")
             yield _sse("done", {}).encode("utf-8")
+        except AiHostNotAllowedError as exc:
+            # host 违规在开流后才被上游 hook 抓到(DNS 抖动 / 重定向等极端
+            # 情况)——状态码已发出,只能给明确的流内 error 码,让前端按
+            # 「配置错误」提示而不是按 transient 重试。放在
+            # ChatProviderError 之前(它是子类)。对抗缺陷 2:原先没有这个
+            # 分支,host 错误会被下面的基类分支吞成 AI_PROVIDER_ERROR。
+            err_message = str(exc)[:500]
+            logger.warning("ai.ask host not allowed user=%s: %s", current_user.id, exc)
+            yield _sse(
+                "error",
+                {"error_code": "AI_PROVIDER_HOST_NOT_ALLOWED", "message": str(exc)[:200]},
+            ).encode("utf-8")
         except ChatProviderError as exc:
             err_message = str(exc)[:500]
             logger.warning("ai.ask provider error user=%s: %s", current_user.id, exc)

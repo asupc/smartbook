@@ -22,12 +22,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ... import projection
+from ...concurrency import lock_ledger_for_materialize, lock_user_global
 from ...ledger_access import (
     WRITABLE_ROLES,
     get_accessible_ledger_ids,
     require_accessible_ledger_by_external_id,
 )
 from ...models import AuditLog, Ledger, ReadTxProjection, SyncChange, User
+from ...schemas import MAX_INT64
 from ._shared import *  # noqa: F401,F403 — imports + helpers + router
 
 logger = logging.getLogger(__name__)
@@ -152,7 +154,12 @@ def _resolve_trash_row_for_action(
 @router.get("/workspace/trash", response_model=TrashListOut)
 def list_trash(
     limit: int = Query(default=100, ge=1, le=500),
-    offset: int = Query(default=0, ge=0),
+    # S3(审核记录 建议-14 / S1 handed-off):offset 必须有 int64 上界 ——
+    # Python int 无界,超过 int64 会在 SQLAlchemy → SQLite/PG INTEGER/int8
+    # 转换时抛 OverflowError → 500(对抗 injection: offset=2**63)。
+    # 上界取 MAX_INT64(不用更小值):`test_ai_relay_adversarial.py` 的
+    # HARDENING 锁 `offset=1e14 → 200 空页`,小上界会让它翻红。
+    offset: int = Query(default=0, ge=0, le=MAX_INT64),
     _scopes: set[str] = Depends(_READ_SCOPE_DEP),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -279,6 +286,13 @@ def restore_trash_tx(
     row, ledger = _resolve_trash_row_for_action(db, current_user, sync_id, ledger_id)
     _require_writable_ledger(db, current_user, ledger)
 
+    # F-13 锁覆盖(§4.7 user→ledger):restore 会写投影(清 deleted_at)+ 补发
+    # SyncChange,与并发 push 的 tx upsert / rename cascade 可交叉。旧实现完全
+    # 无锁 —— PG 下真实竞态(SQLite 下 lock_* 是 no-op,故只能静态审计)。
+    # 顺序必须 user→ledger(防死锁,与 push / web 写路径一致)。
+    lock_user_global(db, ledger.user_id)
+    lock_ledger_for_materialize(db, ledger.id)
+
     restored = projection.restore_tx(db, ledger_id=row.ledger_id, sync_id=sync_id)
     new_change_id: int | None = None
     member_user_ids: list[str] = []
@@ -357,6 +371,11 @@ def purge_trash_tx(
 ) -> TrashActionOut:
     row, ledger = _resolve_trash_row_for_action(db, current_user, sync_id, ledger_id)
     _require_writable_ledger(db, current_user, ledger)
+
+    # F-13 锁覆盖(§4.7 user→ledger):purge 物理删投影行 + GC 附件 + compact
+    # 事件历史,与并发 push upsert 同一同步槽位可交叉。同上,PG-only 语义。
+    lock_user_global(db, ledger.user_id)
+    lock_ledger_for_materialize(db, ledger.id)
 
     # 物理删除:先收集附件引用,删行,再 GC 孤立附件(共享引用保留)。
     tx_file_ids = projection.collect_tx_attachment_fileids(

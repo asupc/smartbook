@@ -7,9 +7,10 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 from sqlalchemy import literal_column, or_, select
 from sqlalchemy.orm import Session, aliased
@@ -23,10 +24,11 @@ from ...models import (
     UserCategoryProjection,
     UserTagProjection,
 )
+from ...storage_paths import (
+    attachment_storage_root_if_configured,
+    resolve_path_within_root,
+)
 from .models import OrphanRecord, OrphanType, ScanReport
-
-
-import logging
 
 logger = logging.getLogger("smartbook.data_cleanup")
 
@@ -266,12 +268,33 @@ def _scan_sync_change_missing_entity(db: Session) -> list[OrphanRecord]:
 # ─────────────────────── B 类:附件/文件 ───────────────────────
 
 
+def _path_outside_storage_root(file_path: str | None) -> bool:
+    """该路径是否**逃出附件存储根**(P1:与 cleaner 的删除判据同源)。
+
+    共用 `storage_paths.resolve_path_within_root`(整条路径按 cwd 解析、与
+    ``os.remove`` 同语义)而不是各写一份 ``is_relative_to``,避免「扫说可删、
+    删时被拒」或反过来的分叉。空路径视为「无物理文件」→ 不算越界
+    (只删 DB 行的类型不受影响);无附件根配置(空串关闭附件存储)时
+    fail-closed:一切带路径的记录都标记为不可删。
+    """
+    if not file_path:
+        return False
+    root = attachment_storage_root_if_configured()
+    if root is None:
+        return True
+    return resolve_path_within_root(root, file_path) is None
+
+
 def _scan_attachment_no_ref(db: Session) -> list[OrphanRecord]:
     """B1 — AttachmentFile 行没被任何 tx (attachments_json) 或 category
     (icon_cloud_file_id) 引用。
 
     复用 [_fileid_still_referenced][src.projection._fileid_still_referenced]
     的判定逻辑,但这里逐行扫,慢但简单(admin 用,可接受)。
+
+    **出根标记(P1)**:storage_path 逃出附件根的存量脏行仍会列出(操作员要看
+    到异常),但 subtitle 明确标注「不可删」并给 ``extra.path_outside_root``;
+    真回传到 /clean 时 cleaner 会用同一判据拒绝(记入 failures),不会误删。
     """
     from ...projection import _fileid_still_referenced  # 避免循环 import
 
@@ -289,15 +312,20 @@ def _scan_attachment_no_ref(db: Session) -> list[OrphanRecord]:
     for row in rows:
         if _fileid_still_referenced(db, user_id=row.user_id, file_id=row.id):
             continue
+        outside = _path_outside_storage_root(row.storage_path)
+        subtitle = f"附件无引用 · {row.attachment_kind}"
+        if outside:
+            subtitle = f"⚠ 路径逃出附件存储根,清理器会拒绝删除 · {row.attachment_kind}"
         result.append(
             OrphanRecord(
                 type=OrphanType.ATTACHMENT_NO_REF,
                 user_id=row.user_id,
                 row_id=row.id,
                 title=row.file_name or row.id[:12],
-                subtitle=f"附件无引用 · {row.attachment_kind}",
+                subtitle=subtitle,
                 file_path=row.storage_path,
                 size_bytes=row.size_bytes,
+                extra={"path_outside_root": True} if outside else None,
             )
         )
     return result
@@ -345,6 +373,15 @@ def _scan_disk_file_no_row(db: Session, root: Path) -> list[OrphanRecord]:
     比对方式:把 attachment_files.storage_path 全集塞 set,然后 walk 磁盘找差集。
     """
     if not root.exists():
+        return []
+    # 产出**绝对路径**:本扫描的 file_path 会被客户端原样回传到 /clean,而
+    # cleaner 的包含性判据按 cwd 解析(与 os.remove 同语义)—— 若这里产出
+    # 相对路径(root 配置为默认 `./data/attachments` 时),回传后判据会按
+    # cwd 重新解析到同一位置(正常),但 `db_paths`(DB 里是绝对路径)比对
+    # 会整片落空 → 合法文件被误报为孤儿。统一 resolve 让两侧同源。
+    try:
+        root = root.resolve()
+    except (OSError, RuntimeError, ValueError):
         return []
     db_paths = {
         row.storage_path

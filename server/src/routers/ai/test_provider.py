@@ -32,6 +32,11 @@ from ...services.ai.ai_config_store import (
     is_unset_key,
     load_ai_config,
 )
+from ...services.ai.outbound_policy import (
+    AiHostNotAllowedError,
+    enforce_outbound_url,
+    outbound_event_hooks,
+)
 from ...services.ai.provider_client import (
     _post_chat_adaptive,
     with_disabled_thinking,
@@ -180,6 +185,24 @@ async def test_provider(
 
     base_url = p.baseUrl.rstrip("/")
     protocol = p.protocol or "openai"
+
+    # SSRF:探测目标与 relay 走同一 host 策略。默认拒环回/链路本地/私网/保留段
+    # (覆盖 169.254.169.254 云元数据、localhost、Docker 内网、十进制变体);
+    # 自建 Ollama 等需要打局域网的部署,由 AI_ALLOWED_PRIVATE_HOSTS 显式放行。
+    # 这是配置类错误 → success=False 明确归因,不是 5xx(客户端不该重试)。
+    try:
+        _enforce_probe_host(base_url, protocol=protocol)
+    except AiHostNotAllowedError as exc:
+        logger.warning(
+            "ai.test_provider blocked user=%s capability=%s policy=%s",
+            current_user.id, cap, exc,
+        )
+        return TestProviderResponse(
+            success=False,
+            error_code="AI_TEST_HOST_NOT_ALLOWED",
+            error_message=str(exc),
+        )
+
     started = time.monotonic()
     try:
         if cap == "text":
@@ -252,6 +275,42 @@ class _UpstreamHTTPError(Exception):
         self.body = body
 
 
+def _enforce_probe_host(base_url: str, *, protocol: str = "openai") -> None:
+    """对探测目标做 SSRF host 策略校验(与 relay 同一份策略)。
+
+    探三种 capability 会用的路径都过一遍,任一路径的 host 违规即拒:
+    chat/completions(text+vision)、audio/transcriptions(speech)、
+    v1/messages(anthropic)。同 host 时这些调用等价,过一遍也是廉价判据。
+    """
+    enforce_outbound_url(f"{base_url}/chat/completions", context="test_provider")
+    enforce_outbound_url(f"{base_url}/audio/transcriptions", context="test_provider")
+    if protocol == "anthropic":
+        from ...services.ai.provider_client import _normalize_anthropic_base_url
+
+        enforce_outbound_url(
+            f"{_normalize_anthropic_base_url(base_url)}/v1/messages",
+            context="test_provider",
+        )
+
+
+def _new_probe_client(*, timeout: float) -> httpx.AsyncClient:
+    """探测专用 AsyncClient —— 复用共享 SSL 配置 + 挂 SSRF 兜底 hook。
+
+    这里不共享 relay 的连接池:探测是低频诊断动作,独立 client 便于设更短的
+    timeout,也避免探测的长尾请求占用中转热路径的连接预算。
+
+    `follow_redirects=False` 是显式写出的安全约束:探测会把存储的真 key 当
+    Bearer 发出,若跟随 302 到另一个 host,key 就跨 host 外带了(httpx 默认
+    不跟随,这里写死防将来被"顺手打开")。
+    """
+    return httpx.AsyncClient(
+        timeout=timeout,
+        verify=get_settings().ai_http_verify_ssl,
+        follow_redirects=False,
+        event_hooks=outbound_event_hooks(),
+    )
+
+
 async def _test_text(base_url: str, api_key: str, model: str, *, protocol: str = "openai") -> str:
     """text capability:发个 'hi' 收第一段回复。protocol=anthropic 走 /v1/messages。"""
     if protocol == "anthropic":
@@ -268,10 +327,7 @@ async def _test_text(base_url: str, api_key: str, model: str, *, protocol: str =
             "anthropic-version": "2023-06-01",
             "Content-Type": "application/json",
         }
-        async with httpx.AsyncClient(
-            timeout=15.0,
-            verify=get_settings().ai_http_verify_ssl,
-        ) as client:
+        async with _new_probe_client(timeout=15.0) as client:
             resp = await client.post(url, headers=headers, json=payload)
         if resp.status_code >= 400:
             raise _UpstreamHTTPError(resp.status_code, resp.text)
@@ -297,10 +353,7 @@ async def _test_text(base_url: str, api_key: str, model: str, *, protocol: str =
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
-    async with httpx.AsyncClient(
-        timeout=15.0,
-        verify=get_settings().ai_http_verify_ssl,
-    ) as client:
+    async with _new_probe_client(timeout=15.0) as client:
         # 推理模型(kimi-k2.5 等)锁 temperature → 被拒时自适应摘掉重发
         resp = await _post_chat_adaptive(client, url, headers, payload)
     if resp.status_code >= 400:
@@ -338,10 +391,7 @@ async def _test_vision(base_url: str, api_key: str, model: str, *, protocol: str
             "anthropic-version": "2023-06-01",
             "Content-Type": "application/json",
         }
-        async with httpx.AsyncClient(
-            timeout=20.0,
-            verify=get_settings().ai_http_verify_ssl,
-        ) as client:
+        async with _new_probe_client(timeout=20.0) as client:
             resp = await client.post(url, headers=headers, json=payload)
         if resp.status_code >= 400:
             raise _UpstreamHTTPError(resp.status_code, resp.text)
@@ -375,10 +425,7 @@ async def _test_vision(base_url: str, api_key: str, model: str, *, protocol: str
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
-    async with httpx.AsyncClient(
-        timeout=20.0,
-        verify=get_settings().ai_http_verify_ssl,
-    ) as client:
+    async with _new_probe_client(timeout=20.0) as client:
         resp = await _post_chat_adaptive(client, url, headers, payload)
     if resp.status_code >= 400:
         raise _UpstreamHTTPError(resp.status_code, resp.text)
@@ -395,10 +442,7 @@ async def _test_speech(base_url: str, api_key: str, model: str) -> str:
         "file": ("silence.wav", TEST_WAV_BYTES, "audio/wav"),
     }
     data = {"model": model}
-    async with httpx.AsyncClient(
-        timeout=20.0,
-        verify=get_settings().ai_http_verify_ssl,
-    ) as client:
+    async with _new_probe_client(timeout=20.0) as client:
         resp = await client.post(
             url,
             headers={"Authorization": f"Bearer {api_key}"},

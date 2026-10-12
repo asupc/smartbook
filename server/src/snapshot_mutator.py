@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import re
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -44,6 +45,58 @@ def _to_float(raw: object) -> float:
         except ValueError:
             return 0.0
     return 0.0
+
+
+# ══════════════════════════════════════════════════════════════════════
+# 对抗批次 S3 —— 写入口语义加固(matator 层,web 写路径与 import 路径共用)
+# ══════════════════════════════════════════════════════════════════════
+
+# PATCH 里「显式置 null」的必填字段:web 的 WriteTransactionUpdateRequest 用
+# `exclude_unset=True`,所以显式 `{"amount": null}` 会进 payload —— 而
+# mutator 的 `if "amount" in payload` 命中后 `_to_float(None) == 0.0`,
+# 静默把金额清零(对抗 B1:100.0 → 0.0);`happened_at: null` 更糟,
+# `_to_iso8601(None)` 走 fallback 返回**当前时间**,交易被搬到今天(跨月错账)。
+#
+# 决策(审核记录 §六.4):**显式 null = 忽略(不修改该字段)**,两条路径
+# (`_commit_write_fast_tx` / `_commit_write`)口径一致。
+#   - 为什么不选「必填字段置 null → 400」:对抗测试把这条语义锁成
+#     「200 且字段保持原值」(`test_patch_amount_null_silently_zeroes_the_amount`
+#     / `test_patch_happened_at_null_resets_to_now` 的断言),改 400 会让既有
+#     验收红测保持红 —— 且 §六.4 提示老客户端可能依赖「置 null」的调用。
+#     `tx_type` 是例外:`Literal | None` 放行 null 后 mutator 无法表达「无类型」,
+#     必须 400(`test_patch_tx_type_null_returns_500` 锁 400),见下面的
+#     `_reject_null_required_fields` 调用点。
+#   - 与所选口径对应:显式 null 在 update_transaction 中**等价于缺键**。
+_TX_NULLABLE_MEANS_UNCHANGED = ("amount", "happened_at")
+
+
+def _require_finite_number(value: object, *, field: str) -> float:
+    """金额/余额类必填数值:必须是有限数(NaN / ±Infinity → ValueError)。
+
+    对抗 A2/A3/A4:NaN 写 projection 撞 NOT NULL → 500;Infinity 静默入库
+    后污染整本账的聚合(JSON 序列化成 null)。schema 层已用 FiniteFloat
+    拦住 HTTP 路径,这里是 mutator 层兜底 —— batch / import / sync 等不走
+    pydantic 的调用点同样受益,错误统一冒泡成 400 WRITE_VALIDATION_FAILED。
+    """
+    amount = _to_float(value)
+    if not math.isfinite(amount):
+        raise ValueError(f"write validation failed: {field} must be a finite number")
+    return amount
+
+
+def _reject_null_required_fields(payload: dict, *, fields: tuple[str, ...]) -> None:
+    """payload(已 exclude_unset)里显式带 null 的**必填枚举**字段 → 400。
+
+    只拦「key 存在且 value is None」;`0` / `""` / 缺 key 均不受影响
+    (0 元交易是既有 HARDENING 锁,不能误伤)。当前唯一使用点是 `tx_type`
+    —— 见 `_TX_NULLABLE_MEANS_UNCHANGED` 的决策说明。
+    """
+    nulls = [f for f in fields if f in payload and payload.get(f) is None]
+    if nulls:
+        raise ValueError(
+            "write validation failed: required field(s) cannot be null: "
+            + ", ".join(nulls)
+        )
 
 
 def _to_optional_float(raw: object) -> float | None:
@@ -289,7 +342,11 @@ def create_transaction(snapshot: dict, payload: dict) -> tuple[dict, str]:
     item: dict[str, object] = {
         "syncId": tx_id,
         "type": tx_type,
-        "amount": _to_float(payload.get("amount")),
+        # 对抗 A2/A3:非有限浮点(NaN / ±Infinity)必须在这里拒绝 —— NaN 写
+        # projection 撞 NOT NULL → 500,Infinity 落库后污染整本账聚合
+        # (JSON 序列化成 null)。schema 层已拦 HTTP 路径,这里是 batch /
+        # import / sync 等 F(pydantic 旁路)调用点的统一兜底。
+        "amount": _require_finite_number(payload.get("amount"), field="amount"),
         "happenedAt": _to_iso8601(payload.get("happened_at")),
     }
     # 交易级多币种(0018):Web 币种录入显式传入才写;不传不产生 key
@@ -297,7 +354,10 @@ def create_transaction(snapshot: dict, payload: dict) -> tuple[dict, str]:
     if payload.get("currency_code") is not None:
         item["currencyCode"] = str(payload.get("currency_code")).upper()
     if payload.get("native_amount") is not None:
-        item["nativeAmount"] = _to_float(payload.get("native_amount"))
+        # 折算快照同属金额语义 —— 非有限值同样污染聚合,一并拒绝。
+        item["nativeAmount"] = _require_finite_number(
+            payload.get("native_amount"), field="native_amount"
+        )
     if payload.get("note") is not None:
         item["note"] = str(payload.get("note"))
     if payload.get("category_name") is not None:
@@ -370,13 +430,22 @@ def update_transaction(snapshot: dict, tx_id: str, payload: dict) -> dict:
     _, item = _find_by_sync_id(items, tx_id, expected_prefix="tx")
     _assert_actor_can_modify(item, payload)
 
+    # 对抗 B3:tx_type 是必填枚举,schema 的 `Literal | None` 放行 null 后
+    # mutator 无法表达「无类型」→ 必须 400(此前 None 变 "" 抛 ValueError,
+    # 快路径没兜 ValueError 直接冒泡成 500)。
+    _reject_null_required_fields(payload, fields=("tx_type",))
+
     if "tx_type" in payload:
         tx_type = str(payload.get("tx_type") or "")
         if tx_type not in {"expense", "income", "transfer"}:
             raise ValueError("write validation failed: invalid transaction type")
         item["type"] = tx_type
-    if "amount" in payload:
-        new_amount = _to_float(payload.get("amount"))
+    # 对抗 B1/B2:amount / happened_at 的**显式 null = 不变**(见
+    # `_TX_NULLABLE_MEANS_UNCHANGED` 决策说明)。此前 `"amount" in payload` +
+    # `_to_float(None) == 0.0` 静默清零、`_to_iso8601(None)` 把时间改成
+    # 「服务器当前时间」—— 两条都是用户看不见的错账。
+    if payload.get("amount") is not None:
+        new_amount = _require_finite_number(payload.get("amount"), field="amount")
         # 交易级多币种(L14,.docs/multi-currency-ledger):item 带折算快照
         # (nativeAmount,新 App 记的交易都有)时,改 amount 必须联动,否则
         # 账本统计(读 native_amount)会一直显示旧金额。规则:
@@ -395,10 +464,12 @@ def update_transaction(snapshot: dict, tx_id: str, payload: dict) -> dict:
         item["amount"] = new_amount
     if payload.get("native_amount") is not None:
         # 显式传入优先(Web 折算录入);None = 不变。
-        item["nativeAmount"] = _to_float(payload.get("native_amount"))
+        item["nativeAmount"] = _require_finite_number(
+            payload.get("native_amount"), field="native_amount"
+        )
     if payload.get("currency_code") is not None:
         item["currencyCode"] = str(payload.get("currency_code")).upper()
-    if "happened_at" in payload:
+    if payload.get("happened_at") is not None:
         item["happenedAt"] = _to_iso8601(payload.get("happened_at"))
 
     mapping = {
@@ -894,6 +965,19 @@ def create_budget(snapshot: dict, payload: dict) -> tuple[dict, str]:
     else:
         if not category_id:
             raise ValueError("write validation failed: category budget requires category_id")
+        # 对抗 E2:category 预算必须指向**真实存在**的分类。此前只查 id 非空 +
+        # 去重 → 幽灵 id 也能落库,列表 category_name=null、used 恒 0,永久孤儿
+        # (无 UI 入口清理,只能删账本)。分类是 user-global,存在性看 snapshot
+        # 的 categories[](由 projection 构建,与读路径同源)。
+        known_category_ids = {
+            str(row.get("syncId"))
+            for row in _ensure_list(target, "categories")
+            if isinstance(row, dict) and row.get("syncId")
+        }
+        if category_id not in known_category_ids:
+            raise ValueError(
+                f"write validation failed: category {category_id} does not exist"
+            )
         if any(
             _normalize_budget_type(row.get("type")) == "category"
             and str(row.get("categoryId") or "") == category_id
@@ -988,7 +1072,23 @@ def create_account_adjustment(snapshot: dict, payload: dict) -> tuple[dict, str]
     account_id = _to_optional_str(payload.get("account_id"))
     if not account_id:
         raise ValueError("write validation failed: account_id is required")
-    amount = _to_optional_float(payload.get("amount"))
+    # 对抗 D2:账户**必须存在**(snapshot.accounts 由 projection 构建,含软删
+    # 之前的全部账户)。此前只查 id 非空 → 幽灵 account_id 的调整也落库,而
+    # 账本 balance 无条件并入调整合计 → 账本余额被改动(-12345)但账户维度
+    # 根本没有账户能吃这个差额,"钱凭空消失"。
+    known_account_ids = {
+        str(row.get("syncId"))
+        for row in _ensure_list(target, "accounts")
+        if isinstance(row, dict) and row.get("syncId")
+    }
+    if account_id not in known_account_ids:
+        raise ValueError(
+            f"write validation failed: account {account_id} does not exist"
+        )
+    # 对抗 A4:金额非有限值(NaN)会写坏 projection(NOT NULL)并污染余额口径,
+    # 与 tx 路径同口径拒绝。
+    amount = _require_finite_number(payload.get("amount"), field="amount") \
+        if payload.get("amount") is not None else None
     if amount is None or abs(amount) < 0.005:
         raise ValueError("write validation failed: adjustment amount must be >= 0.005")
     sync_id = _new_sync_id("adj")
@@ -1000,9 +1100,13 @@ def create_account_adjustment(snapshot: dict, payload: dict) -> tuple[dict, str]
     }
     # 审计快照:前端传入才写(两端都在本地算好 current balance)。
     if payload.get("balance_before") is not None:
-        item["balanceBefore"] = _to_float(payload.get("balance_before"))
+        item["balanceBefore"] = _require_finite_number(
+            payload.get("balance_before"), field="balance_before"
+        )
     if payload.get("balance_after") is not None:
-        item["balanceAfter"] = _to_float(payload.get("balance_after"))
+        item["balanceAfter"] = _require_finite_number(
+            payload.get("balance_after"), field="balance_after"
+        )
     if payload.get("note") is not None:
         item["note"] = str(payload.get("note"))
     # 账户名冗余:rename 时 cascade(read_tx_projection 的同款处理)。

@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Literal, cast
 
+from ...schemas import MAX_TX_WRITE_AMOUNT
 from .schema import (
     ImportError,
     ImportFieldMapping,
@@ -47,6 +48,23 @@ _DATETIME_CANDIDATES = (
 
 _CURRENCY_CHARS = re.compile(r"[¥￥$€£,\s]")
 _TAG_SPLIT = re.compile(r"[,，;；、]")
+
+# 导入侧去转义(round-3 缺陷 1):导出侧 `read/_shared._csv_field` 对以
+# `= + - @ \t \r` 起始的单元格前置 `'` 中和公式注入(OWASP CSV injection)。
+# 「导出 → 再导入」必须把这一个前缀剥掉,否则 note "-5 received from Alice"
+# 往返后变成 "'-5 received..."(数据被改写)。规则与导出侧的触发集严格
+# 一一对应,且与 Excel 家族的标准 CSV 注入 un-escaping 约定相同:仅当首字符
+# 是 `'` 且第二字符命中触发集时剥一个 `'`,其余一律原样。
+_CSV_FORMULA_ESCAPE_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _unescape_csv_formula(value: str | None) -> str | None:
+    """剥掉导出侧 `_csv_field` 前置的公式中和 `'`(仅一格,不递归)。"""
+    if value is None or len(value) < 2:
+        return value
+    if value[0] == "'" and value[1] in _CSV_FORMULA_ESCAPE_PREFIXES:
+        return value[1:]
+    return value
 
 
 def apply_mapping(
@@ -129,6 +147,16 @@ def _transform_row(row: ParsedRow, mapping: ImportFieldMapping) -> ImportTransac
         amount = -amount
         if tx_type != "transfer":
             tx_type = cast(Literal["expense", "income", "transfer"], "expense")
+    # round-3 中-2:数量级封顶(reject,行级错误)—— 与 mobile pull 守卫的
+    # `exceeds_magnitude` 同口径(|amount| >= 1e12)。放行的话 mobile pull
+    # 会把该行**永远跳过**,web 有、手机无;导入报告按行展示错误,用户能
+    # 看到并修数据(选了 reject 而非 clamp:静默改金额比拒一行更糟)。
+    if abs(amount) >= MAX_TX_WRITE_AMOUNT:
+        raise _RowError(
+            "PARSE_AMOUNT_EXCEEDS_MAGNITUDE", "amount",
+            f"amount {amount} exceeds magnitude limit"
+            f" (|amount| must be < {MAX_TX_WRITE_AMOUNT:.0f})",
+        )
 
     # 3. happened_at
     raw_dt = (cells.get(mapping.happened_at or "", "") or "").strip()
@@ -145,6 +173,10 @@ def _transform_row(row: ParsedRow, mapping: ImportFieldMapping) -> ImportTransac
         if not col:
             return None
         v = (cells.get(col, "") or "").strip()
+        # round-3 缺陷 1:所有自由文本单元格(note / 分类名 / 账户名 / 标签列)
+        # 都可能是自家导出 CSV 的再导入 —— 剥掉导出侧加的公式中和 `'`,
+        # 保证 round-trip 不改写用户数据。数字 / 时间列不命中触发集,不受影响。
+        v = _unescape_csv_formula(v)
         return v or None
 
     # 5. tags 多列合并

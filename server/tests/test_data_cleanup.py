@@ -319,11 +319,17 @@ def test_clean_A1_clears_category_sync_id_but_keeps_tx(session_factory):
         )
 
 
-def test_clean_B1_deletes_row_and_file(tmp_path: Path, session_factory):
-    """B1 cleaner 同时删 DB 行 + 物理文件。"""
+def test_clean_B1_deletes_row_and_file(tmp_path: Path, session_factory, monkeypatch):
+    """B1 cleaner 同时删 DB 行 + 物理文件(文件在附件根之内 → 合法清理)。"""
+    root = tmp_path / "atts"
+    root.mkdir()
+    from src import config
+
+    monkeypatch.setattr(config.get_settings(), "attachment_storage_dir", str(root))
+
     with session_factory() as db:
         _seed_user_ledger(db)
-        sp = tmp_path / "orphan.png"
+        sp = root / "orphan.png"
         sp.write_bytes(b"d")
         db.add(
             AttachmentFile(

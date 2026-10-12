@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import logging
 import threading
-from datetime import datetime, timezone
+import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +49,7 @@ from ..services.backup.rclone_config import (
     AGE_PASSPHRASE_KEY,
     ALLOWED_BACKEND_FIELDS,
     SENSITIVE_FIELDS,
+    find_unsafe_conf_value,
     sanitize_config_summary,
 )
 from ..services.backup.runner import run_backup_to_remotes
@@ -56,6 +58,75 @@ from ..services.backup.scheduler import get_scheduler
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+# ============================================================================
+# run-now 单飞守卫
+#
+# 同一个 schedule 的 run-now 走普通 threading.Thread,绕过 APScheduler 的
+# `max_instances=1` 保护 —— 连点两次会起两个后台备份:同一远端并发 copyto
+# 同一文件名(慢速远端互相覆盖)、两个 retention 各自删文件(可能删掉对方
+# 刚上传的新备份)、staging 双份占盘。
+#
+# 守卫语义:同一 schedule 在「已有 run 在跑」或「距上次接受触发不足
+# _RUN_NOW_COALESCE_SECONDS」时,重复触发被**合并**(返回与首次同样的 202,
+# 不再起后台线程)。跨进程多 worker 场景由 DB 侧 run 状态兜底(见 runner)。
+# ============================================================================
+
+_RUN_NOW_COALESCE_SECONDS = 5.0
+# 超过这个时长的 'running' run 视为陈旧(进程崩溃遗留),不再阻塞新触发。
+_RUNNING_RUN_STALE_SECONDS = 6 * 3600
+_run_now_guard_lock = threading.Lock()
+# schedule_id -> {"inflight": bool, "last_trigger": float}
+_run_now_guard: dict[int, dict[str, Any]] = {}
+
+
+def _claim_run_now_slot(schedule_id: int) -> bool:
+    """抢占该 schedule 的触发权。True=允许起后台线程;False=重复触发,合并。"""
+    now = time.monotonic()
+    with _run_now_guard_lock:
+        # 顺手清掉很久没碰过的条目,避免 dict 无界增长
+        stale = [
+            sid
+            for sid, st in _run_now_guard.items()
+            if not st["inflight"] and now - float(st["last_trigger"]) > 3600
+        ]
+        for sid in stale:
+            _run_now_guard.pop(sid, None)
+        state = _run_now_guard.get(schedule_id)
+        if state is not None and (
+            state["inflight"]
+            or now - float(state["last_trigger"]) < _RUN_NOW_COALESCE_SECONDS
+        ):
+            return False
+        _run_now_guard[schedule_id] = {"inflight": True, "last_trigger": now}
+        return True
+
+
+def _release_run_now_slot(schedule_id: int) -> None:
+    with _run_now_guard_lock:
+        state = _run_now_guard.get(schedule_id)
+        if state is not None:
+            state["inflight"] = False
+            state["last_trigger"] = time.monotonic()
+
+
+def _has_active_run(db: Session, schedule_id: int) -> bool:
+    """该 schedule 是否已有在跑的 run(跨进程/重启后的兜底)。
+
+    'running' 超过 _RUNNING_RUN_STALE_SECONDS 视为陈旧遗留(崩溃),不阻塞。
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=_RUNNING_RUN_STALE_SECONDS)
+    row = (
+        db.query(BackupRun)
+        .filter(
+            BackupRun.schedule_id == schedule_id,
+            BackupRun.status == "running",
+            BackupRun.started_at >= cutoff,
+        )
+        .first()
+    )
+    return row is not None
 
 
 def _now() -> datetime:
@@ -112,6 +183,16 @@ def _split_config(
     掉路径部分,只留 host。
     """
     allowed = ALLOWED_BACKEND_FIELDS.get(backend_type, set())
+    # 值白名单:含控制字符(尤其 \r/\n)的字段直接 400 拒绝。configparser 会把
+    # 含换行的值写成续行,而 rclone(go-ini)把 TrimLeft 后以 `[` 开头的续行
+    # 当作**新 section** —— 可凭空伪造 backend(local root 指向任意绝对路径,
+    # 后续 backup/restore/retention 就在那里读写删)。
+    unsafe_field = find_unsafe_conf_value(config)
+    if unsafe_field is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"config field {unsafe_field!r} contains control characters",
+        )
     bucket_field = (config.get("bucket") or "").strip() if isinstance(config.get("bucket"), str) else ""
     non_sensitive: dict[str, Any] = {}
     sensitive: dict[str, str] = {}
@@ -556,7 +637,9 @@ def download_rclone_config(
     """
     mgr = _config_manager()
     mgr.rewrite_from_db(db, admin_user.id)  # 确保最新
-    text_content = mgr.read_text()
+    # conf 是**共享单文件**(多 admin 的 section 并存),下载只返回自己的
+    # section —— 否则会把别人的 backend secret 一起泄给 caller。
+    text_content = mgr.read_text_for_user(db, admin_user.id)
     _audit(
         db,
         user_id=admin_user.id,
@@ -759,6 +842,16 @@ def run_schedule_now(
             detail="schedule has no target remotes",
         )
 
+    # 单飞守卫:同一 schedule 已有在跑的 run(或刚接受过触发)时合并重复请求,
+    # 不再起第二个后台线程(见文件头 _run_now_guard 说明)。DB 侧 active run
+    # 检查兜住多 worker / 重启后的遗漏(进程内 guard 只覆盖本进程)。
+    active_run = _has_active_run(db, schedule_id)
+    coalesced = active_run or not _claim_run_now_slot(schedule_id)
+    if active_run:
+        logger.info(
+            "run-now rejected: schedule=%s already has an active run", schedule_id
+        )
+
     user_id = admin_user.id
 
     def _bg(
@@ -766,6 +859,7 @@ def run_schedule_now(
         remote_ids: list[int] = remote_ids,
         retention_days: int = s.retention_days,
         include_attachments: bool = s.include_attachments,
+        schedule_id: int = schedule_id,
     ) -> None:
         ws_manager = request.app.state.ws_manager
 
@@ -783,17 +877,25 @@ def run_schedule_now(
             except Exception:
                 logger.exception("ws push failed")
 
-        run_backup_to_remotes(
-            user_id=user_id,
-            remote_ids=remote_ids,
-            include_attachments=include_attachments,
-            retention_days=retention_days,
-            on_progress=_push,
-        )
+        try:
+            run_backup_to_remotes(
+                user_id=user_id,
+                remote_ids=remote_ids,
+                include_attachments=include_attachments,
+                retention_days=retention_days,
+                on_progress=_push,
+            )
+        finally:
+            _release_run_now_slot(schedule_id)
 
     # 用普通 thread 跑 — 不是 APScheduler,因为这是用户主动触发,跟 cron 队列无关
-    t = threading.Thread(target=_bg, daemon=True)
-    t.start()
+    if not coalesced:
+        t = threading.Thread(target=_bg, daemon=True)
+        t.start()
+    else:
+        logger.info(
+            "run-now coalesced: schedule=%s already running (guard active)", schedule_id
+        )
 
     # 立刻给个 placeholder 响应(实际 BackupRun 会在 _bg 里建)
     # 因此这里直接返回一个空 run 视图;UI 通过 GET /runs 轮询或 WS 拿真实状态。

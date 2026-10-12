@@ -1187,6 +1187,7 @@ const en = {
   'transactions.error.transferAccountsRequired': 'Please select both source and destination accounts.',
   'transactions.error.transferAccountsDifferent': 'Source and destination accounts must be different.',
   'transactions.error.amountInvalid': 'Amount must be greater than 0.',
+  'transactions.error.amountTooLarge': 'Amount is too large (must be less than 1,000,000,000,000).',
   'transactions.error.categoryRequired': 'Please select a category.',
   'transactions.filter.preset.today': 'Today',
   'transactions.filter.preset.thisWeek': 'This week',
@@ -1610,11 +1611,14 @@ const en = {
 
   'login.error.invalid': 'Email or password is incorrect.',
   'error.default': 'Operation failed. Please retry.',
+  'error.boundary.title': 'This page failed to render.',
+  'error.boundary.hint': 'Refresh to try again. If it keeps failing, the URL may contain invalid characters or the server may be unreachable.',
   'error.AUTH_INVALID_CREDENTIALS': 'Email or password is incorrect.',
   'error.INTERNAL_ERROR': 'Internal server error. Retry or check server logs.',
   'error.WRITE_CONFLICT':
     'Data changed on server. Refresh and retry. latest_change_id={latestChangeId}, latest_server_timestamp={latestServerTimestamp}',
   'error.WRITE_ROLE_FORBIDDEN': 'Current role has no write permission.',
+  'error.SHARE_ROLE_FORBIDDEN': 'You do not have permission for this shared ledger.',
   'error.SYNC_VIEWER_WRITE_FORBIDDEN': 'Viewer cannot write changes.',
   'error.SYNC_LEDGER_WRITE_FORBIDDEN': 'No write access to current ledger.',
   'error.AUTH_INSUFFICIENT_SCOPE': 'Permission scope is insufficient.',
@@ -1627,6 +1631,7 @@ const en = {
   'error.WRITE_VALIDATION_FAILED': 'Write validation failed. Please check input values.',
   'error.USER_EMAIL_EXISTS': 'Email already exists.',
   'error.USER_PASSWORD_TOO_SHORT': 'Password must be at least 6 characters.',
+  'error.SHARE_MEMBER_USER_NOT_FOUND': 'No account matches that email. Ask them to sign up first.',
 
   'notice.userCreated': 'User created.',
 

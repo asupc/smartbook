@@ -213,8 +213,15 @@ def _parse_csv_rows(text: str) -> list[list[str]]:
         dialect = csv.Sniffer().sniff(sample, delimiters=",;\t|")
     except csv.Error:
         dialect = None
+    # 对抗 S3(G2):Sniffer 的 `doublequote` 推断随样本长度/内容漂移 —— 同一份
+    # RFC 4180 导出(备注含 `""` 转义 + 换行)在长样本下被推断成
+    # doublequote=False,一次 `""` 转义被拆成两条记录 → 列数错位、整批 0 笔,
+    # **自己导出的 CSV 无法回导**。RFC 4180 定义的就是双写引号转义,且本仓
+    # 导出侧(read._shared._csv_field)严格按该规范产出,因此固定
+    # doublequote=True(显式 kwargs 覆盖 dialect 属性,Sniffer 的推断不再生效)。
     reader = csv.reader(
         io.StringIO(text),
         dialect=dialect or csv.excel,
+        doublequote=True,
     )
     return [row for row in reader]

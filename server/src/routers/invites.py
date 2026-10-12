@@ -33,7 +33,7 @@ from ..ledger_access import (
     require_accessible_ledger_by_external_id,
 )
 from ..metrics import metrics
-from ..models import Ledger, LedgerInvite, LedgerMember, User, UserProfile
+from ..models import Ledger, LedgerInvite, LedgerMember, SyncChange, User, UserProfile
 from ..security import (
     SCOPE_APP_WRITE,
     SCOPE_WEB_READ,
@@ -57,6 +57,27 @@ _AllowedRole = Literal["editor"]
 
 _AUTH_SCOPE_DEP = require_any_scopes(SCOPE_APP_WRITE, SCOPE_WEB_READ, SCOPE_WEB_WRITE)
 _WRITE_SCOPE_DEP = require_any_scopes(SCOPE_APP_WRITE, SCOPE_WEB_WRITE)
+
+
+def _is_ledger_tombstoned(db: Session, *, ledger_id: str) -> bool:
+    """True iff 该账本最新的 ledger_snapshot 变更是墓碑(action='delete')。
+
+    对抗 F1:软删账本的 Ledger 行仍存在(只留壳 + tombstone),邀请 preview /
+    accept 只查 `Ledger` 行是否存在 → 已删账本的邀请码仍可接受,并为墓碑账本
+    写入幽灵 LedgerMember。与 `read._shared._is_ledger_deleted` 同款判定
+    (倒扫最新一条 ledger_snapshot change),也与本文件头注释「邀请创建后账本
+    被删 → 邀请失效」语义对齐。
+    """
+    latest_action = db.scalar(
+        select(SyncChange.action)
+        .where(
+            SyncChange.ledger_id == ledger_id,
+            SyncChange.entity_type == "ledger_snapshot",
+        )
+        .order_by(SyncChange.change_id.desc())
+        .limit(1)
+    )
+    return latest_action == "delete"
 
 
 def _utcnow() -> datetime:
@@ -383,6 +404,12 @@ def preview_invite(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Invalid or expired invite",
         )
+    # 对抗 F1:软删账本只留壳,必须查 tombstone,否则已删账本的邀请码仍可预览。
+    if _is_ledger_tombstoned(db, ledger_id=ledger.id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invalid or expired invite",
+        )
 
     inviter = db.scalar(select(User).where(User.id == invite.invited_by))
     invited_by_display = _display_name(db, inviter) if inviter is not None else "Unknown"
@@ -429,6 +456,13 @@ async def accept_invite(
 
     ledger = db.scalar(select(Ledger).where(Ledger.id == invite.ledger_id))
     if ledger is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invalid or expired invite",
+        )
+    # 对抗 F1:软删账本(只留壳 + tombstone)的邀请码不得再被接受 ——
+    # 否则会写入指向墓碑账本的幽灵 LedgerMember(列表/sync 都看不见)。
+    if _is_ledger_tombstoned(db, ledger_id=ledger.id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Invalid or expired invite",

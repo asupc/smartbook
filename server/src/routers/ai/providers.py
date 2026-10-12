@@ -35,11 +35,13 @@ from ...deps import get_current_user, require_any_scopes
 from ...models import User, UserProfile
 from ...security import SCOPE_APP_WRITE, SCOPE_WEB_WRITE
 from ...services.ai.ai_config_store import (
+    AIConfigBoundsError,
     BUILTIN_PROVIDER_ID,
     dump_ai_config,
     find_provider,
     get_binding,
     get_providers,
+    is_mask_of,
     is_unset_key,
     load_ai_config,
     mask_api_key,
@@ -51,6 +53,7 @@ from ...services.ai.builtin_providers import (
     PROTOCOL_OPENAI,
     ensure_builtin_providers,
 )
+from ...services.ai.outbound_policy import AiHostNotAllowedError, enforce_outbound_url
 
 import httpx
 
@@ -58,6 +61,20 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 _PROVIDERS_SCOPE_DEP = require_any_scopes(SCOPE_APP_WRITE, SCOPE_WEB_WRITE)
+
+# 自定义 provider 数量上限。`UserProfile.ai_config_json` 是单列 TEXT;每个
+# provider 允许 apiKey 4096 + baseUrl 512 + 三个 model 128 **字符**(ASCII 满配
+# 序列化约 5.3 KB),无上限时单行可被撑到 MB 级,而 relay 热路径每次都要
+# `json.loads` 整串(`_resolve_provider_by_kind`),O(n) 解析 + 每 provider 一个
+# 并发信号量条目。32 远超任何真实配置(内置 5 个 + 用户自建通常 2~3 个)。
+#
+# **与 ai_config 体积上限的关系**:本上限 × 单 provider ASCII 满配 ≈ **170 KB**
+# (UTF-8 字节),这是 `MAX_AI_CONFIG_BYTES = 256 KB`
+# (`ai_config_store.enforce_ai_config_bounds`,本 CRUD 的落库出口)取值的依据;
+# CJK 字段下同一配置会膨胀到 ~488 KiB —— 超限存量行由**缩容豁免**兜住
+# (见 `_save_config`),两个上限必须一起看:数量收紧而体积不管,读侧就仍会
+# 看到无界 blob(2026-10-11 对抗缺陷 1 的一半根因)。
+_MAX_PROVIDERS = 32
 
 
 # ──────────────── 请求 / 响应 schema(字段名与 ai_config_json 对齐,camelCase)
@@ -249,9 +266,43 @@ def save_ai_config_guarded(
     return profile
 
 
+def _stored_ai_config_bytes(profile: UserProfile | None) -> int | None:
+    """库内 `ai_config_json` 的**字节**数(UTF-8)—— 缩容豁免的比较基准。
+
+    `None`(无 profile / 无配置)→ 无存量可比,调用方按「纯增长」处理,
+    绝对上限照常生效。比较口径必须是**字节**(与 `MAX_AI_CONFIG_BYTES` 一致):
+    schema 的 `max_length` 数的是**字符**,CJK 下 1 字符 = 3 字节 ——
+    用字符数当基准会把 256 KB（字符）当成低于 256 KB（字节）,豁免范围被
+    错误放大(缺陷 3)。
+    """
+    if profile is None or not profile.ai_config_json:
+        return None
+    raw = profile.ai_config_json
+    return len(raw.encode("utf-8")) if isinstance(raw, str) else len(str(raw).encode("utf-8"))
+
+
 def _save_config(db: Session, profile: UserProfile | None, user_id: str, cfg: dict) -> UserProfile:
+    """落库 ai_config(写侧边界在 `dump_ai_config` 内,深度 ≤ 8 / 体积 ≤ 256 KB)。
+
+    该 CRUD 路径**不经过** profile 的入参 schema(`BoundedFreeDict`),因此
+    这里是唯一的边界点:`dump_ai_config` 抛 `AIConfigBoundsError` → 归一成
+    400 AI_CONFIG_TOO_LARGE,而不是 500。边界必须与读侧解耦 —— 写侧收窄、
+    读侧只判「能否服务」(对抗缺陷 1)。
+
+    **缩容豁免(2026-10-11 缺陷 2)**:把库内当前字节数传下去,任何「不比现存
+    更大」的结果一律放行。否则一个被 CJK 字段撑过 256 KB 的存量配置会让
+    DELETE / POST 全部 400,用户只能靠 PATCH /profile/me(非显然)自救。
+    """
+    try:
+        new_json = dump_ai_config(cfg, stored_bytes=_stored_ai_config_bytes(profile))
+    except AIConfigBoundsError as exc:
+        logger.warning("ai.providers.save_rejected user=%s err=%s", user_id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error_code": "AI_CONFIG_TOO_LARGE", "message": str(exc)},
+        ) from exc
     return save_ai_config_guarded(
-        db, user_id=user_id, new_json=dump_ai_config(cfg), profile=profile,
+        db, user_id=user_id, new_json=new_json, profile=profile,
     )
 
 
@@ -272,8 +323,21 @@ def list_providers(
     # X-AI-Providers-Seeded 头给客户端/排查用。
     cfg, changed = ensure_builtin_providers(cfg)
     if changed:
-        _save_config(db, profile, current_user.id, cfg)
-        response.headers["X-AI-Providers-Seeded"] = "1"
+        try:
+            _save_config(db, profile, current_user.id, cfg)
+            response.headers["X-AI-Providers-Seeded"] = "1"
+        except HTTPException as exc:
+            detail = exc.detail if isinstance(exc.detail, dict) else {}
+            if detail.get("error_code") != "AI_CONFIG_TOO_LARGE":
+                raise  # 409 并发冲突等语义不能被读端点吞掉
+            # 存量配置已超写侧上限时,补内置只会让配置更大 → 必然被拒。
+            # **读端点不能因此不可用**(用户还要靠列表找到要删的 provider):
+            # 本次响应照常带上补齐后的内存 cfg,只是不落库(下次 GET 再试)。
+            # 与「读侧不用写侧上限判畸形」同一条原则(对抗缺陷 1 / 缺陷 2)。
+            logger.warning(
+                "ai.providers.seed_skipped_over_limit user=%s (serving in-memory list)",
+                current_user.id,
+            )
     return ProviderListOut(
         providers=[_to_out(p) for p in get_providers(cfg)],
         binding=get_binding(cfg),
@@ -305,6 +369,22 @@ async def create_provider(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"error_code": "AI_PROVIDER_INVALID", "message": "isBuiltIn is reserved for built-in providers"},
+        )
+    # 数量上限(只数用户自建;内置目录由 GET /providers 自动补齐,不受限)。
+    # 超限 400 而不是静默丢弃 —— 客户端能明确提示用户清理旧服务商。
+    custom_count = sum(1 for p in providers if not p.get("isBuiltIn"))
+    if custom_count >= _MAX_PROVIDERS:
+        logger.warning(
+            "ai.providers.create_capped user=%s count=%d max=%d",
+            current_user.id, custom_count, _MAX_PROVIDERS,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error_code": "AI_PROVIDER_LIMIT_REACHED",
+                "message": f"at most {_MAX_PROVIDERS} custom providers are allowed "
+                           f"(current {custom_count})",
+            },
         )
 
     provider: dict[str, Any] = {
@@ -363,7 +443,9 @@ async def update_provider(
         provider["protocol"] = _validate_protocol(payload.protocol)
     if payload.visionConcurrency is not None:
         provider["visionConcurrency"] = payload.visionConcurrency
-    if payload.apiKey is not None and not is_unset_key(payload.apiKey):
+    if payload.apiKey is not None and not (
+        is_unset_key(payload.apiKey) or is_mask_of(payload.apiKey, provider.get("apiKey"))
+    ):
         provider["apiKey"] = payload.apiKey
 
     cfg["providers"] = get_providers(cfg)
@@ -468,6 +550,17 @@ async def test_stored_provider(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ProviderTestOut:
+    # 限流:与 /ai/test-provider(30/min)同一策略。每个请求都会让服务端发起
+    # 一次真实出站 HTTP(15-20s timeout 档),不设闸的话单账号就能把线程/连接池
+    # 打满;叠加「baseUrl 可配」等于一个无限速的内网扫描器,必须与探测入口
+    # 同档限流。计数窗口复用 test_provider 模块的 `_RATE_WINDOWS`(两入口共用
+    # 一个 30/min 预算,不能靠换入口绕过)。
+    if not _check_rate_limit(current_user.id):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={"error_code": "AI_TEST_RATE_LIMITED"},
+        )
+
     cfg = load_ai_config(_load_profile(db, current_user.id))
     provider = find_provider(cfg, payload.providerId)
     if provider is None:
@@ -487,6 +580,24 @@ async def test_stored_provider(
             success=False,
             error_code="AI_TEST_MISSING_FIELDS",
             error_message=f"apiKey / baseUrl / {model_key} missing",
+        )
+
+    # SSRF:探测目标与 relay 走**同一** host 策略(探测会把存储的真 key 发出去,
+    # 且成功时把上游响应前 200 字经 preview 回读 —— 不拦就是内网探测器)。
+    # 违规是配置类错误 → success=False 明确归因,而不是 5xx。
+    try:
+        enforce_outbound_url(f"{base_url}/chat/completions", context="providers_test")
+        enforce_outbound_url(f"{base_url}/audio/transcriptions", context="providers_test")
+        enforce_outbound_url(f"{base_url}/v1/messages", context="providers_test")
+    except AiHostNotAllowedError as exc:
+        logger.warning(
+            "ai.providers.test blocked user=%s provider=%s host_policy=%s",
+            current_user.id, payload.providerId, exc,
+        )
+        return ProviderTestOut(
+            success=False,
+            error_code="AI_TEST_HOST_NOT_ALLOWED",
+            error_message=str(exc),
         )
 
     started = time.monotonic()
@@ -538,6 +649,7 @@ async def test_stored_provider(
 # 既有惯例,同 _parse_and_log 被 parse_tx_text 复用一样)
 from .test_provider import (  # noqa: E402
     _UpstreamHTTPError,
+    _check_rate_limit,
     _classify_error,
     _test_speech,
     _test_text,

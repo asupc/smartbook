@@ -16,11 +16,11 @@ import hashlib
 import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
-from pydantic import BaseModel, Field
+from pydantic import AfterValidator, BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -40,8 +40,10 @@ from ...models import (
     UserTagProjection,
 )
 from ...security import SCOPE_APP_WRITE, SCOPE_WEB_WRITE
+from ...schemas import bounded_tx_amount
 from ...services.ai.image_cache import consume_image
 from ...snapshot_mutator import create_tag, create_transaction
+from ...storage_paths import resolve_within_root
 from ._shared import (
     _TRANSACTION_WRITE_ROLES,
     _WRITE_RESPONSES,
@@ -60,7 +62,11 @@ router = APIRouter()
 class BatchTransactionItem(BaseModel):
     """跟 WriteTransactionCreateRequest 同 schema(只是不带 base_change_id)。"""
     tx_type: str = "expense"  # expense | income | transfer
-    amount: float
+    # round-3 中-2:数量级封顶(|amount| < 1e12,mobile pull 守卫对齐)。
+    # 刻意**不套 FiniteFloat**:既有验收契约
+    # (`test_amount_nan_in_patch_batch_and_adjustment_all_500`)把 batch 的
+    # NaN 锁成 mutator 通道的 400 —— 这里只拦有限的超大值,NaN 照旧下传。
+    amount: Annotated[float, AfterValidator(bounded_tx_amount)]
     happened_at: datetime
     note: str | None = None
     category_name: str | None = None
@@ -465,7 +471,18 @@ def _create_attachment_from_bytes(
 
     settings = get_settings()
     storage_root = Path(settings.attachment_storage_dir).expanduser()
-    storage_dir = storage_root / ledger.user_id / ledger.external_id / sha256[:2]
+    # S1 第四写点(对抗复核):此前这里是**裸拼接** —— 与 attachments.py 的
+    # `_resolve_storage_path` 同根因却没有任何包含性检查。存量脏账本的
+    # external_id(如 `..\..\..\escaped`)会把截图写出附件根之外(实测可落到
+    # 兄弟存储目录 / 文件系统绝对路径)。统一走共享 helper:
+    # `Path.resolve()` 消解 `..` / 绝对片段 / 符号链接,逃出根 → 400。
+    storage_dir = resolve_within_root(
+        storage_root,
+        ledger.user_id,
+        ledger.external_id,
+        sha256[:2],
+        component="tx.batch.attachment",
+    )
     storage_dir.mkdir(parents=True, exist_ok=True)
     ext = _ext_from_mime(mime_type)
     file_name = f"screenshot{ext}"

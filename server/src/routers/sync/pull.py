@@ -122,7 +122,10 @@ def pull_changes(
                 entity_type=change.entity_type,
                 entity_sync_id=change.entity_sync_id,
                 action=cast("Any", change.action),
-                payload=change.payload_json,
+                # D2(交叉复核):内部键(``__`` 前缀,如 clamp 的原始 ts 标记
+                # ``__rawUpdatedAt``)不下发 —— 它是服务端实现细节,客户端看到
+                # 后回推会把注入面带回(入站已被 strip,但泄漏本身也应消除)。
+                payload=_public_payload(change.payload_json),
                 updated_at=change.updated_at,
                 updated_by_device_id=change.updated_by_device_id,
                 scope=change.scope,

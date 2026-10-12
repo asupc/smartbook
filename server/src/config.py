@@ -101,6 +101,17 @@ class Settings(BaseSettings):
     local_backup_dir: str = Field(default="", alias="LOCAL_BACKUP_DIR")
     # 还原(restore)隔离目录 —— 服务端只往这写,绝不动 live data。
     restore_dir: str = Field(default="", alias="RESTORE_DIR")
+    # 解包(restore / zip 还原)三重上限,防 zip bomb:条目数 / 总展开字节 /
+    # 单条目压缩比。任一超限即中止并报错(远端或中间人可控的归档不得打满盘)。
+    backup_extract_max_entries: int = Field(
+        default=200_000, alias="BACKUP_EXTRACT_MAX_ENTRIES"
+    )
+    backup_extract_max_total_bytes: int = Field(
+        default=8 * 1024 * 1024 * 1024, alias="BACKUP_EXTRACT_MAX_TOTAL_BYTES"
+    )
+    backup_extract_max_ratio: int = Field(
+        default=200, alias="BACKUP_EXTRACT_MAX_RATIO"
+    )
     # 调度器开关。测试和某些命令行场景关掉避免后台 thread 干扰。
     backup_scheduler_enabled: bool = Field(default=True, alias="BACKUP_SCHEDULER_ENABLED")
     # 调度器时区(影响 cron 解释)。空 = 走 tzlocal(读 TZ env 或 /etc/localtime)。
@@ -148,6 +159,21 @@ class Settings(BaseSettings):
     # AI outbound HTTP SSL 校验。本地走自签根证书代理(MITM)调试时可临时关掉。
     # 默认 true — 生产 / docker 部署千万别关,关了会被中间人篡改流量也不知。
     ai_http_verify_ssl: bool = Field(default=True, alias="AI_HTTP_VERIFY_SSL")
+
+    # ===== AI 出站 SSRF 策略(默认拒绝内网/环回) =====
+    # 用户可在自己 profile 里配任意 baseUrl(自托管 LLM 网关 / vLLM / Ollama),
+    # 服务端又替用户发起出站 HTTP —— 若不限制,任何账号都能把服务端当内网探测
+    # 代理(端口扫描 + 响应回读),并把存储的 apiKey 外带到任意 host。
+    # 因此默认**拒绝**目标 host 解析到环回 / 链路本地 / 私网 / 保留段地址
+    # (IPv4 + IPv6 + 十进制等非规范写法;覆盖云元数据 169.254.169.254)。
+    # 自建 Ollama 等确实要打局域网的用户,把 host **显式**列进来即可放行:
+    #   AI_ALLOWED_PRIVATE_HOSTS=127.0.0.1,192.168.1.20,ollama.lan
+    # 逗号分隔;空(默认)= 不放行任何私网目标。两条出站路径(AI 中转
+    # provider 调用 + /providers/test ·/ai/test-provider 探测)共用同一开关
+    # (python 属性名沿用 relay 侧既有称法)。
+    ai_relay_allow_private_hosts: str = Field(
+        default="", alias="AI_ALLOWED_PRIVATE_HOSTS"
+    )
 
     # ===== 汇率代理(多币种 MVP)=====
     # 设计:SmartBook 仓 .docs/multi-currency/03-tech-design-cloud.md §五。
