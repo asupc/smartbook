@@ -1927,7 +1927,7 @@ export function TransactionsPage() {
         )
       } else {
         // 软删(0030)落地:成功 toast 带「撤销」,一键恢复全部刚删交易
-        // (30 天内也可在回收站页恢复)。
+        // (也可在回收站页随时恢复,回收站永久保留)。
         const deletedIds = [...result.deleted_tx_ids]
         toast.successWithAction(
           t('txBatch.deleteResult.ok', { count: deleted }) as string,

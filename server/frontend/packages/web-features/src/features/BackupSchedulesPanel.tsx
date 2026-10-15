@@ -128,12 +128,6 @@ export function BackupSchedulesPanel({
                         </span>
                       )
                     })}
-                    <span>·</span>
-                    <span>
-                      {t('backup.schedule.retentionLabel', {
-                        days: s.retention_days,
-                      })}
-                    </span>
                     {s.next_run_at ? (
                       <>
                         <span>·</span>
@@ -261,7 +255,6 @@ function ScheduleEditForm({
   const t = useT()
   const [name, setName] = useState(existing?.name || '')
   const [cron, setCron] = useState(existing?.cron_expr || '0 4 * * *')
-  const [retention, setRetention] = useState(String(existing?.retention_days ?? 30))
   const [includeAttachments, setIncludeAttachments] = useState(
     existing?.include_attachments ?? true,
   )
@@ -283,7 +276,6 @@ function ScheduleEditForm({
       const payload: BackupSchedulePayload = {
         name: name.trim(),
         cron_expr: cron.trim(),
-        retention_days: Math.max(1, Math.round(Number(retention) || 30)),
         include_attachments: includeAttachments,
         enabled,
         remote_ids: selectedRemoteIds,
@@ -340,15 +332,6 @@ function ScheduleEditForm({
           <p className="text-[10px] text-muted-foreground">
             {t('backup.schedule.field.cronHint')}
           </p>
-        </div>
-        <div className="space-y-1">
-          <Label>{t('backup.schedule.field.retention')}</Label>
-          <Input
-            type="number"
-            min={1}
-            value={retention}
-            onChange={(e) => setRetention(e.target.value)}
-          />
         </div>
         <div className="space-y-1">
           <Label>{t('backup.schedule.field.targets')}</Label>

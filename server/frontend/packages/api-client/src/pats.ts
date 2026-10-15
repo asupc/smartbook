@@ -74,7 +74,7 @@ export async function revokePat(token: string, patId: string): Promise<void> {
 
 // ---------------------------------------------------------------------------
 // MCP 调用历史 — 由 server.py `_logged_call` 在每个 tool call 完成后异步写入
-// MCPCallLog 表。30 天保留期由 server 后台 task 维护。
+// MCPCallLog 表。调用记录永久保留。
 // ---------------------------------------------------------------------------
 
 export interface MCPCallItem {

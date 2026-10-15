@@ -18,7 +18,7 @@ const TYPE_SIGN: Record<string, string> = {
   transfer: '',
 }
 
-/** 交易回收站(0030 软删):删除的交易保留 30 天,可恢复或彻底删除。 */
+/** 交易回收站(0030 软删):删除的交易永久保留,可随时恢复或手动彻底删除。 */
 export function TrashPage() {
   const { token } = useAuth()
   return <TrashViewer key={token} token={token} />
@@ -110,7 +110,7 @@ function TrashViewer({ token }: { token: string }) {
             {t('trash.title')}
           </Typography.Title>
           <Typography.Text type="secondary" className="text-xs">
-            {t('trash.subtitle', { days: 30 })}
+            {t('trash.subtitle')}
           </Typography.Text>
         </div>
         <Button
@@ -179,17 +179,6 @@ function TrashViewer({ token }: { token: string }) {
               width: 160,
               dataIndex: 'deleted_at',
               render: (v: string) => new Date(v).toLocaleString(),
-            },
-            {
-              title: t('trash.col.daysLeft'),
-              width: 100,
-              dataIndex: 'days_left',
-              render: (v: number) =>
-                v === 0 ? (
-                  <span className="text-red-500">{t('trash.daysLeft.today')}</span>
-                ) : (
-                  t('trash.daysLeft.value', { count: v })
-                ),
             },
             {
               title: t('trash.col.actions'),

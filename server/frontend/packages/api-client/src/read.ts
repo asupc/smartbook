@@ -56,7 +56,6 @@ export type TrashItem = {
   category_name?: string | null
   account_name?: string | null
   deleted_at: string
-  days_left: number
 }
 
 export type TrashListResponse = {

@@ -42,7 +42,6 @@ export type BackupSchedule = {
   id: number
   name: string
   cron_expr: string
-  retention_days: number
   include_attachments: boolean
   enabled: boolean
   next_run_at: string | null
@@ -55,7 +54,6 @@ export type BackupSchedule = {
 export type BackupSchedulePayload = {
   name: string
   cron_expr: string
-  retention_days: number
   include_attachments: boolean
   enabled: boolean
   remote_ids: number[]

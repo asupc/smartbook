@@ -131,12 +131,6 @@ function EvidenceViewer({ token }: { token: string }) {
               render: (value) => <span className="font-mono tabular-nums text-xs text-muted-foreground">{stamp(value)}</span>,
             },
             {
-              title: t('evidence.expiresAt'),
-              dataIndex: 'expires_at',
-              width: 180,
-              render: (value) => <span className="font-mono tabular-nums text-xs text-muted-foreground">{stamp(value)}</span>,
-            },
-            {
               title: t('evidence.actions'),
               key: 'actions',
               width: 130,
@@ -158,7 +152,6 @@ function EvidenceViewer({ token }: { token: string }) {
           { key: 'channel', label: t('evidence.channel'), children: detail.source_channel || '—' },
           { key: 'key', label: t('evidence.eventKey'), children: <span style={{ overflowWrap: 'anywhere' }}>{detail.event_key}</span> },
           { key: 'captured', label: t('evidence.capturedAt'), children: stamp(detail.captured_at) },
-          { key: 'expires', label: t('evidence.expiresAt'), children: stamp(detail.expires_at) },
         ]} />
         <Typography.Title level={5}>{detail.title || t('evidence.body')}</Typography.Title>
         <Typography.Paragraph style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{detail.body || '—'}</Typography.Paragraph>
