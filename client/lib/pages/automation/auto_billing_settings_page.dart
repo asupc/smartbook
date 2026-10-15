@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../data/db.dart' as schema;
 import '../../widgets/ui/primary_header.dart';
 import '../../widgets/ui/toast.dart';
 import '../../providers.dart';
@@ -22,6 +23,26 @@ import '../../l10n/app_localizations.dart';
 import '../../utils/notification_factory.dart';
 import '../../utils/notification_android.dart';
 import 'ios_auto_billing_page.dart';
+
+/// 分组开关卡里的一行。`nested` 用于截图来源 App 门禁这类依附于
+/// 父开关的子开关:父开关关闭或授权缺失时整行隐藏,不占纵向空间。
+class _SwitchRowSpec {
+  const _SwitchRowSpec({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.onChanged,
+    this.nested,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final bool value;
+  final void Function(bool)? onChanged;
+  final List<_SwitchRowSpec>? nested;
+}
 
 /// 自动记账设置页面（根据平台路由）
 class AutoBillingSettingsPage extends StatelessWidget {
@@ -48,6 +69,8 @@ class AndroidAutoBillingPage extends ConsumerStatefulWidget {
 
 class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
     with WidgetsBindingObserver {
+  /// 顶层卡片间距:原 16 过于稀疏,收紧到 12 提高信息密度。
+  static const double _gap = 12;
   late final ScreenshotMonitorService _screenshotMonitor;
   late final SmsMonitorService _smsMonitor;
   late final NotifyMonitorService _notifyMonitor;
@@ -510,150 +533,129 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
                 // 开通引导(B1 任务 1):未完成时给可续接的入口
                 if (_setupCompleted == false) ...[
                   _buildSetupBanner(context, primaryColor, l10n),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: _gap),
                 ],
 
                 // 共享状态源(B1 任务 2):与首页状态卡、开通页同一份快照
                 _buildSharedStatusCard(context, l10n),
 
-                const SizedBox(height: 16),
+                const SizedBox(height: _gap),
 
-                // 自动入账目标(B2):与浏览账本分离,失效即停写并提示修复
+                // 自动入账目标(B2):与浏览账本分离,失效即停写并提示修复;
+                // 点整张卡即可快速更换目标账本。
                 _buildTargetCard(context, primaryColor, l10n),
 
-                const SizedBox(height: 16),
+                const SizedBox(height: _gap),
 
-                // 开关卡片
-                _buildSwitchCard(
+                // 识别来源:四路监听开关收拢进一张分组卡,信息密度更高。
+                // 仅消费类 App 门禁随截图来源走,开启且已授权时内嵌子行。
+                _buildSwitchGroupCard(
                   context,
-                  primaryColor,
-                  l10n,
-                  icon: Icons.auto_awesome,
-                  title: l10n.autoBilling,
-                  subtitle: _isMonitorEnabled ? l10n.enabled : l10n.disabled,
-                  value: _isMonitorEnabled,
-                  onChanged: _isLoading ? null : _toggleMonitor,
+                  title: l10n.autoSetupStepSources,
+                  switches: [
+                    _SwitchRowSpec(
+                      icon: Icons.notifications_active_outlined,
+                      title: l10n.autoBillingNotifyTitle,
+                      subtitle: _isNotifyMonitorEnabled
+                          ? l10n.autoBillingNotifyDescEnabled
+                          : (_isNotifyListenerGranted
+                              ? l10n.autoBillingNotifyDesc
+                              : l10n.autoBillingNotifyPermissionMissing),
+                      value: _isNotifyMonitorEnabled,
+                      onChanged: _isLoading ? null : _toggleNotifyMonitor,
+                    ),
+                    _SwitchRowSpec(
+                      icon: Icons.sms_outlined,
+                      title: l10n.autoSmsBillingTitle,
+                      subtitle: _isSmsMonitorEnabled
+                          ? l10n.autoSmsBillingDescEnabled
+                          : l10n.autoSmsBillingDesc,
+                      value: _isSmsMonitorEnabled,
+                      onChanged: _isLoading ? null : _toggleSmsMonitor,
+                    ),
+                    _SwitchRowSpec(
+                      icon: Icons.pageview_outlined,
+                      title: l10n.autoBillingScreenTextTitle,
+                      subtitle: _isScreenMonitorEnabled
+                          ? l10n.autoBillingScreenTextDescEnabled
+                          : (_isScreenAccessibilityGranted
+                              ? l10n.autoBillingScreenTextDesc
+                              : l10n.autoBillingScreenTextPermissionMissing),
+                      value: _isScreenMonitorEnabled,
+                      onChanged: _isLoading ? null : _toggleScreenMonitor,
+                    ),
+                    _SwitchRowSpec(
+                      icon: Icons.auto_awesome,
+                      title: l10n.autoBilling,
+                      subtitle: _isMonitorEnabled
+                          ? l10n.enabled
+                          : l10n.disabled,
+                      value: _isMonitorEnabled,
+                      onChanged: _isLoading ? null : _toggleMonitor,
+                      nested: (!_isMonitorEnabled ||
+                              (!_isScreenAccessibilityGranted &&
+                                  !_isUsageAccessGranted))
+                          ? null
+                          : [
+                              _SwitchRowSpec(
+                                icon: Icons.category_outlined,
+                                title: l10n.screenshotSourceFilterTitle,
+                                subtitle:
+                                    l10n.screenshotSourceFilterDesc,
+                                value: _sourceFilterEnabled,
+                                onChanged: _isLoading
+                                    ? null
+                                    : _toggleSourceFilter,
+                              ),
+                            ],
+                    ),
+                  ],
                 ),
 
-                const SizedBox(height: 16),
+                const SizedBox(height: _gap),
 
-                // 仅消费类 App 截图自动记账(截图来源 App 门禁):开启时只有
-                // 金融/电商类 App 内的截图才触发识别,其它截图不入队不送 AI
-                _buildSwitchCard(
+                // 入账策略:总闸 + 影子模式同属「怎么入账」,收进一张分组卡。
+                _buildSwitchGroupCard(
                   context,
-                  primaryColor,
-                  l10n,
-                  icon: Icons.category_outlined,
-                  title: l10n.screenshotSourceFilterTitle,
-                  subtitle: !_sourceFilterEnabled
-                      ? l10n.screenshotSourceFilterDescOff
-                      : (_isScreenAccessibilityGranted || _isUsageAccessGranted
-                          ? l10n.screenshotSourceFilterDesc
-                          : l10n.screenshotSourceFilterPermissionMissing),
-                  value: _sourceFilterEnabled,
-                  onChanged: _isLoading ? null : _toggleSourceFilter,
+                  title: '入账策略',
+                  switches: [
+                    _SwitchRowSpec(
+                      icon: Icons.fact_check_outlined,
+                      title: l10n.autoBookCheckTitle,
+                      subtitle: _autoBookCheckEnabled
+                          ? l10n.autoBookCheckDesc
+                          : l10n.autoBookCheckDisabledDesc,
+                      value: _autoBookCheckEnabled,
+                      onChanged: _isLoading ? null : _toggleAutoBookCheck,
+                    ),
+                    _SwitchRowSpec(
+                      icon: Icons.visibility_outlined,
+                      title: '影子/演练模式',
+                      subtitle: _shadowModeEnabled
+                          ? '自动入口只识别和记录摘要，不创建交易或候选'
+                          : '关闭：自动入口按正常策略处理',
+                      value: _shadowModeEnabled,
+                      onChanged: _isLoading ? null : _toggleShadowMode,
+                    ),
+                  ],
                 ),
 
-                const SizedBox(height: 16),
-
-                // 短信自动记账开关卡片
-                _buildSwitchCard(
-                  context,
-                  primaryColor,
-                  l10n,
-                  icon: Icons.sms_outlined,
-                  title: l10n.autoSmsBillingTitle,
-                  subtitle: _isSmsMonitorEnabled
-                      ? l10n.autoSmsBillingDescEnabled
-                      : l10n.autoSmsBillingDesc,
-                  value: _isSmsMonitorEnabled,
-                  onChanged: _isLoading ? null : _toggleSmsMonitor,
-                ),
-
-                const SizedBox(height: 16),
-
-                // 通知自动记账开关卡片
-                _buildSwitchCard(
-                  context,
-                  primaryColor,
-                  l10n,
-                  icon: Icons.notifications_active_outlined,
-                  title: l10n.autoBillingNotifyTitle,
-                  subtitle: _isNotifyMonitorEnabled
-                      ? l10n.autoBillingNotifyDescEnabled
-                      : (_isNotifyListenerGranted
-                          ? l10n.autoBillingNotifyDesc
-                          : l10n.autoBillingNotifyPermissionMissing),
-                  value: _isNotifyMonitorEnabled,
-                  onChanged: _isLoading ? null : _toggleNotifyMonitor,
-                ),
-
-                const SizedBox(height: 16),
-
-                // 详情页自动记账开关卡片(无障碍)
-                _buildSwitchCard(
-                  context,
-                  primaryColor,
-                  l10n,
-                  icon: Icons.pageview_outlined,
-                  title: l10n.autoBillingScreenTextTitle,
-                  subtitle: _isScreenMonitorEnabled
-                      ? l10n.autoBillingScreenTextDescEnabled
-                      : (_isScreenAccessibilityGranted
-                          ? l10n.autoBillingScreenTextDesc
-                          : l10n.autoBillingScreenTextPermissionMissing),
-                  value: _isScreenMonitorEnabled,
-                  onChanged: _isLoading ? null : _toggleScreenMonitor,
-                ),
-
-                const SizedBox(height: 16),
-
-                // 自动入账总闸(P0-2 已接回):开=候选制;关=全部需手动确认
-                _buildSwitchCard(
-                  context,
-                  primaryColor,
-                  l10n,
-                  icon: Icons.fact_check_outlined,
-                  title: l10n.autoBookCheckTitle,
-                  subtitle: _autoBookCheckEnabled
-                      ? l10n.autoBookCheckDesc
-                      : l10n.autoBookCheckDisabledDesc,
-                  value: _autoBookCheckEnabled,
-                  onChanged: _isLoading ? null : _toggleAutoBookCheck,
-                ),
-
-                const SizedBox(height: 16),
-
-                // 影子/演练模式：用于新规则观察期，只识别并写入摘要，不写交易。
-                _buildSwitchCard(
-                  context,
-                  primaryColor,
-                  l10n,
-                  icon: Icons.visibility_outlined,
-                  title: '影子/演练模式',
-                  subtitle: _shadowModeEnabled
-                      ? '自动入口只识别和记录摘要，不创建交易或候选'
-                      : '关闭：自动入口按正常策略处理',
-                  value: _shadowModeEnabled,
-                  onChanged: _isLoading ? null : _toggleShadowMode,
-                ),
-
-                const SizedBox(height: 16),
+                const SizedBox(height: _gap),
 
                 // 渠道→账户映射入口(M4)
                 _buildChannelMappingCard(context, primaryColor, l10n),
 
-                const SizedBox(height: 16),
+                const SizedBox(height: _gap),
 
                 // 判重豁免(P1-1):「仍记一笔」落下的规则,可查看/清除
                 _buildDedupExemptCard(context, primaryColor, l10n),
 
-                const SizedBox(height: 16),
+                const SizedBox(height: _gap),
 
                 // 通知偏好三档(B5 任务 1)
                 _buildNotifyModeCard(context, l10n),
 
-                const SizedBox(height: 16),
+                const SizedBox(height: _gap),
 
                 // 规则总览(B4 任务 5/6):分类学习 / 渠道账户 / 判重豁免
                 Card(
@@ -669,28 +671,28 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
                   ),
                 ),
 
-                const SizedBox(height: 16),
+                const SizedBox(height: _gap),
 
                 // 手动模拟测试:验证 AI 记账链路(不依赖真实短信/通知)
                 _buildMockCard(context, primaryColor, l10n),
 
-                const SizedBox(height: 16),
+                const SizedBox(height: _gap),
 
                 // 电池优化状态卡片
                 _buildBatteryOptimizationStatusCard(
                     context, primaryColor, l10n),
 
-                const SizedBox(height: 16),
+                const SizedBox(height: _gap),
 
                 // 自启动/后台保活引导(M4)
                 _buildAutoStartCard(context, primaryColor, l10n),
 
-                const SizedBox(height: 16),
+                const SizedBox(height: _gap),
 
                 // 电池优化设置引导卡片
                 _buildBatteryOptimizationCard(context, primaryColor, l10n),
 
-                const SizedBox(height: 16),
+                const SizedBox(height: _gap),
 
                 // 功能说明卡片(置后:功能开关优先展示,说明性内容放最后)
                 _buildInfoCard(
@@ -751,62 +753,77 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
     );
   }
 
-  Widget _buildSwitchCard(
-    BuildContext context,
-    Color primaryColor,
-    AppLocalizations l10n, {
-    required IconData icon,
+  /// 分组开关卡:多个相关开关收拢进一张卡,dense 行 + 分割线,
+  /// 比原来一张卡一个开关信息密度更高。
+  Widget _buildSwitchGroupCard(
+    BuildContext context, {
     required String title,
-    required String subtitle,
-    required bool value,
-    required void Function(bool)? onChanged,
+    required List<_SwitchRowSpec> switches,
   }) {
     final theme = Theme.of(context);
-
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
+        padding: const EdgeInsets.fromLTRB(8, 10, 8, 6),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: primaryColor.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, color: primaryColor, size: 28),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: value
-                          ? primaryColor
-                          : theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                    ),
-                  ),
-                ],
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 0, 8, 2),
+              child: Text(
+                title,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
-            Switch(
-              value: value,
-              onChanged: onChanged,
-            ),
+            for (var i = 0; i < switches.length; i++) ...[
+              if (i > 0)
+                const Divider(height: 1, indent: 52, endIndent: 8),
+              _buildSwitchRow(context, switches[i]),
+              if (switches[i].nested != null)
+                for (final child in switches[i].nested!)
+                  _buildSwitchRow(context, child, nested: true),
+            ],
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildSwitchRow(
+    BuildContext context,
+    _SwitchRowSpec spec, {
+    bool nested = false,
+  }) {
+    final theme = Theme.of(context);
+    final primaryColor = ref.watch(primaryColorProvider);
+    return SwitchListTile(
+      dense: true,
+      contentPadding:
+          EdgeInsets.only(left: nested ? 52 : 8, right: 8, top: 2, bottom: 2),
+      secondary: nested
+          ? null
+          : Icon(spec.icon,
+              color: spec.value
+                  ? primaryColor
+                  : theme.colorScheme.onSurface.withValues(alpha: 0.5)),
+      title: Text(
+        spec.title,
+        style: nested
+            ? theme.textTheme.bodyMedium
+            : theme.textTheme.titleSmall
+                ?.copyWith(fontWeight: FontWeight.w600),
+      ),
+      subtitle: Text(
+        spec.subtitle,
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: spec.value
+              ? primaryColor
+              : theme.colorScheme.onSurface.withValues(alpha: 0.6),
+        ),
+      ),
+      value: spec.value,
+      onChanged: spec.onChanged,
     );
   }
 
@@ -1071,47 +1088,150 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
     }
 
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: ledgers.isEmpty ? null : () => _showQuickTargetSheet(l10n),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.adjust, color: accent, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(l10n.autoTargetTitle,
+                        style: theme.textTheme.titleSmall),
+                  ),
+                  if (action != null) action,
+                  Icon(Icons.chevron_right,
+                      color: theme.colorScheme.onSurface
+                          .withValues(alpha: 0.4),
+                      size: 20),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(status,
+                  style: theme.textTheme.bodySmall?.copyWith(color: accent)),
+              if (resolution.state == AutoBookTargetState.unconfirmed)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    l10n.autoTargetUnconfirmedHint,
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: theme.hintColor),
+                  ),
+                ),
+              if (resolution.state == AutoBookTargetState.invalid)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    l10n.autoTargetPausedHint,
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: theme.hintColor),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 快速切换自动入账目标:底部弹层列出全部本地账本,点一行即保存。
+  ///
+  /// 与引导页第 2 步同一存储口径(syncId 优先 / 本地账本 localId + 当前
+  /// scope,保存即确认 + bumpVersion 同步原生缓存),只是不经过完整引导
+  /// 流程。只读账本(remote-only)不能作为写入目标,不在列表里出现 ——
+  /// `allLedgersProvider` 本来就只返回本地账本。
+  Future<void> _showQuickTargetSheet(AppLocalizations l10n) async {
+    final theme = Theme.of(context);
+    final container = ProviderScope.containerOf(context);
+    final ledgers = ref.read(allLedgersProvider).valueOrNull ?? const [];
+    if (ledgers.isEmpty) return;
+    final resolution = ref.read(automationTargetProvider).valueOrNull;
+    final currentId = resolution?.ledgerId;
+
+    final picked = await showModalBottomSheet<int>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Icon(Icons.adjust, color: accent, size: 20),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(l10n.autoTargetTitle,
-                      style: theme.textTheme.titleSmall),
-                ),
-                if (action != null) action,
-              ],
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+              child: Text(
+                l10n.autoTargetTitle,
+                style: theme.textTheme.titleSmall
+                    ?.copyWith(fontWeight: FontWeight.w600),
+              ),
             ),
-            const SizedBox(height: 6),
-            Text(status,
-                style: theme.textTheme.bodySmall?.copyWith(color: accent)),
-            if (resolution.state == AutoBookTargetState.unconfirmed)
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text(
-                  l10n.autoTargetUnconfirmedHint,
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.hintColor),
-                ),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final ledger in ledgers)
+                    RadioListTile<int>(
+                      dense: true,
+                      value: ledger.id,
+                      groupValue: currentId,
+                      title: Text(ledger.name),
+                      subtitle: ledger.isShared
+                          ? Text('🤝 ${ledger.memberCount}人',
+                              style: theme.textTheme.bodySmall)
+                          : null,
+                      onChanged: (_) => Navigator.of(ctx).pop(ledger.id),
+                    ),
+                ],
               ),
-            if (resolution.state == AutoBookTargetState.invalid)
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text(
-                  l10n.autoTargetPausedHint,
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.hintColor),
-                ),
-              ),
+            ),
+            const SizedBox(height: 12),
           ],
         ),
       ),
     );
+    if (picked == null || picked == currentId) return;
+
+    // 稳定引用口径与引导页 `_saveTarget` 一致:同步账本按 syncId,
+    // 本地账本按 localId,accountId 沿用旧配置。
+    final repo = ref.read(repositoryProvider);
+    List<schema.Ledger> rawLedgers;
+    try {
+      rawLedgers = await repo.getAllLedgers();
+    } catch (_) {
+      if (mounted) showToast(context, l10n.autoTargetLedgerMissing);
+      return;
+    }
+    schema.Ledger? raw;
+    for (final l in rawLedgers) {
+      if (l.id == picked) raw = l;
+    }
+    if (raw == null) {
+      if (mounted) showToast(context, l10n.autoTargetLedgerMissing);
+      return;
+    }
+    final syncId = (raw.syncId ?? '').trim();
+    final store = ref.read(automationSettingsStoreProvider);
+    final settings = await store.load();
+    final scope = await currentAutomationUserScope(container);
+    await store.bumpVersion(settings.copyWith(
+      target: AutoBookTarget(
+        scope: scope,
+        kind: syncId.isEmpty ? 'localId' : 'syncId',
+        value: syncId.isEmpty ? '${raw.id}' : syncId,
+        accountId: settings.target?.accountId,
+        confirmedAt: DateTime.now(),
+      ),
+    ));
+    // 快速切换本身就是一次显式选目标:引导进度里同步打标,
+    // 免得顶部还挂着「继续开通」横幅。
+    await store.updateSetup((p) => p.copyWith(targetChosen: true));
+    ref.invalidate(automationTargetProvider);
+    ref.invalidate(automationHealthProvider);
+    if (mounted) showToast(context, l10n.autoTargetSaved);
   }
 
   /// 开通引导横幅(B1 任务 1):未完成开通时置顶;进度逐步保存,退出可续接。
