@@ -22,7 +22,6 @@ const _isGooglePlayBuild =
 class ScreenshotMonitorService {
   static const _channel = MethodChannel('com.smartbook.zhi/screenshot');
   static const _enabledKey = 'screenshot_monitor_enabled';
-  static const _autoDeleteKey = 'auto_delete_screenshot_after_booked';
 
   final ProviderContainer _container;
   late final AutoBillingService _autoBillingService;
@@ -209,8 +208,6 @@ class ScreenshotMonitorService {
       source: AutoBookSource.screenshot,
       captureIntent: AutoBookCaptureIntent.automatic,
       capturedAt: capturedAt,
-      // A2:证据有效期 30 天(capturedAt 起算),到期由 cleanupExpired 清理。
-      expiresAt: AutoBookInput.defaultExpiresAt(capturedAt),
       contentHash: eventKey.startsWith('image:v1:')
           ? eventKey.substring('image:v1:'.length)
           : null,
@@ -241,37 +238,14 @@ class ScreenshotMonitorService {
       updateFor: (result) => result.eventUpdate,
     );
 
-    // 已完成事件(例如系统重复回调/图片分享副本)不再重复执行；原截图的
-    // 删除只对本次真正成功的执行生效。
+    // 已完成事件(例如系统重复回调/图片分享副本)不再重复执行。
     if (execution.skipped) {
       if (execution.terminal) await _ackScreenshot(path);
       return;
     }
-    final result = execution.value;
-    if (result == null) return;
+    if (execution.value == null) return;
     if (execution.terminal) await _ackScreenshot(path);
-
-    // 「记账成功自动删截图」:仅 AI 确认是账单且**全部**成功入账才删除。
-    // 多笔识别里只要有笔进「待确认」候选队列(此时仍可能部分入账,result.success
-    // 为 true),就保留原图 —— 候选制下截图是人工确认的依据。非账单/入库失败
-    // 同样保留。分享/快捷指令路径不经过此处,不会误删用户主动传入的图。
-    if (result.success &&
-        result.awaitingCount == 0 &&
-        await isAutoDeleteEnabled()) {
-      final deleted = await _deleteScreenshotFile(path);
-      print('📸 [ScreenshotMonitor] 记账成功,截图${deleted ? '已' : '未'}自动删除: $path');
-    }
-  }
-
-  /// 「记账成功自动删截图」开关是否开启(默认关,删除是用户数据的不可逆操作)
-  Future<bool> isAutoDeleteEnabled() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_autoDeleteKey) ?? false;
-  }
-
-  Future<void> setAutoDeleteEnabled(bool value) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_autoDeleteKey, value);
+    // 截图一律保留,不再自动删除。
   }
 
   // ---- 截图来源 App 门禁(仅金融/电商类 App 截图触发自动记账) ----
@@ -309,21 +283,6 @@ class ScreenshotMonitorService {
     try {
       await _channel.invokeMethod('openUsageAccessSettings');
     } catch (_) {}
-  }
-
-  /// 删除截图文件(调用原生 MediaStore 删除)。
-  /// Android 11+ 截图属 SystemUI 所有,删除会弹系统确认框,用户确认
-  /// (勾选「不再询问」后后续静默)才真正删除,结果不阻塞记账流程。
-  Future<bool> _deleteScreenshotFile(String path) async {
-    if (!Platform.isAndroid) return false;
-    try {
-      return await _channel
-              .invokeMethod<bool>('deleteScreenshot', {'path': path}) ??
-          false;
-    } catch (e) {
-      print('📸 [ScreenshotMonitor] 自动删除截图失败: $path $e');
-      return false;
-    }
   }
 
   /// 释放资源

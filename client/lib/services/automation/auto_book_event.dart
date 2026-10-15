@@ -119,15 +119,6 @@ extension AutoBookStateValue on AutoBookState {
 /// [eventKey] 是入口事件的幂等键，不是 transactions.syncId。它可以由 native
 /// 元数据、图片内容 hash、Deep Link 的 idempotency_key 或账单文件行 hash 派生。
 class AutoBookInput {
-  /// A2(2026-09-15):事件证据默认保留期。事件行 30 天后允许
-  /// `AutoBookEventStore.cleanupExpired` 物理清理 —— 语义是「证据有效期」,
-  /// 从**捕获时刻**起算(capturedAt + 30d),不是写入时刻。
-  static const Duration evidenceRetention = Duration(days: 30);
-
-  /// 按捕获时刻计算的默认证据有效期(capturedAt + [evidenceRetention])。
-  static DateTime defaultExpiresAt(DateTime capturedAt) =>
-      capturedAt.add(evidenceRetention);
-
   final String eventKey;
   final AutoBookSource source;
   final AutoBookCaptureIntent captureIntent;
@@ -147,12 +138,11 @@ class AutoBookInput {
   /// 'resolved' | 'unconfirmed' | 'invalid' | 'undetermined'
   final String targetState;
 
-  /// 可选原始证据。仅当隐私策略允许时写入本地/上传服务端。
+  /// 可选原始证据。调用方带了就写入本地并上传服务端,永久保存。
   final String? rawTitle;
   final String? rawText;
   final String? rawActor;
   final Map<String, dynamic>? rawMetadata;
-  final DateTime? expiresAt;
 
   const AutoBookInput({
     required this.eventKey,
@@ -171,7 +161,6 @@ class AutoBookInput {
     this.rawText,
     this.rawActor,
     this.rawMetadata,
-    this.expiresAt,
   });
 
   String get sourceValue => source.value;
@@ -186,7 +175,6 @@ class AutoBookEventUpdate {
   final String? billJson;
   final String? reason;
   final DateTime? nextRetryAt;
-  final DateTime? expiresAt;
 
   const AutoBookEventUpdate({
     required this.state,
@@ -195,7 +183,6 @@ class AutoBookEventUpdate {
     this.billJson,
     this.reason,
     this.nextRetryAt,
-    this.expiresAt,
   });
 }
 
@@ -230,8 +217,7 @@ class AutoBookExecution<T> {
 /// 离线识别草稿(自动记账连不上服务端时保存的待重试输入)。
 ///
 /// 存在 `AutoBookEvents.draftPayloadJson`,与 raw* 证据列相互独立:
-/// 识别成功/事件终态后立即清除,不参与隐私面板证据统计,也不进入
-/// evidence 上传通道。
+/// 识别成功/事件终态后立即清除,也不进入 evidence 上传通道。
 class AutoBookDraftPayload {
   static const int currentVersion = 1;
 

@@ -11554,8 +11554,8 @@ class AutoBookEvent extends DataClass implements Insertable<AutoBookEvent> {
   final String? reason;
   final String? lastError;
 
-  /// 原始记账证据(短信/通知/详情页文本等)。是否写入由
-  /// RawEvidencePolicyStore 控制；这些字段永不进入 transactions/sync_changes。
+  /// 原始记账证据(短信/通知/详情页文本等)。捕获到就写入并上传服务端,
+  /// 永久保存；这些字段永不进入 transactions/sync_changes。
   final String? rawTitle;
   final String? rawText;
   final String? rawActor;
@@ -11581,7 +11581,7 @@ class AutoBookEvent extends DataClass implements Insertable<AutoBookEvent> {
   /// 离线识别草稿(自动记账连不上服务端时保存的待重试输入)。
   ///
   /// 与 raw* 证据列相互独立:草稿是**待处理的临时输入**,识别成功/事件到终态
-  /// 后立即清除,不参与隐私面板的证据统计,也永不进入 evidence 上传通道。
+  /// 后立即清除,也永不进入 evidence 上传通道。
   /// JSON 结构见 AutoBookDraftPayload。
   final String? draftPayloadJson;
   final DateTime updatedAt;

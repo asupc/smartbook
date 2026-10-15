@@ -148,6 +148,5 @@ extension _AutoBookInputX on AutoBookInput {
         rawText: rawText,
         rawActor: rawActor,
         rawMetadata: rawMetadata,
-        expiresAt: expiresAt,
       );
 }

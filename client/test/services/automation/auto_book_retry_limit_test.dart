@@ -1,13 +1,11 @@
-/// P1-A1 / P1-A2 回归(design-flaw-fix-plan 2026-09-15):
+/// P1-A1 回归(design-flaw-fix-plan 2026-09-15):
 /// - A1:`markRetry` 重试上限(8 次)—— 用尽落 `failed` + `retry_exhausted`,
 ///   不再无限 2h 重试;手动重试(`resetRetryGate`)复活时 attemptCount 归零。
 /// - A1:证据消失(`BookkeepingResult.evidenceMissing`)→ `expired` 终态,
 ///   不进退避阶梯(截图文件等待超时路径)。
-/// - A2:`ensure` 未传 expiresAt 时按 capturedAt+30d 兜底;存量 NULL 行
-///   一次性回填(占位行豁免);回填后 `cleanupExpired` 物理删除生效。
+/// - A2(已删除):事件/证据永久保留,不再有 expiresAt 兜底/回填/物理删除。
 library;
 
-import 'package:drift/drift.dart' as d;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -160,61 +158,11 @@ void main() {
     });
   });
 
-  group('A2: 证据有效期 expiresAt', () {
-    test('ensure 未传 expiresAt → 按 capturedAt+30d 兜底落列', () async {
+  group('A2: 永久保留 expiresAt 恒 null', () {
+    test('ensure 落列 expiresAt 恒 null,清理不删除陈年事件', () async {
       final event = await store.ensure(input('sms:a2:default'));
-      final row = await store.findById(event.id);
-      // drift 默认按秒级 unix 时间戳存取(读回为本地时区 DateTime),精确
-      // 相等断言用 epoch毫秒 比较,整秒 fixture 下无损。
-      expect(row!.expiresAt!.millisecondsSinceEpoch,
-          capturedAt.add(const Duration(days: 30)).millisecondsSinceEpoch);
-    });
+      expect((await store.findById(event.id))!.expiresAt, isNull);
 
-    test('显式 expiresAt 优先于兜底默认', () async {
-      final custom = capturedAt.add(const Duration(days: 7));
-      final event = await store.ensure(AutoBookInput(
-        eventKey: 'sms:a2:custom',
-        source: AutoBookSource.sms,
-        capturedAt: capturedAt,
-        expiresAt: custom,
-      ));
-      expect((await store.findById(event.id))!.expiresAt!.millisecondsSinceEpoch,
-          custom.millisecondsSinceEpoch);
-    });
-
-    test('backfillMissingExpiresAt:回填存量 NULL 行,占位行豁免,幂等', () async {
-      // 直接插行模拟「历史版本从不写 expiresAt」的存量数据(绕过 ensure 的
-      // 兜底默认)。
-      final legacyId = await db.into(db.autoBookEvents).insert(
-            AutoBookEventsCompanion.insert(
-              eventKey: 'legacy:null-expires',
-              source: 'sms',
-              capturedAt: capturedAt,
-            ),
-          );
-      final placeholderId = await db.into(db.autoBookEvents).insert(
-            AutoBookEventsCompanion.insert(
-              eventKey: 'legacy:expired-placeholder',
-              source: 'sms',
-              capturedAt: capturedAt,
-              state: const d.Value('expired'),
-            ),
-          );
-
-      final backfilled = await store.backfillMissingExpiresAt();
-      expect(backfilled, 1, reason: '只回填 NULL 且非 expired 占位的行');
-
-      expect(
-        (await store.findById(legacyId))!.expiresAt!.millisecondsSinceEpoch,
-        capturedAt.add(const Duration(days: 30)).millisecondsSinceEpoch,
-      );
-      expect((await store.findById(placeholderId))!.expiresAt, isNull,
-          reason: '占位行的 expiresAt 是被 cleanupExpired 有意置空的,不回填');
-
-      expect(await store.backfillMissingExpiresAt(), 0, reason: '幂等:二次调用无行可补');
-    });
-
-    test('cleanupExpired:回填后的过期存量行被物理删除(A2 主出口)', () async {
       final old = await db.into(db.autoBookEvents).insert(
             AutoBookEventsCompanion.insert(
               eventKey: 'legacy:older-than-30d',
@@ -223,20 +171,12 @@ void main() {
                   DateTime.now().toUtc().subtract(const Duration(days: 40)),
             ),
           );
-      // fresh 用动态时刻(而非固定 fixture),保证「+30d 永远在未来」,
-      // 测试不会随日历推进而翻转。
-      final fresh = await store.ensure(AutoBookInput(
-        eventKey: 'sms:a2:fresh',
-        source: AutoBookSource.sms,
-        capturedAt: DateTime.now().toUtc(),
-      ));
 
       await store.cleanupExpired();
 
-      expect(await store.findById(old), isNull,
-          reason: '存量行被回填 capturedAt+30d(已过期)后,DELETE 终于命中');
-      expect(await store.findById(fresh.id), isNotNull,
-          reason: '未过期的新事件不受影响');
+      expect(await store.findById(old), isNotNull,
+          reason: '永久保留:陈年事件行也不删除');
+      expect(await store.findById(event.id), isNotNull);
     });
   });
 }

@@ -63,8 +63,7 @@ class RawEvidenceEnvelope {
       rawMetadata: metadata,
       capturedAt: event.capturedAt,
       sourceOccurredAt: event.sourceOccurredAt,
-      serverExpiresAt:
-          event.rawEvidenceServerExpiresAt ?? event.rawEvidenceRetentionUntil,
+      serverExpiresAt: null,
       contentHash: event.contentHash,
     );
   }
@@ -123,9 +122,7 @@ class RawEvidenceSyncService {
   }
 
   Future<void> _syncPending(int limit) async {
-    await store.cleanupExpiredRawEvidence();
     await uploadPending(limit: limit);
-    await store.cleanupExpiredRawEvidence();
   }
 
   Future<int> uploadPending({int limit = 50}) async {
@@ -161,8 +158,6 @@ class RawEvidenceSyncService {
           RawEvidenceUploadState.rejected
         ].contains(event.rawEvidenceUploadState) ||
         (event.rawEvidenceNextRetryAt?.isAfter(DateTime.now()) ?? false) ||
-        (event.rawEvidenceServerExpiresAt != null &&
-            !event.rawEvidenceServerExpiresAt!.isAfter(DateTime.now())) ||
         (event.rawText == null &&
             event.rawTitle == null &&
             event.rawActor == null &&

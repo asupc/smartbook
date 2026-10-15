@@ -16,9 +16,8 @@ import '../transaction/transaction_editor_page.dart';
 /// 自动记账事件详情页(ux-optimization-plan P1-2)。
 ///
 /// 历史页列表项不可点、错误不可见曾是诊断死角;这里展示九态全量状态机:
-/// 状态/原因/lastError/原始证据(按留存策略,已清理则明示)/解析子项/
-/// 重复命中交易跳转/手动重试。原始证据展示口径与隐私面板一致:只展示
-/// 本地仍留存的,不留存或已过期时说明原因,不虚构。
+/// 状态/原因/lastError/原始证据(不存在则明示)/解析子项/重复命中交易
+/// 跳转/手动重试。原始证据只展示本地仍留存的,不留存时说明原因,不虚构。
 class AutoBookEventDetailPage extends ConsumerStatefulWidget {
   const AutoBookEventDetailPage({super.key, required this.event});
 
@@ -123,7 +122,7 @@ class _AutoBookEventDetailPageState
                     ],
                   ]),
 
-                // 原始证据卡(按留存策略展示;不存在时明示,不虚构)
+                // 原始证据卡(不存在时明示,不虚构)
                 _card(theme, children: [
                   Text(l10n.autoBookDetailEvidence,
                       style: theme.textTheme.titleSmall),

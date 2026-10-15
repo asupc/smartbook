@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'dart:io';
 import '../../l10n/app_localizations.dart';
 import '../../utils/file_picker_helper.dart';
@@ -65,8 +64,7 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
       _buildCurrencyPage(context, theme, l10n), // 第2屏：货币选择
       _buildCategoryModePage(context, theme, l10n), // 第3屏：分类模式
       _buildCloudSyncPage(context, theme, l10n), // 第4屏：云同步
-      _buildPrivacyAndOpenSourcePage(context, theme, l10n), // 第5屏：隐私保护+开源透明
-      _buildAutoBillingPage(context, theme, l10n), // 第6屏：自动记账开通(B1)
+      _buildAutoBillingPage(context, theme, l10n), // 第5屏：自动记账开通(B1)
     ];
 
     final pages = _isExistingUserFlow ? existingUserPages : newUserPages;
@@ -510,96 +508,7 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
     );
   }
 
-  /// 第5页：开源透明与社群驱动
-  Widget _buildPrivacyAndOpenSourcePage(
-      BuildContext context, ThemeData theme, AppLocalizations l10n) {
-    return Padding(
-      padding: const EdgeInsets.all(32),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          // 开源与社群图标
-          Container(
-            width: 120,
-            height: 120,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.2),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.favorite_outline,
-              size: 64,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 32),
-
-          // 标题
-          Text(
-            l10n.welcomePrivacyTitle,
-            style: theme.textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 24),
-
-          // 特性列表
-          Center(
-            child: IntrinsicWidth(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // 开源代码
-                  _buildFeatureItem(
-                    context,
-                    Icons.code_outlined,
-                    Colors.white,
-                    l10n.welcomePrivacyFeature1,
-                  ),
-                  const SizedBox(height: 12),
-                  // 隐私保护
-                  _buildFeatureItem(
-                    context,
-                    Icons.shield_outlined,
-                    Colors.white,
-                    l10n.welcomePrivacyFeature2,
-                  ),
-                  const SizedBox(height: 12),
-                  // 社群驱动
-                  _buildFeatureItem(
-                    context,
-                    Icons.groups_outlined,
-                    Colors.white,
-                    l10n.welcomeOpenSourceFeature1,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // GitHub链接按钮
-          OutlinedButton.icon(
-            onPressed: () => _launchGitHub(context),
-            icon: const Icon(Icons.open_in_new, size: 18, color: Colors.white),
-            label: Text(l10n.welcomeViewGitHub,
-                style: const TextStyle(color: Colors.white)),
-            style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: Colors.white),
-              padding: const EdgeInsets.symmetric(
-                horizontal: 24,
-                vertical: 12,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// 第6页：自动记账开通说明(B1 任务 1)
+  /// 第5页：自动记账开通说明(B1 任务 1)
   ///
   /// 串起 F02 断点:新用户引导此前不含自动记账,开通只能靠事后自己找入口。
   /// 这里给出「现在开通 / 稍后」两种选择:现在开通在欢迎流程结束后直接
@@ -800,24 +709,6 @@ class _WelcomePageState extends ConsumerState<WelcomePage> {
         ),
       ],
     );
-  }
-
-  /// 打开GitHub链接
-  Future<void> _launchGitHub(BuildContext context) async {
-    final url = Uri.parse('https://github.com/TNT-Likely/BeeCount');
-    try {
-      if (await canLaunchUrl(url)) {
-        await launchUrl(url, mode: LaunchMode.externalApplication);
-      } else {
-        if (context.mounted) {
-          showToast(context, AppLocalizations.of(context).privacyOpenSourceUrlError);
-        }
-      }
-    } catch (e) {
-      if (context.mounted) {
-        showToast(context, AppLocalizations.of(context).privacyOpenSourceUrlError);
-      }
-    }
   }
 
   /// 完成欢迎页面

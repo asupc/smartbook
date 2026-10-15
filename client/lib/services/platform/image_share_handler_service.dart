@@ -62,8 +62,6 @@ class ImageShareHandlerService {
           source: AutoBookSource.sharedImage,
           captureIntent: AutoBookCaptureIntent.userInitiated,
           capturedAt: capturedAt,
-          // A2:证据有效期 30 天(capturedAt 起算),到期由 cleanupExpired 清理。
-          expiresAt: AutoBookInput.defaultExpiresAt(capturedAt),
           contentHash: eventKey.startsWith('image:v1:')
               ? eventKey.substring('image:v1:'.length)
               : null,

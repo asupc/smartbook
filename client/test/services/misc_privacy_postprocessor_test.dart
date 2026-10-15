@@ -1,14 +1,14 @@
-// 杂项域补测(批次 X2):隐私证据本地侧 + 后处理顺序(PostProcessor)。
+// 杂项域补测(批次 X2):原始证据本地侧 + 后处理顺序(PostProcessor)。
 //
 // FINDINGS-misc-services.md §三 标注未产出「隐私证据本地侧(TTL 边界/损坏 JSON/
 // clear 竞态)」;探测发现 6 记录 PostProcessor 顺序规则「未发现顺序冲突」。
 // 本文件把这两项固化为可复跑证据。
 //
 // 与既有文件边界(不重复):
-//   - `test/services/raw_evidence_store_test.dart` 覆盖策略启停/TTL 保留/uploads;
-//   - `test/services/raw_evidence_policy_store_test.dart` 覆盖策略持久化;
-//   - 本文件只补**进程重启后的策略加载**(RawEvidencePolicyStore 新实例)、
-//     损坏策略 JSON 回落、事件行 raw 字段与策略的一致性、以及 PostProcessor 顺序。
+//   - `test/services/raw_evidence_store_test.dart` 覆盖证据落库/uploads;
+//   - 本文件只补事件行 raw 字段一致性、clear 语义、以及 PostProcessor 顺序。
+//   - 历史上的可配置策略(RawEvidencePolicyStore + TTL 保留)已删除,证据
+//     一律永久保存,相关测试(策略加载/损坏 JSON 回落/钳制)已移除。
 
 import 'dart:convert';
 
@@ -135,9 +135,9 @@ void main() {
   });
 
   // ════════════════════════════════════════════════════════════════
-  // 隐私证据本地侧:策略加载 / 损坏 JSON / 与事件行一致性
+  // 原始证据本地侧:落库一致性 / clear 语义
   // ════════════════════════════════════════════════════════════════
-  group('隐私证据本地侧:策略持久化与损坏', () {
+  group('原始证据本地侧:落库一致性与 clear', () {
     late BeeDatabase db;
     late AutoBookEventStore eventStore;
 
@@ -149,88 +149,43 @@ void main() {
 
     tearDown(() async => db.close());
 
-    test('新进程(新 store 实例)能从 SharedPreferences 恢复策略', () async {
-      await RawEvidencePolicyStore().setSource(
-        'sms',
-        const RawEvidenceSourcePolicy(
-          localEnabled: true,
-          localRetentionDays: 3,
-          serverEnabled: false,
-        ),
-      );
-      // 模拟重启:新实例 + 空缓存
-      final reloaded = await RawEvidencePolicyStore().load();
-      expect(reloaded.forSource('sms').localEnabled, isTrue);
-      expect(reloaded.forSource('sms').localRetentionDays, 3);
-      expect(reloaded.defaultPolicy.localEnabled, isFalse,
-          reason: 'per-source 策略不得污染 default');
-    });
-
-    test('策略 JSON 损坏 → 回落默认(privacy-safe:默认全关)', () async {
-      SharedPreferences.setMockInitialValues({
-        RawEvidencePolicyStore.storageKey: '{not valid json',
-      });
-      final policy = await RawEvidencePolicyStore().load();
-      expect(policy.defaultPolicy.localEnabled, isFalse);
-      expect(policy.defaultPolicy.serverEnabled, isFalse);
-      expect(policy.forSource('sms').localEnabled, isFalse);
-    });
-
-    test('策略 JSON 结构错(数组/标量)→ 回落默认,不抛', () async {
-      for (final bad in ['[]', '"x"', '123', 'null']) {
-        SharedPreferences.setMockInitialValues({
-          RawEvidencePolicyStore.storageKey: bad,
-        });
-        final policy = await RawEvidencePolicyStore().load();
-        expect(policy.defaultPolicy.localEnabled, isFalse, reason: '输入 $bad');
-      }
-    });
-
-    test('per-source 键空串/空白被忽略(不产生幽灵 source)', () {
-      final policy = RawEvidencePolicy.defaults.withSourcePolicy(
-        '   ',
-        const RawEvidenceSourcePolicy(localEnabled: true),
-      );
-      expect(policy.sourcePolicies, isEmpty);
-    });
-
-    test('保留天数越界被钳制(负 / 超大 / 非数 / 字符串数字)', () {
-      expect(RawEvidenceSourcePolicy.clampDays(-5), 0);
-      expect(RawEvidenceSourcePolicy.clampDays(999999), 3650);
-      expect(RawEvidenceSourcePolicy.clampDays('abc'), 30);
-      expect(RawEvidenceSourcePolicy.clampDays('7'), 7);
-      expect(RawEvidenceSourcePolicy.clampDays(null), 30);
-      // 事实锁定:NaN 走 num.toInt() 抛 UnsupportedError(而非回落 fallback)。
-      // 从 JSON 读回的数值不可能是非有限(jsonEncode 拒绝 NaN),可达性低;
-      // 但以代码构造策略传 NaN 时 clampDays 会抛。
-      expect(() => RawEvidenceSourcePolicy.clampDays(double.nan),
-          throwsA(isA<UnsupportedError>()),
-          reason: 'HARDENING: NaN 抛 UnsupportedError,不是安全回落');
-    });
-
-    test('local+server 全关 → shouldStore=false,事件行不应留 raw 内容', () async {
+    test('调用方带了原文就落库:本地/服务端恒启用,无过期,进上传队列', () async {
       final event = await eventStore.ensure(AutoBookInput(
-        eventKey: 'k-off',
+        eventKey: 'k-on',
         source: AutoBookSource.sms,
         capturedAt: DateTime.now().toUtc(),
         rawText: '消费 20.00 元',
         rawActor: '95555',
       ));
-      expect(event.rawText, isNull, reason: '策略全关不得落 rawText');
+      expect(event.rawText, '消费 20.00 元');
+      expect(event.rawActor, '95555');
+      expect(event.rawEvidenceLocalEnabled, isTrue);
+      expect(event.rawEvidenceServerEnabled, isTrue);
+      expect(event.rawEvidenceLocalExpiresAt, isNull);
+      expect(event.rawEvidenceServerExpiresAt, isNull);
+      expect(event.rawEvidenceRetentionUntil, isNull);
+      expect(event.rawEvidenceUploadState, RawEvidenceUploadState.pending);
+    });
+
+    test('无原文的事件行:证据列全空,不进上传队列', () async {
+      final event = await eventStore.ensure(AutoBookInput(
+        eventKey: 'k-empty',
+        source: AutoBookSource.sms,
+        capturedAt: DateTime.now().toUtc(),
+      ));
+      expect(event.rawText, isNull);
+      expect(event.rawEvidenceLocalEnabled, isFalse);
+      expect(event.rawEvidenceServerEnabled, isFalse);
       expect(event.rawEvidenceUploadState, RawEvidenceUploadState.notRequested);
     });
 
-    test('策略中途打开:已存在事件行不会被回填 raw(只影响新捕获)', () async {
+    test('已存在事件行再次 ensure 会 attach 新证据', () async {
       final event = await eventStore.ensure(AutoBookInput(
         eventKey: 'k-before',
         source: AutoBookSource.sms,
         capturedAt: DateTime.now().toUtc(),
       ));
-      await RawEvidencePolicyStore().setSource(
-        'sms',
-        const RawEvidenceSourcePolicy(localEnabled: true, localRetentionDays: 7),
-      );
-      // ensure 同名 key 命中既有行 → 只 attach 证据,不改 policy 前的内容
+      // ensure 同名 key 命中既有行 → attach 证据
       final again = await eventStore.ensure(AutoBookInput(
         eventKey: 'k-before',
         source: AutoBookSource.sms,
@@ -242,35 +197,7 @@ void main() {
           reason: 'HARDENING:同一事件再次 ensure 会 attach 新证据(rawText 被更新)');
     });
 
-    test('事件行的 raw* 字段与 policy 决定一致:local 到期时间 = capturedAt + N', () async {
-      await RawEvidencePolicyStore().setSource(
-        'sms',
-        const RawEvidenceSourcePolicy(localEnabled: true, localRetentionDays: 5),
-      );
-      // capturedAt 用**相对现在**的时间:绝对过去日期会落在保留窗外,
-      // 事件行 raw 字段不落(旧测试腐烂模式,见批次 X 基线腐烂 3)。
-      final capturedAt = DateTime.now().toUtc();
-      final event = await eventStore.ensure(AutoBookInput(
-        eventKey: 'k-ttl',
-        source: AutoBookSource.sms,
-        capturedAt: capturedAt,
-        rawText: '正文',
-      ));
-      // drift 的 dateTime 落库为 epoch 秒并回读为本地时间 → 按「同一瞬间」
-      // 比较(秒精度),不要用 DateTime 相等。
-      final expires = event.rawEvidenceLocalExpiresAt!;
-      expect(
-        expires.millisecondsSinceEpoch ~/ 1000,
-        capturedAt.add(const Duration(days: 5)).millisecondsSinceEpoch ~/ 1000,
-      );
-      expect(event.rawEvidenceUploadState, RawEvidenceUploadState.notRequested);
-    });
-
     test('clear 幂等:重复 clear 不报错,raw 字段保持空', () async {
-      await RawEvidencePolicyStore().setSource(
-        'sms',
-        const RawEvidenceSourcePolicy(localEnabled: true),
-      );
       await eventStore.ensure(AutoBookInput(
         eventKey: 'k-clear',
         source: AutoBookSource.sms,
@@ -287,14 +214,6 @@ void main() {
     });
 
     test('按 source 清理只影响该来源', () async {
-      await RawEvidencePolicyStore().setSource(
-        'sms',
-        const RawEvidenceSourcePolicy(localEnabled: true),
-      );
-      await RawEvidencePolicyStore().setSource(
-        'notification',
-        const RawEvidenceSourcePolicy(localEnabled: true),
-      );
       await eventStore.ensure(AutoBookInput(
         eventKey: 'k-sms',
         source: AutoBookSource.sms,
@@ -316,10 +235,6 @@ void main() {
     });
 
     test('事件 rawMetadataJson 损坏时 query 仍返回行(不做 JSON 解析)', () async {
-      await RawEvidencePolicyStore().setSource(
-        'sms',
-        const RawEvidenceSourcePolicy(localEnabled: true),
-      );
       final event = await eventStore.ensure(AutoBookInput(
         eventKey: 'k-badmeta',
         source: AutoBookSource.sms,

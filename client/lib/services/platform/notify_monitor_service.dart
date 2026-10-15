@@ -202,8 +202,6 @@ class NotifyMonitorService {
         source: AutoBookSource.notification,
         captureIntent: AutoBookCaptureIntent.automatic,
         capturedAt: capturedAt,
-        // A2:证据有效期 30 天(capturedAt 起算),到期由 cleanupExpired 清理。
-        expiresAt: AutoBookInput.defaultExpiresAt(capturedAt),
         sourceOccurredAt: timestamp == null
             ? null
             : DateTime.fromMillisecondsSinceEpoch(timestamp),

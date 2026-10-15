@@ -238,12 +238,6 @@ class MainActivity: FlutterFragmentActivity() {
                     stopScreenshotObserver()
                     result.success(true)
                 }
-                // 「记账成功自动删截图」:删除 MediaStore 中的截图
-                // (详见 deleteScreenshotFile 注释)
-                "deleteScreenshot" -> {
-                    val path = call.argument<String>("path")
-                    result.success(if (path != null) deleteScreenshotFile(path) else false)
-                }
                 // 截图事件先持久化入队，Flutter 处理到终态后再 ACK；这样
                 // AI/数据库异常或进程被杀不会靠路径缓存静默丢图。
                 "peekPendingScreenshots" -> {
@@ -926,116 +920,6 @@ class MainActivity: FlutterFragmentActivity() {
             android.util.Log.d("MainActivity", "✅ NotificationReceiver调用完成")
         } catch (e: Exception) {
             android.util.Log.e("MainActivity", "❌ 直接测试NotificationReceiver失败: $e")
-        }
-    }
-
-    // 系统删除确认框的返回码(startIntentSenderForResult),结果无需处理:
-    // 确认后由系统完成删除,取消则保留截图。
-    private val DELETE_SCREENSHOT_REQUEST = 9801
-
-    /**
-     * 「记账成功自动删截图」:删除 MediaStore 中的截图文件。
-     *
-     * 截图由系统(SystemUI)写入,非本应用媒体,删除权限分三档:
-     * - API 29(Android 10):requestLegacyExternalStorage + WRITE_EXTERNAL_STORAGE 下
-     *   ContentResolver.delete 可直接删;
-     * - API 30+:删除会抛 RecoverableSecurityException / SecurityException,需弹
-     *   系统确认框 —— 用户确认后由系统删除(勾选「不再询问」后后续静默完成,
-     *   与系统相册类 App 行为一致);
-     * - 图中还有 MediaStore 行丢失的兜底:直接 File.delete。
-     *
-     * 返回 true = 已删除,或成功弹出确认框(结果不阻塞记账流程);false = 保留。
-     */
-    private fun deleteScreenshotFile(path: String): Boolean {
-        return try {
-            val uri = findImageUriByPath(path)
-            if (uri != null) {
-                deleteMediaUri(uri)
-            } else {
-                File(path).delete()
-            }
-        } catch (e: Exception) {
-            Log.e("MainActivity", "删除截图失败: $path", e)
-            LoggerPlugin.error("MainActivity", "删除截图失败: $path")
-            false
-        }
-    }
-
-    /** 通过 DATA 路径反查 MediaStore 行 URI;查不到返回 null。 */
-    private fun findImageUriByPath(path: String): Uri? {
-        return try {
-            contentResolver.query(
-                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                arrayOf(MediaStore.Images.Media._ID),
-                "${MediaStore.Images.Media.DATA} = ?",
-                arrayOf(path),
-                null
-            )?.use { c ->
-                if (c.moveToFirst()) {
-                    ContentUris.withAppendedId(
-                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                        c.getLong(0)
-                    )
-                } else {
-                    null
-                }
-            }
-        } catch (e: Exception) {
-            Log.w("MainActivity", "反查截图 MediaStore 行失败: ${e.message}")
-            null
-        }
-    }
-
-    private fun deleteMediaUri(uri: Uri): Boolean {
-        // 1) 直接删:本应用文件 / API 29 legacy / 用户已勾选「不再询问」后放行
-        try {
-            if (contentResolver.delete(uri, null, null) > 0) {
-                Log.d("MainActivity", "截图已直接删除: $uri")
-                return true
-            }
-            // 返回 0 行说明行已不存在(可能上次确认后已被系统删掉,MediaStore
-            // 有延迟) — 视为已删除。
-            Log.w("MainActivity", "MediaStore 删除返回 0 行(视为已删): $uri")
-            return true
-        } catch (e: SecurityException) {
-            // 2) API 30+:统一删除确认框(带「不再询问」选项),用户确认后由
-            //    系统删除。RecoverableSecurityException 是 SecurityException
-            //    的子类,一并落在此处;不单独处理它的 userAction —— API 36 起
-            //    getUserAction() 返回 RemoteAction,与 API 29 的 UserAction
-            //    类型不同,编译期写死某一版会崩另一版。
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                val pendingIntent =
-                    MediaStore.createDeleteRequest(contentResolver, listOf(uri))
-                dispatchDeleteConfirm(pendingIntent.intentSender)
-                return true
-            }
-            // API 29:legacy storage + WRITE_EXTERNAL_STORAGE 通常可直删;
-            // 仍被系统拒绝时保留截图(不弹单文件确认框,避免跨版本类型问题)。
-            throw e
-        }
-    }
-
-    private fun dispatchDeleteConfirm(intentSender: IntentSender?) {
-        if (intentSender == null) return
-        try {
-            startIntentSenderForResult(
-                intentSender, DELETE_SCREENSHOT_REQUEST, null, 0, 0, 0, null
-            )
-        } catch (e: Exception) {
-            Log.e("MainActivity", "发起截图删除确认失败", e)
-        }
-    }
-
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == DELETE_SCREENSHOT_REQUEST) {
-            // 闭环日志:vivo 等 ROM 的确认框不一定带「不再询问」,用户每次
-            // 确认/取消都记录,便于区分「没授权」与「删了但查不到」。
-            Log.d(
-                "MainActivity",
-                "截图删除确认框结果: resultCode=$resultCode " +
-                    "(RESULT_OK=-1 用户确认, RESULT_CANCELED=0 用户取消)"
-            )
         }
     }
 

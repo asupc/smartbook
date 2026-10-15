@@ -1208,9 +1208,9 @@ class AutoBillingService {
     try {
       final store = _eventStore;
       if (store == null) return 0;
-      // A2:事件表 30 天保留的周期清理点。coordinator 的启动清理只在进程
-      // 首次事件时跑一次,常驻进程(通知监听保活场景)也需要周期出口;
-      // 这里借用草稿补发已有的 15min 周期/联网恢复触发,失败不阻断草稿重试。
+      // pending TTL 的周期清理点。coordinator 的启动清理只在进程首次事件
+      // 时跑一次,常驻进程(通知监听保活场景)也需要周期出口;这里借用草稿
+      // 补发已有的 15min 周期/联网恢复触发,失败不阻断草稿重试。
       try {
         await store.cleanupExpired();
       } catch (e) {
@@ -1369,9 +1369,8 @@ class AutoBillingService {
   /// 从事件行重建重放输入(M1-4)。
   ///
   /// 事件已经存在,`ensure()` 会按 eventKey 回读原行,这里的字段只在原行已被
-  /// 过期清理、需要重新落行时生效 —— 所以来源/意图/时间/通道都取事件行原值,
-  /// 不用 now()。raw* 证据一律不重新提交:草稿正文是否落盘由捕获时的留存
-  /// 策略决定,重放不能绕过它把正文再写一次。
+  /// 删除、需要重新落行时生效 —— 所以来源/意图/时间/通道都取事件行原值,
+  /// 不用 now()。raw* 证据一律不重新提交:重放不能把正文再写一次。
   AutoBookInput _replayInput(AutoBookEvent event) {
     return AutoBookInput(
       eventKey: event.eventKey,
@@ -1387,10 +1386,6 @@ class AutoBillingService {
       sourceChannel: event.sourceChannel,
       externalId: event.externalId,
       contentHash: event.contentHash,
-      // A2:回放透传原行的有效期;存量旧行为 NULL(回填前)时按捕获时刻
-      // 补默认 —— 只有事件行已被清理、需要重建时这个值才会真正落库。
-      expiresAt:
-          event.expiresAt ?? AutoBookInput.defaultExpiresAt(event.capturedAt),
     );
   }
 

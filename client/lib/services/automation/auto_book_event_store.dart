@@ -49,16 +49,13 @@ class AutoBookEventStore {
       return _attachRawEvidenceIfNeeded(existing, input);
     }
 
-    final policy = await RawEvidencePolicyStore().load();
-    final plan = policy.planFor(input.sourceValue, input.capturedAt);
-    final rawMetadata = plan.shouldStore && input.rawMetadata != null
-        ? jsonEncode(input.rawMetadata)
-        : null;
-    final hasRaw = plan.shouldStore &&
-        (input.rawTitle?.isNotEmpty == true ||
-            input.rawText?.isNotEmpty == true ||
-            input.rawActor?.isNotEmpty == true ||
-            rawMetadata != null);
+    // 原始证据一律永久保存:只要调用方带了原文就落库,不再按策略裁决。
+    final rawMetadata =
+        input.rawMetadata != null ? jsonEncode(input.rawMetadata) : null;
+    final hasRaw = input.rawTitle?.isNotEmpty == true ||
+        input.rawText?.isNotEmpty == true ||
+        input.rawActor?.isNotEmpty == true ||
+        rawMetadata != null;
     final companion = schema.AutoBookEventsCompanion.insert(
       eventKey: input.eventKey,
       source: input.sourceValue,
@@ -72,22 +69,22 @@ class AutoBookEventStore {
       contentHash: d.Value(input.contentHash),
       capturedAt: input.capturedAt,
       sourceOccurredAt: d.Value(input.sourceOccurredAt),
-      // A2:证据有效期兜底 —— 调用方漏传时按捕获时刻+30d 落列,保证
-      // cleanupExpired 的 DELETE 恒有命中面(旧行为恒写 null → 表只进不出)。
-      expiresAt: d.Value(
-        input.expiresAt ?? AutoBookInput.defaultExpiresAt(input.capturedAt),
-      ),
+      // 永久保留:expiresAt 恒 null,不再按捕获时刻+30d 落列。
+      expiresAt: const d.Value(null),
       rawTitle: d.Value(hasRaw ? input.rawTitle : null),
       rawText: d.Value(hasRaw ? input.rawText : null),
       rawActor: d.Value(hasRaw ? input.rawActor : null),
       rawMetadataJson: d.Value(hasRaw ? rawMetadata : null),
-      rawEvidenceLocalEnabled: d.Value(hasRaw && plan.localEnabled),
-      rawEvidenceServerEnabled: d.Value(hasRaw && plan.serverEnabled),
-      rawEvidenceLocalExpiresAt: d.Value(hasRaw ? plan.localExpiresAt : null),
-      rawEvidenceServerExpiresAt: d.Value(hasRaw ? plan.serverExpiresAt : null),
-      rawEvidenceRetentionUntil: d.Value(hasRaw ? plan.retentionUntil : null),
+      // 永久保存语义:本地/服务端恒启用、无过期,上传状态正常流转。
+      rawEvidenceLocalEnabled: d.Value(hasRaw),
+      rawEvidenceServerEnabled: d.Value(hasRaw),
+      rawEvidenceLocalExpiresAt: const d.Value(null),
+      rawEvidenceServerExpiresAt: const d.Value(null),
+      rawEvidenceRetentionUntil: const d.Value(null),
       rawEvidenceUploadState: d.Value(
-        hasRaw ? plan.uploadState : RawEvidenceUploadState.notRequested,
+        hasRaw
+            ? RawEvidenceUploadState.pending
+            : RawEvidenceUploadState.notRequested,
       ),
     );
 
@@ -115,9 +112,7 @@ class AutoBookEventStore {
         event.rawEvidenceUploadState == RawEvidenceUploadState.uploaded) {
       return event;
     }
-    final policy = await RawEvidencePolicyStore().load();
-    final plan = policy.planFor(input.sourceValue, input.capturedAt);
-    if (!plan.shouldStore || _hasRawEvent(event)) return event;
+    if (_hasRawEvent(event)) return event;
 
     final metadata =
         input.rawMetadata == null ? null : jsonEncode(input.rawMetadata);
@@ -128,12 +123,13 @@ class AutoBookEventStore {
       rawText: d.Value(input.rawText),
       rawActor: d.Value(input.rawActor),
       rawMetadataJson: d.Value(metadata),
-      rawEvidenceLocalEnabled: d.Value(plan.localEnabled),
-      rawEvidenceServerEnabled: d.Value(plan.serverEnabled),
-      rawEvidenceLocalExpiresAt: d.Value(plan.localExpiresAt),
-      rawEvidenceServerExpiresAt: d.Value(plan.serverExpiresAt),
-      rawEvidenceRetentionUntil: d.Value(plan.retentionUntil),
-      rawEvidenceUploadState: d.Value(plan.uploadState),
+      rawEvidenceLocalEnabled: const d.Value(true),
+      rawEvidenceServerEnabled: const d.Value(true),
+      rawEvidenceLocalExpiresAt: const d.Value(null),
+      rawEvidenceServerExpiresAt: const d.Value(null),
+      rawEvidenceRetentionUntil: const d.Value(null),
+      rawEvidenceUploadState:
+          const d.Value(RawEvidenceUploadState.pending),
       updatedAt: d.Value(now),
     ));
     return await findById(event.id) ?? event;
@@ -235,9 +231,6 @@ class AutoBookEventStore {
             ? const d.Value.absent()
             : d.Value(update.reason),
         nextRetryAt: d.Value(update.nextRetryAt),
-        expiresAt: update.expiresAt == null
-            ? const d.Value.absent()
-            : d.Value(update.expiresAt),
         updatedAt: d.Value(now),
       ),
     );
@@ -407,11 +400,10 @@ class AutoBookEventStore {
     return grouped;
   }
 
-  /// C8(2026-09-15):待确认事件 TTL —— `pending` 超过 [ttl](默认 30 天,
-  /// 与 A2 证据保留期同长)的事件转 `expired` 终态。旧行为 pending 无过期,
-  /// 确认页/角标被陈年候选长期占用;语义上 30 天未确认的候选等同放弃。
-  /// 与 [cleanupExpired] 的占位改造同款:置 expired(终态,不再被 claim)、
-  /// 清 expiresAt(不被后续 DELETE 吃掉,历史页保留「为什么停下」)。
+  /// C8(2026-09-15):待确认事件 TTL —— `pending` 超过 [ttl](默认 30 天)
+  /// 的事件转 `expired` 终态。旧行为 pending 无过期,确认页/角标被陈年候选
+  /// 长期占用;语义上 30 天未确认的候选等同放弃。置 expired(终态,不再被
+  /// claim),历史页保留「为什么停下」。
   /// 返回本轮过期的事件数。
   static const Duration pendingCandidateTtl = Duration(days: 30);
 
@@ -914,8 +906,6 @@ class AutoBookEventStore {
           t.rawEvidenceUploadedAt.isNull() &
           (t.rawEvidenceNextRetryAt.isNull() |
               t.rawEvidenceNextRetryAt.isSmallerOrEqualValue(now)) &
-          (t.rawEvidenceServerExpiresAt.isNull() |
-              t.rawEvidenceServerExpiresAt.isBiggerThanValue(now)) &
           t.rawEvidenceUploadState.isNotIn(const [
             RawEvidenceUploadState.uploaded,
             RawEvidenceUploadState.cleared,
@@ -991,16 +981,9 @@ class AutoBookEventStore {
         event.rawEvidenceUploadState == RawEvidenceUploadState.expired) {
       return;
     }
-    final clearAfterUpload = !event.rawEvidenceLocalEnabled ||
-        (event.rawEvidenceLocalExpiresAt != null &&
-            !event.rawEvidenceLocalExpiresAt!.isAfter(now));
+    // 永久保留:上传成功后本地原文不再清理。
     await (db.update(db.autoBookEvents)..where((t) => t.id.equals(eventId)))
         .write(schema.AutoBookEventsCompanion(
-      rawTitle: clearAfterUpload ? const d.Value(null) : d.Value.absent(),
-      rawText: clearAfterUpload ? const d.Value(null) : d.Value.absent(),
-      rawActor: clearAfterUpload ? const d.Value(null) : d.Value.absent(),
-      rawMetadataJson:
-          clearAfterUpload ? const d.Value(null) : d.Value.absent(),
       rawEvidenceUploadState: const d.Value(RawEvidenceUploadState.uploaded),
       rawEvidenceUploadedAt: d.Value(now),
       rawEvidenceLastError: const d.Value(null),
@@ -1130,45 +1113,6 @@ class AutoBookEventStore {
     ));
   }
 
-  Future<int> cleanupExpiredRawEvidence({DateTime? now}) async {
-    final cutoff = now ?? DateTime.now();
-    final rows = await (db.select(db.autoBookEvents)
-          ..where((t) =>
-              t.rawText.isNotNull() |
-              t.rawTitle.isNotNull() |
-              t.rawActor.isNotNull() |
-              t.rawMetadataJson.isNotNull()))
-        .get();
-    var cleared = 0;
-    for (final row in rows) {
-      final localDeadline = row.rawEvidenceLocalExpiresAt ??
-          (row.rawEvidenceLocalEnabled ? row.rawEvidenceRetentionUntil : null);
-      final serverDeadline = row.rawEvidenceServerExpiresAt ??
-          (row.rawEvidenceServerEnabled ? row.rawEvidenceRetentionUntil : null);
-      final localExpired =
-          localDeadline != null && !localDeadline.isAfter(cutoff);
-      final serverExpired =
-          serverDeadline != null && !serverDeadline.isAfter(cutoff);
-      final serverDone = row.rawEvidenceUploadedAt != null ||
-          !row.rawEvidenceServerEnabled ||
-          row.rawEvidenceUploadState == RawEvidenceUploadState.rejected;
-      final keepLocal = row.rawEvidenceLocalEnabled && !localExpired;
-      final keepQueue = !serverDone && !serverExpired;
-      if (keepLocal || keepQueue) continue;
-      await (db.update(db.autoBookEvents)..where((t) => t.id.equals(row.id)))
-          .write(const schema.AutoBookEventsCompanion(
-        rawTitle: d.Value(null),
-        rawText: d.Value(null),
-        rawActor: d.Value(null),
-        rawMetadataJson: d.Value(null),
-        rawEvidenceUploadState: d.Value(RawEvidenceUploadState.expired),
-        rawEvidenceLastError: d.Value(null),
-      ));
-      cleared++;
-    }
-    return cleared;
-  }
-
   Future<void> markRawEvidenceUploadAttempt({required int eventId}) async {
     final event = await findById(eventId);
     if (event == null) return;
@@ -1183,86 +1127,16 @@ class AutoBookEventStore {
   Future<void> markRawEvidenceUploaded({required int eventId}) =>
       markRawEvidenceUploadSucceeded(eventId);
 
-  /// A2 存量回填:历史版本从不写 expiresAt,存量事件行该列全 NULL,
-  /// [cleanupExpired] 的 DELETE 恒不命中。按 `capturedAt + 30d` 补写
-  /// ([AutoBookInput.evidenceRetention]);幂等 —— 只有 NULL 行会被选中,
-  /// 空表/新库是一次廉价 SELECT 直接返回。
-  ///
-  /// `state=expired` 的占位行除外:它们的 expiresAt 是被 cleanupExpired
-  /// **有意置空**的(见下方占位改造注释),回填会让语义倒退。
-  Future<int> backfillMissingExpiresAt() async {
-    final rows = await (db.select(db.autoBookEvents)
-          ..where(
-              (t) => t.expiresAt.isNull() & t.state.isNotIn(const ['expired'])))
-        .get();
-    for (final row in rows) {
-      await (db.update(db.autoBookEvents)..where((t) => t.id.equals(row.id)))
-          .write(schema.AutoBookEventsCompanion(
-        expiresAt: d.Value(row.capturedAt.add(AutoBookInput.evidenceRetention)),
-      ));
-    }
-    return rows.length;
-  }
-
+  /// 周期清理入口。事件与原始证据一律永久保留,这里只做 pending TTL
+  /// ([expireStalePending]):30 天未确认的候选转 expired 终态。
+  /// 历史上的 expiresAt 物理删除 / 原文过期 GC / 存量回填已随隐私策略
+  /// 调整删除。
   Future<void> cleanupExpired() async {
-    // A2:先做一次性(幂等)回填,再清理 —— 保证 DELETE/占位改造有命中面。
-    // 失败不阻断后续清理路径(与下方占位改造同款容错)。
-    try {
-      await backfillMissingExpiresAt();
-    } catch (_) {
-      // 老库异常不阻塞;下次调用仍会重试回填。
-    }
-    await cleanupExpiredRawEvidence();
-    // A3(2026-10-11):过期 pending 必须先走 [expireStalePending] 转 expired
-    // 占位,再执行物理删除。旧顺序下,无原始证据的 pending 事件(短信/通知
-    // 最常见的形态)不满足下面的「占位改造」条件,却被 DELETE 直接物理抹掉
-    // —— 历史页记录凭空消失,C8 承诺的「保留为什么停下」失效。谁先跑
-    // (Coordinator.initialize vs PendingCandidateStore.loadForReview)决定了
-    // 记录是占位还是消失,这是不确定行为,必须消除。
-    // 失败不阻断后续清理(与回填/占位改造同款容错)。
     try {
       await expireStalePending();
     } catch (_) {
-      // expire 失败时下面的 DELETE 也会显式排除 pending,不会误删。
+      // 清理失败不阻断调用方(启动/草稿重试),下次调用再试。
     }
-    final now = DateTime.now();
-    // 曾有原始证据、证据已被留存策略清掉的过期事件:保留「已过期(证据已
-    // 清理)」占位行,历史页不再凭空消失(P1-2)。置 state=expired(终态,
-    // 不会再被 claim)+清 expiresAt(不再被本清理删除)。
-    try {
-      await (db.update(db.autoBookEvents)
-            ..where((t) =>
-                t.expiresAt.isNotNull() &
-                t.expiresAt.isSmallerThanValue(now) &
-                t.state.isNotIn(const ['expired']) &
-                t.rawEvidenceUploadState
-                    .equals(RawEvidenceUploadState.expired)))
-          .write(const schema.AutoBookEventsCompanion(
-        state: d.Value('expired'),
-        reason: d.Value('expired_evidence_cleared'),
-        expiresAt: d.Value(null),
-        nextRetryAt: d.Value(null),
-      ));
-    } catch (_) {
-      // 占位改造失败不阻断原删除路径(老库该列可能还没默认值)
-    }
-    await (db.delete(db.autoBookEvents)
-          ..where((t) =>
-              t.expiresAt.isNotNull() &
-              t.expiresAt.isSmallerThanValue(now) &
-              t.rawText.isNull() &
-              t.rawTitle.isNull() &
-              t.rawActor.isNull() &
-              t.rawMetadataJson.isNull() &
-              // A3(2026-10-11):pending 只由 expireStalePending 转终态,
-              // 绝不物理删除 —— 保住「过期占位」这一历史页契约。
-              t.state.isNotIn(const ['pending']) &
-              // 已转占位的行(expiresAt 已置空)天然不命中上面的过期条件;
-              // 再排除一次,防御同一轮里 update/delete 的顺序竞态
-              t.rawEvidenceUploadState.isNotIn(const [
-                RawEvidenceUploadState.expired,
-              ])))
-        .go();
   }
 
   static bool _hasRawInput(AutoBookInput input) =>

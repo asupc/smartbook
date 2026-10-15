@@ -12,7 +12,6 @@ import '../../widgets/biz/biz.dart';
 import '../../styles/tokens.dart';
 import '../data/import_page.dart';
 import '../data/export_page.dart';
-import '../data/privacy_panel_page.dart';
 import '../category/category_manage_page.dart';
 import '../category/category_migration_page.dart';
 import '../tag/tag_manage_page.dart';
@@ -118,19 +117,6 @@ class _DataManagementPageState extends ConsumerState<DataManagementPage> {
                         onTap: () async {
                           await Navigator.of(context).push(
                             MaterialPageRoute(builder: (_) => const ExportPage()),
-                          );
-                        },
-                      ),
-                      // M5 隐私面板:原文统计与一键清除
-                      AppListTile(
-                        leading: Icons.privacy_tip_outlined,
-                        title: AppLocalizations.of(context).privacyPanelTitle,
-                        subtitle:
-                            AppLocalizations.of(context).privacyPanelDesc,
-                        onTap: () async {
-                          await Navigator.of(context).push(
-                            MaterialPageRoute(
-                                builder: (_) => const PrivacyPanelPage()),
                           );
                         },
                       ),

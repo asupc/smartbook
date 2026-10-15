@@ -93,30 +93,6 @@ abstract class AppLocalizations {
     Locale('zh')
   ];
 
-  /// No description provided for @aiConsentTitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'开启 AI 功能前,请知悉'**
-  String get aiConsentTitle;
-
-  /// No description provided for @aiConsentBody.
-  ///
-  /// In zh, this message translates to:
-  /// **'AI 功能需将相关数据发送给你所配置的第三方 AI 服务商进行处理:\n\n• 发送给谁:默认「智谱 GLM」(open.bigmodel.cn,由智谱华章运营);若你自行配置了其它第三方 AI 服务商,则发送给你填写的服务商。\n• 发送什么:你主动用于识别/对话的内容 —— 账单图片、语音录音、你输入的文字,以及为完成识别/分析所需的分类名称、账户名称和相关交易记录。\n• 用途:仅用于账单识别、记账与你发起的对话分析;智记自身不收集、不存储这些数据。\n\n数据由该第三方服务商按其隐私政策处理。开启即表示你同意上述数据共享。'**
-  String get aiConsentBody;
-
-  /// No description provided for @aiConsentAgree.
-  ///
-  /// In zh, this message translates to:
-  /// **'同意并开启'**
-  String get aiConsentAgree;
-
-  /// No description provided for @aboutPrivacyPolicy.
-  ///
-  /// In zh, this message translates to:
-  /// **'隐私政策'**
-  String get aboutPrivacyPolicy;
-
   /// No description provided for @aboutChangelog.
   ///
   /// In zh, this message translates to:
@@ -1142,30 +1118,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'一笔一蜜'**
   String get splashSlogan;
-
-  /// No description provided for @splashSecurityTitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'开源数据安全'**
-  String get splashSecurityTitle;
-
-  /// No description provided for @splashSecurityFeature1.
-  ///
-  /// In zh, this message translates to:
-  /// **'• 数据本地存储，隐私完全自控'**
-  String get splashSecurityFeature1;
-
-  /// No description provided for @splashSecurityFeature2.
-  ///
-  /// In zh, this message translates to:
-  /// **'• 开源代码透明，安全值得信赖'**
-  String get splashSecurityFeature2;
-
-  /// No description provided for @splashSecurityFeature3.
-  ///
-  /// In zh, this message translates to:
-  /// **'• 可选云端同步，多设备数据一致'**
-  String get splashSecurityFeature3;
 
   /// No description provided for @splashInitializing.
   ///
@@ -5211,72 +5163,6 @@ abstract class AppLocalizations {
   /// **'JSON 结构化导出(备份)'**
   String get exportJsonButton;
 
-  /// No description provided for @privacyPanelTitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'隐私面板'**
-  String get privacyPanelTitle;
-
-  /// No description provided for @privacyPanelDesc.
-  ///
-  /// In zh, this message translates to:
-  /// **'原文数据保留策略与一键清理'**
-  String get privacyPanelDesc;
-
-  /// No description provided for @privacyStatsAttachments.
-  ///
-  /// In zh, this message translates to:
-  /// **'截图/图片原文'**
-  String get privacyStatsAttachments;
-
-  /// No description provided for @privacyStatsAttachmentsDesc.
-  ///
-  /// In zh, this message translates to:
-  /// **'{count} 个文件,占用 {size}'**
-  String privacyStatsAttachmentsDesc(Object count, Object size);
-
-  /// No description provided for @privacyStatsPending.
-  ///
-  /// In zh, this message translates to:
-  /// **'待确认候选:{count} 项'**
-  String privacyStatsPending(Object count);
-
-  /// No description provided for @privacyNoOriginalForSmsNotifyTitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'短信/通知原文不落盘'**
-  String get privacyNoOriginalForSmsNotifyTitle;
-
-  /// No description provided for @privacyNoOriginalForSmsNotifyDesc.
-  ///
-  /// In zh, this message translates to:
-  /// **'短信与支付通知原文在 AI 解析后即丢弃,不持久化(设计保证);仅保留解析出的结构化交易。'**
-  String get privacyNoOriginalForSmsNotifyDesc;
-
-  /// No description provided for @privacyClearAttachments.
-  ///
-  /// In zh, this message translates to:
-  /// **'一键清除截图/图片原文'**
-  String get privacyClearAttachments;
-
-  /// No description provided for @privacyClearAttachmentsConfirmTitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'确认清除原文?'**
-  String get privacyClearAttachmentsConfirmTitle;
-
-  /// No description provided for @privacyClearAttachmentsConfirmBody.
-  ///
-  /// In zh, this message translates to:
-  /// **'将删除 {count} 个截图/图片原文文件,不影响交易记录与统计。建议先导出备份。'**
-  String privacyClearAttachmentsConfirmBody(Object count);
-
-  /// No description provided for @privacyCleared.
-  ///
-  /// In zh, this message translates to:
-  /// **'已清除 {count} 个原文文件(交易数据保留)'**
-  String privacyCleared(Object count);
-
   /// No description provided for @exportSavedTo.
   ///
   /// In zh, this message translates to:
@@ -7611,12 +7497,6 @@ abstract class AppLocalizations {
   /// **'已恢复'**
   String get accountRestoredToast;
 
-  /// No description provided for @privacyOpenSourceUrlError.
-  ///
-  /// In zh, this message translates to:
-  /// **'无法打开链接'**
-  String get privacyOpenSourceUrlError;
-
   /// No description provided for @welcomeTitle.
   ///
   /// In zh, this message translates to:
@@ -7626,7 +7506,7 @@ abstract class AppLocalizations {
   /// No description provided for @welcomeDescription.
   ///
   /// In zh, this message translates to:
-  /// **'一个真正尊重您隐私的记账应用'**
+  /// **'自动记账,省心省力'**
   String get welcomeDescription;
 
   /// No description provided for @welcomeCurrencyDescription.
@@ -7640,36 +7520,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'创建默认账本'**
   String get welcomeCreateDefaultLedger;
-
-  /// No description provided for @welcomePrivacyTitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'开源透明 · 社群驱动'**
-  String get welcomePrivacyTitle;
-
-  /// No description provided for @welcomePrivacyFeature1.
-  ///
-  /// In zh, this message translates to:
-  /// **'100% 开源代码，接受社区监督'**
-  String get welcomePrivacyFeature1;
-
-  /// No description provided for @welcomePrivacyFeature2.
-  ///
-  /// In zh, this message translates to:
-  /// **'无隐私顾虑，数据完全本地存储'**
-  String get welcomePrivacyFeature2;
-
-  /// No description provided for @welcomeOpenSourceFeature1.
-  ///
-  /// In zh, this message translates to:
-  /// **'活跃的开发者社群，持续改进'**
-  String get welcomeOpenSourceFeature1;
-
-  /// No description provided for @welcomeViewGitHub.
-  ///
-  /// In zh, this message translates to:
-  /// **'访问 GitHub 仓库'**
-  String get welcomeViewGitHub;
 
   /// No description provided for @welcomeCloudSyncTitle.
   ///
@@ -8532,7 +8382,7 @@ abstract class AppLocalizations {
   /// No description provided for @autoBillingScreenTextPermissionContent.
   ///
   /// In zh, this message translates to:
-  /// **'详情页自动记账需要系统「无障碍」授权。仅读取支付宝/抖音/京东/微信页面文字(含金额、商户),用于自动记账;文字不入日志、不存储,处理完即删。'**
+  /// **'详情页自动记账需要系统「无障碍」授权。仅读取支付宝/抖音/京东/微信页面文字(含金额、商户),用于自动记账;文字不入日志,会保存并上传到你自己的服务端。'**
   String get autoBillingScreenTextPermissionContent;
 
   /// No description provided for @autoBillingHealthIssueScreenshot.
@@ -8934,7 +8784,7 @@ abstract class AppLocalizations {
   /// No description provided for @autoBookDetailEvidenceCleared.
   ///
   /// In zh, this message translates to:
-  /// **'原始证据已按留存策略清理或未留存'**
+  /// **'原始证据未留存'**
   String get autoBookDetailEvidenceCleared;
 
   /// No description provided for @autoBookDetailItems.
@@ -9116,18 +8966,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'匹配度'**
   String get pendingConfirmationMatchScoreLabel;
-
-  /// No description provided for @autoDeleteScreenshotTitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'记账成功自动删截图'**
-  String get autoDeleteScreenshotTitle;
-
-  /// No description provided for @autoDeleteScreenshotDesc.
-  ///
-  /// In zh, this message translates to:
-  /// **'截图被识别为账单并成功入账后,自动从相册删除;非账单、失败或进入「待确认」时保留'**
-  String get autoDeleteScreenshotDesc;
 
   /// No description provided for @screenshotSourceFilterTitle.
   ///
@@ -9894,7 +9732,7 @@ abstract class AppLocalizations {
   /// No description provided for @aboutDeveloperStory.
   ///
   /// In zh, this message translates to:
-  /// **'从 2015 年实习起，我坚持记账至今已超过十年。因为担心记账软件的广告、付费、隐私泄露和停运跑路，我决定自己做一个——最初只是给自己和家人用的小工具。\n\n2025 年 9 月，智记发布了第一个版本。说实话，那时候心里没什么底，不知道会不会有人用。但慢慢地，开始收到用户的反馈——有人说终于找到了一款干净的记账软件，有人提了很好的建议，也有人默默给了五星好评。每一条反馈都让我觉得，这件事值得继续做下去。\n\n智记没有广告、没有会员、完全免费开源。你的每一笔数据都只存在你自己的手机里，不会被上传到任何第三方服务器。但上架和维护一款 App 并非零成本——开发者账号、服务器等开支目前靠社区捐赠勉强支撑，每一次适配新系统、修复 Bug、开发新功能，也都是工作之余一点点完成的。\n\n如果你觉得智记对你有帮助，一个好评、一次分享或一笔捐赠，都能让这个小项目走得更远。谢谢你的信任。'**
+  /// **'从 2015 年实习起，我坚持记账至今已超过十年。因为担心记账软件的广告、付费、隐私泄露和停运跑路，我决定自己做一个——最初只是给自己和家人用的小工具。\n\n2025 年 9 月，智记发布了第一个版本。说实话，那时候心里没什么底，不知道会不会有人用。但慢慢地，开始收到用户的反馈——有人说终于找到了一款干净的记账软件，有人提了很好的建议，也有人默默给了五星好评。每一条反馈都让我觉得，这件事值得继续做下去。\n\n智记没有广告、没有会员、完全免费开源。数据默认保存在你自己的服务端,方便多设备同步与管理。但上架和维护一款 App 并非零成本——开发者账号、服务器等开支目前靠社区捐赠勉强支撑,每一次适配新系统、修复 Bug、开发新功能,也都是工作之余一点点完成的。\n\n如果你觉得智记对你有帮助，一个好评、一次分享或一笔捐赠，都能让这个小项目走得更远。谢谢你的信任。'**
   String get aboutDeveloperStory;
 
   /// No description provided for @aboutRelatedProducts.

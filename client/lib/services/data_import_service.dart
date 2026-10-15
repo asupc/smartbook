@@ -986,9 +986,6 @@ class DataImportService {
               captureIntent: AutoBookCaptureIntent.importData,
               ledgerId: ledgerId,
               capturedAt: capturedAt,
-              // A2:证据有效期 30 天(capturedAt 起算),到期由 cleanupExpired
-              // 清理 —— 大批量导入也会撑爆事件表,同样需要 30 天出口。
-              expiresAt: AutoBookInput.defaultExpiresAt(capturedAt),
               sourceOccurredAt: tx.happenedAt,
               sourceChannel: tx.provider ?? provider,
               externalId: tx.externalId,

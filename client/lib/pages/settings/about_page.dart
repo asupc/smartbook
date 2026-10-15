@@ -17,7 +17,6 @@ import '../../utils/ui_scale_extensions.dart';
 import '../../utils/website_urls.dart';
 import 'help_center_page.dart';
 import 'log_center_page.dart';
-import 'privacy_policy_page.dart';
 
 /// 是否为 Google Play 版本（通过 CI 构建时 --dart-define=GOOGLE_PLAY=true 注入）
 const _isGooglePlayBuild =
@@ -322,7 +321,7 @@ class _AboutPageState extends ConsumerState<AboutPage> {
                       ],
                     ),
                   ),
-                  // ===== 底部:更新日志 · 隐私政策 文字链接 + 备案号 =====
+                  // ===== 底部:更新日志文字链接 + 备案号 =====
                   SizedBox(height: 24.0.scaled(context, ref)),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -343,28 +342,6 @@ class _AboutPageState extends ConsumerState<AboutPage> {
                                 ),
                               ),
                             ),
-                          );
-                        },
-                      ),
-                      Padding(
-                        padding: EdgeInsets.symmetric(
-                            horizontal: 10.0.scaled(context, ref)),
-                        child: Text(
-                          '·',
-                          style:
-                              Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: BeeTokens.textTertiary(context),
-                                  ),
-                        ),
-                      ),
-                      _footerLink(
-                        context,
-                        label: l10n.aboutPrivacyPolicy,
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (_) => const PrivacyPolicyPage()),
                           );
                         },
                       ),

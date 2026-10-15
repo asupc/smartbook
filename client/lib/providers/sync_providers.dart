@@ -29,7 +29,6 @@ import 'voice_billing_providers.dart';
 import '../services/attachment_service.dart' show attachmentListRefreshProvider;
 import '../services/system/logger_service.dart';
 import '../services/privacy/raw_evidence_sync_service.dart';
-import '../services/privacy/raw_evidence_remote_store.dart';
 import '../services/privacy/smartbook_raw_evidence_uploader.dart';
 import '../services/platform/notify_monitor_service.dart';
 import '../services/platform/screen_text_monitor_service.dart';
@@ -665,12 +664,6 @@ final smartbookCloudProviderInstance =
     logger.error('CloudSync', 'SmartBookCloudProvider 初始化失败', e, st);
   }
   return null;
-});
-
-final rawEvidenceRemoteStoreProvider =
-    FutureProvider<RawEvidenceRemoteStore?>((ref) async {
-  final cloud = await ref.watch(smartbookCloudProviderInstance.future);
-  return cloud == null ? null : SmartBookRawEvidenceRemoteStore(cloud);
 });
 
 /// Eagerly watched by BeeApp. Evidence recovery must not depend on a normal

@@ -269,8 +269,6 @@ class AppLinkService {
           source: AutoBookSource.screenshot,
           captureIntent: AutoBookCaptureIntent.userInitiated,
           capturedAt: capturedAt,
-          // A2:证据有效期 30 天(capturedAt 起算),到期由 cleanupExpired 清理。
-          expiresAt: AutoBookInput.defaultExpiresAt(capturedAt),
           contentHash: eventKey.startsWith('image:v1:')
               ? eventKey.substring('image:v1:'.length)
               : null,
@@ -498,8 +496,6 @@ class AppLinkService {
           captureIntent: AutoBookCaptureIntent.userInitiated,
           ledgerId: ledgerId,
           capturedAt: capturedAt,
-          // A2:证据有效期 30 天(capturedAt 起算),到期由 cleanupExpired 清理。
-          expiresAt: AutoBookInput.defaultExpiresAt(capturedAt),
           externalId: txParams.idempotencyKey,
         ),
         action: () async {
@@ -615,8 +611,6 @@ class AppLinkService {
             source: AutoBookSource.deepLinkText,
             captureIntent: AutoBookCaptureIntent.automatic,
             capturedAt: capturedAt,
-            // A2:证据有效期 30 天(capturedAt 起算),到期由 cleanupExpired 清理。
-            expiresAt: AutoBookInput.defaultExpiresAt(capturedAt),
             externalId: params['idempotency_key'] ?? params['event_id'],
             rawText: text,
             rawMetadata: {'source': 'deeplink'},

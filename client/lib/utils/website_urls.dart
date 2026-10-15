@@ -74,10 +74,4 @@ class WebsiteUrls {
           {required bool dark, required String primaryHex}) =>
       '$baseUrl${_langPrefix(locale)}/docs/changelog'
       '?embed=1&theme=${dark ? 'dark' : 'light'}&primary=$primaryHex';
-
-  /// 隐私政策 — App 内嵌(embed)模式(隐藏 navbar/footer 外链,跟随暗黑与主题色)。
-  static String privacy(Locale? locale,
-          {required bool dark, required String primaryHex}) =>
-      '$baseUrl${_langPrefix(locale)}/privacy'
-      '?embed=1&theme=${dark ? 'dark' : 'light'}&primary=$primaryHex';
 }

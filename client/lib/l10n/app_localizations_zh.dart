@@ -7,18 +7,6 @@ class AppLocalizationsZh extends AppLocalizations {
   AppLocalizationsZh([String locale = 'zh']) : super(locale);
 
   @override
-  String get aiConsentTitle => '开启 AI 功能前,请知悉';
-
-  @override
-  String get aiConsentBody => 'AI 功能需将相关数据发送给你所配置的第三方 AI 服务商进行处理:\n\n• 发送给谁:默认「智谱 GLM」(open.bigmodel.cn,由智谱华章运营);若你自行配置了其它第三方 AI 服务商,则发送给你填写的服务商。\n• 发送什么:你主动用于识别/对话的内容 —— 账单图片、语音录音、你输入的文字,以及为完成识别/分析所需的分类名称、账户名称和相关交易记录。\n• 用途:仅用于账单识别、记账与你发起的对话分析;智记自身不收集、不存储这些数据。\n\n数据由该第三方服务商按其隐私政策处理。开启即表示你同意上述数据共享。';
-
-  @override
-  String get aiConsentAgree => '同意并开启';
-
-  @override
-  String get aboutPrivacyPolicy => '隐私政策';
-
-  @override
   String get aboutChangelog => '更新日志';
 
   @override
@@ -574,18 +562,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get splashSlogan => '一笔一蜜';
-
-  @override
-  String get splashSecurityTitle => '开源数据安全';
-
-  @override
-  String get splashSecurityFeature1 => '• 数据本地存储，隐私完全自控';
-
-  @override
-  String get splashSecurityFeature2 => '• 开源代码透明，安全值得信赖';
-
-  @override
-  String get splashSecurityFeature3 => '• 可选云端同步，多设备数据一致';
 
   @override
   String get splashInitializing => '正在初始化数据...';
@@ -2726,47 +2702,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get exportJsonButton => 'JSON 结构化导出(备份)';
 
   @override
-  String get privacyPanelTitle => '隐私面板';
-
-  @override
-  String get privacyPanelDesc => '原文数据保留策略与一键清理';
-
-  @override
-  String get privacyStatsAttachments => '截图/图片原文';
-
-  @override
-  String privacyStatsAttachmentsDesc(Object count, Object size) {
-    return '$count 个文件,占用 $size';
-  }
-
-  @override
-  String privacyStatsPending(Object count) {
-    return '待确认候选:$count 项';
-  }
-
-  @override
-  String get privacyNoOriginalForSmsNotifyTitle => '短信/通知原文不落盘';
-
-  @override
-  String get privacyNoOriginalForSmsNotifyDesc => '短信与支付通知原文在 AI 解析后即丢弃,不持久化(设计保证);仅保留解析出的结构化交易。';
-
-  @override
-  String get privacyClearAttachments => '一键清除截图/图片原文';
-
-  @override
-  String get privacyClearAttachmentsConfirmTitle => '确认清除原文?';
-
-  @override
-  String privacyClearAttachmentsConfirmBody(Object count) {
-    return '将删除 $count 个截图/图片原文文件,不影响交易记录与统计。建议先导出备份。';
-  }
-
-  @override
-  String privacyCleared(Object count) {
-    return '已清除 $count 个原文文件(交易数据保留)';
-  }
-
-  @override
   String exportSavedTo(String path) {
     return '已保存到：$path';
   }
@@ -3990,34 +3925,16 @@ class AppLocalizationsZh extends AppLocalizations {
   String get accountRestoredToast => '已恢复';
 
   @override
-  String get privacyOpenSourceUrlError => '无法打开链接';
-
-  @override
   String get welcomeTitle => '欢迎使用智记';
 
   @override
-  String get welcomeDescription => '一个真正尊重您隐私的记账应用';
+  String get welcomeDescription => '自动记账,省心省力';
 
   @override
   String get welcomeCurrencyDescription => '选择您常用的货币，之后可以随时在设置中更改';
 
   @override
   String get welcomeCreateDefaultLedger => '创建默认账本';
-
-  @override
-  String get welcomePrivacyTitle => '开源透明 · 社群驱动';
-
-  @override
-  String get welcomePrivacyFeature1 => '100% 开源代码，接受社区监督';
-
-  @override
-  String get welcomePrivacyFeature2 => '无隐私顾虑，数据完全本地存储';
-
-  @override
-  String get welcomeOpenSourceFeature1 => '活跃的开发者社群，持续改进';
-
-  @override
-  String get welcomeViewGitHub => '访问 GitHub 仓库';
 
   @override
   String get welcomeCloudSyncTitle => '可选的云同步';
@@ -4453,7 +4370,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get autoBillingScreenTextPermissionTitle => '开启「无障碍服务」';
 
   @override
-  String get autoBillingScreenTextPermissionContent => '详情页自动记账需要系统「无障碍」授权。仅读取支付宝/抖音/京东/微信页面文字(含金额、商户),用于自动记账;文字不入日志、不存储,处理完即删。';
+  String get autoBillingScreenTextPermissionContent => '详情页自动记账需要系统「无障碍」授权。仅读取支付宝/抖音/京东/微信页面文字(含金额、商户),用于自动记账;文字不入日志,会保存并上传到你自己的服务端。';
 
   @override
   String get autoBillingHealthIssueScreenshot => '截图监听';
@@ -4656,7 +4573,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get autoBookDetailEvidence => '原始证据';
 
   @override
-  String get autoBookDetailEvidenceCleared => '原始证据已按留存策略清理或未留存';
+  String get autoBookDetailEvidenceCleared => '原始证据未留存';
 
   @override
   String get autoBookDetailItems => '解析子项';
@@ -4757,12 +4674,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get pendingConfirmationMatchScoreLabel => '匹配度';
-
-  @override
-  String get autoDeleteScreenshotTitle => '记账成功自动删截图';
-
-  @override
-  String get autoDeleteScreenshotDesc => '截图被识别为账单并成功入账后,自动从相册删除;非账单、失败或进入「待确认」时保留';
 
   @override
   String get screenshotSourceFilterTitle => '仅消费类App截图记账';
@@ -5174,7 +5085,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aboutDeveloperStoryTitle => '开发者的话';
 
   @override
-  String get aboutDeveloperStory => '从 2015 年实习起，我坚持记账至今已超过十年。因为担心记账软件的广告、付费、隐私泄露和停运跑路，我决定自己做一个——最初只是给自己和家人用的小工具。\n\n2025 年 9 月，智记发布了第一个版本。说实话，那时候心里没什么底，不知道会不会有人用。但慢慢地，开始收到用户的反馈——有人说终于找到了一款干净的记账软件，有人提了很好的建议，也有人默默给了五星好评。每一条反馈都让我觉得，这件事值得继续做下去。\n\n智记没有广告、没有会员、完全免费开源。你的每一笔数据都只存在你自己的手机里，不会被上传到任何第三方服务器。但上架和维护一款 App 并非零成本——开发者账号、服务器等开支目前靠社区捐赠勉强支撑，每一次适配新系统、修复 Bug、开发新功能，也都是工作之余一点点完成的。\n\n如果你觉得智记对你有帮助，一个好评、一次分享或一笔捐赠，都能让这个小项目走得更远。谢谢你的信任。';
+  String get aboutDeveloperStory => '从 2015 年实习起，我坚持记账至今已超过十年。因为担心记账软件的广告、付费、隐私泄露和停运跑路，我决定自己做一个——最初只是给自己和家人用的小工具。\n\n2025 年 9 月，智记发布了第一个版本。说实话，那时候心里没什么底，不知道会不会有人用。但慢慢地，开始收到用户的反馈——有人说终于找到了一款干净的记账软件，有人提了很好的建议，也有人默默给了五星好评。每一条反馈都让我觉得，这件事值得继续做下去。\n\n智记没有广告、没有会员、完全免费开源。数据默认保存在你自己的服务端,方便多设备同步与管理。但上架和维护一款 App 并非零成本——开发者账号、服务器等开支目前靠社区捐赠勉强支撑,每一次适配新系统、修复 Bug、开发新功能,也都是工作之余一点点完成的。\n\n如果你觉得智记对你有帮助，一个好评、一次分享或一笔捐赠，都能让这个小项目走得更远。谢谢你的信任。';
 
   @override
   String get aboutRelatedProducts => '更多产品';

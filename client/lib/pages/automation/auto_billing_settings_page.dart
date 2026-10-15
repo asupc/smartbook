@@ -53,7 +53,6 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
   late final NotifyMonitorService _notifyMonitor;
   late final ScreenTextMonitorService _screenTextMonitor;
   bool _isMonitorEnabled = false;
-  bool _autoDeleteScreenshotEnabled = false;
   bool _sourceFilterEnabled = true;
   bool _isUsageAccessGranted = false;
   bool _isSmsMonitorEnabled = false;
@@ -107,8 +106,6 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
 
   Future<void> _loadMonitorStatus() async {
     final enabled = await _screenshotMonitor.isEnabled();
-    _autoDeleteScreenshotEnabled =
-        await _screenshotMonitor.isAutoDeleteEnabled();
     final sourceFilterEnabled = await _screenshotMonitor.isSourceFilterEnabled();
     final usageAccessGranted = await _screenshotMonitor.isUsageAccessGranted();
     final smsEnabled = await _smsMonitor.isEnabled();
@@ -330,26 +327,6 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
     }
   }
 
-  /// 「记账成功自动删截图」:仅持久化开关,无系统权限要求;
-  /// 实际删除发生在截图处理成功之后(screenshot_monitor_service)。
-  Future<void> _toggleAutoDeleteScreenshot(bool value) async {
-    final l10n = AppLocalizations.of(context);
-    try {
-      await _screenshotMonitor.setAutoDeleteEnabled(value);
-      if (mounted) {
-        setState(() {
-          _autoDeleteScreenshotEnabled = value;
-        });
-        showToast(context, value ? l10n.enableSuccess : l10n.disableSuccess);
-      }
-    } catch (e) {
-      if (mounted) {
-        showToast(context, '${l10n.enableFailed}: $e',
-            duration: const Duration(seconds: 3));
-      }
-    }
-  }
-
   /// 「仅消费类 App 截图自动记账」:开关持久化在原生侧(判定也在原生入队前
   /// 完成);开启时若无任何来源 App 数据源(无障碍 + 使用情况访问都没开),
   /// 截图会被全部拦截 —— 引导去授权「使用情况访问」。
@@ -556,20 +533,6 @@ class _AndroidAutoBillingPageState extends ConsumerState<AndroidAutoBillingPage>
                   subtitle: _isMonitorEnabled ? l10n.enabled : l10n.disabled,
                   value: _isMonitorEnabled,
                   onChanged: _isLoading ? null : _toggleMonitor,
-                ),
-
-                const SizedBox(height: 16),
-
-                // 记账成功自动删截图(「自动记账」的附属设置)
-                _buildSwitchCard(
-                  context,
-                  primaryColor,
-                  l10n,
-                  icon: Icons.delete_outline,
-                  title: l10n.autoDeleteScreenshotTitle,
-                  subtitle: l10n.autoDeleteScreenshotDesc,
-                  value: _autoDeleteScreenshotEnabled,
-                  onChanged: _isLoading ? null : _toggleAutoDeleteScreenshot,
                 ),
 
                 const SizedBox(height: 16),

@@ -1,13 +1,11 @@
 /// 对抗性测试 1/4:AutoBookEventStore 生命周期(ensure / claim 租约 / mark /
-/// TTL / cleanupExpired / backfill / listHistory / 子项聚合)。
+/// pending TTL / cleanupExpired / listHistory / 子项聚合)。
 ///
 /// 纪律:
 /// - 确认缺陷 → 测试保持激活并失败,注释 `// ADVERSE FINDING: <标题>`;
 /// - 可辩护但脆弱 → 断言当前行为并通过,注释 `// HARDENING: <说明>`;
 /// - 时间一律相对 `DateTime.now()` 构造,禁止固定日期(防 TTL 腐烂)。
 library;
-
-import 'dart:convert';
 
 import 'package:drift/drift.dart' as d;
 import 'package:drift/native.dart';
@@ -41,7 +39,6 @@ void main() {
     DateTime? capturedAt,
     String? rawText,
     Map<String, dynamic>? rawMetadata,
-    DateTime? expiresAt,
     int? ledgerId,
     String? sourceChannel,
   }) =>
@@ -51,7 +48,6 @@ void main() {
         capturedAt: capturedAt ?? DateTime.now(),
         rawText: rawText,
         rawMetadata: rawMetadata,
-        expiresAt: expiresAt,
         ledgerId: ledgerId,
         sourceChannel: sourceChannel,
       );
@@ -62,8 +58,6 @@ void main() {
     String? state,
     DateTime? updatedAt,
     DateTime? nextRetryAt,
-    DateTime? expiresAt,
-    DateTime? rawEvidenceServerExpiresAt,
     String? rawEvidenceUploadState,
     bool? rawEvidenceServerEnabled,
   }) {
@@ -74,10 +68,6 @@ void main() {
           updatedAt == null ? const d.Value.absent() : d.Value(updatedAt),
       nextRetryAt:
           nextRetryAt == null ? const d.Value.absent() : d.Value(nextRetryAt),
-      expiresAt: expiresAt == null ? const d.Value.absent() : d.Value(expiresAt),
-      rawEvidenceServerExpiresAt: rawEvidenceServerExpiresAt == null
-          ? const d.Value.absent()
-          : d.Value(rawEvidenceServerExpiresAt),
       rawEvidenceUploadState: rawEvidenceUploadState == null
           ? const d.Value.absent()
           : d.Value(rawEvidenceUploadState),
@@ -210,56 +200,38 @@ void main() {
       expect(emoji.eventKey, 'emoji😀:v1');
     });
 
-    test('HARDENING: 未传 expiresAt → capturedAt + 30d 兜底', () async {
+    test('HARDENING: expiresAt 恒 null,事件永久保留', () async {
       final captured = DateTime.now().subtract(const Duration(hours: 2));
       final event = await store.ensure(input('ensure:ttl', capturedAt: captured));
-      expect(event.expiresAt, isNotNull,
-          reason: 'A2:cleanupExpired 的 DELETE 必须有命中面');
-      // drift 以 epoch 秒存取,capturedAt 的亚秒位落库即丢;差值允许 1s 误差
-      expect(
-        event.expiresAt!.difference(captured).inSeconds,
-        inInclusiveRange(
-          AutoBookInput.evidenceRetention.inSeconds - 1,
-          AutoBookInput.evidenceRetention.inSeconds,
-        ),
-      );
+      expect(event.expiresAt, isNull,
+          reason: '永久保留语义:不再按捕获时刻+30d 落列');
     });
 
-    test('HARDENING: 已存在时二次 ensure 不覆盖生命周期列与已有证据', () async {
+    test('HARDENING: 已存在时二次 ensure 不覆盖生命周期列;无证据行可补附着',
+        () async {
       final first = await store.ensure(input('ensure:idempotent'));
       final second = await store.ensure(input(
         'ensure:idempotent',
-        expiresAt: DateTime.now().add(const Duration(days: 7)),
         rawText: 'late evidence',
       ));
       expect(second.id, first.id);
-      expect(second.expiresAt, first.expiresAt,
-          reason: '二次 ensure 不得改写既有行的证据有效期');
-      // 默认隐私策略不存证据 → late evidence 不落盘
-      expect(second.rawText, isNull);
-      expect(second.rawEvidenceUploadState, RawEvidenceUploadState.notRequested);
+      expect(second.expiresAt, first.expiresAt);
+      // 永久保存语义:首次无证据,二次补附着成功并进上传队列
+      expect(second.rawText, 'late evidence');
+      expect(second.rawEvidenceUploadState, RawEvidenceUploadState.pending);
     });
 
-    test('HARDENING: policy 开启后二次 ensure 可补附着证据;已附着不被覆盖',
-        () async {
-      SharedPreferences.setMockInitialValues({
-        RawEvidencePolicyStore.storageKey: jsonEncode({
-          'default': {
-            'localEnabled': true,
-            'localRetentionDays': 30,
-            'serverEnabled': false,
-            'serverRetentionDays': 30,
-          },
-        }),
-      });
+    test('HARDENING: 二次 ensure 可补附着证据;已附着不被覆盖', () async {
       final first = await store.ensure(input('evidence:attach'));
       expect(first.rawText, isNull, reason: '首次 ensure 无证据');
 
       final attached = await store.ensure(
           input('evidence:attach', rawText: 'first body'));
       expect(attached.rawText, 'first body');
-      expect(attached.rawEvidenceUploadState, RawEvidenceUploadState.notRequested,
-          reason: '只开本地 → 不进上传队列');
+      expect(attached.rawEvidenceLocalEnabled, isTrue);
+      expect(attached.rawEvidenceServerEnabled, isTrue);
+      expect(attached.rawEvidenceUploadState, RawEvidenceUploadState.pending,
+          reason: '有证据 → 进上传队列');
 
       final again = await store.ensure(
           input('evidence:attach', rawText: 'second body'));
@@ -268,16 +240,6 @@ void main() {
     });
 
     test('HARDENING: cleared / expired / uploaded 三个终态跳过证据附着', () async {
-      SharedPreferences.setMockInitialValues({
-        RawEvidencePolicyStore.storageKey: jsonEncode({
-          'default': {
-            'localEnabled': true,
-            'localRetentionDays': 30,
-            'serverEnabled': false,
-            'serverRetentionDays': 30,
-          },
-        }),
-      });
       for (final state in [
         RawEvidenceUploadState.cleared,
         RawEvidenceUploadState.expired,
@@ -297,27 +259,6 @@ void main() {
             reason: '$state 是证据链终态,禁止草稿/重试复活正文');
         expect(after.rawEvidenceUploadState, state);
       }
-    });
-
-    test('HARDENING: policy 在两次 ensure 之间变化时按「变化后」策略执行',
-        () async {
-      final event = await store.ensure(input('evidence:policy-shift'));
-      expect(event.rawText, isNull, reason: '策略关 → 不存');
-      SharedPreferences.setMockInitialValues({
-        RawEvidencePolicyStore.storageKey: jsonEncode({
-          'default': {
-            'localEnabled': true,
-            'localRetentionDays': 30,
-            'serverEnabled': true,
-            'serverRetentionDays': 30,
-          },
-        }),
-      });
-      final after = await store.ensure(
-          input('evidence:policy-shift', rawText: 'now-allowed'));
-      expect(after.rawText, 'now-allowed');
-      expect(after.rawEvidenceUploadState, RawEvidenceUploadState.pending,
-          reason: 'serverEnabled → 进上传队列');
     });
   });
 
@@ -517,32 +458,24 @@ void main() {
       expect(row.nextRetryAt, isNull);
     });
 
-    test('HARDENING: 已 expiresAt 置空的占位行不被二次处理', () async {
+    test('HARDENING: expired 占位行不被二次处理,清理后仍保留', () async {
       final event = await store.ensure(input('ttl:placeholder',
           capturedAt: DateTime.now().subtract(const Duration(days: 40))));
       await store.mark(const AutoBookEventUpdate(state: AutoBookState.pending),
           eventId: event.id);
       expect(await store.expireStalePending(), 1);
       final placeholder = (await store.findById(event.id))!;
-      expect(placeholder.expiresAt, isNull);
+      expect(placeholder.state, 'expired');
 
       await store.cleanupExpired();
       expect(await store.findById(event.id), isNotNull,
           reason: '占位行必须活下来(历史页可见「为什么停下」)');
       expect(await store.expireStalePending(), 0);
-      expect(await store.backfillMissingExpiresAt(), 0,
-          reason: 'state=expired 的占位行禁止被回填 expiresAt');
     });
 
-    // ADVERSE FINDING: cleanupExpired 会把 30 天前的 pending 事件物理删除
-    // (只要它的 expiresAt 还没被 expireStalePending 清空)。C8 承诺
-    // 「pending 超 30 天转 expired 终态,历史页保留为什么停下」,但
-    // cleanupExpired 的两个生产调用点(Coordinator.initialize、
-    // AutoBillingService.retryDueDrafts)都先于 expireStalePending 运行,
-    // 谁先跑决定记录是「占位」还是「消失」。
-    test('ADVERSE: 30 天前的 pending 事件被 cleanupExpired 物理删除,丢失过期占位',
+    test('HARDENING: 30 天前的 pending 事件被 cleanupExpired 转 expired 占位',
         () async {
-      final event = await store.ensure(input('ttl:deleted-by-cleanup',
+      final event = await store.ensure(input('ttl:expired-by-cleanup',
           capturedAt: DateTime.now().subtract(const Duration(days: 31))));
       await store.mark(const AutoBookEventUpdate(state: AutoBookState.pending),
           eventId: event.id);
@@ -554,81 +487,27 @@ void main() {
           reason: '过期 pending 应转 expired 占位(历史页可见 pending_expired),'
               '而不是被 DELETE 抹掉');
       expect(row?.state, 'expired');
+      expect(row?.reason, 'pending_expired');
     });
 
-    test('HARDENING: 同轮 cleanupExpired 先转占位再删除 —— 转占位的行当轮不被删',
-        () async {
-      // 构造「曾有证据、证据留存期已过」的行:两个留存窗口都置为过去,
-      // expiresAt 也置为过去(expiresAt < now 才有 DELETE 命中面)。
-      final event = await store.ensure(input('cleanup:placeholder'));
-      final past = DateTime.now().subtract(const Duration(days: 5));
-      await (db.update(db.autoBookEvents)..where((t) => t.id.equals(event.id)))
-          .write(AutoBookEventsCompanion(
-        rawText: const d.Value('evidence body'),
-        rawEvidenceLocalEnabled: const d.Value(true),
-        rawEvidenceServerEnabled: const d.Value(true),
-        rawEvidenceLocalExpiresAt: d.Value(past),
-        rawEvidenceServerExpiresAt: d.Value(past),
-        rawEvidenceRetentionUntil: d.Value(past),
-        rawEvidenceUploadState: const d.Value(RawEvidenceUploadState.pending),
-        expiresAt: d.Value(past),
-      ));
-
-      final cleared = await store.cleanupExpiredRawEvidence();
-      expect(cleared, 1, reason: '两个窗口都过期 → 清证据');
+    test('HARDENING: cleanupExpired 只做 pending TTL,不删事件行与证据', () async {
+      final event = await store.ensure(
+          input('cleanup:keep', rawText: 'evidence body'));
+      final old = await store.ensure(input('cleanup:old',
+          capturedAt: DateTime.now().subtract(const Duration(days: 400))));
 
       await store.cleanupExpired();
-      final row = await store.findById(event.id);
-      expect(row, isNotNull, reason: '占位行不得被同轮 DELETE 吃掉');
-      expect(row!.state, 'expired');
-      expect(row.reason, 'expired_evidence_cleared');
-      expect(row.expiresAt, isNull);
-      expect(row.rawText, isNull);
+
+      final row = (await store.findById(event.id))!;
+      expect(row.rawText, 'evidence body',
+          reason: '永久保留:清理不再碰原文');
+      expect(row.rawEvidenceUploadState, RawEvidenceUploadState.pending);
+      expect(await store.findById(old.id), isNotNull,
+          reason: '永久保留:陈年事件行也不删除');
 
       // 第二轮幂等
       await store.cleanupExpired();
-      expect((await store.findById(event.id))!.state, 'expired');
-    });
-
-    test('HARDENING: cleanupExpired 对无证据行按 expiresAt 精确边界删除', () async {
-      final event = await store.ensure(input('cleanup:exact'));
-      // expiresAt == now(秒级相等)→ 不删
-      await (db.update(db.autoBookEvents)..where((t) => t.id.equals(event.id)))
-          .write(AutoBookEventsCompanion(
-        expiresAt: d.Value(DateTime.now()),
-      ));
-      await store.cleanupExpired();
-      expect(await store.findById(event.id), isNotNull,
-          reason: 'isSmallerThanValue 严格小于,相等不删');
-
-      // expiresAt 秒级早于 now → 删(永不超期的行不该存在,这是清理出口)
-      await forceRow(event.id,
-          expiresAt: DateTime.now().subtract(const Duration(seconds: 3)));
-      await store.cleanupExpired();
-      expect(await store.findById(event.id), isNull);
-    });
-
-    test('HARDENING: backfillMissingExpiresAt 幂等,只补 NULL 且跳过 expired 占位',
-        () async {
-      final event = await store.ensure(input('backfill:one'));
-      await forceRow(event.id, expiresAt: DateTime.now());
-      final nulled = await (db.update(db.autoBookEvents)
-            ..where((t) => t.id.equals(event.id)))
-          .write(const AutoBookEventsCompanion(expiresAt: d.Value(null)));
-      expect(nulled, 1, reason: '前置:列已置 NULL');
-
-      expect(await store.backfillMissingExpiresAt(), 1);
-      expect(await store.backfillMissingExpiresAt(), 0, reason: '第二轮幂等');
-      final row = (await store.findById(event.id))!;
-      expect(row.expiresAt, row.capturedAt.add(AutoBookInput.evidenceRetention));
-
-      // expired 占位行:NULL 也不补
-      final placeholder = await store.ensure(input('backfill:placeholder'));
-      await forceRow(placeholder.id, state: 'expired', expiresAt: DateTime.now());
-      await (db.update(db.autoBookEvents)
-            ..where((t) => t.id.equals(placeholder.id)))
-          .write(const AutoBookEventsCompanion(expiresAt: d.Value(null)));
-      expect(await store.backfillMissingExpiresAt(), 0);
+      expect((await store.findById(event.id))!.rawText, 'evidence body');
     });
   });
 

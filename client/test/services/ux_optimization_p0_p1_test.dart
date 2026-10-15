@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:drift/drift.dart' as d;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -22,7 +21,7 @@ import 'package:smartbook/services/billing/pending_candidate.dart';
 /// - 自动入账总闸(requireConfirmationForAll)分流
 /// - 判重豁免表命中/清除 + 匹配器跳过豁免对
 /// - 徽标计数与确认页同口径(loadForReview)
-/// - cleanupExpired 保留「证据已清理」占位
+/// - cleanupExpired 永久保留事件与证据,过期 pending 转占位
 class _FixedEngine implements AiExtractionEngine {
   final List<BillInfo> bills;
 
@@ -410,44 +409,45 @@ void main() {
     });
   });
 
-  group('P1-2 cleanupExpired 占位', () {
-    test('曾有证据被清理的过期事件保留占位;从未有证据的照旧删除', () async {
+  group('P1-2 cleanupExpired 永久保留', () {
+    test('清理不再删除事件行与证据;只有过期 pending 才转占位', () async {
       final eventStore = AutoBookEventStore(db);
       final past = DateTime.now().subtract(const Duration(days: 1));
 
-      // 曾有证据:留存策略清理后 rawEvidenceUploadState = 'expired'
       final hadEvidence = await eventStore.ensure(AutoBookInput(
         eventKey: 'exp:v1:had-evidence',
         source: AutoBookSource.sms,
         ledgerId: ledgerId,
         capturedAt: past,
-        expiresAt: past,
+        rawText: '消费 20.00 元',
       ));
-      await (db.update(db.autoBookEvents)
-            ..where((t) => t.id.equals(hadEvidence.id)))
-          .write(const AutoBookEventsCompanion(
-        rawEvidenceUploadState: d.Value('expired'),
-      ));
-
-      // 从未有证据:not_requested,照旧删行
       await eventStore.ensure(AutoBookInput(
         eventKey: 'exp:v1:no-evidence',
         source: AutoBookSource.sms,
         ledgerId: ledgerId,
         capturedAt: past,
-        expiresAt: past,
       ));
+      final stalePending = await eventStore.ensure(AutoBookInput(
+        eventKey: 'exp:v1:stale-pending',
+        source: AutoBookSource.sms,
+        ledgerId: ledgerId,
+        capturedAt: DateTime.now().subtract(const Duration(days: 31)),
+      ));
+      await eventStore.mark(
+        const AutoBookEventUpdate(state: AutoBookState.pending),
+        eventId: stalePending.id,
+      );
 
       await eventStore.cleanupExpired();
 
       final kept = await eventStore.findById(hadEvidence.id);
       expect(kept, isNotNull, reason: '历史不再凭空消失');
-      expect(kept!.state, 'expired');
-      expect(kept.reason, 'expired_evidence_cleared');
-      expect(kept.expiresAt, isNull, reason: '不再被下一轮清理删除');
-
-      final deleted = await eventStore.findByEventKey('exp:v1:no-evidence');
-      expect(deleted, isNull);
+      expect(kept!.rawText, '消费 20.00 元', reason: '清理不再碰原文');
+      expect(await eventStore.findByEventKey('exp:v1:no-evidence'), isNotNull,
+          reason: '无证据行也不再删除');
+      final placeholder = await eventStore.findById(stalePending.id);
+      expect(placeholder!.state, 'expired');
+      expect(placeholder.reason, 'pending_expired');
     });
   });
 }

@@ -419,8 +419,6 @@ class RecurringTransactionService {
         captureIntent: AutoBookCaptureIntent.recurring,
         ledgerId: recurring.ledgerId,
         capturedAt: capturedAt,
-        // A2:证据有效期 30 天(capturedAt 起算),到期由 cleanupExpired 清理。
-        expiresAt: AutoBookInput.defaultExpiresAt(capturedAt),
         sourceOccurredAt: nextDate,
         sourceChannel: 'recurring:${recurring.id}',
         externalId: occurrenceKey,

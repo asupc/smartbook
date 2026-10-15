@@ -28,5 +28,5 @@
 
     <!-- 账单详情页自动记账(无障碍服务):系统「无障碍」设置中的服务说明 -->
     <string name="accessibility_service_label">Smart 智记</string>
-    <string name="accessibility_service_description">监听账单/订单详情页文字,自动识别并记账。仅在用户主动使用相关功能时读取当前屏幕文字,不存储、不上传;关闭服务即停止一切读取。</string>
+    <string name="accessibility_service_description">监听账单/订单详情页文字,自动识别并记账。读取到的页面文字会保存并上传到你自己的服务端用于记账;关闭服务即停止一切读取。</string>
 </resources>
