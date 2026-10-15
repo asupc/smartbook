@@ -45,6 +45,12 @@ abstract class CloudAuthService {
   /// Returns null if not authenticated.
   Future<CloudUser?> get currentUser;
 
+  /// 当前登录用户的稳定 id(同步、零网络):只读已加载的本地会话,
+  /// 不触发 token 刷新 / 静默重登。供「只做展示/比较,不需要最新凭证」的
+  /// 调用方使用 —— 状态卡等 UI 链路走 [currentUser] 会被 auth 网络请求
+  /// (服务器不可达时一串 30s deadline)拖住。会话未加载/未登录返回 null。
+  String? get currentUserId => null;
+
   /// Sign in with email and password
   ///
   /// Throws [CloudAuthException] if sign in fails.
@@ -82,6 +88,9 @@ abstract class CloudAuthService {
 class NoopAuthService implements CloudAuthService {
   @override
   Stream<CloudUser?> get authStateChanges => Stream.value(null);
+
+  @override
+  String? get currentUserId => null;
 
   @override
   Future<CloudUser?> get currentUser async => null;

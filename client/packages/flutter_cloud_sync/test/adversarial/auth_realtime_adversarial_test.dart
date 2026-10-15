@@ -474,12 +474,13 @@ void main() {
       expect(stillStored, isNotNull, reason: '离线 refresh 失败不应清 session');
     });
 
-    test('HARDENING: initialize() 在离线 refresh 失败时不发任何 authState 事件', () async {
-      // HARDENING: initialize 走 refresh 失败分支时既不 emit user 也不 emit null
-      // (lib/src/providers/smartbook_cloud_provider.dart:1231-1241 —— 只有成功
-      // 或清 session 才 emit),依赖 authStateChanges 的 UI 会永远停在
-      // "未知"状态,等不到首帧。App 侧用 currentUser 主动探测,影响有限,
-      // 但流语义有缺口(消费方无法区分"未初始化"与"未登录")。
+    test('HARDENING: initialize() 离线时立即发出缓存用户(refresh 挪后台)', () async {
+      // 2026-10-13 契约更新:initialize 旧实现在离线 refresh 失败分支既不 emit
+      // user 也不 emit null,依赖 authStateChanges 的 UI 永远停在"未知"状态
+      // —— 旧测试记录过这个流语义缺口(消费方无法区分"未初始化"与"未登录")。
+      // 现在 initialize 只做本地会话加载:session 先行可见(立即 emit 缓存
+      // 用户),过期刷新挪到后台不阻塞初始化(服务器不可达时曾是每请求 30s
+      // deadline 的死等,实测把 authServiceProvider.future 整条链拖 178s)。
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(
           sessionPrefsKey('https://h.test', '/api/v1'),
@@ -504,8 +505,9 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 20));
       await sub.cancel();
       auth.dispose();
-      // 记录当前行为:0 个事件(流"沉默")
-      expect(events, isEmpty);
+      // 新契约:立即发出缓存用户;离线 refresh 失败不清 session(不 emit null)。
+      expect(events, hasLength(1));
+      expect(events.single?.id, 'u1');
     });
 
     test('HARDENING: 损坏的持久化 session 被静默清除', () async {

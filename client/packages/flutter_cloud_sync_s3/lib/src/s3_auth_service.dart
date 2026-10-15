@@ -72,6 +72,10 @@ class S3AuthService implements CloudAuthService {
     return getCurrentUser();
   }
 
+  /// [CloudAuthService.currentUserId]:S3 按 Access Key 派生,纯本地零网络。
+  @override
+  String? get currentUserId => 's3-${client.accessKey}';
+
   @override
   Future<CloudUser> signInWithEmail({
     required String email,

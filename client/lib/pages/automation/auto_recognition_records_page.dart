@@ -36,7 +36,14 @@ class _AutoRecognitionRecordsPageState
     'drain_permanentFailure': '处理失败(终态)',
     'drain_noAiConfigured': 'AI 未配置',
     'drain_deferred': 'AI 未就绪,待重试',
+    // L1(2026-10-14):单条处理被限时截断(挂起点在目标解析/AI/落库之一),
+    // 未 ACK 留队,由下轮 drain 或周期兜底重试
+    'drain_timeout': '处理超时,留队重试',
     'drain_skipped': '事件去重跳过',
+    // 目标不可写分支(不调 AI、不 ACK):此前该分支不记任何决策,识别记录页
+    // 只剩原生「已捕获入队」,用户看不到自动入账为何停摆。
+    'target_invalid': '记账目标失效,已暂停写入',
+    'target_undetermined': '记账目标待确定',
     'skipped_disabled': '监听开关未开启',
     'too_short': '页面文本过短',
     'rejected': '命中垃圾词',
@@ -293,9 +300,13 @@ class _AutoRecognitionRecordsPageState
       case 'drain_pending':
       case 'drain_deferred':
       case 'drain_failed':
+      case 'drain_timeout':
         return Colors.orange;
       case 'drain_permanentFailure':
       case 'drain_noAiConfigured':
+      // 目标不可写 = 自动入账已停摆,与「AI 未配置」同级(须用户处理)。
+      case 'target_invalid':
+      case 'target_undetermined':
         return theme.colorScheme.error;
       case 'drain_duplicate':
       case 'duplicate':

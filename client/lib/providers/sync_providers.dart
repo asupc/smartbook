@@ -184,7 +184,11 @@ final authServiceProvider = FutureProvider<CloudAuthService>((ref) async {
 /// Monitor 的首轮 drain 只等待 Runtime 8 秒,避免启动期无限占链。如果云服务
 /// 初始化慢于这个窗口,这里在 Relay 注入成功的同一个状态变化点补调度;未启用
 /// 的 monitor 会在 drain 开头直接返回,不会触发平台调用。
-void _scheduleNativeAutoBookDrains(ProviderContainer container) {
+///
+/// 2026-10-14 公开:即时链(桥接广播)之外的补偿触发点(回前台/周期兜底,
+/// 见 BeeApp 生命周期)也复用本函数 —— 广播是 fire-and-forget,任一环静默
+/// 丢失时原生队列项只能等下次冷启动,「已捕获入队」停滞正是这么形成的。
+void scheduleNativeAutoBookDrains(ProviderContainer container) {
   if (!Platform.isAndroid) return;
   try {
     final drains = <Future<void>>[
@@ -405,7 +409,7 @@ final syncServiceProvider = Provider<SyncService>((ref) {
       runtime.markReady();
       // Runtime 晚于启动 drain 变 ready 时,主动补跑四路原生队列。否则首轮
       // awaitReady 超时后,积压短信/通知要等下次进程重启才有机会恢复。
-      _scheduleNativeAutoBookDrains(ref.container);
+      scheduleNativeAutoBookDrains(ref.container);
       unawaited(AIProviderManager.refreshFromServer());
       // 服务端恢复可达:补发离线识别草稿(自动记账瞬态失败攒下的)
       unawaited(() async {

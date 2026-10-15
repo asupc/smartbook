@@ -871,6 +871,8 @@ class _MockAuth implements CloudAuthService {
   @override
   Stream<CloudUser?> get authStateChanges => Stream.value(p.user);
   @override
+  String? get currentUserId => p.user?.id;
+  @override
   Future<CloudUser?> get currentUser async => p.user;
   @override
   Future<CloudUser> signInWithEmail(

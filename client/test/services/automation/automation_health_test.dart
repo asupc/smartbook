@@ -219,6 +219,41 @@ void main() {
     });
   });
 
+  group('原生状态取值', () {
+    test('latestCaptureAt 跳过 lossSummary 等非 Map 项(回归:状态查询失败)', () {
+      // 2026-10-14 真机故障:原生 getCaptureStats 返回的 map 里混有
+      // lossSummary 字符串,遍历取 ['lastCaptureAt'] 直接抛 TypeError,
+      // 整次状态计算被兜成 unknown,状态卡恒显示「状态查询失败」。
+      final native = <String, dynamic>{
+        'sms': {'queueSize': 1, 'lastCaptureAt': 1000, 'bridgeRegistered': true},
+        'notify': {
+          'queueSize': 0,
+          'lastCaptureAt': 3000,
+          'bridgeRegistered': true
+        },
+        'screenText': {'queueSize': 0, 'bridgeRegistered': false},
+        'screenshot': {'queueSize': 0, 'lastCaptureAt': 0},
+        'lossSummary': '[{"source":"sms","kind":"expired","count":2}]',
+      };
+      expect(
+        NativeCaptureStatus.latestCaptureAt(native),
+        DateTime.fromMillisecondsSinceEpoch(3000),
+      );
+    });
+
+    test('latestCaptureAt 无有效时间/空输入返回 null', () {
+      expect(NativeCaptureStatus.latestCaptureAt(null), isNull);
+      expect(NativeCaptureStatus.latestCaptureAt(const {}), isNull);
+      expect(
+        NativeCaptureStatus.latestCaptureAt(const {
+          'lossSummary': '[]',
+          'sms': {'queueSize': 0},
+        }),
+        isNull,
+      );
+    });
+  });
+
   group('B3 损失摘要', () {
     test('解析条目数,坏数据按 0 处理', () {
       expect(NativeCaptureStatus.lossCount(null), 0);

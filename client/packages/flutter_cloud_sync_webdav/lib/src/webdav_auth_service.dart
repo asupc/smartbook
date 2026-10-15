@@ -38,6 +38,10 @@ class WebDAVAuthService implements CloudAuthService {
     return _currentUser;
   }
 
+  /// [CloudAuthService.currentUserId]:同步读内存态,零网络。
+  @override
+  String? get currentUserId => _currentUser?.id;
+
   @override
   Future<void> signOut() async {
     _currentUser = null;

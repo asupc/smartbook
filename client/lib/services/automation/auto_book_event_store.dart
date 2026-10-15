@@ -360,11 +360,16 @@ class AutoBookEventStore {
         .get();
   }
 
+  /// 状态计数只取 state 列(selectOnly):事件表带 billJson/rawText 等大文本列,
+  /// 全行 SELECT 在真机大数据量下会拖慢状态卡并放大内存;健康检查是唯一调用方。
   Future<Map<String, int>> countByState() async {
-    final rows = await (db.select(db.autoBookEvents)).get();
+    final rows = await (db.selectOnly(db.autoBookEvents)
+          ..addColumns([db.autoBookEvents.state]))
+        .get();
     final result = <String, int>{};
     for (final row in rows) {
-      result[row.state] = (result[row.state] ?? 0) + 1;
+      final state = row.read(db.autoBookEvents.state) ?? '';
+      result[state] = (result[state] ?? 0) + 1;
     }
     return result;
   }

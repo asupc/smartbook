@@ -65,6 +65,11 @@ class ICloudAuthService implements CloudAuthService {
     return _currentUser;
   }
 
+  /// [CloudAuthService.currentUserId]:同步读缓存会话;初始化完成前为
+  /// null(按未登录处理),零网络。
+  @override
+  String? get currentUserId => _currentUser?.id;
+
   /// Refresh iCloud availability status
   Future<void> refreshStatus() async {
     final isAvailable = await _methodChannel.isICloudAvailable();

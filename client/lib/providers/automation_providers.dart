@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -73,9 +74,19 @@ final automationAiStateProvider = StreamProvider<AiRuntimeState>((ref) async* {
 ///
 /// 页面**不在每次 build 里**查原生桥/网络:本 Provider 由首页/配置页/
 /// 开通页共用,页面恢复前台时 bump [automationHealthRefreshProvider] 补查。
+///
+/// 计算异常**绝不向 UI 抛出**:FutureProvider 的 error 状态在状态卡上与
+/// loading 同样渲染为「检查中」,会把真实故障伪装成永久转圈。这里兜底成
+/// [AutomationHealth.unknown](queryFailed,显示「状态查询失败」)并把异常
+/// 写入日志中心,让失败可见、可诊断。
 final automationHealthProvider = FutureProvider<AutomationHealth>((ref) async {
   ref.watch(automationHealthRefreshProvider);
-  return _computeAutomationHealth(ref.container);
+  try {
+    return await _computeAutomationHealth(ref.container);
+  } catch (e, st) {
+    logger.error('AutomationHealth', '状态计算失败(按「状态查询失败」展示)', e, st);
+    return AutomationHealth.unknown();
+  }
 });
 
 Future<T?> _safe<T>(Future<T> Function() action) async {
@@ -89,6 +100,11 @@ Future<T?> _safe<T>(Future<T> Function() action) async {
 Future<AutomationHealth> _computeAutomationHealth(
   ProviderContainer container,
 ) async {
+  // 分阶段打点:真机上状态卡若卡在「检查中」,日志中心可看出停在哪个阶段。
+  final sw = Stopwatch()..start();
+  void stage(String name) =>
+      logger.info('AutomationHealth', '阶段 $name 完成', '${sw.elapsedMilliseconds}ms');
+
   final coordinator = container.read(autoBookCoordinatorProvider);
   final store = coordinator.store;
 
@@ -104,6 +120,7 @@ Future<AutomationHealth> _computeAutomationHealth(
   } catch (e) {
     logger.warning('AutomationHealth', '事件统计查询失败', '$e');
   }
+  stage('事件统计');
 
   final shadowMode = await _safe(
         () => container.read(autoBillingServiceProvider).isShadowModeEnabled(),
@@ -111,16 +128,26 @@ Future<AutomationHealth> _computeAutomationHealth(
       false;
 
   // B2:目标解析状态(失效/待确定 → 状态卡提示「停止自动写入」)。
+  // 解析链会触达云账号(authServiceProvider/CurrentUser,token 过期时发
+  // refresh/login 网络请求)。状态卡只是**展示**目标状态,不做入账决策,
+  // 不能被网络拖住:给它 3 秒预算,超时按「暂无目标信息」展示(null),
+  // 下次补查再补上;真正入账的 drain 路径仍走完整解析,不受影响。
   AutoBookTargetResolution? target;
   try {
-    target = await resolveAutoBookTarget(container);
+    target = await resolveAutoBookTarget(container)
+        .timeout(const Duration(seconds: 3));
+  } on TimeoutException {
+    target = null;
+    logger.warning('AutomationHealth', '目标解析超时(状态卡跳过该维度)', '3s');
   } catch (_) {
     target = null;
   }
+  stage('目标解析');
 
   final aiState = AiRuntimeCoordinator.instance.state;
   final aiText = await _aiConfigured(AICapabilityType.text);
   final aiVision = await _aiConfigured(AICapabilityType.vision);
+  stage('AI 配置');
 
   if (!Platform.isAndroid) {
     // iOS 走快捷指令/分享,不参与四路监听检测;只保留 AI 维度。
@@ -155,6 +182,7 @@ Future<AutomationHealth> _computeAutomationHealth(
 
   var native = await NativeCaptureStatus.query();
   var nativeAvailable = native != null;
+  stage('开关与权限查询');
 
   // 冷启动竞态:桥由 Dart 侧 enable() 注册,状态卡可能先于注册完成被计算。
   // 只在「已开启来源却查到未注册」时**再确认一次**,不做周期轮询。
@@ -168,6 +196,7 @@ Future<AutomationHealth> _computeAutomationHealth(
     native = await NativeCaptureStatus.query();
     nativeAvailable = native != null;
   }
+  stage('原生状态查询');
 
   /// 桥接/观察器注册状态。原生查询不可用 → null(待验证),
   /// **不把「查不到」当成「未连接」,更不当成「正常」**。
@@ -219,18 +248,12 @@ Future<AutomationHealth> _computeAutomationHealth(
     ),
   ];
 
-  DateTime? lastCaptureAt;
-  if (nativeAvailable) {
-    for (final entry in native!.entries) {
-      final raw = entry.value['lastCaptureAt'];
-      final ms = raw is int ? raw : (raw is num ? raw.toInt() : 0);
-      if (ms <= 0) continue;
-      final at = DateTime.fromMillisecondsSinceEpoch(ms);
-      if (lastCaptureAt == null || at.isAfter(lastCaptureAt)) {
-        lastCaptureAt = at;
-      }
-    }
-  }
+  // 最近捕获时间走 NativeCaptureStatus.latestCaptureAt(纯函数、可单测):
+  // 原生 map 里除四路来源外还混有 lossSummary 字符串字段,直接遍历取
+  // ['lastCaptureAt'] 会抛 TypeError,整次状态计算被外层 catch 兜成
+  // unknown,状态卡恒显示「状态查询失败」(2026-10-14 真机故障根因)。
+  final lastCaptureAt =
+      nativeAvailable ? NativeCaptureStatus.latestCaptureAt(native) : null;
 
   bool? batteryIgnored;
   try {
@@ -242,7 +265,7 @@ Future<AutomationHealth> _computeAutomationHealth(
     batteryIgnored = null;
   }
 
-  return AutomationHealth(
+  final health = AutomationHealth(
     sources: sources,
     aiState: aiState,
     aiTextConfigured: aiText,
@@ -259,6 +282,8 @@ Future<AutomationHealth> _computeAutomationHealth(
     targetReason: target?.reason,
     queueLossCount: NativeCaptureStatus.lossCount(native?['lossSummary']),
   );
+  stage('完成(${health.issues().length} 项问题)');
+  return health;
 }
 
 bool _hasUnregisteredEnabledSource(

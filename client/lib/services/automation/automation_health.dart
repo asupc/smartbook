@@ -499,7 +499,33 @@ class NativeCaptureStatus {
     } on PlatformException catch (e) {
       logger.warning('AutomationHealth', '原生状态查询失败(显示待验证)', e.message);
       return null;
+    } catch (e) {
+      // 兜底:编解码异常等其它错误同样按「查不到」处理,绝不抛给状态计算
+      // (否则整次计算被兜成 unknown,状态卡恒显示「状态查询失败」)。
+      logger.warning('AutomationHealth', '原生状态查询异常(显示待验证)', '$e');
+      return null;
     }
+  }
+
+  /// 四路来源中最近一次捕获时间。
+  ///
+  /// 原生 map 里除四路来源外还混有 lossSummary 字符串字段,非 Map 项必须
+  /// 跳过 —— 否则 String['lastCaptureAt'] 直接抛 TypeError,整次状态计算
+  /// 被外层 catch 兜成 unknown,状态卡恒显示「状态查询失败」(2026-10-14
+  /// 真机故障根因)。
+  static DateTime? latestCaptureAt(Map<String, dynamic>? native) {
+    if (native == null) return null;
+    DateTime? latest;
+    for (final entry in native.entries) {
+      final value = entry.value;
+      if (value is! Map) continue;
+      final raw = value['lastCaptureAt'];
+      final ms = raw is int ? raw : (raw is num ? raw.toInt() : 0);
+      if (ms <= 0) continue;
+      final at = DateTime.fromMillisecondsSinceEpoch(ms);
+      if (latest == null || at.isAfter(latest)) latest = at;
+    }
+    return latest;
   }
 
   /// 损失摘要条目数(容量拒收 / 过期清理);解析失败按 0 处理。

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -27,6 +28,10 @@ import '../system/logger_service.dart' show logger;
 class ScreenTextMonitorService {
   static const _channel = MethodChannel('com.smartbook.zhi/screen_text');
   static const _enabledKey = 'screen_text_monitor_enabled';
+
+  /// L1:单条页面文本从目标解析到落库 ACK 的限时(含 AI 中转,正常 10~60s,
+  /// 3min 只截真挂起)。见 [drainPending] 批处理处的注释。
+  static const processOneTimeout = Duration(minutes: 3);
 
   final ProviderContainer _container;
   late final AutoBillingService _autoBillingService;
@@ -167,14 +172,29 @@ class ScreenTextMonitorService {
           final eventKey = nativeEventKey.isNotEmpty
               ? 'screen:v3:$nativeEventKey'
               : 'screen:v2:$fingerprint:${timestamp ?? 0}';
-          futures.add(_processOne(
-            pkg: pkg,
-            text: text,
-            fingerprint: fingerprint,
-            eventKey: eventKey,
-            timestamp: timestamp,
-            queueItem: raw is Map ? raw : null,
-          ));
+          // L1(2026-10-14):单条处理限时。_processOne 内的 DB 查询/AI 调用
+          // 均无自身超时,一旦挂死(DB 事务排队/网络栈停滞)会把 Future.wait、
+          // drainPending 与整条 _processingChain 一起永久拖死 —— 此后所有
+          // 桥接广播只排队不执行,「已捕获入队」停滞直到杀进程重启。截断后
+          // 该项不 ACK 留在原生队列(事件侧由 10min 处理租约兜底),下轮
+          // drain 重试;后台仍在跑的原任务由 eventKey 幂等 claim 兜住不双跑。
+          futures.add(
+            _processOne(
+              pkg: pkg,
+              text: text,
+              fingerprint: fingerprint,
+              eventKey: eventKey,
+              timestamp: timestamp,
+              queueItem: raw is Map ? raw : null,
+            ).timeout(processOneTimeout, onTimeout: () {
+              unawaited(_logDecision(
+                'drain_timeout',
+                'pkg=$pkg 单条处理超 ${processOneTimeout.inMinutes}min 截断'
+                '(挂起点在 target 解析/AI/落库之一,不 ACK 留队重试)',
+                pkg: pkg,
+              ));
+            }),
+          );
         }
         await Future.wait(futures);
       }
@@ -219,6 +239,18 @@ class ScreenTextMonitorService {
       frozenState: snapshot.state,
       frozenConfigVersion: snapshot.version,
     );
+    // 目标判定是「不调 AI 也不 ACK」的静默分支,识别记录页因此空白 ——
+    // 真机排查只能靠日志。记一条含冻结快照与解析结果的决策,冻结快照被
+    // 污染(旧 ref/旧 state)时在这里一眼可见。
+    final diag = '目标解析 frozen=${snapshot.ref}/${snapshot.state}'
+        '/v${snapshot.version} -> state=${target.stateName} '
+        'ledger=${target.ledgerId} canWrite=${target.canWrite} '
+        'reason=${target.reason}';
+    logger.info('ScreenTextMonitor', diag);
+    // release 包 logger 不进 logcat(debugPrint 受 kDebugMode 限制),而自动记账
+    // 停摆只能靠真机日志定位 → 额外走 developer.log,prod 也能在
+    // `adb logcat -s flutter` 看到。
+    developer.log(diag, name: 'AutoBookDiag');
     final input = AutoBookInput(
       eventKey: eventKey,
       source: AutoBookSource.screenText,
@@ -245,6 +277,16 @@ class ScreenTextMonitorService {
     );
     if (!target.canWrite) {
       // B2:目标失效/待确定 —— 不调 AI、不 ACK,页面文本留到目标修好再处理。
+      // 必须记决策:该分支不产生任何 Dart 段记录,识别记录页只看到原生
+      // 「已捕获入队」就再无下文,用户无从判断卡在哪一步(真机排查死角)。
+      await _logDecision(
+        target.state == AutoBookTargetState.invalid
+            ? 'target_invalid'
+            : 'target_undetermined',
+        'state=${target.stateName} reason=${target.reason} '
+        'frozen=${snapshot.ref}/${snapshot.state}/v${snapshot.version}',
+        pkg: pkg,
+      );
       await _coordinator.execute<SmsProcessOutcome>(
         input: input,
         action: () async => target.state == AutoBookTargetState.invalid

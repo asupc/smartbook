@@ -22,6 +22,10 @@ class SupabaseAuthService implements CloudAuthService {
     return CloudUser(id: u.id, email: u.email);
   }
 
+  /// [CloudAuthService.currentUserId]:同步读 SDK 会话,零网络。
+  @override
+  String? get currentUserId => client.auth.currentUser?.id;
+
   @override
   Future<void> signOut() => client.auth.signOut();
 

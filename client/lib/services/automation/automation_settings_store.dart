@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/services.dart';
+import 'package:flutter_cloud_sync/flutter_cloud_sync.dart' show CloudAuthService;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -544,7 +546,10 @@ Future<int?> resolveLegacyLedgerId(ProviderContainer container) async {
   final fromPrefs = prefs.getInt('current_ledger_id');
   if (fromPrefs != null) return fromPrefs;
   try {
-    final ledgers = await container.read(repositoryProvider).getAllLedgers();
+    final ledgers = await container
+        .read(repositoryProvider)
+        .getAllLedgers()
+        .timeout(const Duration(seconds: 10));
     if (ledgers.isEmpty) return null;
     await prefs.setInt('current_ledger_id', ledgers.first.id);
     return ledgers.first.id;
@@ -554,12 +559,26 @@ Future<int?> resolveLegacyLedgerId(ProviderContainer container) async {
 }
 
 /// 当前账号作用域(B0 §3.2):无稳定 userId 时回 'local'(仅本机)。
+///
+/// **禁止在这里走 [CloudAuthService.currentUser]**:它在 token 过期时会发起
+/// refresh/静默重登网络请求,服务器不可达(域名失效/断网)时每个请求都要
+/// 挂满 30s deadline,实测把整条目标解析链拖住 178s,状态卡跟着转圈数分钟。
+/// 改用零网络的同步会话读 [CloudAuthService.currentUserId];initialize 已
+/// 不再做阻塞式网络刷新,这里 2s 有界等待只覆盖冷启动 provider 未就绪的
+/// 窗口,超时按未登录('local')处理。
 Future<String> currentAutomationUserScope(ProviderContainer container) async {
+  CloudAuthService? auth;
   try {
-    final auth = await container.read(authServiceProvider.future);
-    final user = await auth.currentUser;
-    if (user != null && user.id.isNotEmpty) return 'user:${user.id}';
-  } catch (_) {}
+    auth = await container
+        .read(authServiceProvider.future)
+        .timeout(const Duration(seconds: 2));
+  } on TimeoutException {
+    auth = null;
+  } catch (_) {
+    auth = null;
+  }
+  final uid = auth?.currentUserId;
+  if (uid != null && uid.isNotEmpty) return 'user:$uid';
   return 'local';
 }
 
@@ -579,7 +598,17 @@ Future<AutoBookTargetResolution> resolveAutoBookTarget(
 
   List<schema.Ledger> ledgers;
   try {
-    ledgers = await container.read(repositoryProvider).getAllLedgers();
+    // L3(2026-10-14):限时暴露 DB 挂点。getAllLedgers 是小表查询(正常
+    // <100ms),无界等待时一旦底层 NativeDatabase 被挂死的事务占住,四路
+    // drain 会齐齐卡死在这 —— 超时后按「无账本」走 target invalid(不调
+    // AI、不 ACK,留队),链条继续,warning 进日志中心供真机取证。
+    ledgers = await container
+        .read(repositoryProvider)
+        .getAllLedgers()
+        .timeout(const Duration(seconds: 10));
+  } on TimeoutException {
+    logger.warning('AutoBookTarget', 'getAllLedgers 超时,DB 疑似被挂死事务占住');
+    ledgers = const [];
   } catch (_) {
     ledgers = const [];
   }

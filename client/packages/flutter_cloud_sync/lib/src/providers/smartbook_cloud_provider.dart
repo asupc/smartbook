@@ -1250,10 +1250,14 @@ class SmartBookCloudAuthService implements CloudAuthService {
     try {
       final json = jsonDecode(raw) as Map<String, dynamic>;
       _session = _SmartBookCloudSession.fromJson(json);
+      // 会话先行可见:立即发出当前用户,别让 initialize 的调用方(以及整条
+      // await authServiceProvider.future 的 UI 链)等一次可能很慢的网络刷新
+      // —— 服务器不可达时这里曾是每请求 30s deadline 的死等(实测把状态卡
+      // 拖住 ~3 分钟)。过期凭证由 [currentUser]/[requireAccessToken] 在
+      // 用时按需刷新(有 in-flight 去重),刷新本身挪到后台不阻塞初始化。
+      _emitCurrentUser();
       if (_isAccessTokenExpired(_session!)) {
-        await _refreshSessionOrClear();
-      } else {
-        _emitCurrentUser();
+        unawaited(_refreshSessionOrClear().catchError((_) {}));
       }
     } catch (_) {
       await _clearSession();
@@ -1348,6 +1352,10 @@ class SmartBookCloudAuthService implements CloudAuthService {
   }
 
   String? get currentDeviceId => _session?.deviceId;
+
+  /// 同步读会话内 userId(零网络):[CloudAuthService.currentUserId],
+  /// 供状态卡等展示链路做作用域比较,不被 auth 刷新/静默重登拖住。
+  @override
   String? get currentUserId => _session?.userId;
 
   /// Refresh 请求去重的 in-flight future。

@@ -23,6 +23,9 @@ import 'cloud/sync_service.dart';
 import 'cloud/transactions_sync_manager.dart';
 import 'cloud/sync/sync_engine.dart';
 import 'providers/sync_providers.dart' as sp;
+import 'package:flutter_cloud_sync/flutter_cloud_sync.dart'
+    show CloudBackendType;
+import 'ai/core/ai_runtime_state.dart';
 import 'utils/voice_billing_helper.dart';
 import 'utils/image_billing_helper.dart';
 import 'pages/ai/ai_chat_page.dart';
@@ -106,6 +109,11 @@ class _BeeAppState extends ConsumerState<BeeApp>
 
     // 后台刷新账本同步状态
     _refreshLedgersStatusInBackground();
+    // L2:四路原生自动记账队列周期兜底(见字段注释)
+    _autoBookDrainKeepaliveTimer = Timer.periodic(
+      _autoBookDrainKeepaliveInterval,
+      (_) => _onAutoBookDrainKeepaliveTick(),
+    );
     // v43 回收站:清理超过 30 天的「最近删除」记录(后台静默,不阻塞启动)
     Future(() async {
       try {
@@ -465,6 +473,12 @@ class _BeeAppState extends ConsumerState<BeeApp>
   int? _lastDrainedDeepLinkTs;
   Timer? _drainTimer;
 
+  // L2(2026-10-14):四路原生自动记账的周期兜底。即时链是 fire-and-forget
+  // 桥接广播,丢一次就静默;周期 tick 保证任何单次断链(广播未达 / drain 被
+  // AI 未就绪跳过 / 链条瞬时卡顿)都在下个 tick 自愈,不再等冷启动。
+  Timer? _autoBookDrainKeepaliveTimer;
+  static const _autoBookDrainKeepaliveInterval = Duration(minutes: 5);
+
   void _persistPendingDeepLink(
     AppLinkAction action,
     String? type, {
@@ -633,11 +647,35 @@ class _BeeAppState extends ConsumerState<BeeApp>
   @override
   void dispose() {
     _drainTimer?.cancel();
+    _autoBookDrainKeepaliveTimer?.cancel();
     _appLinkSubscription?.close();
     _removeOverlay();
     _expandController.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  /// L2 周期兜底 tick:① 补跑四路原生队列;② AI Runtime 卡非 ready 时
+  /// 重新拉起云 provider(自愈)。
+  ///
+  /// ② 的背景:`smartbookCloudProviderInstance` 初始化失败被 catch 成 null
+  /// → runtime 落 unconfigured,而 FutureProvider 不会自动重试,relay 永不
+  /// 注入,所有 drain 都被 awaitReady 一票否决 —— 旧版只能靠杀进程重启
+  /// 恢复。invalidate 触发重求值:成功 → listen 序列 markReady + 自动补跑
+  /// 四路 drain;仍失败 → 下个 tick 再试(周期即防抖)。用户本来就未配置
+  /// 云服务时(unconfigured 是正确状态)不 invalidate,避免无意义重跑。
+  void _onAutoBookDrainKeepaliveTick() {
+    if (!mounted) return;
+    sp.scheduleNativeAutoBookDrains(ProviderScope.containerOf(context));
+
+    final runtime = AiRuntimeCoordinator.instance;
+    if (runtime.state == AiRuntimeState.ready) return;
+    final config = ref.read(sp.activeCloudConfigProvider).valueOrNull;
+    if (config == null || !config.valid) return;
+    if (config.type != CloudBackendType.smartbookCloud) return;
+    logger.info('App',
+        '自动记账兜底:AI Runtime 卡在 ${runtime.state.name},重新初始化云服务');
+    ref.invalidate(sp.smartbookCloudProviderInstance);
   }
 
   void _removeOverlay() {
@@ -814,6 +852,16 @@ class _BeeAppState extends ConsumerState<BeeApp>
       _updateWidget();
       // 前台稳定后认领待处理深链(冷启动/主题变更重建后,在最终页面树上打开)
       _drainPendingDeepLink(trigger: 'resumed');
+      // L2(2026-10-14):回前台补跑四路原生自动记账队列。桥接广播是
+      // fire-and-forget,后台期间任一环静默丢失(广播未达/handler 竞态/
+      // drain 被 AI 未就绪跳过)时,积压只能等下次冷启动 —— 这里兑现下方
+      // 注释一直承诺却未实现的「回到前台后 drain」。drain 幂等且未启用的
+      // 路在开头即返回,零成本。
+      if (mounted) {
+        sp.scheduleNativeAutoBookDrains(
+          ProviderScope.containerOf(context),
+        );
+      }
       // 后台期间的自动记账捕获会在回到前台后 drain,待确认计数可能变化,
       // 刷新让首页提醒条/「我的」角标及时反映(P0-3/P1-3)
       ref.invalidate(pendingCandidateCountProvider);
