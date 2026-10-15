@@ -1,7 +1,8 @@
 """交易回收站端点(0030 软删安全网)。
 
+回收站永久保留、可恢复、可手动彻底删除,无自动清理:
 - GET  /read/workspace/trash —— 列出当前用户所有账本的软删交易(删除时间
-  倒序,含剩余保留天数);
+  倒序);
 - POST /read/workspace/trash/{sync_id}/restore —— 恢复(deleted_at 置 NULL)
   并重发一条 upsert SyncChange,mobile pull 端自动重建本地行;
 - POST /read/workspace/trash/{sync_id}/purge —— 彻底删除(物理删行+附件 GC),
@@ -34,9 +35,6 @@ from ._shared import *  # noqa: F401,F403 — imports + helpers + router
 
 logger = logging.getLogger(__name__)
 
-# 保留窗口与 data_cleanup cleaner 的过期清算口径保持一致(30 天)。
-TRASH_RETENTION_DAYS = 30
-
 
 class TrashItemOut(BaseModel):
     sync_id: str
@@ -49,8 +47,6 @@ class TrashItemOut(BaseModel):
     category_name: str | None = None
     account_name: str | None = None
     deleted_at: datetime
-    # 距物理清理还有几天(向上取整;0 = 今天内清)
-    days_left: int
 
 
 class TrashListOut(BaseModel):
@@ -188,18 +184,12 @@ def list_trash(
             name_map[lg.id] = lg.name
             ext_map[lg.id] = lg.external_id
 
-    now = datetime.now(timezone.utc)
     items = []
     for r in rows:
         deleted = r.deleted_at
-        # SQLite 可能存 naive;补 UTC 再比较
+        # SQLite 可能存 naive;补 UTC 再序列化
         if deleted.tzinfo is None:
             deleted = deleted.replace(tzinfo=timezone.utc)
-        days_left = max(
-            0,
-            TRASH_RETENTION_DAYS
-            - int((now - deleted).total_seconds() // 86400),
-        )
         items.append(
             TrashItemOut(
                 sync_id=r.sync_id,
@@ -212,7 +202,6 @@ def list_trash(
                 category_name=r.category_name,
                 account_name=r.account_name,
                 deleted_at=deleted,
-                days_left=days_left,
             )
         )
     return TrashListOut(items=items, total=int(total))
@@ -385,8 +374,8 @@ def purge_trash_tx(
     projection.gc_orphan_attachments_for_ledger(
         db, ledger_id=ledger.id, file_ids=tx_file_ids,
     )
-    # 物理删除后 compact 该交易的 upsert 事件历史(P1-A3,与 data_cleanup
-    # cleaner 的过期清理同款);delete 墓碑保留,落后设备仍能 apply 删除。
+    # 物理删除后 compact 该交易的 upsert 事件历史(P1-A3);delete 墓碑保留,
+    # 落后设备仍能 apply 删除。
     from ...sync_applier import _compact_entity_upsert_events
 
     _compact_entity_upsert_events(

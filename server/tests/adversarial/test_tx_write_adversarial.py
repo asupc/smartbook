@@ -796,8 +796,8 @@ def test_trash_restore_then_batch_delete_again():
         app.dependency_overrides.clear()
 
 
-def test_trash_days_left_is_bounded():
-    # HARDENING: 刚删除的行 days_left == 30(保留窗口)。
+def test_trash_response_has_no_days_left():
+    # HARDENING: 回收站永久保留,响应不再含 days_left 字段。
     client = _make_client()
     try:
         token = _register_and_login(client, "adv-days@t.com")
@@ -808,7 +808,8 @@ def test_trash_days_left_is_bounded():
             json={"base_change_id": 0}, headers=_h(token),
         )
         item = client.get("/api/v1/read/workspace/trash", headers=_h(token)).json()["items"][0]
-        assert 0 <= item["days_left"] <= 30
+        assert "days_left" not in item
+        assert item["sync_id"] == tx
     finally:
         app.dependency_overrides.clear()
 

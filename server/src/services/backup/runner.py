@@ -11,10 +11,11 @@
 6. tar -czf staging/<run_id>.tar.gz
 7. 清理 staging/<run_id>/(只留 tar.gz)
 8. fan-out 推到所有 target remote(并行,每个一条 BackupRunTarget)
-9. retention:每个 remote 算 cutoff 删超期(失败不影响 run.status)
-10. 删本地 tar.gz
-11. 更新 run.status / run.bytes_total / run.log_text
-12. WS 推 backup_status 终态
+9. 删本地 tar.gz
+10. 更新 run.status / run.bytes_total / run.log_text
+11. WS 推 backup_status 终态
+
+备份永久保留:不再自动删包,远端旧备份仅手动删除。
 
 进度上报:tar 阶段无法精细估计,只发 phase 切换;rclone 阶段 RcloneRunner
 按字节数解析 stats 行。
@@ -47,13 +48,8 @@ from .rclone_config import (
     RcloneConfigManager,
     get_age_passphrase,
     remote_path,
-    remote_root,
 )
-from .rclone_runner import RcloneError, RcloneRunner
-from .retention import (
-    compute_retention_deletes,
-    filter_backup_files,
-)
+from .rclone_runner import RcloneRunner
 from .tar_builder import build_encrypted_zip, build_targz, hardlink_tree
 
 logger = logging.getLogger(__name__)
@@ -70,8 +66,7 @@ def _now() -> datetime:
 
 def _timestamp_label(now: datetime | None = None) -> str:
     """生成备份文件名时间戳。用 scheduler 时区(默认跟 TZ env / 系统 local tz
-    一致),不再带 'Z' 后缀 — 用户在 R2 看到的文件名直接就是本地时间。
-    retention 解析仍兼容老 'Z' 格式。"""
+    一致),不再带 'Z' 后缀 — 用户在 R2 看到的文件名直接就是本地时间。"""
     from .scheduler import get_scheduler
 
     tz = get_scheduler().timezone
@@ -138,7 +133,6 @@ def run_backup(
             schedule=schedule,
             remote_ids=remote_ids,
             include_attachments=schedule.include_attachments,
-            retention_days=schedule.retention_days,
             on_progress=on_progress,
             log_lines=log_lines,
             log_fn=_log,
@@ -153,13 +147,9 @@ def run_backup_to_remotes(
     user_id: str,
     remote_ids: list[int],
     include_attachments: bool = True,
-    retention_days: int | None = None,
     on_progress: ProgressCallback | None = None,
 ) -> int:
-    """手动 ad-hoc 触发 — 不绑定 schedule,直接指定 target remotes。
-
-    retention_days = None 时跳过 retention(手动备份不参与自动清理)。
-    """
+    """手动 ad-hoc 触发 — 不绑定 schedule,直接指定 target remotes。"""
     settings = get_settings()
     db = SessionLocal()
     log_lines: list[str] = []
@@ -176,7 +166,6 @@ def run_backup_to_remotes(
             schedule=None,
             remote_ids=remote_ids,
             include_attachments=include_attachments,
-            retention_days=retention_days,
             on_progress=on_progress,
             log_lines=log_lines,
             log_fn=_log,
@@ -193,7 +182,6 @@ def _run_with_remotes(
     schedule: BackupSchedule | None,
     remote_ids: list[int],
     include_attachments: bool,
-    retention_days: int | None,
     on_progress: ProgressCallback | None,
     log_lines: list[str],
     log_fn: Callable[[str], None],
@@ -443,32 +431,6 @@ def _run_with_remotes(
             run.status = "partial"
         else:
             run.status = "failed"
-
-        # ---- 8. retention(只在 schedule 模式且有成功 push 时跑) ----
-        if (
-            retention_days is not None
-            and run.status in ("succeeded", "partial")
-        ):
-            for t in live_targets:
-                if t.status != "succeeded":
-                    continue
-                remote = next((r for r in remotes if r.id == t.remote_id), None)
-                if remote is None:
-                    continue
-                try:
-                    items = runner.lsjson(remote_root(remote))
-                    files = filter_backup_files(items)
-                    to_delete = compute_retention_deletes(
-                        files, retention_days=retention_days
-                    )
-                    for f in to_delete:
-                        try:
-                            runner.deletefile(remote_path(remote, f.name))
-                            log_fn(f"retention deleted {remote_path(remote, f.name)}")
-                        except RcloneError as exc:
-                            log_fn(f"retention delete failed {remote_path(remote, f.name)}: {exc}")
-                except RcloneError as exc:
-                    log_fn(f"retention list failed on {remote.name}: {exc}")
 
         # bytes_total fallback:全加密场景 tar 没建,用第一个加密 zip 的体积代表
         if bytes_total is None and encrypted_zips_to_cleanup:

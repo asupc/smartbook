@@ -12,21 +12,20 @@ App 端提取 prompt 强制要求 LLM 返回账单唯一信息(`external_id`:订
 
 匹配是"归一化子串包含":输入与标识都只保留字母数字并小写,因此
 「订单号:2026 0905-1234」能命中已存标识 `202609051234`。标识最短 8 位,
-避免把金额/日期等短数字误当订单号。TTL 只为控制表体积(订单号本身全局
-唯一),不代表"过期后允许重复入账"的产品语义。
+避免把金额/日期等短数字误当订单号。标识永久保留、不再清理(个人部署
+体量可忽略);expires_at 列仅因非空约束保留,写入固定远期占位值。
 """
 from __future__ import annotations
 
 import logging
 import re
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ...config import get_settings
 from ...models import AIBillIdentifier, User
 from .provider_client import _try_parse_json
 
@@ -186,15 +185,14 @@ def register_identifiers(
     """登记一次成功识别里出现的标识(幂等:已存在只刷新 last_seen_at)。
     提交由本函数负责;失败只打日志,不影响中转响应。
 
-    F19:过期清理不再在每次成功解析的请求路径上跑 DELETE(已有 main.py 的
-    prune_expired 保留期循环兜底);批内 upsert 改为先一次查已有集合,再批量
-    insert / update,替代逐标识点查。
+    永久保留:不再清理。expires_at 列非空(免 migration 保留),写入固定
+    远期占位值(9999-12-31),判重查询的 `expires_at > now` 条件恒成立。
     """
     if not identifiers:
         return
     now = now or datetime.now(timezone.utc)
-    ttl_days = get_settings().ai_bill_identifier_ttl_days
-    expires = now + timedelta(days=ttl_days)
+    # 远期占位:该列非空约束保留,不做 migration;值本身无业务含义。
+    expires = datetime(9999, 12, 31, tzinfo=timezone.utc)
     try:
         existing_rows = db.scalars(
             select(AIBillIdentifier).where(
@@ -244,11 +242,3 @@ def mark_duplicate_hit(db: Session, user: User, identifier: str, *, now: datetim
     except Exception:
         db.rollback()
         logger.exception("ai.bill_identifier mark hit failed user=%s", user.id)
-
-
-def prune_expired(db: Session, *, now: datetime | None = None) -> int:
-    """清理过期标识(挂到 main.py 的保留期循环)。返回删除行数。"""
-    now = now or datetime.now(timezone.utc)
-    result = db.execute(delete(AIBillIdentifier).where(AIBillIdentifier.expires_at <= now))
-    db.commit()
-    return int(result.rowcount or 0)

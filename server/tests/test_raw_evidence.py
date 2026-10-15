@@ -128,7 +128,9 @@ def test_raw_evidence_scopes_keep_web_read_only_and_allow_explicit_cleanup(monke
         app.dependency_overrides.clear()
 
 
-def test_expired_detail_is_hidden_without_listing_and_gc_needs_no_viewer(monkeypatch):
+def test_expired_rows_are_returned_and_only_manual_cleanup_deletes(monkeypatch):
+    """永久保留:已带过去 expires_at 的行可正常写入;列表/详情正常返回
+    过期行(不再读时删除/404);仅手动 cleanup 才删除。"""
     Session = _bootstrap(monkeypatch)
     try:
         c = TestClient(app)
@@ -136,17 +138,20 @@ def test_expired_detail_is_hidden_without_listing_and_gc_needs_no_viewer(monkeyp
         h = {"Authorization": f"Bearer {token}"}
         now = datetime.now(timezone.utc)
         past = (now - timedelta(days=1)).isoformat()
-        assert c.post("/api/v1/evidence/raw", headers=h, json={**_payload("expired:upload"), "expires_at": past}).status_code == 410
+        r = c.post("/api/v1/evidence/raw", headers=h, json={**_payload("expired:upload"), "expires_at": past})
+        assert r.status_code == 200, r.text
         rows = [c.post("/api/v1/evidence/raw", headers=h, json=_payload(f"sms:expired:{i}")).json() for i in range(3)]
         with Session() as db:
             for row in rows[:2]:
                 item = db.get(RawBookkeepingEvidence, row["id"])
                 item.expires_at = now - timedelta(seconds=1)
             db.commit()
-        assert c.get(f"/api/v1/evidence/raw/{rows[0]['id']}", headers=h).status_code == 404
+        # 详情正常返回过期行,行不被删除
+        detail = c.get(f"/api/v1/evidence/raw/{rows[0]['id']}", headers=h)
+        assert detail.status_code == 200, detail.text
         with Session() as db:
-            assert db.get(RawBookkeepingEvidence, rows[0]["id"]) is None
-            assert purge_expired_raw_evidence(db, now=now) == 1
+            assert db.get(RawBookkeepingEvidence, rows[0]["id"]) is not None
+            assert purge_expired_raw_evidence(db, now=now) == 3
         listed = c.get("/api/v1/evidence/raw", headers=h)
         assert listed.json()["total"] == 1
         assert listed.headers["cache-control"] == "no-store"

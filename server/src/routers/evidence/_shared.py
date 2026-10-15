@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.routing import APIRoute
 from fastapi.exceptions import RequestValidationError
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy import delete, func, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
@@ -134,7 +134,7 @@ __all__ = ["router", "_READ_SCOPE_DEP", "_WRITE_SCOPE_DEP", "_UPLOAD_SCOPE_DEP",
     "_utc", "_validate_source", "_check_ledger_access", "_out", "_apply_payload",
     "RawBookkeepingEvidence", "RawEvidenceCleanupRequest", "RawEvidenceListOut",
     "RawEvidenceOut", "RawEvidenceUpsertRequest", "User", "Session", "Depends",
-    "HTTPException", "Query", "status", "delete", "func", "select", "Any",
+    "HTTPException", "Query", "status", "func", "select", "Any",
     "datetime", "timezone", "IntegrityError", "get_current_user", "get_db",
     # S3:offset 上界常量(raw.py 的 Query(le=...) 用;star-import 受 __all__
     # 过滤,explicit list 里必须补上,否则 raw.py 直接 NameError)。

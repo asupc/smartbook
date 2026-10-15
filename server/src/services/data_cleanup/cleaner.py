@@ -17,7 +17,7 @@ import os
 from collections.abc import Iterable
 from pathlib import Path
 
-from sqlalchemy import select, update
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from ...models import (
@@ -197,8 +197,6 @@ def _dispatch(db: Session, r: OrphanRecord, file_ops: list) -> None:
         file_ops.append(lambda p=resolved: _delete_disk_file_only(p))
     elif t == OrphanType.TX_REF_BROKEN_ATTACHMENT:
         _strip_broken_attachments(db, r)
-    elif t == OrphanType.TX_TRASH_EXPIRED:
-        _purge_expired_trash_tx(db, r, file_ops)
     else:  # pragma: no cover
         raise ValueError(f"unknown OrphanType: {t}")
 
@@ -348,51 +346,3 @@ def _strip_broken_attachments(db: Session, r: OrphanRecord) -> None:
         if not (isinstance(a, dict) and a.get("cloudFileId") in broken_set)
     ]
     obj.attachments_json = json.dumps(kept) if kept else None
-
-
-def _purge_expired_trash_tx(db: Session, r: OrphanRecord, file_ops: list) -> None:
-    """D 类(0030):回收站 30 天保留期到的交易物理删除(行 + 附件 GC)。
-
-    与 read/trash.py 的 purge 端点同语义:先收集附件引用,删行,再 GC
-    孤立附件(共享引用保留)。GC 的文件 unlink 由 gc 内部处理;这里的
-    file_ops 预留为空(clean() 会在 DB commit 后跑列表内容)。
-
-    物理删除后该交易的所有 **upsert** sync_changes 事件一并 compact
-    (P1-A3):transaction 是最大实体,upsert 历史只增不减会让 sync_changes
-    无界膨胀。复用 sync_applier._compact_entity_upsert_events 的契约例外
-    —— **delete 墓碑事件保留**,cursor 落后的设备仍能 apply delete 把本地
-    副本删干净(upsert 事件对已不存在的实体毫无价值,apply 是幂等 no-op)。
-    """
-    from ... import projection
-    from ...concurrency import lock_ledger_for_materialize, lock_user_global
-    from ...sync_applier import _compact_entity_upsert_events
-
-    ledger_id, sync_id = _ledger_sync_from_record(r)
-    # F-13 锁覆盖(§4.7 user→ledger):清理器改投影(purge 行 + GC)会与并发
-    # push/web 写同一批行竞争。旧实现无锁 —— PostgreSQL 下真实竞态(SQLite 的
-    # lock_* 是 no-op)。锁顺序固定 user→ledger:r.user_id 是投影行的 user_id
-    # (= ledger owner,见下方 _compact 注释),可作 user 锁 key。
-    lock_user_global(db, r.user_id)
-    lock_ledger_for_materialize(db, ledger_id)
-    # 二次校验仍在回收站(避免清理扫描后用户已恢复的行被误删)
-    row = db.scalar(
-        select(ReadTxProjection).where(
-            ReadTxProjection.ledger_id == ledger_id,
-            ReadTxProjection.sync_id == sync_id,
-            ReadTxProjection.deleted_at.is_not(None),
-        )
-    )
-    if row is None:
-        return
-    tx_file_ids = projection.collect_tx_attachment_fileids(
-        db, ledger_id=ledger_id, sync_id=sync_id,
-    )
-    projection.purge_tx(db, ledger_id=ledger_id, sync_id=sync_id)
-    projection.gc_orphan_attachments_for_ledger(
-        db, ledger_id=ledger_id, file_ids=tx_file_ids,
-    )
-    # r.user_id 即投影行的 user_id(= ledger owner),与 SyncChange.user_id
-    # 的对应关系同 scanner._scan_sync_change_missing_entity 的 transaction 分支
-    _compact_entity_upsert_events(
-        db, user_id=r.user_id, entity_type="transaction", entity_sync_id=sync_id,
-    )

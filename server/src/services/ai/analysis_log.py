@@ -123,8 +123,7 @@ def write_ai_analysis_log_with_image(
 
     层级上仍是「失败静默」:DB 写失败只打日志;**图片写盘失败只断图**
     (image_path 留空,日志行不丢) —— 审计记录是主诉求,图片是增强。
-    文件名 {log_id}{ext},随日志行删除时一并删除;行本身有保留期
-    (AI_LOG_RETENTION_DAYS,main.py 定时清理,过期行的图片由清理任务删)。
+    文件名 {log_id}{ext},随日志行手动删除时一并删除(日志永久保留)。
     """
     try:
         with SessionLocal() as db:

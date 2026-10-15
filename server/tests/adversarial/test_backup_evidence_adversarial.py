@@ -1,18 +1,17 @@
-"""对抗性测试 —— 备份 / 恢复 / 保留策略 + 原始证据域。
+"""对抗性测试 —— 备份 / 恢复 + 原始证据域。
 
 覆盖攻击面:
-备份:
+备份(永久保留,不再自动删包):
   - 非 admin 触发 remote / schedule / run-now / restore → 403
   - 并发触发同一 schedule(状态机 / 重复 run)
   - rclone 配置字段注入(命令注入面:参数化验证,不真执行破坏命令)
   - upload-db / upload-snapshot 的账本 external_id 路径穿越
-  - retention 计算:0 天 / 负天数 / 极大天数 / 保留至少 N 份
   - restore:畸形归档 / zip bomb / tar 穿越 / 磁盘预检
   - pg_dump 在 sqlite 环境下的降级行为(不得 500 裸栈)
 
-原始证据:
+原始证据(永久保留,过期行正常返回,仅手动 cleanup 删除):
   - 上传非法 JSON / 超大体 / 重复 external id / 过期插入
-  - TTL 过期清理幂等
+  - 手动清理幂等
   - 越权(IDOR)B 读/改/删 A 的证据
   - /evidence/raw 的 limit/offset 负数与极值
 
@@ -135,7 +134,7 @@ def _seed_backup_env(Session, email: str, *, external_id: str = "adv-bk") -> tup
         db.flush()
         schedule = BackupSchedule(
             user_id=user.id, name="adv-schedule", enabled=True, cron_expr="0 4 * * *",
-            retention_days=30, include_attachments=True,
+            include_attachments=True,
             created_at=datetime.now(timezone.utc),
         )
         db.add(schedule)
@@ -262,9 +261,8 @@ def test_run_now_twice_creates_two_background_runs(monkeypatch) -> None:
     `run_schedule_now`(admin_backup.py:736)只校验 schedule 属于自己,然后
     无条件 `threading.Thread(target=_bg).start()` —— 没有「该 schedule 已有
     running run」的互斥。实测连点两次 → 后台函数被调用两次(两个 run 同时
-    写同一 remote、同一 retention 窗口)。后果:
+    写同一 remote)。后果:
       - 同一远端并发 copyto 同一文件名(慢速远端上互相覆盖);
-      - retention 各自删文件,可能互相删掉对方刚上传的新备份;
       - 备份期间 DB 快照 / 附件 hardlink 双份占用 staging 磁盘。
     schedule 侧有 APScheduler `max_instances=1` 保护,但 **run-now 走普通
     threading.Thread,完全绕过该保护**。
@@ -277,7 +275,7 @@ def test_run_now_twice_creates_two_background_runs(monkeypatch) -> None:
     calls: list[tuple] = []
 
     def _fake_run_backup_to_remotes(*, user_id, remote_ids, include_attachments=True,
-                                    retention_days=None, on_progress=None):
+                                    on_progress=None):
         calls.append((user_id, tuple(remote_ids)))
         return 1
 
@@ -383,7 +381,7 @@ def test_rclone_config_field_with_newline_is_injection_vector(tmp_path) -> None:
     TrimLeft 后按 `[` 判定为**新 section**(见 go-ini parser.go)。因此
     该注入会真正生效 —— 攻击者(拿到 ops scope 的账号)可在服务端
     rclone.conf 里凭空造出 backend 段,把 local backend 的 root 指向任意
-    绝对路径,后续 backup / restore / retention 就在那里读写删。
+    绝对路径,后续 backup / restore 就在那里读写。
 
     期望:写入 conf 前对值做换行(\\r/\\n)过滤或直接拒绝。
     源码:`src/routers/admin_backup.py:84-140`、
@@ -731,77 +729,7 @@ def _make_ledger(client: TestClient, token: str, ledger_id: str) -> None:
 
 
 # ══════════════════════════════════════════════════════════════════════
-# 5. retention 纯函数边界
-# ══════════════════════════════════════════════════════════════════════
-
-
-def _rf(name: str, ts: datetime):
-    from src.services.backup.retention import RemoteFile
-
-    return RemoteFile(name=name, timestamp=ts)
-
-
-def test_retention_zero_and_negative_days_keeps_all() -> None:
-    """retention 0 天 / 负天数 → 归一到 1 天(不删任何东西,保留至少 1 份)。"""
-    from src.services.backup.retention import compute_retention_deletes
-
-    now = datetime.now(timezone.utc)
-    files = [_rf(f"2026010{i}-040000.tar.gz", now - timedelta(days=10 - i)) for i in range(1, 6)]
-    for days in (0, -1, -100):
-        to_delete = compute_retention_deletes(files, retention_days=days, now=now)
-        # 全部文件都「过期」,但 keep_at_least=1 兜底 → 至少留一份
-        assert len(to_delete) <= len(files) - 1, (days, to_delete)
-        assert len(to_delete) == 4, (days, to_delete)
-
-
-def test_retention_extreme_days_deletes_nothing() -> None:
-    """极大 retention(3650 天)→ 无文件符合删除条件。"""
-    from src.services.backup.retention import compute_retention_deletes
-
-    now = datetime.now(timezone.utc)
-    files = [_rf(f"2026010{i}-040000.tar.gz", now - timedelta(days=i)) for i in range(1, 6)]
-    assert compute_retention_deletes(files, retention_days=3650, now=now) == []
-
-
-def test_retention_boundary_exact_cutoff_boundary() -> None:
-    """边界:时间戳正好落在 cutoff 上不被删(< 才删)。"""
-    from src.services.backup.retention import compute_retention_deletes
-
-    now = datetime.now(timezone.utc)
-    exact = now - timedelta(days=30)
-    files = [
-        _rf("20260101-000000.tar.gz", exact),
-        _rf("20260102-000000.tar.gz", exact - timedelta(seconds=1)),
-    ]
-    to_delete = compute_retention_deletes(files, retention_days=30, now=now, keep_at_least=0)
-    assert [f.name for f in to_delete] == ["20260102-000000.tar.gz"], to_delete
-
-
-def test_retention_parses_zip_and_legacy_names() -> None:
-    """文件名解析:新 .zip / 新 .tar.gz(local)/ 老 .tar.gz.age 都认。"""
-    from src.services.backup.retention import parse_tar_filename
-
-    for name in ("20260612-040000.zip", "20260612-040000.tar.gz",
-                 "20260612-040000Z.tar.gz", "20260612-040000.tar.gz.age"):
-        assert parse_tar_filename(name) is not None, name
-    for bad in ("not-a-backup.zip", "20260612-040000.txt", "20261312-040000.zip",
-                "../20260612-040000.tar.gz"):
-        assert parse_tar_filename(bad) is None, bad
-
-
-def test_retention_idempotent_repeat_deletes_nothing_new() -> None:
-    """幂等:同一输入重复计算 → 同一结果(不会越删越多)。"""
-    from src.services.backup.retention import compute_retention_deletes
-
-    now = datetime.now(timezone.utc)
-    files = [_rf(f"2026010{i}-040000.tar.gz", now - timedelta(days=40 - i)) for i in range(1, 6)]
-    first = [f.name for f in compute_retention_deletes(files, retention_days=10, now=now)]
-    second = [f.name for f in compute_retention_deletes(files, retention_days=10, now=now)]
-    assert first == second, (first, second)
-
-
-# ══════════════════════════════════════════════════════════════════════
-# 6. 归档解包:畸形 / zip bomb / tar 穿越
+# 5. 归档解包:畸形 / zip bomb / tar 穿越
 # ══════════════════════════════════════════════════════════════════════
 
 
@@ -1103,17 +1031,18 @@ def test_evidence_upsert_is_idempotent_per_event_key() -> None:
         app.dependency_overrides.clear()
 
 
-def test_evidence_expired_insert_410_and_read_404() -> None:
-    """TTL:插入即过期 → 410;已过期行读取 → 404 并顺手删除。"""
+def test_evidence_expired_rows_returned_normally() -> None:
+    """永久保留:带过去 expires_at 的行可正常写入;列表/详情正常返回过期行,
+    读时不再删除。"""
     client, Session = _make_client()
     try:
         token = _login(client, "ev-adv-ttl@example.com", client_type="app")
         past = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
         res = client.post("/api/v1/evidence/raw", headers=_auth(token),
                           json=_evidence_payload("expired", expires_at=past))
-        assert res.status_code == 410, res.text
+        assert res.status_code == 200, res.text
 
-        # 先正常插入,再把 TTL 改到过去 → 列表触发清理,详情报 404
+        # 先正常插入,再把 expires_at 改到过去 → 列表/详情仍正常返回
         ok = client.post("/api/v1/evidence/raw", headers=_auth(token),
                          json=_evidence_payload("soon-expired"))
         assert ok.status_code == 200
@@ -1125,10 +1054,12 @@ def test_evidence_expired_insert_410_and_read_404() -> None:
             row.expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)
             db.commit()
 
-        # 列表会先跑一次 TTL 清理
         listed = client.get("/api/v1/evidence/raw", headers=_auth(token)).json()
-        assert listed["total"] == 0, listed
-        assert client.get(f"/api/v1/evidence/raw/{eid}", headers=_auth(token)).status_code == 404
+        assert listed["total"] == 2, listed
+        detail = client.get(f"/api/v1/evidence/raw/{eid}", headers=_auth(token))
+        assert detail.status_code == 200, detail.text
+        with Session() as db:
+            assert db.get(RawBookkeepingEvidence, eid) is not None
     finally:
         app.dependency_overrides.clear()
 
@@ -1196,8 +1127,8 @@ def test_evidence_cleanup_with_before_is_idempotent() -> None:
         app.dependency_overrides.clear()
 
 
-def test_evidence_retention_purge_is_idempotent() -> None:
-    """站点级 TTL 清理函数重复调用 → 第二次 0(且不误删未过期行)。"""
+def test_evidence_manual_purge_is_idempotent() -> None:
+    """手动过期清理函数重复调用 → 第二次 0(且不误删未过期行)。"""
     from src.services.raw_evidence_retention import purge_expired_raw_evidence
 
     client, Session = _make_client()

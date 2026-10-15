@@ -65,7 +65,7 @@ def test_trash_lifecycle_soft_delete_restore_purge():
         assert r.status_code == 200
         assert r.json()["transaction_count"] == 1
 
-        # 回收站列表可见,含剩余天数
+        # 回收站列表可见(永久保留,不再返回 days_left)
         r = client.get(
             "/api/v1/read/workspace/trash",
             headers={"Authorization": f"Bearer {token}"},
@@ -75,7 +75,7 @@ def test_trash_lifecycle_soft_delete_restore_purge():
         assert body["total"] == 1
         item = body["items"][0]
         assert item["sync_id"] == victim
-        assert 0 <= item["days_left"] <= 30
+        assert "days_left" not in item
 
         # 恢复 → 读路径回归 + 产生 upsert change
         r = client.post(
@@ -131,12 +131,11 @@ def test_trash_lifecycle_soft_delete_restore_purge():
         app.dependency_overrides.clear()
 
 
-def test_trash_scanner_and_cleaner_roundtrip():
-    """scanner D1 + cleaner D1:软删超 30 天的行被发现并物理清除,未过期不动。"""
+def test_trash_permanent_no_expiry_scan():
+    """回收站永久保留:scan_all 不再产出过期回收站记录,软删行不受清理影响。"""
     from datetime import datetime, timedelta, timezone
 
     from src.models import Ledger, User
-    from src.services.data_cleanup.cleaner import clean
     from src.services.data_cleanup.scanner import scan_all
 
     engine = create_engine(
@@ -171,12 +170,10 @@ def test_trash_scanner_and_cleaner_roundtrip():
         db.commit()
 
         report = scan_all(db)
-        assert [r.sync_id for r in report.expired_trash] == ["tx-old"]
-
-        result = clean(db, report.expired_trash)
-        assert result.success_count == 1
-        assert db.get(ReadTxProjection, ("L1", "tx-old")) is None
-        # 未过期行保留
+        assert not hasattr(report, "expired_trash")
+        assert report.total_count == 0
+        # 软删行都在回收站里,未被清理
+        assert db.get(ReadTxProjection, ("L1", "tx-old")) is not None
         assert db.get(ReadTxProjection, ("L1", "tx-fresh")) is not None
     finally:
         db.close()

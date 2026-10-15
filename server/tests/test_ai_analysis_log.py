@@ -11,7 +11,7 @@
 - /ai/logs/{id}:自己的全文可见,他人 404
 - DELETE /ai/logs/{id}:自己删行 + 删落盘图片,他人/不存在 404
 - POST /ai/logs/batch-delete:多删自己 + 删图,跳过他人/不存在,id 去重,空/超长 422
-- _prune_retention_logs:超期 mcp 日志照清;AI 日志永久保留不受自动清理影响
+- 日志永久保留:main.py 的 retention 接线已删除,无任何自动清理
 - /admin/ai-analysis-logs:非 admin 拒绝;admin 可全局查 + 任意用户详情
 - _format_accounts_hint:账户类型 / 银行名 / 卡尾号进入提示
 """
@@ -21,7 +21,7 @@ import asyncio
 import json
 import sqlite3
 import threading
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -32,7 +32,7 @@ from sqlalchemy.pool import StaticPool
 
 from src.database import Base, get_db
 from src.main import app
-from src.models import AIAnalysisLog, MCPCallLog, User, UserProfile
+from src.models import AIAnalysisLog, User, UserProfile
 from src.services.ai import ChatJSONResult
 from src.services.ai import analysis_log as analysis_log_module
 from src.services.ai import docs_index as docs_index_module
@@ -511,83 +511,32 @@ def test_self_report_endpoints_removed(monkeypatch) -> None:
         app.dependency_overrides.clear()
 
 
-def test_prune_retention_removes_old_mcp_logs(monkeypatch) -> None:
-    """自动清理仅剩 mcp_call_logs(30 天):超期行删,保留期内的不动。"""
-    Session = _bootstrap(monkeypatch)
-    try:
-        import src.main as main_module
-        from src.main import _prune_retention_logs
+def test_logs_permanent_no_auto_prune(monkeypatch, tmp_path) -> None:
+    """永久保留:不再有任何自动清理 —— main.py 的保留循环已删除,旧日志行
+    与落盘图片只经手动删除端点删除。"""
+    import src.main as main_module
 
-        monkeypatch.setattr(main_module, "SessionLocal", Session)
+    # retention 接线已彻底移除(函数/常量/配置都不存在)
+    for name in (
+        "_start_log_retention",
+        "_prune_retention_logs",
+        "_stop_log_retention",
+        "_start_trash_retention",
+        "_prune_expired_trash",
+        "_stop_trash_retention",
+        "_start_evidence_retention",
+        "_stop_evidence_retention",
+        "_MCP_LOG_RETENTION_DAYS",
+    ):
+        assert not hasattr(main_module, name), name
+    from src.config import get_settings
 
-        with Session() as db:
-            db.add(User(
-                id="u-prune-mcp", email="prune-mcp@example.com", password_hash="x",
-                is_admin=False, is_enabled=True, created_at=datetime.now(timezone.utc),
-            ))
-            db.add(MCPCallLog(
-                user_id="u-prune-mcp", tool_name="get_transactions", status="ok",
-                called_at=datetime.now(timezone.utc) - timedelta(days=35),
-            ))
-            db.add(MCPCallLog(
-                user_id="u-prune-mcp", tool_name="get_transactions", status="ok",
-                called_at=datetime.now(timezone.utc),
-            ))
-            db.commit()
-
-        _prune_retention_logs()
-
-        with Session() as db:
-            rows = db.scalars(select(MCPCallLog)).all()
-            assert len(rows) == 1
-            # SQLite 读回 naive,不能用 tz-aware 的 now 直接比
-            assert rows[0].called_at >= datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=1)
-    finally:
-        app.dependency_overrides.clear()
-
-
-def test_prune_retention_deletes_expired_ai_logs(monkeypatch, tmp_path) -> None:
-    """P1-A5:AI 日志默认 180 天保留期 —— 超期行 + 落盘图片被自动清理,
-    未到期行保留。(旧契约「永久保留」已由 AI_LOG_RETENTION_DAYS 取代,
-    <= 0 可关回手动删除语义,见 test_retention_wiring.py。)"""
-    Session = _bootstrap(monkeypatch)
-    try:
-        import src.main as main_module
-        from src.main import _prune_retention_logs
-
-        monkeypatch.setattr(main_module, "SessionLocal", Session)
-        monkeypatch.setattr(main_module.settings, "ai_log_retention_days", 180)
-
-        old_img = tmp_path / "old.jpg"
-        old_img.write_bytes(b"old")
-        new_img = tmp_path / "new.jpg"
-        new_img.write_bytes(b"new")
-        with Session() as db:
-            db.add(User(
-                id="u-prune-ai", email="prune-ai@example.com", password_hash="x",
-                is_admin=False, is_enabled=True, created_at=datetime.now(timezone.utc),
-            ))
-            db.add(AIAnalysisLog(
-                user_id="u-prune-ai", entry_type="parse_tx_image", status="ok",
-                image_path=str(old_img), image_mime="image/jpeg",
-                called_at=datetime.now(timezone.utc) - timedelta(days=365),
-            ))
-            db.add(AIAnalysisLog(
-                user_id="u-prune-ai", entry_type="chat", status="ok",
-                image_path=str(new_img), image_mime="image/jpeg",
-                called_at=datetime.now(timezone.utc) - timedelta(days=1),
-            ))
-            db.commit()
-
-        _prune_retention_logs()
-
-        with Session() as db:
-            rows = db.scalars(select(AIAnalysisLog)).all()
-            assert len(rows) == 1  # 一年前的超期行被清,昨天的保留
-        assert not old_img.exists()
-        assert new_img.exists()
-    finally:
-        app.dependency_overrides.clear()
+    for name in (
+        "ai_log_retention_days",
+        "audit_log_retention_days",
+        "ai_bill_identifier_ttl_days",
+    ):
+        assert not hasattr(get_settings(), name), name
 
 
 def test_delete_log_removes_row_and_image(monkeypatch, tmp_path) -> None:

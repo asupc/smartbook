@@ -7,9 +7,10 @@
   - rclone_runner: 封装 subprocess 调用 + JSON log 进度解析
   - db_snapshot:   SQLite VACUUM INTO 实现
   - tar_builder:   hardlink staging + tar.gz / 加密 zip(AES-256)打包
-  - retention:     列出远端 → 算超期 → purge
-  - runner:        编排:VACUUM → 打包(tar.gz 或加密 zip)→ fan-out push → retention → 写 DB
+  - runner:        编排:VACUUM → 打包(tar.gz 或加密 zip)→ fan-out push → 写 DB
   - scheduler:     APScheduler 启动 + 从 DB 装载 + add_job
+
+备份永久保留:不再自动删包,远端旧备份仅手动删除。
 """
 from .rclone_config import (
     RcloneConfigManager,
@@ -21,9 +22,6 @@ from .rclone_runner import (
     RcloneRunner,
     RcloneProgress,
 )
-from .retention import (
-    compute_retention_deletes,
-)
 
 __all__ = [
     "RcloneConfigManager",
@@ -32,5 +30,4 @@ __all__ = [
     "RcloneError",
     "RcloneRunner",
     "RcloneProgress",
-    "compute_retention_deletes",
 ]

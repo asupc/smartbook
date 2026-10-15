@@ -45,18 +45,11 @@ class Settings(BaseSettings):
     attachment_storage_dir: str = Field(default="", alias="ATTACHMENT_STORAGE_DIR")
     attachment_max_upload_bytes: int = 64 * 1024 * 1024
     # AI 调用记录的输入图片(App 上报截图记账原图,Web 详情查看)。文件名
-    # {log_id}.{ext},随日志行删除(手动删除或保留期到期)时一并删除
-    # (不落 DB,避免 blob 撑爆表)。
+    # {log_id}.{ext},随日志行手动删除时一并删除(不落 DB,避免 blob 撑爆表)。
     ai_log_image_dir: str = Field(default="", alias="AI_LOG_IMAGE_DIR")
 
-    # ===== 日志保留期(main.py retention 循环,每 24h 一轮)=====
-    # ai_analysis_logs 保留天数:二开后四路识别(截图/支付通知/短信/账单页)
-    # 全落这张表,写入频率远超上游,必须有出口(P1-A5)。到期行连同
-    # image_path 落盘图片一起删。<= 0 关闭自动清理(回到手动删除语义,
-    # DELETE /ai/logs/{id} / batch-delete 始终可用)。
-    ai_log_retention_days: int = Field(default=180, alias="AI_LOG_RETENTION_DAYS")
-    # audit_logs 保留天数:审计流水只有取证价值,默认留 1 年。<= 0 关闭。
-    audit_log_retention_days: int = Field(default=365, alias="AUDIT_LOG_RETENTION_DAYS")
+    # 用户数据永久保留:日志表(ai_analysis_logs / audit_logs / mcp_call_logs)
+    # 不再有自动清理,仅经手动删除端点删除(DELETE /ai/logs/{id} / batch-delete)。
 
     # ===== M6-5 AI 日志可靠 outbox =====
     # 开启后 AI 日志写入走「先持久化 enqueue → 返回 → worker 异步归档」，响应
@@ -75,12 +68,9 @@ class Settings(BaseSettings):
     # App 识别请求到达后、调用 LLM 前,先在新请求文本里匹配该用户已识别过的
     # 账单唯一标识(external_id/订单号/流水号);命中即判重复:记日志
     # (dedup_hit)并返回 duplicate,**不调 LLM**,App 端不记账不通知。
-    # TTL 只为控制表体积(订单号本身全局唯一),按天。
+    # 标识永久保留、不再清理(个人部署体量可忽略)。
     ai_bill_identifier_dedup_enabled: bool = Field(
         default=True, alias="AI_BILL_IDENTIFIER_DEDUP_ENABLED"
-    )
-    ai_bill_identifier_ttl_days: int = Field(
-        default=90, alias="AI_BILL_IDENTIFIER_TTL_DAYS"
     )
 
     # ===== rclone 备份模块 =====

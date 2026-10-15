@@ -155,7 +155,6 @@ def test_create_schedule_with_remotes_validates_ownership(mock_cfg_mgr) -> None:
             json={
                 "name": "daily",
                 "cron_expr": "0 4 * * *",
-                "retention_days": 7,
                 "include_attachments": True,
                 "enabled": True,
                 "remote_ids": [rid],
@@ -173,7 +172,6 @@ def test_create_schedule_with_remotes_validates_ownership(mock_cfg_mgr) -> None:
             json={
                 "name": "bad",
                 "cron_expr": "0 4 * * *",
-                "retention_days": 7,
                 "include_attachments": True,
                 "enabled": True,
                 "remote_ids": [9999],
@@ -188,7 +186,6 @@ def test_create_schedule_with_remotes_validates_ownership(mock_cfg_mgr) -> None:
             json={
                 "name": "bad",
                 "cron_expr": "not a cron",
-                "retention_days": 7,
                 "include_attachments": True,
                 "enabled": True,
                 "remote_ids": [rid],
@@ -217,7 +214,6 @@ def test_delete_remote_blocked_when_referenced_by_schedule(mock_cfg_mgr) -> None
             json={
                 "name": "s",
                 "cron_expr": "0 4 * * *",
-                "retention_days": 7,
                 "include_attachments": True,
                 "enabled": True,
                 "remote_ids": [rid],

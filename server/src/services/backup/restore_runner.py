@@ -92,7 +92,7 @@ def cleanup_restore(run_id: int) -> bool:
 
 
 def cleanup_old_restores(*, max_age_days: int = 7) -> int:
-    """retention job 顺手清掉超期的 restore 目录。返回清掉的数量。"""
+    """清掉超期的 restore 临时目录(staging 清理,非用户数据)。返回清掉的数量。"""
     root = Path(get_settings().restore_dir)
     if not root.exists():
         return 0

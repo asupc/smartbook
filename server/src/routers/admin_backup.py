@@ -65,8 +65,7 @@ router = APIRouter()
 #
 # 同一个 schedule 的 run-now 走普通 threading.Thread,绕过 APScheduler 的
 # `max_instances=1` 保护 —— 连点两次会起两个后台备份:同一远端并发 copyto
-# 同一文件名(慢速远端互相覆盖)、两个 retention 各自删文件(可能删掉对方
-# 刚上传的新备份)、staging 双份占盘。
+# 同一文件名(慢速远端互相覆盖)、staging 双份占盘。
 #
 # 守卫语义:同一 schedule 在「已有 run 在跑」或「距上次接受触发不足
 # _RUN_NOW_COALESCE_SECONDS」时,重复触发被**合并**(返回与首次同样的 202,
@@ -186,7 +185,7 @@ def _split_config(
     # 值白名单:含控制字符(尤其 \r/\n)的字段直接 400 拒绝。configparser 会把
     # 含换行的值写成续行,而 rclone(go-ini)把 TrimLeft 后以 `[` 开头的续行
     # 当作**新 section** —— 可凭空伪造 backend(local root 指向任意绝对路径,
-    # 后续 backup/restore/retention 就在那里读写删)。
+    # 后续 backup/restore 就在那里读写)。
     unsafe_field = find_unsafe_conf_value(config)
     if unsafe_field is not None:
         raise HTTPException(
@@ -280,7 +279,6 @@ def _build_schedule_out(db: Session, s: BackupSchedule) -> BackupScheduleOut:
         id=s.id,
         name=s.name,
         cron_expr=s.cron_expr,
-        retention_days=s.retention_days,
         include_attachments=s.include_attachments,
         enabled=s.enabled,
         next_run_at=_utc(s.next_run_at),
@@ -710,7 +708,6 @@ def create_schedule(
         name=req.name,
         enabled=req.enabled,
         cron_expr=req.cron_expr,
-        retention_days=req.retention_days,
         include_attachments=req.include_attachments,
         created_at=_now(),
         updated_at=_now(),
@@ -750,8 +747,6 @@ def update_schedule(
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"invalid cron: {exc}")
         s.cron_expr = req.cron_expr
-    if req.retention_days is not None:
-        s.retention_days = req.retention_days
     if req.include_attachments is not None:
         s.include_attachments = req.include_attachments
     if req.enabled is not None:
@@ -857,7 +852,6 @@ def run_schedule_now(
     def _bg(
         user_id: str = user_id,
         remote_ids: list[int] = remote_ids,
-        retention_days: int = s.retention_days,
         include_attachments: bool = s.include_attachments,
         schedule_id: int = schedule_id,
     ) -> None:
@@ -882,7 +876,6 @@ def run_schedule_now(
                 user_id=user_id,
                 remote_ids=remote_ids,
                 include_attachments=include_attachments,
-                retention_days=retention_days,
                 on_progress=_push,
             )
         finally:

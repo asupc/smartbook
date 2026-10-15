@@ -797,13 +797,10 @@ def test_relay_dedup_ignores_short_identifiers(monkeypatch, tmp_path) -> None:
         app.dependency_overrides.clear()
 
 
-def test_relay_dedup_expired_identifier_ignored(monkeypatch, tmp_path) -> None:
-    """TTL 过期的标识不再参与判重(仅表体积控制语义)。"""
+def test_relay_dedup_identifier_permanent(monkeypatch, tmp_path) -> None:
+    """标识永久保留:已登记的订单号在后续请求中持续判重,不再过期。"""
     Session = _make_client(monkeypatch, tmp_path)
     try:
-        from src.config import get_settings
-        monkeypatch.setattr(get_settings(), "ai_bill_identifier_ttl_days", 0)
-
         client = TestClient(app)
         token = _register_and_login(client, "dedup-exp@example.com")
         _seed_ai_config(_get_user_id(Session, "dedup-exp@example.com"), Session)
@@ -816,13 +813,30 @@ def test_relay_dedup_expired_identifier_ignored(monkeypatch, tmp_path) -> None:
 
         monkeypatch.setattr("src.routers.ai.relay.call_chat_text", fake_call)
         headers = {"Authorization": f"Bearer {token}"}
-        for text in ("星巴克28元 订单号2026090512345678", "星巴克28元 订单号2026090512345678"):
-            r = client.post("/api/v1/ai/relay/chat", headers=headers, json={
-                "messages": [{"role": "user", "content": text}],
-                "entry_type": "parse_tx_text",
-            })
-            assert r.json()["duplicate"] is False
-        assert calls["n"] == 2
+        r = client.post("/api/v1/ai/relay/chat", headers=headers, json={
+            "messages": [{"role": "user", "content": "星巴克28元 订单号2026090512345678"}],
+            "entry_type": "parse_tx_text",
+        })
+        assert r.json()["duplicate"] is False
+        # 同一订单号再次到来 → 判重命中,不调 LLM
+        r = client.post("/api/v1/ai/relay/chat", headers=headers, json={
+            "messages": [{"role": "user", "content": "星巴克28元 订单号2026090512345678"}],
+            "entry_type": "parse_tx_text",
+        })
+        assert r.json()["duplicate"] is True
+        assert calls["n"] == 1
+
+        # expires_at 为远期占位值(列非空保留,免 migration)
+        from src.models import AIBillIdentifier, User
+
+        with Session() as db:
+            user_id = db.scalar(select(User.id).where(User.email == "dedup-exp@example.com"))
+            row = db.scalar(select(AIBillIdentifier).where(
+                AIBillIdentifier.user_id == user_id,
+                AIBillIdentifier.identifier == "2026090512345678",
+            ))
+            assert row is not None
+            assert row.expires_at.year == 9999
     finally:
         app.dependency_overrides.clear()
 

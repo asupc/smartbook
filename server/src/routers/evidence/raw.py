@@ -12,8 +12,6 @@ def upsert_raw_evidence(
     _check_ledger_access(db, current_user, payload.ledger_id)
     event_key = payload.event_key.strip()
     now = datetime.now(timezone.utc)
-    if payload.expires_at is not None and _utc(payload.expires_at) <= now:
-        raise HTTPException(status_code=410, detail="Evidence expired")
     row = db.scalar(
         select(RawBookkeepingEvidence).where(
             RawBookkeepingEvidence.user_id == current_user.id,
@@ -62,13 +60,7 @@ def list_raw_evidence(
     db: Session = Depends(get_db),
 ) -> RawEvidenceListOut:
     _check_ledger_access(db, current_user, ledger_id)
-    now = datetime.now(timezone.utc)
-    db.execute(delete(RawBookkeepingEvidence).where(
-        RawBookkeepingEvidence.user_id == current_user.id,
-        RawBookkeepingEvidence.expires_at.is_not(None),
-        RawBookkeepingEvidence.expires_at <= now,
-    ))
-    db.commit()
+    # 永久保留:读时不再删除过期行,过期行正常返回。
     filters: list[Any] = [RawBookkeepingEvidence.user_id == current_user.id]
     if source:
         filters.append(RawBookkeepingEvidence.source == _validate_source(source))
@@ -104,10 +96,7 @@ def get_raw_evidence(
     )
     if row is None:
         raise HTTPException(status_code=404, detail="Evidence not found")
-    if row.expires_at is not None and _utc(row.expires_at) <= datetime.now(timezone.utc):
-        db.delete(row)
-        db.commit()
-        raise HTTPException(status_code=404, detail="Evidence not found")
+    # 永久保留:过期行正常返回,不再读时删除/404。
     return _out(row)
 
 
@@ -130,8 +119,6 @@ def patch_raw_evidence(
         raise HTTPException(status_code=404, detail="Evidence not found")
     _check_ledger_access(db, current_user, payload.ledger_id)
     now = datetime.now(timezone.utc)
-    if payload.expires_at is not None and _utc(payload.expires_at) <= now:
-        raise HTTPException(status_code=410, detail="Evidence expired")
     _apply_payload(row, payload, now)
     db.commit()
     db.refresh(row)

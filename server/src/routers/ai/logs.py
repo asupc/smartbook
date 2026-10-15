@@ -9,9 +9,8 @@
   status 过滤。**列表只返截断预览**(全文字段可能很长,列表带全量会拖页面
   并把内容暴露进响应缓存);全文走详情 endpoint。
 - `GET /ai/logs/{id}` — 单条全文,只允许本人,非本人 404。
-- `DELETE /ai/logs/{id}` — 手动删除自己的单条记录(默认保留期外另有
-  AI_LOG_RETENTION_DAYS 定时清理,手动删除是保留期内唯一清理入口;带图
-  记录行删完后顺带删落盘图片)。
+- `DELETE /ai/logs/{id}` — 手动删除自己的单条记录(日志永久保留,无自动
+  清理;带图记录行删完后顺带删落盘图片)。
 - `POST /ai/logs/batch-delete` — 批量删除(Web 多选删除,body `{ids}` ≤200,
   去重);只删属于本人的 id,不存在/他人的跳过(不泄露存在性),返回
   `{"deleted": n}`。
@@ -281,8 +280,7 @@ def delete_ai_log(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict[str, bool]:
-    """手动删除一条自己的 AI 分析记录(保留期 AI_LOG_RETENTION_DAYS 之外的
-    手动清理入口;main.py 的 retention 循环会清超期行)。
+    """手动删除一条自己的 AI 分析记录(日志永久保留,这是唯一清理入口)。
 
     非本人或不存在 → 404(同详情,不泄露存在性)。带图记录:行删完后顺带删
     落盘图片(图片不落 DB,不删会永久残留在磁盘);图片删除失败只打日志,

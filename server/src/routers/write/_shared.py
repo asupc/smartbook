@@ -314,7 +314,7 @@ def _diff_entity_list(
             # gc_orphan_attachments:被共享引用的 blob 保留,完全孤立的
             # DELETE attachment_files + unlink 物理文件。
             # transaction 删除(0030)改软删,不在此 GC 附件 —— 物理删除
-            # 延后到回收站「彻底删除/30 天过期清理」。
+            # 延后到回收站手动「彻底删除」。
             gc_file_ids: set[str] = set()
             if entity_type == "category":
                 gc_file_ids = projection.collect_category_icon_fileids(
@@ -733,7 +733,7 @@ async def _commit_write_fast_tx(
 
         if action == "delete":
             # 0030 软删(回收站):只写 deleted_at,附件物理 GC 延后到
-            # 「彻底删除/30 天过期清理」,误删可恢复。
+            # 手动「彻底删除」,误删可恢复。
             change_row = SyncChange(
                 user_id=ledger.user_id,
                 ledger_id=ledger.id,

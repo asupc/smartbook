@@ -195,7 +195,7 @@ def active_only(model) -> Any:
     """软删过滤谓词(0030 回收站):`deleted_at IS NULL` 的单点口径。
 
     所有「业务可见」的 projection 点查 / 计数 / 聚合都应带上它;回收站自身
-    (`read/trash.py`)与「彻底删除 / 过期清理」走 `deleted_at IS NOT NULL`,
+    (`read/trash.py`)与「彻底删除」走 `deleted_at IS NOT NULL`,
     不走这里。收敛到这里是为了避免 39 处内联写法各自漂移 —— 新增读路径
     请直接 `query.where(active_only(ReadTxProjection))`。
     """
@@ -771,7 +771,7 @@ def delete_entity(
 
 def delete_tx(db: Session, *, ledger_id: str, sync_id: str) -> None:
     """交易删除 → 软删(0030 回收站):写 deleted_at,读路径/统计/导出统一
-    过滤;30 天后 cleaner 物理删除。恢复见 read/trash.py 的 restore。
+    过滤。回收站永久保留;恢复/彻底删除见 read/trash.py 的 restore/purge。
     行不存在时静默返回(幂等,与旧行为一致)。"""
     db.execute(
         update(ReadTxProjection)
@@ -785,7 +785,7 @@ def delete_tx(db: Session, *, ledger_id: str, sync_id: str) -> None:
 
 
 def purge_tx(db: Session, *, ledger_id: str, sync_id: str) -> None:
-    """物理删除(回收站「彻底删除」/过期清理专用)。幂等。"""
+    """物理删除(回收站「彻底删除」专用)。幂等。"""
     db.execute(
         delete(ReadTxProjection).where(
             ReadTxProjection.ledger_id == ledger_id,

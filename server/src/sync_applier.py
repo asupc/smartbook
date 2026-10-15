@@ -294,7 +294,7 @@ def _compact_entity_upsert_events(
 
 def _delete_tx(db: Session, ledger_id: str, sync_id: str, user_id: str) -> None:
     # 0030 软删(回收站):只写 deleted_at,不删行/不 GC 附件 —— 附件物理删除
-    # 延后到「彻底删除/30 天过期清理」(read/trash.py + data_cleanup cleaner)。
+    # 延后到手动「彻底删除」(read/trash.py 的 purge)。
     # upsert 历史也不清:恢复(restore)靠重放最新 upsert payload 重建。
     # 幂等:已软删的行 update 条件不命中,无副作用。
     projection.delete_tx(db, ledger_id=ledger_id, sync_id=sync_id)

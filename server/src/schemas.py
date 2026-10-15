@@ -1720,7 +1720,6 @@ class BackupRemoteTestResponse(BaseModel):
 class BackupScheduleCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=128)
     cron_expr: str = Field(min_length=1, max_length=64)
-    retention_days: int = Field(ge=1, le=3650, default=30)
     include_attachments: bool = True
     enabled: bool = True
     remote_ids: list[int] = Field(min_length=1)
@@ -1729,7 +1728,6 @@ class BackupScheduleCreateRequest(BaseModel):
 class BackupScheduleUpdateRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=128)
     cron_expr: str | None = Field(default=None, min_length=1, max_length=64)
-    retention_days: int | None = Field(default=None, ge=1, le=3650)
     include_attachments: bool | None = None
     enabled: bool | None = None
     remote_ids: list[int] | None = None
@@ -1739,7 +1737,6 @@ class BackupScheduleOut(BaseModel):
     id: int
     name: str
     cron_expr: str
-    retention_days: int
     include_attachments: bool
     enabled: bool
     next_run_at: datetime | None = None

@@ -323,179 +323,14 @@ async def _stop_mcp_streamable() -> None:  # noqa: B008
     await close_internal_client()
 
 
-# ============================================================================
-# Log retention — 每 24h 清一次超期行。跟 APScheduler 解耦,用纯 asyncio loop
-# 避免额外依赖。loop 首次睡 24h 再跑,意味着冷启动后第一次清理是次日;
-# 不影响测试(test 进程秒级退出,任务永远不触发)。覆盖:
-#   - mcp_call_logs(硬编码 30 天)
-#   - ai_analysis_logs(AI_LOG_RETENTION_DAYS,默认 180;二开后四路识别全落
-#     这张表,写入频率远超上游,必须有出口。到期行连带 image_path 落盘
-#     图片一起删;<= 0 关闭)
-#   - audit_logs(AUDIT_LOG_RETENTION_DAYS,默认 365;<= 0 关闭)
-# ============================================================================
-
-
-_MCP_LOG_RETENTION_DAYS = 30
-
-
-@app.on_event("startup")
-async def _start_log_retention() -> None:  # noqa: B008
-    import asyncio
-
-    async def _loop() -> None:
-        while True:
-            await asyncio.sleep(24 * 3600)
-            try:
-                await asyncio.to_thread(_prune_retention_logs)
-            except Exception:
-                logging.getLogger(__name__).exception("call log retention failed")
-
-    app.state.log_retention_task = asyncio.create_task(_loop())
-
-
-def _prune_retention_logs() -> None:
-    """删除超期日志行:mcp_call_logs(30 天)、ai_analysis_logs 与 audit_logs
-    (按 settings 配置,<= 0 跳过)。AI 日志的落盘图片在行删除后 best-effort
-    unlink(失败只 warn,磁盘残留下轮不会重扫 — 可接受,手动删除端点同款
-    语义)。"""
-    from datetime import datetime, timedelta, timezone
-    from typing import cast
-
-    from sqlalchemy import delete, select
-    from sqlalchemy.engine import CursorResult
-
-    from .models import AIAnalysisLog, AuditLog, MCPCallLog
-
-    now = datetime.now(timezone.utc)
-    with SessionLocal() as db:
-        # mcp_call_logs — 固定 30 天
-        cutoff = now - timedelta(days=_MCP_LOG_RETENTION_DAYS)
-        result = cast(
-            CursorResult,
-            db.execute(delete(MCPCallLog).where(MCPCallLog.called_at < cutoff)),
-        )
-        deleted_mcp = result.rowcount or 0
-
-        # ai_analysis_logs — 配置保留期,先收图片路径再删行
-        deleted_ai = 0
-        stale_image_paths: list[str] = []
-        if settings.ai_log_retention_days > 0:
-            ai_cutoff = now - timedelta(days=settings.ai_log_retention_days)
-            stale_image_paths = [
-                row.image_path
-                for row in db.execute(
-                    select(AIAnalysisLog.image_path).where(
-                        AIAnalysisLog.called_at < ai_cutoff,
-                        AIAnalysisLog.image_path.is_not(None),
-                    )
-                ).all()
-                if row.image_path
-            ]
-            result = cast(
-                CursorResult,
-                db.execute(
-                    delete(AIAnalysisLog).where(AIAnalysisLog.called_at < ai_cutoff)
-                ),
-            )
-            deleted_ai = result.rowcount or 0
-
-        # audit_logs — 配置保留期
-        deleted_audit = 0
-        if settings.audit_log_retention_days > 0:
-            audit_cutoff = now - timedelta(days=settings.audit_log_retention_days)
-            result = cast(
-                CursorResult,
-                db.execute(
-                    delete(AuditLog).where(AuditLog.created_at < audit_cutoff)
-                ),
-            )
-            deleted_audit = result.rowcount or 0
-
-        db.commit()
-
-    # DB 已 commit → 再做文件 IO(不持 DB 锁;失败只 warn,行已删是事实)
-    # S12-⑥:image_path 新行只存文件名(相对 AI_LOG_IMAGE_DIR),经
-    # resolve_log_image_path 归一解析;历史绝对路径该函数原样返回。
-    from .services.ai.analysis_log import resolve_log_image_path
-
-    for p in stale_image_paths:
-        try:
-            resolve_log_image_path(p).unlink(missing_ok=True)
-        except OSError:
-            logging.getLogger(__name__).warning(
-                "retention: failed to remove ai log image path=%s", p,
-            )
-
-    if deleted_mcp or deleted_ai or deleted_audit:
-        logging.getLogger(__name__).info(
-            "retention: deleted %d mcp call logs, %d ai analysis logs "
-            "(+%d image files), %d audit logs",
-            deleted_mcp, deleted_ai, len(stale_image_paths), deleted_audit,
-        )
-
-
-@app.on_event("shutdown")
-async def _stop_log_retention() -> None:  # noqa: B008
-    task = getattr(app.state, "log_retention_task", None)
-    if task is not None and not task.done():
-        task.cancel()
-
-
-# ============================================================================
-# Trash retention(0030 承诺的「30 天后自动物理删除」)— 每日一轮:
-# data_cleanup scanner._scan_tx_trash_expired 找出软删超 30 天的交易,
-# cleaner.clean 物理删除(行 + 附件 GC + upsert 事件 compact)。此前只有
-# admin 手动 API(/admin/data-cleanup),现在接线成自动任务,与 log
-# retention 同款 loop 形态(纯 asyncio,首睡 24h)。
-# ============================================================================
-
-
-@app.on_event("startup")
-async def _start_trash_retention() -> None:  # noqa: B008
-    import asyncio
-
-    async def _loop() -> None:
-        while True:
-            await asyncio.sleep(24 * 3600)
-            try:
-                await asyncio.to_thread(_prune_expired_trash)
-            except Exception:
-                logging.getLogger(__name__).exception("trash retention failed")
-
-    app.state.trash_retention_task = asyncio.create_task(_loop())
-
-
-def _prune_expired_trash() -> None:
-    """物理清理软删超 30 天的交易(scanner → cleaner,复用 admin 手动
-    清理的同一套实现,含附件 GC 与 upsert 事件 compact)。"""
-    from .services.data_cleanup import scanner as _cleanup_scanner
-    from .services.data_cleanup.cleaner import clean
-
-    with SessionLocal() as db:
-        records = _cleanup_scanner._scan_tx_trash_expired(db)
-        if not records:
-            return
-        result = clean(db, records)
-        if result.success_count or result.failures:
-            logging.getLogger(__name__).info(
-                "retention: trash purge cleaned=%d failed=%d",
-                result.success_count,
-                len(result.failures),
-            )
-
-
-@app.on_event("shutdown")
-async def _stop_trash_retention() -> None:  # noqa: B008
-    task = getattr(app.state, "trash_retention_task", None)
-    if task is not None and not task.done():
-        task.cancel()
-
-
+# 用户数据永久保留 —— 服务为个人部署个人使用,不再有任何自动删除:
+# 日志保留循环、回收站保留循环、证据保留循环已全部删除。回收站永久存放,
+# 仅经 restore/purge 手动接口恢复或彻底删除;备份不再自动删包。
 # ============================================================================
 # sync_changes 表规模观测 —— 启动时打印行数 + payload 总字节,运维肉眼
 # 跟踪增长趋势。sync_changes 是 append-only log,长期会膨胀;详见
 # .docs/dashboard-anomaly-budget/plan.md 关于 compaction 的讨论。
-# 2026-09(P1-A3)起,交易物理 purge(回收站过期清理 / 手动彻底删除)会
+# 2026-09(P1-A3)起,交易物理 purge(手动彻底删除)会
 # 连带 compact 该交易的 upsert 事件(delete 墓碑保留),最大实体的"删了
 # 还留全量历史"问题已有出口;但存活交易的 upsert 历史、未进回收站的
 # 编辑历史仍只增不减 —— 增长只是放缓,没有归零。
@@ -532,47 +367,12 @@ async def _log_sync_changes_size() -> None:  # noqa: B008
         )
 
 
-@app.on_event("startup")
-async def _start_evidence_retention() -> None:
-    import asyncio
-    from .services.raw_evidence_retention import purge_expired_raw_evidence
-
-    def prune() -> None:
-        with SessionLocal() as db:
-            purge_expired_raw_evidence(db)
-            from .services.ai.bill_identifier import prune_expired as prune_bill_identifiers
-            prune_bill_identifiers(db)
-
-    async def loop() -> None:
-        while True:
-            try:
-                await asyncio.to_thread(prune)
-            except Exception:
-                # Do not log SQL parameters or raw evidence on failures.
-                logging.getLogger(__name__).warning("evidence.retention status=failed")
-            await asyncio.sleep(15 * 60)
-
-    app.state.evidence_retention_task = asyncio.create_task(loop())
-
-
-@app.on_event("shutdown")
-async def _stop_evidence_retention() -> None:
-    import asyncio
-    task = getattr(app.state, "evidence_retention_task", None)
-    if task is not None:
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-
-
 # ============================================================================
 # AI 日志 outbox worker(P1-B3 接线)— `AI_LOG_OUTBOX_ENABLED` 开启时,
 # startup 先恢复上次进程留下的过期 lease,再起 run_worker_forever 后台
 # task;shutdown 经 stop_event 优雅关停。默认保持关闭(config.py,
 # 先存量部署一版再灰度开启);不开启时 AI 日志走同步直写路径,行为不变。
-# 启停逻辑拆成独立 helper 便于单测(tests/test_retention_wiring.py)。
+# 启停逻辑拆成独立 helper 便于单测(tests/test_outbox_wiring.py)。
 # ============================================================================
 
 

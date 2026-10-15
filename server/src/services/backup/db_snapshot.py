@@ -31,10 +31,10 @@ logger = logging.getLogger(__name__)
 #   - sync_push_idempotency:24 小时滚动 idempotency 缓存
 #   - audit_logs:管理员操作日志,运维痕迹,不属于"账本数据"
 #   - refresh_tokens:登录 session,restore 后所有人都得重登,留着没用
-#   - mcp_call_logs:MCP tool 调用审计,30 天滚动遥测,跟账本数据无关
-#   - ai_analysis_logs:AI 分析调用审计(含全文输入输出)。**不设保留期**
-#     —— 数据清理任务不回收该表,体积会一直增长;备份里持续排除,既能控制
-#     备份体积,也避免把含 prompt/输出的敏感遥测推到对象存储。
+#   - mcp_call_logs:MCP tool 调用审计,跟账本数据无关
+#   - ai_analysis_logs:AI 分析调用审计(含全文输入输出)。永久保留、体积
+#     会一直增长;备份里持续排除,既能控制备份体积,也避免把含 prompt/输出
+#     的敏感遥测推到对象存储。
 # **PAT 表 (personal_access_tokens) 要保留** — 用户的 LLM 客户端配置依赖
 # 这些 token,restore 后 LLM 仍然能连上,不用重新发 token。
 # 用户数据相关(必须保留):users / user_profiles / devices / ledgers /

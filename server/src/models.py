@@ -148,7 +148,7 @@ class MCPCallLog(Base):
         最多 200 字 — 帮回忆"我让它做了啥",不留 note 之类的自由文本
       - error 出错时存 truncated message
 
-    保留期 30 天,过期由 APScheduler 定时清(同 backup 用同一套调度器)。
+    永久保留,不再自动清理。
     """
 
     __tablename__ = "mcp_call_logs"
@@ -191,11 +191,9 @@ class AIAnalysisLog(Base):
     """每一次 AI 分析调用(文档 Q&A / 截图记账 / 文字记账)的审计记录。
 
     跟 mcp_call_logs 的区别:**完整记录输入输出**(用户提问 / 文本、模型回复
-    全文),便于调试 prompt 与排查 provider 问题。隐私与体积的平衡:
-      - 输入输出可能含交易内容 → 默认 180 天保留期
-        (AI_LOG_RETENTION_DAYS,<= 0 关闭),main.py retention 循环每 24h
-        清理到期行并连带删除落盘图片;保留期内用户可在 Web「AI 调用记录」
-        页手动删除单条(DELETE /ai/logs/{id}),见 src/routers/ai/logs.py
+    全文),便于调试 prompt 与排查 provider 问题。永久保留,不再自动清理;
+    用户可在 Web「AI 调用记录」页手动删除单条(DELETE /ai/logs/{id},连带
+    删除落盘图片),见 src/routers/ai/logs.py
       - 只支持 user 查自己的 + admin 查全部;列表只返截断预览,全文走
         详情 endpoint,避免大 payload 进列表响应
       - 图片输入**不存 base64**(5MB 上限会撑爆行),只存图片元信息摘要
@@ -313,8 +311,8 @@ class AIBillIdentifier(Base):
     来源:/ai/relay 的记账提取响应(chs/vision)收割 `external_id` 一类字段,
     按 user 隔离存储。App 再发来包含同一标识的识别请求时,**先于 LLM** 判重:
     直接记 ai_analysis_logs(dedup_hit='duplicate_identifier')并返回 duplicate,
-    不调 LLM、App 端不记账也不通知。设置 TTL(默认 90 天)只为了控制表体积,
-    不是业务语义 —— 订单号本身全局唯一。
+    不调 LLM、App 端不记账也不通知。标识永久保留、不再清理(个人部署体量
+    可忽略);expires_at 列仅因非空约束保留,写入固定远期占位值。
     """
 
     __tablename__ = "ai_bill_identifiers"
@@ -781,9 +779,8 @@ class ReadTxProjection(Base):
     currency_code: Mapped[str | None] = mapped_column(String(16), nullable=True)
     native_amount: Mapped[float | None] = mapped_column(Float, nullable=True)
     # 软删标记(0030 回收站):非 NULL = 已进回收站,读路径/统计/导出一律
-    # 过滤;30 天后物理删除(含附件文件 + upsert 事件 compact)—— 由 main.py
-    # 的每日 retention 任务自动执行(data_cleanup scanner/cleaner),admin
-    # 也可经 /admin/data-cleanup 手动触发。恢复=置回 NULL。
+    # 过滤。回收站永久保留、无自动清理;恢复=置回 NULL,彻底删除经
+    # trash purge 手动接口(物理删行 + 附件 GC + upsert 事件 compact)。
     deleted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -1072,6 +1069,7 @@ class BackupSchedule(Base):
     name: Mapped[str] = mapped_column(String(128))
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     cron_expr: Mapped[str] = mapped_column(String(64))  # 5-field crontab
+    # 遗留字段,后端不再使用(免 migration 保留列):备份永久保留,不再自动删包。
     retention_days: Mapped[int] = mapped_column(Integer, default=30)
     include_attachments: Mapped[bool] = mapped_column(Boolean, default=True)
     next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
